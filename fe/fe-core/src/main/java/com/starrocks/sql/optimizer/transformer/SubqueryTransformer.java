@@ -120,7 +120,7 @@ public class SubqueryTransformer {
                 SelectRelation selectRelation = (SelectRelation) relation;
                 // For in subQuery, the order by is meaningless
                 if (!selectRelation.hasLimit()) {
-                    selectRelation.getOrderBy().clear();
+                    selectRelation.getOrderByElements().clear();
                 }
             }
 

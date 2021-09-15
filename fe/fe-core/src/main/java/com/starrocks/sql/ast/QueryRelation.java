@@ -3,6 +3,8 @@ package com.starrocks.sql.ast;
 
 import com.google.common.collect.Maps;
 import com.starrocks.analysis.Expr;
+import com.starrocks.analysis.LimitElement;
+import com.starrocks.analysis.OrderByElement;
 import com.starrocks.sql.analyzer.FieldId;
 
 import java.util.ArrayList;
@@ -17,7 +19,10 @@ public abstract class QueryRelation extends Relation {
      * Because outputExpr may be rewritten, we recorded the primitive SQL column name
      * The alias will also be recorded in columnOutputNames
      */
-    private final List<String> columnOutputNames;
+    private List<String> columnOutputNames;
+
+    protected List<OrderByElement> sortClause;
+    protected LimitElement limit;
 
     private final List<CTERelation> cteRelations = new ArrayList<>();
 
@@ -27,6 +32,10 @@ public abstract class QueryRelation extends Relation {
 
     public List<String> getColumnOutputNames() {
         return columnOutputNames;
+    }
+
+    public void setColumnOutputNames(List<String> columnOutputNames) {
+        this.columnOutputNames = columnOutputNames;
     }
 
     public Map<Expr, FieldId> getColumnReferences() {
@@ -41,7 +50,59 @@ public abstract class QueryRelation extends Relation {
         return cteRelations;
     }
 
+    @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
         return visitor.visitQueryRelation(this, context);
+    }
+
+    // ------------- New Analyzer --------------
+
+    public void setOrderBy(List<OrderByElement> sortClause) {
+        this.sortClause = sortClause;
+    }
+
+    public List<OrderByElement> getOrderByElements() {
+        return sortClause;
+    }
+
+    public boolean hasOrderByClause() {
+        return sortClause != null;
+    }
+
+    public void setLimitElement(LimitElement limit) {
+        this.limit = limit;
+    }
+
+    public long getOffset() {
+        return limit.getOffset();
+    }
+
+    public long getLimitNum() {
+        return limit.getLimit();
+    }
+
+    public boolean hasWithClause() {
+        return !cteRelations.isEmpty();
+    }
+
+    @Override
+    public String toSql() {
+        StringBuilder sqlBuilder = new StringBuilder();
+
+        if (hasOrderByClause()) {
+            sqlBuilder.append(" ORDER BY ");
+            for (int i = 0; i < sortClause.size(); ++i) {
+                if (i != 0) {
+                    sqlBuilder.append(", ");
+                }
+                sqlBuilder.append(sortClause.get(i).toSql());
+            }
+        }
+
+        // Limit clause.
+        if (limit != null) {
+            sqlBuilder.append(limit.toSql());
+        }
+        return sqlBuilder.toString();
     }
 }

@@ -1,8 +1,10 @@
 // This file is licensed under the Elastic License 2.0. Copyright 2021-present, StarRocks Limited.
 package com.starrocks.sql.ast;
 
+import com.starrocks.analysis.TableName;
+
 public class SubqueryRelation extends Relation {
-    private final String name;
+    private String name;
     private final QueryRelation query;
 
     public SubqueryRelation(String name, QueryRelation query) {
@@ -28,7 +30,19 @@ public class SubqueryRelation extends Relation {
         return name == null ? "anonymous" : name;
     }
 
+    @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
         return visitor.visitSubquery(this, context);
+    }
+
+
+    // ------------- New Analyzer --------------
+
+    public void setAlias(TableName alias) {
+        this.name = alias.getTbl();
+    }
+
+    public TableName getAlias() {
+        return new TableName(null, name);
     }
 }

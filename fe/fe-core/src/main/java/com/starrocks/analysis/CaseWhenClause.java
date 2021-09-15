@@ -21,10 +21,12 @@
 
 package com.starrocks.analysis;
 
+import com.starrocks.sql.ast.AstVisitor;
+
 /**
  * captures info of a single WHEN expr THEN expr clause.
  */
-public class CaseWhenClause {
+public class CaseWhenClause implements ParseNode {
     private final Expr whenExpr;
     private final Expr thenExpr;
 
@@ -40,5 +42,10 @@ public class CaseWhenClause {
 
     public Expr getThenExpr() {
         return thenExpr;
+    }
+
+    @Override
+    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+        return null;
     }
 }

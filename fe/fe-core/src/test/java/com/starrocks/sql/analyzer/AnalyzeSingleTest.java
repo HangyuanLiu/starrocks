@@ -115,6 +115,11 @@ public class AnalyzeSingleTest {
     }
 
     @Test
+    public void t() {
+        analyzeSuccess("with w as (select * from t0) select v1,sum(v2) from w group by v1 having v1 in (select v3 from w where v2 = 2)");
+    }
+
+    @Test
     public void testCTE() {
         /**
          * Test CTE column name resolve
@@ -378,5 +383,12 @@ public class AnalyzeSingleTest {
 
         query = analyzeSuccess("select v1+2 as v, * from t0 order by v+1");
         Assert.assertEquals("v,v1,v2,v3", String.join(",", query.getColumnOutputNames()));
+    }
+
+
+    @Test
+    public void testNewParser() {
+        analyzeSuccess("select 1,2,3 from dual");
+        analyzeFail("select * from dual", "No tables used");
     }
 }

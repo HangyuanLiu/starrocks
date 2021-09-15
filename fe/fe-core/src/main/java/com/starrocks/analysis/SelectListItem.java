@@ -22,8 +22,10 @@
 package com.starrocks.analysis;
 
 import com.google.common.base.Preconditions;
+import com.starrocks.common.UserException;
+import com.starrocks.sql.ast.AstVisitor;
 
-public class SelectListItem {
+public class SelectListItem implements ParseNode {
     private Expr expr;
     // for "[name.]*"
     private final TableName tblName;
@@ -87,6 +89,11 @@ public class SelectListItem {
         return alias;
     }
 
+    @Override
+    public void analyze(Analyzer analyzer) throws UserException {
+
+    }
+
     public String toSql() {
         if (!isStar) {
             Preconditions.checkNotNull(expr);
@@ -133,4 +140,8 @@ public class SelectListItem {
         return expr.toColumnLabel();
     }
 
+    @Override
+    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+        return null;
+    }
 }

@@ -1,6 +1,7 @@
 // This file is licensed under the Elastic License 2.0. Copyright 2021-present, StarRocks Limited.
 package com.starrocks.sql.ast;
 
+import com.google.common.collect.Lists;
 import com.starrocks.analysis.PartitionNames;
 import com.starrocks.analysis.TableName;
 import com.starrocks.catalog.Column;
@@ -12,12 +13,12 @@ import java.util.Map;
 
 public class TableRelation extends Relation {
     private final TableName name;
-    private final Table table;
-    private final Map<Field, Column> columns;
+    private Table table;
+    private Map<Field, Column> columns;
     // Support temporary partition
-    private final PartitionNames partitionNames;
-    private final List<Long> tabletIds;
-    private final boolean isMetaQuery;
+    private PartitionNames partitionNames;
+    private List<Long> tabletIds;
+    private boolean isMetaQuery;
 
     public TableRelation(TableName name, Table table,
                          Map<Field, Column> columns,
@@ -40,6 +41,10 @@ public class TableRelation extends Relation {
         return table;
     }
 
+    public void setTable(Table table) {
+        this.table = table;
+    }
+
     public PartitionNames getPartitionNames() {
         return partitionNames;
     }
@@ -52,20 +57,56 @@ public class TableRelation extends Relation {
         return columns.get(field);
     }
 
+    public void setColumns(Map<Field, Column> columns) {
+        this.columns = columns;
+    }
+
     public Map<Field, Column> getColumns() {
         return columns;
+    }
+
+    @Override
+    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+        return visitor.visitTable(this, context);
     }
 
     public boolean isMetaQuery() {
         return isMetaQuery;
     }
 
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return visitor.visitTable(this, context);
-    }
-
     @Override
     public String toString() {
         return name.toString();
+    }
+
+    // ------------- New Analyzer --------------
+    public TableRelation(TableName name) {
+        this.name = name;
+        partitionNames = null;
+        tabletIds = Lists.newArrayList();
+    }
+
+    @Override
+    public TableName getAlias() {
+        if (alias != null) {
+            return alias;
+        } else {
+            return name;
+        }
+    }
+
+    public void setMetaQuery(boolean metaQuery) {
+        isMetaQuery = metaQuery;
+    }
+
+    @Override
+    public String toSql() {
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append(name);
+
+        if (alias != null) {
+            sqlBuilder.append(" AS ").append(alias.getTbl());
+        }
+        return sqlBuilder.toString();
     }
 }

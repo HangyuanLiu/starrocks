@@ -85,7 +85,7 @@ class QueryTransformer {
         // add project to express order by expression
         builder = project(builder, Iterables.concat(queryBlock.getOrderByExpressions(), queryBlock.getOutputExpr()));
         List<ColumnRefOperator> orderByColumns = Lists.newArrayList();
-        builder = sort(builder, queryBlock.getOrderBy(), orderByColumns);
+        builder = sort(builder, queryBlock.getOrderByElements(), orderByColumns);
         builder = limit(builder, queryBlock.getLimit());
 
         List<ColumnRefOperator> outputColumns = computeOutputs(builder, queryBlock.getOutputExpr());

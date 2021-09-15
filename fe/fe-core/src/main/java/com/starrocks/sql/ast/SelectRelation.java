@@ -4,8 +4,11 @@ package com.starrocks.sql.ast;
 import com.starrocks.analysis.AnalyticExpr;
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.FunctionCallExpr;
+import com.starrocks.analysis.GroupByClause;
 import com.starrocks.analysis.LimitElement;
 import com.starrocks.analysis.OrderByElement;
+import com.starrocks.analysis.SelectList;
+import com.starrocks.sql.analyzer.AnalyzeState;
 import com.starrocks.sql.analyzer.FieldId;
 import com.starrocks.sql.analyzer.Scope;
 
@@ -14,23 +17,20 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class SelectRelation extends QueryRelation {
-    private final Expr predicate;
+    private Expr predicate;
 
-    private final List<Expr> groupBy;
-    private final List<FunctionCallExpr> aggregate;
-    private final List<List<Expr>> groupingSetsList;
-    private final Expr having;
-    private final List<Expr> groupingFunctionCallExprs;
+    private List<Expr> groupBy;
+    private List<FunctionCallExpr> aggregate;
+    private List<List<Expr>> groupingSetsList;
+    private Expr having;
+    private List<Expr> groupingFunctionCallExprs;
 
-    private final List<OrderByElement> sortClause;
-    private LimitElement limit;
+    private boolean isDistinct;
 
-    private final boolean isDistinct;
+    private List<AnalyticExpr> outputAnalytic;
+    private List<AnalyticExpr> orderByAnalytic;
 
-    private final List<AnalyticExpr> outputAnalytic;
-    private final List<AnalyticExpr> orderByAnalytic;
-
-    private final Scope orderScope;
+    private Scope orderScope;
 
     /**
      * out fields is different with output expr
@@ -43,13 +43,13 @@ public class SelectRelation extends QueryRelation {
      * order by expression resolve source expression,
      * column ref map will build in project operator when aggregation present
      */
-    private final List<Expr> orderSourceExpressions;
+    private List<Expr> orderSourceExpressions;
 
     /**
      * Relations referenced in From clause. The Relation can be a CTE/table
      * reference a subquery or two relation joined together.
      */
-    private final Relation relation;
+    private Relation relation;
 
     private Map<Expr, FieldId> columnReferences;
 
@@ -85,6 +85,29 @@ public class SelectRelation extends QueryRelation {
         this.columnReferences = columnReferences;
     }
 
+    public void fillAnalyzeState(AnalyzeState analyzeState) {
+        super.setColumnOutputNames(analyzeState.getColumnOutputNames());
+        this.outputExpr = analyzeState.getOutputExpressions();
+        this.isDistinct = analyzeState.isDistinct();
+        this.orderScope = analyzeState.getOrderScope();
+        this.predicate = analyzeState.getPredicate();
+        this.limit = analyzeState.getLimit();
+
+        this.groupBy = analyzeState.getGroupBy();
+        this.aggregate = analyzeState.getAggregate();
+        this.groupingSetsList = analyzeState.getGroupingSetsList();
+        this.having = analyzeState.getHaving();
+        this.groupingFunctionCallExprs = analyzeState.getGroupingFunctionCallExprs();
+
+        this.sortClause = analyzeState.getOrderBy();
+        this.orderSourceExpressions = analyzeState.getOrderSourceExpressions();
+
+        this.outputAnalytic = analyzeState.getOutputAnalytic();
+        this.orderByAnalytic = analyzeState.getOrderByAnalytic();
+
+        this.columnReferences = analyzeState.getColumnReferences();
+    }
+
     public List<Expr> getOutputExpr() {
         return outputExpr;
     }
@@ -117,6 +140,10 @@ public class SelectRelation extends QueryRelation {
         return aggregate;
     }
 
+    public void setAggregate(List<FunctionCallExpr> aggregate) {
+        this.aggregate = aggregate;
+    }
+
     public List<List<Expr>> getGroupingSetsList() {
         return groupingSetsList;
     }
@@ -129,8 +156,8 @@ public class SelectRelation extends QueryRelation {
         return groupBy;
     }
 
-    public List<OrderByElement> getOrderBy() {
-        return sortClause;
+    public void setGroupBy(List<Expr> groupBy) {
+        this.groupBy = groupBy;
     }
 
     public List<Expr> getOrderByExpressions() {
@@ -161,6 +188,10 @@ public class SelectRelation extends QueryRelation {
         sortClause.clear();
     }
 
+    public void setOutputAnalytic(List<AnalyticExpr> outputAnalytic) {
+        this.outputAnalytic = outputAnalytic;
+    }
+
     public List<AnalyticExpr> getOutputAnalytic() {
         return outputAnalytic;
     }
@@ -173,8 +204,130 @@ public class SelectRelation extends QueryRelation {
         return columnReferences;
     }
 
+    @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
         return visitor.visitSelect(this, context);
+    }
+
+    // ------------- New Analyzer --------------
+    private SelectList selectList;
+    private GroupByClause groupByClause;
+
+    public SelectRelation(
+            SelectList selectList,
+            Relation fromRelation,
+            Expr predicate,
+            GroupByClause groupByClause,
+            Expr having) {
+        super(null);
+        this.selectList = selectList;
+        this.relation = fromRelation;
+        this.predicate = predicate;
+        this.groupByClause = groupByClause;
+        this.having = having;
+    }
+
+    public void setOutputExpr(List<Expr> outputExpr) {
+        this.outputExpr = outputExpr;
+    }
+
+    public SelectList getSelectList() {
+        return selectList;
+    }
+
+    public boolean hasGroupByClause() {
+        return groupByClause != null;
+    }
+
+    public void setIsDistinct(boolean distinct) {
+        isDistinct = distinct;
+    }
+
+    public boolean hasWhereClause() {
+        return predicate != null;
+    }
+
+    public void setWhereClause(Expr predicate) {
+        this.predicate = predicate;
+    }
+
+    public Expr getWhereClause() {
+        return predicate;
+    }
+
+    public GroupByClause getGroupByClause() {
+        return groupByClause;
+    }
+
+    public boolean hasHavingClause() {
+        return having != null;
+    }
+
+    public Expr getHavingClause() {
+        return having;
+    }
+
+    public void setHaving(Expr having) {
+        this.having = having;
+    }
+
+    public void setRelation(Relation relation) {
+        this.relation = relation;
+    }
+
+    public void setColumnReferences(Map<Expr, FieldId> columnReferences) {
+        this.columnReferences = columnReferences;
+    }
+
+    public void setOrderScope(Scope orderScope) {
+        this.orderScope = orderScope;
+    }
+
+    @Override
+    public String toSql() {
+        StringBuilder sqlBuilder = new StringBuilder();
+        if (hasWithClause()) {
+            for (CTERelation cteRelation : getCteRelations()) {
+                sqlBuilder.append(cteRelation.toSql());
+                sqlBuilder.append(" ");
+            }
+        }
+
+        sqlBuilder.append("SELECT ");
+        if (selectList.isDistinct()) {
+            sqlBuilder.append("DISTINCT");
+        }
+
+        for (int i = 0; i < selectList.getItems().size(); ++i) {
+            if (i != 0) {
+                sqlBuilder.append(", ");
+            }
+            sqlBuilder.append(selectList.getItems().get(i).toSql());
+        }
+
+        if (relation != null) {
+            sqlBuilder.append(" FROM ");
+            sqlBuilder.append(relation.toSql());
+        }
+
+        if (hasWhereClause()) {
+            sqlBuilder.append(" WHERE ");
+            sqlBuilder.append(getWhereClause().toSql());
+        }
+
+        if (hasGroupByClause()) {
+            sqlBuilder.append(" GROUP BY ");
+            sqlBuilder.append(getGroupByClause().toSql());
+        }
+
+        if (hasHavingClause()) {
+            sqlBuilder.append(" HAVING ");
+            sqlBuilder.append(getHavingClause().toSql());
+        }
+
+        sqlBuilder.append(super.toSql());
+
+        return sqlBuilder.toString();
     }
 }
 

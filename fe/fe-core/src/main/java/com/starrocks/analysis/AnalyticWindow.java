@@ -23,6 +23,7 @@ package com.starrocks.analysis;
 
 import com.google.common.base.Preconditions;
 import com.starrocks.common.AnalysisException;
+import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.thrift.TAnalyticWindow;
 import com.starrocks.thrift.TAnalyticWindowBoundary;
 import com.starrocks.thrift.TAnalyticWindowBoundaryType;
@@ -34,7 +35,7 @@ import java.math.BigDecimal;
  * Windowing clause of an analytic expr
  * Both left and right boundaries are always non-null after analyze().
  */
-public class AnalyticWindow {
+public class AnalyticWindow implements ParseNode {
     // default window used when an analytic expr was given an order by but no window
     public static final AnalyticWindow DEFAULT_WINDOW = new AnalyticWindow(Type.RANGE,
             new Boundary(BoundaryType.UNBOUNDED_PRECEDING, null),
@@ -128,7 +129,7 @@ public class AnalyticWindow {
         }
     }
 
-    public static class Boundary {
+    public static class Boundary implements ParseNode {
         private BoundaryType type;
 
         // Offset expr. Only set for PRECEDING/FOLLOWING. Needed for toSql().
@@ -233,6 +234,11 @@ public class AnalyticWindow {
 
         public void setOffsetValue(BigDecimal offsetValue) {
             this.offsetValue = offsetValue;
+        }
+
+        @Override
+        public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+            return null;
         }
     }
 

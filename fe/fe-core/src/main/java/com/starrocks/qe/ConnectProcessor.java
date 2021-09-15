@@ -250,7 +250,17 @@ public class ConnectProcessor {
         StatementBase parsedStmt = null;
         try {
             ctx.setQueryId(UUIDUtil.genUUID());
-            List<StatementBase> stmts = analyze(originStmt);
+            List<StatementBase> stmts;
+            try {
+                stmts = com.starrocks.sql.parser.SqlParser.parse(originStmt);
+            /*
+            } catch (ParsingException parsingException) {
+                throw new AnalysisException(parsingException.getMessage());
+            */
+            } catch (Exception e) {
+                stmts = analyze(originStmt);
+            }
+
             for (int i = 0; i < stmts.size(); ++i) {
                 ctx.getState().reset();
                 if (i > 0) {

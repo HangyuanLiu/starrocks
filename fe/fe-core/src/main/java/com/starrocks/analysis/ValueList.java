@@ -24,11 +24,12 @@ package com.starrocks.analysis;
 import com.google.common.collect.Lists;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.AnalysisException;
+import com.starrocks.sql.ast.AstVisitor;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class ValueList {
+public class ValueList implements ParseNode {
     private List<ArrayList<Expr>> rows;
     private List<Type> rowsType;
 
@@ -86,5 +87,10 @@ public class ValueList {
 
     public void setRowsType(List<Type> rowsType) {
         this.rowsType = rowsType;
+    }
+
+    @Override
+    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+        return null;
     }
 }

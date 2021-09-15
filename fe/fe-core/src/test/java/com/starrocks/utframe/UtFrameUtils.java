@@ -27,12 +27,9 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.starrocks.analysis.Analyzer;
 import com.starrocks.analysis.QueryStmt;
-import com.starrocks.analysis.SelectStmt;
-import com.starrocks.analysis.SetVar;
 import com.starrocks.analysis.SqlParser;
 import com.starrocks.analysis.SqlScanner;
 import com.starrocks.analysis.StatementBase;
-import com.starrocks.analysis.StringLiteral;
 import com.starrocks.analysis.UserIdentity;
 import com.starrocks.catalog.Catalog;
 import com.starrocks.catalog.DiskInfo;
@@ -50,7 +47,6 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.QueryState;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.StmtExecutor;
-import com.starrocks.qe.VariableMgr;
 import com.starrocks.sql.StatementPlanner;
 import com.starrocks.sql.ast.Relation;
 import com.starrocks.sql.optimizer.OperatorStrings;
@@ -64,6 +60,10 @@ import com.starrocks.sql.optimizer.dump.QueryDumpInfo;
 import com.starrocks.sql.optimizer.statistics.ColumnStatistic;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
 import com.starrocks.sql.optimizer.transformer.RelationTransformer;
+import com.starrocks.sql.parser.AstBuilder;
+import com.starrocks.sql.parser.CaseInsensitiveStream;
+import com.starrocks.sql.parser.StarRocksLexer;
+import com.starrocks.sql.parser.StarRocksParser;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanFragmentBuilder;
 import com.starrocks.statistic.Constants;
@@ -74,6 +74,8 @@ import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.utframe.MockedFrontend.EnvVarNotSetException;
 import com.starrocks.utframe.MockedFrontend.FeStartException;
 import com.starrocks.utframe.MockedFrontend.NotInitException;
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CommonTokenStream;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
@@ -349,15 +351,26 @@ public class UtFrameUtils {
     public static Pair<String, ExecPlan> getPlanAndFragment(ConnectContext connectContext, String originStmt)
             throws Exception {
         connectContext.setDumpInfo(new QueryDumpInfo(connectContext.getSessionVariable()));
+        /*
         SqlScanner input =
                 new SqlScanner(new StringReader(originStmt), connectContext.getSessionVariable().getSqlMode());
         SqlParser parser = new SqlParser(input);
         StatementBase statementBase = SqlParserUtils.getFirstStmt(parser);
+         */
+        originStmt = originStmt.replace(";", "");
+        StarRocksLexer lexer = new StarRocksLexer(new CaseInsensitiveStream(CharStreams.fromString(originStmt)));
+        CommonTokenStream tokenStream = new CommonTokenStream(lexer);
+        StarRocksParser parser = new StarRocksParser(tokenStream);
+
+        StarRocksParser.SingleStatementContext singleStatementContext = parser.singleStatement();
+        StatementBase statementBase = (StatementBase) new AstBuilder().visitSingleStatement(singleStatementContext);
+
         connectContext.getDumpInfo().setOriginStmt(originStmt);
 
         SessionVariable oldSessionVariable = connectContext.getSessionVariable();
         try {
             // update session variable by adding optional hints.
+            /*
             if (statementBase instanceof SelectStmt) {
                 Map<String, String> optHints = ((SelectStmt) statementBase).getSelectList().getOptHints();
                 if (optHints != null) {
@@ -369,6 +382,9 @@ public class UtFrameUtils {
                 }
             }
 
+             */
+
+            //ExecPlan execPlan = new StatementPlanner().plan(statementBase, connectContext);
             ExecPlan execPlan = new StatementPlanner().plan(statementBase, connectContext);
             OperatorStrings operatorPrinter = new OperatorStrings();
             return new Pair<>(operatorPrinter.printOperator(execPlan.getPhysicalPlan()), execPlan);

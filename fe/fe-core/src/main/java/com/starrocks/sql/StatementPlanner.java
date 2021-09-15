@@ -1,19 +1,27 @@
 // This file is licensed under the Elastic License 2.0. Copyright 2021-present, StarRocks Limited.
 package com.starrocks.sql;
 
+import com.google.common.base.Strings;
 import com.google.common.collect.Maps;
 import com.starrocks.analysis.InsertStmt;
 import com.starrocks.analysis.QueryStmt;
 import com.starrocks.analysis.StatementBase;
 import com.starrocks.catalog.Database;
+import com.starrocks.cluster.ClusterNamespace;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.PlannerContext;
 import com.starrocks.planner.ResultSink;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.analyzer.PrivilegeChecker;
+import com.starrocks.sql.ast.AstVisitor;
+import com.starrocks.sql.ast.JoinRelation;
 import com.starrocks.sql.ast.QueryRelation;
+import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
+import com.starrocks.sql.ast.SelectRelation;
+import com.starrocks.sql.ast.SetOperationRelation;
+import com.starrocks.sql.ast.TableRelation;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.Optimizer;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
@@ -32,11 +40,15 @@ public class StatementPlanner {
     public ExecPlan plan(StatementBase stmt, ConnectContext session) throws AnalysisException {
         com.starrocks.sql.analyzer.Analyzer analyzer =
                 new com.starrocks.sql.analyzer.Analyzer(session.getCatalog(), session);
-        Relation relation = analyzer.analyze(stmt);
-
+        Relation relation;
+        if (stmt instanceof QueryStatement) {
+            relation = analyzer.analyzeWithStatement(stmt);
+        } else {
+            relation = analyzer.analyze(stmt);
+        }
         PrivilegeChecker.check(stmt, session.getCatalog().getAuth(), session);
 
-        if (stmt instanceof QueryStmt) {
+        if (stmt instanceof QueryStmt || stmt instanceof QueryStatement) {
             QueryStmt queryStmt = (QueryStmt) stmt;
 
             Map<String, Database> dbs = Maps.newTreeMap();
@@ -128,5 +140,48 @@ public class StatementPlanner {
 
         ResultSink resultSink = (ResultSink) topFragment.getSink();
         resultSink.setOutfileInfo(queryStmt.getOutFileClause());
+    }
+
+    class getDB extends AstVisitor<Void, Void> {
+        private Map<String, Database> dbs;
+        private ConnectContext session;
+
+        public getDB(Map<String, Database> dbs, ConnectContext session) {
+            this.dbs = dbs;
+            this.session = session;
+        }
+
+        @Override
+        public Void visitSelect(SelectRelation node, Void context) {
+            return visit(node.getRelation());
+        }
+
+        @Override
+        public Void visitSetOp(SetOperationRelation node, Void context) {
+            node.getRelations().forEach(this::visit);
+            return null;
+        }
+
+        @Override
+        public Void visitJoin(JoinRelation node, Void context) {
+            visit(node.getLeft());
+            visit(node.getRight());
+            return null;
+        }
+
+        @Override
+        public Void visitTable(TableRelation node, Void context) {
+            String dbName = node.getName().getDb();
+            if (Strings.isNullOrEmpty(dbName)) {
+                dbName = session.getDatabase();
+            } else {
+                dbName = ClusterNamespace.getFullName(session.getClusterName(), dbName);
+            }
+
+            Database db = session.getCatalog().getDb(dbName);
+
+            dbs.put(dbName, db);
+            return null;
+        }
     }
 }

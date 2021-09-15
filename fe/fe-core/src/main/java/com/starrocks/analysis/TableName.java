@@ -34,7 +34,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-public class TableName implements Writable {
+public class TableName implements ParseNode, Writable {
     private String tbl;
     private String db;
 

@@ -4,11 +4,13 @@ package com.starrocks.sql.ast;
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.JoinOperator;
 
+import java.util.List;
+
 public class JoinRelation extends Relation {
     private final JoinOperator type;
-    private final Relation left;
-    private final Relation right;
-    private final Expr onPredicate;
+    private Relation left;
+    private Relation right;
+    private Expr onPredicate;
     private String joinHint = "";
     private final boolean lateral;
 
@@ -51,5 +53,29 @@ public class JoinRelation extends Relation {
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
         return visitor.visitJoin(this, context);
+    }
+
+    // ------------- New Analyzer --------------
+
+    private List<String> usingColNames;
+
+    public List<String> getUsingColNames() {
+        return usingColNames;
+    }
+
+    public void setUsingColNames(List<String> usingColNames) {
+        this.usingColNames = usingColNames;
+    }
+
+    public void setLeft(Relation left) {
+        this.left = left;
+    }
+
+    public void setRight(Relation right) {
+        this.right = right;
+    }
+
+    public void setOnPredicate(Expr onPredicate) {
+        this.onPredicate = onPredicate;
     }
 }

@@ -28,7 +28,8 @@ import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.Table;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.AnalysisException;
-import org.apache.commons.collections.CollectionUtils;
+import com.starrocks.sql.ast.AstVisitor;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -363,5 +364,10 @@ public class GroupByClause implements ParseNode {
         GROUPING_SETS,
         ROLLUP,
         CUBE
+    }
+
+    @Override
+    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+        return null;
     }
 }

@@ -1,4 +1,16 @@
 [sql]
+with t0 as (select * from t1) select * from test.t0
+[result]
+SCAN (columns[4: v1, 5: v2, 6: v3] predicate[null])
+[end]
+
+[sql]
+select * from tview;
+[result]
+SCAN (columns[1: v1, 2: v2, 3: v3] predicate[null])
+[end]
+
+[sql]
 select 1,2
 [fragment]
 PLAN FRAGMENT 0
@@ -342,11 +354,7 @@ AGGREGATE ([GLOBAL] aggregate [{}] group by [[1: v1, 2: v2, 3: v3]] having [null
         SCAN (columns[1: v1, 2: v2, 3: v3] predicate[null])
 [end]
 
-[sql]
-with t0 as (select * from t1) select * from test.t0
-[result]
-SCAN (columns[4: v1, 5: v2, 6: v3] predicate[null])
-[end]
+
 
 [sql]
 with t0 as (select * from t1) select * from t0
@@ -363,11 +371,7 @@ AGGREGATE ([GLOBAL] aggregate [{4: count=count()}] group by [[]] having [null]
             SCAN (columns[2: v2] predicate[null])
 [end]
 
-[sql]
-select * from tview;
-[result]
-SCAN (columns[1: v1, 2: v2, 3: v3] predicate[null])
-[end]
+
 
 [sql]
 select * from tview, t1;

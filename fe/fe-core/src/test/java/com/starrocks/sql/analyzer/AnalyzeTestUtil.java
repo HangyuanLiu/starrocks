@@ -11,8 +11,14 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.InsertRelation;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.common.UnsupportedException;
+import com.starrocks.sql.parser.AstBuilder;
+import com.starrocks.sql.parser.CaseInsensitiveStream;
+import com.starrocks.sql.parser.StarRocksLexer;
+import com.starrocks.sql.parser.StarRocksParser;
 import com.starrocks.utframe.StarRocksAssert;
 import com.starrocks.utframe.UtFrameUtils;
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CommonTokenStream;
 import org.junit.Assert;
 
 import java.io.StringReader;
@@ -142,6 +148,7 @@ public class AnalyzeTestUtil {
 
     public static QueryRelation analyzeSuccess(String originStmt) {
         try {
+            /*
             SqlScanner input =
                     new SqlScanner(new StringReader(originStmt), connectContext.getSessionVariable().getSqlMode());
             SqlParser parser = new SqlParser(input);
@@ -149,6 +156,16 @@ public class AnalyzeTestUtil {
 
             Analyzer analyzer = new Analyzer(Catalog.getCurrentCatalog(), connectContext);
             return (QueryRelation) analyzer.analyze(statementBase);
+            */
+
+            StarRocksLexer lexer = new StarRocksLexer(new CaseInsensitiveStream(CharStreams.fromString(originStmt)));
+            CommonTokenStream tokenStream = new CommonTokenStream(lexer);
+            StarRocksParser parser = new StarRocksParser(tokenStream);
+
+            StarRocksParser.SingleStatementContext singleStatementContext = parser.singleStatement();
+            StatementBase statementBase = (StatementBase) new AstBuilder().visitSingleStatement(singleStatementContext);
+            Analyzer analyzer = new Analyzer(Catalog.getCurrentCatalog(), connectContext);
+            return (QueryRelation) analyzer.analyzeWithStatement(statementBase);
         } catch (Exception ex) {
             ex.printStackTrace();
             Assert.fail();

@@ -42,7 +42,9 @@ import com.starrocks.analysis.RedirectStatus;
 import com.starrocks.analysis.SelectStmt;
 import com.starrocks.analysis.SetStmt;
 import com.starrocks.analysis.SetVar;
+import com.starrocks.analysis.ShowDbStmt;
 import com.starrocks.analysis.ShowStmt;
+import com.starrocks.analysis.ShowTableStmt;
 import com.starrocks.analysis.SqlParser;
 import com.starrocks.analysis.SqlScanner;
 import com.starrocks.analysis.StatementBase;
@@ -94,6 +96,7 @@ import com.starrocks.rpc.RpcException;
 import com.starrocks.service.FrontendOptions;
 import com.starrocks.sql.StatementPlanner;
 import com.starrocks.sql.analyzer.SemanticException;
+import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.common.ErrorType;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.common.StarRocksPlannerException;
@@ -131,11 +134,11 @@ import java.util.concurrent.atomic.AtomicLong;
 public class StmtExecutor {
     private static final Logger LOG = LogManager.getLogger(StmtExecutor.class);
 
-    private static final AtomicLong STMT_ID_GENERATOR = new AtomicLong(0);
+    protected static final AtomicLong STMT_ID_GENERATOR = new AtomicLong(0);
 
-    private final ConnectContext context;
+    protected final ConnectContext context;
     private final MysqlSerializer serializer;
-    private final OriginStatement originStmt;
+    protected final OriginStatement originStmt;
     private StatementBase parsedStmt;
     private Analyzer analyzer;
     private RuntimeProfile profile;
@@ -145,7 +148,7 @@ public class StmtExecutor {
     private Planner planner;
     private final boolean isProxy;
     private ShowResultSet proxyResultSet = null;
-    private PQueryStatistics statisticsForAuditLog;
+    protected PQueryStatistics statisticsForAuditLog;
 
     // this constructor is mainly for proxy
     public StmtExecutor(ConnectContext context, OriginStatement originStmt, boolean isProxy) {
@@ -269,7 +272,8 @@ public class StmtExecutor {
                 if (optHints != null) {
                     SessionVariable sessionVariable = (SessionVariable) sessionVariableBackup.clone();
                     for (String key : optHints.keySet()) {
-                        VariableMgr.setVar(sessionVariable, new SetVar(key, new StringLiteral(optHints.get(key))), true);
+                        VariableMgr.setVar(sessionVariable, new SetVar(key, new StringLiteral(optHints.get(key))),
+                                true);
                     }
                     context.setSessionVariable(sessionVariable);
                 }
@@ -280,14 +284,25 @@ public class StmtExecutor {
             boolean execPlanBuildByNewPlanner = false;
 
             // Entrance to the new planner
-            if (isStatisticsOrAnalyzer(parsedStmt, context)
-                    || supportedByNewPlanner(parsedStmt, context)) {
+            if (isStatisticsOrAnalyzer(parsedStmt, context) || supportedByNewPlanner(parsedStmt, context)) {
                 try {
                     redirectStatus = parsedStmt.getRedirectStatus();
                     if (!isForwardToMaster()) {
                         context.getDumpInfo().reset();
                         context.getDumpInfo().setOriginStmt(parsedStmt.getOrigStmt().originStmt);
-                        execPlan = new StatementPlanner().plan(parsedStmt, context);
+                        if (parsedStmt instanceof ShowStmt) {
+                            com.starrocks.sql.analyzer.Analyzer analyzer =
+                                    new com.starrocks.sql.analyzer.Analyzer(context.getCatalog(), context);
+                            analyzer.analyze(parsedStmt);
+
+                            SelectStmt selectStmt = ((ShowStmt) parsedStmt).toSelectStmt(null);
+                            if (selectStmt != null) {
+                                parsedStmt = selectStmt;
+                                execPlan = new StatementPlanner().plan(parsedStmt, context);
+                            }
+                        } else {
+                            execPlan = new StatementPlanner().plan(parsedStmt, context);
+                        }
                         execPlanBuildByNewPlanner = true;
                     }
                 } catch (SemanticException e) {
@@ -823,7 +838,7 @@ public class StmtExecutor {
         context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
     }
 
-    private void sendFields(List<String> colNames, List<Expr> exprs) throws IOException {
+    protected void sendFields(List<String> colNames, List<Expr> exprs) throws IOException {
         // sends how many columns
         serializer.reset();
         serializer.writeVInt(colNames.size());
@@ -987,8 +1002,12 @@ public class StmtExecutor {
     }
 
     private boolean supportedByNewPlanner(StatementBase statement, ConnectContext context) {
-        return statement instanceof QueryStmt || statement instanceof InsertStmt ||
-                statement instanceof CreateTableAsSelectStmt;
+        return statement instanceof QueryStmt
+                || statement instanceof InsertStmt
+                || statement instanceof CreateTableAsSelectStmt
+                || statement instanceof QueryStatement
+                || statement instanceof ShowDbStmt
+                || statement instanceof ShowTableStmt;
     }
 
     public void handleInsertStmtWithNewPlanner(ExecPlan execPlan, InsertStmt stmt) throws Exception {

@@ -2,6 +2,7 @@
 package com.starrocks.sql.ast;
 
 import com.starrocks.analysis.ParseNode;
+import com.starrocks.analysis.TableName;
 import com.starrocks.sql.analyzer.RelationFields;
 import com.starrocks.sql.analyzer.Scope;
 import com.starrocks.sql.common.ErrorType;
@@ -28,7 +29,19 @@ public abstract class Relation implements ParseNode {
         return scope.getRelationFields();
     }
 
+    @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return visitor.visit(this, context);
+        return visitor.visitRelation(this, context);
+    }
+
+    // ------------- New Analyzer --------------
+    protected TableName alias;
+
+    public void setAlias(TableName alias) {
+        this.alias = alias;
+    }
+
+    public TableName getAlias() {
+        return alias;
     }
 }
