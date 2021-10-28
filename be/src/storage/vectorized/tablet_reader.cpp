@@ -4,6 +4,7 @@
 
 #include <column/datum_convert.h>
 
+#include "common/status.h"
 #include "gutil/stl_util.h"
 #include "service/backend_options.h"
 #include "storage/tablet.h"
@@ -78,6 +79,7 @@ Status TabletReader::_init_collector(const TabletReaderParams& params) {
     rs_opts.profile = params.profile;
     rs_opts.use_page_cache = params.use_page_cache;
     rs_opts.tablet_schema = &(_tablet->tablet_schema());
+    rs_opts.global_dictmaps = params.global_dictmaps;
     if (keys_type == KeysType::PRIMARY_KEYS) {
         rs_opts.is_primary_keys = true;
         rs_opts.version = _version.second;
@@ -188,6 +190,11 @@ Status TabletReader::_init_collector(const TabletReaderParams& params) {
     } else {
         return Status::InternalError("Unknown keys type");
     }
+
+    if (_collect_iter != nullptr) {
+        RETURN_IF_ERROR(_collect_iter->init_encoded_schema(*params.global_dictmaps));
+    }
+
     return Status::OK();
 }
 
@@ -221,7 +228,7 @@ Status TabletReader::_init_delete_predicates(const TabletReaderParams& params, D
                 LOG(WARNING) << "ignore delete condition of non-key column: " << pred_pb.sub_predicates(i);
                 continue;
             }
-            ColumnPredicate* pred = pred_parser.parse(cond);
+            ColumnPredicate* pred = pred_parser.parse_thrift_cond(cond);
             if (pred == nullptr) {
                 LOG(WARNING) << "failed to parse delete condition.column_name[" << cond.column_name
                              << "], condition_op[" << cond.condition_op << "], condition_values["
@@ -245,7 +252,7 @@ Status TabletReader::_init_delete_predicates(const TabletReaderParams& params, D
             for (const auto& value : in_predicate.values()) {
                 cond.condition_values.push_back(value);
             }
-            ColumnPredicate* pred = pred_parser.parse(cond);
+            ColumnPredicate* pred = pred_parser.parse_thrift_cond(cond);
             if (pred == nullptr) {
                 LOG(WARNING) << "failed to parse delete condition.column_name[" << cond.column_name
                              << "], condition_op[" << cond.condition_op << "], condition_values["

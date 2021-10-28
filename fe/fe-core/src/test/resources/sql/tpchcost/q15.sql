@@ -176,8 +176,8 @@ HASH_PARTITIONED: 30: L_SUPPKEY
 |  use vectorized: true
 |
 7:Project
-|  <slot 45> : 33: L_EXTENDEDPRICE * 1.0 - 34: L_DISCOUNT
 |  <slot 30> : 30: L_SUPPKEY
+|  <slot 45> : 33: L_EXTENDEDPRICE * 1.0 - 34: L_DISCOUNT
 |  use vectorized: true
 |
 6:OlapScanNode
@@ -208,8 +208,8 @@ HASH_PARTITIONED: 11: L_SUPPKEY
 |  use vectorized: true
 |
 2:Project
-|  <slot 26> : 14: L_EXTENDEDPRICE * 1.0 - 15: L_DISCOUNT
 |  <slot 11> : 11: L_SUPPKEY
+|  <slot 26> : 14: L_EXTENDEDPRICE * 1.0 - 15: L_DISCOUNT
 |  use vectorized: true
 |
 1:OlapScanNode
@@ -409,8 +409,8 @@ OutPut Exchange Id: 09
 |
 7:Project
 |  output columns:
-|  45 <-> [33: L_EXTENDEDPRICE, DOUBLE, false] * 1.0 - [34: L_DISCOUNT, DOUBLE, false]
 |  30 <-> [30: L_SUPPKEY, INT, false]
+|  45 <-> [33: L_EXTENDEDPRICE, DOUBLE, false] * 1.0 - [34: L_DISCOUNT, DOUBLE, false]
 |  cardinality: 21861386
 |  column statistics:
 |  * L_SUPPKEY-->[1.0, 1000000.0, 0.0, 4.0, 1000000.0]
@@ -448,8 +448,8 @@ OutPut Exchange Id: 04
 |
 2:Project
 |  output columns:
-|  26 <-> [14: L_EXTENDEDPRICE, DOUBLE, false] * 1.0 - [15: L_DISCOUNT, DOUBLE, false]
 |  11 <-> [11: L_SUPPKEY, INT, false]
+|  26 <-> [14: L_EXTENDEDPRICE, DOUBLE, false] * 1.0 - [15: L_DISCOUNT, DOUBLE, false]
 |  cardinality: 21861386
 |  column statistics:
 |  * L_SUPPKEY-->[1.0, 1000000.0, 0.0, 4.0, 1000000.0]

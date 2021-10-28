@@ -51,6 +51,11 @@ public:
 
     size_t merged_rows() const override { return _aggregator.merged_rows(); }
 
+    virtual Status init_encoded_schema(ColumnIdToGlobalDictMap& dict_maps) override {
+        ChunkIterator::init_encoded_schema(dict_maps);
+        return _child->init_encoded_schema(dict_maps);
+    }
+
 protected:
     Status do_get_next(Chunk* chunk) override;
 

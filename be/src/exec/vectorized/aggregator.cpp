@@ -6,8 +6,7 @@
 
 namespace starrocks {
 
-Aggregator::Aggregator(const TPlanNode& tnode, const RowDescriptor& child_row_desc)
-        : _tnode(tnode), _child_row_desc(child_row_desc) {}
+Aggregator::Aggregator(const TPlanNode& tnode) : _tnode(tnode) {}
 
 Status Aggregator::open(RuntimeState* state) {
     RETURN_IF_ERROR(Expr::open(_group_by_expr_ctxs, state));
@@ -174,10 +173,12 @@ Status Aggregator::prepare(RuntimeState* state, ObjectPool* pool, MemTracker* me
     _output_tuple_desc = state->desc_tbl().get_tuple_descriptor(_output_tuple_id);
     DCHECK_EQ(_intermediate_tuple_desc->slots().size(), _output_tuple_desc->slots().size());
 
-    RETURN_IF_ERROR(Expr::prepare(_group_by_expr_ctxs, state, _child_row_desc, expr_mem_tracker));
+    // create an empty RowDescriptor, and it will be removed sooner or later
+    RowDescriptor child_row_desc;
+    RETURN_IF_ERROR(Expr::prepare(_group_by_expr_ctxs, state, child_row_desc, expr_mem_tracker));
 
     for (const auto& ctx : _agg_expr_ctxs) {
-        RETURN_IF_ERROR(Expr::prepare(ctx, state, _child_row_desc, expr_mem_tracker));
+        RETURN_IF_ERROR(Expr::prepare(ctx, state, child_row_desc, expr_mem_tracker));
     }
 
     _mem_pool = std::make_unique<MemPool>(_mem_tracker);
@@ -540,14 +541,16 @@ vectorized::Columns Aggregator::_create_group_by_columns() {
     return group_by_columns;
 }
 
-void Aggregator::_serialize_to_chunk(vectorized::ConstAggDataPtr state, const vectorized::Columns& agg_result_columns) {
+void Aggregator::_serialize_to_chunk(vectorized::ConstAggDataPtr __restrict state,
+                                     const vectorized::Columns& agg_result_columns) {
     for (size_t i = 0; i < _agg_fn_ctxs.size(); i++) {
         _agg_functions[i]->serialize_to_column(_agg_fn_ctxs[i], state + _agg_states_offsets[i],
                                                agg_result_columns[i].get());
     }
 }
 
-void Aggregator::_finalize_to_chunk(vectorized::ConstAggDataPtr state, const vectorized::Columns& agg_result_columns) {
+void Aggregator::_finalize_to_chunk(vectorized::ConstAggDataPtr __restrict state,
+                                    const vectorized::Columns& agg_result_columns) {
     for (size_t i = 0; i < _agg_fn_ctxs.size(); i++) {
         _agg_functions[i]->finalize_to_column(_agg_fn_ctxs[i], state + _agg_states_offsets[i],
                                               agg_result_columns[i].get());
@@ -620,7 +623,7 @@ void Aggregator::_evaluate_agg_fn_exprs(vectorized::Chunk* chunk) {
         static_assert(sizeof(vectorized::RunTimeTypeTraits<TYPE>::CppType) == SIZE); \
         return SIZE;
 
-inline int get_byte_size_of_primitive_type(PrimitiveType type) {
+inline static int get_byte_size_of_primitive_type(PrimitiveType type) {
     switch (type) {
         RETURN_PTYPE_BYTE_SIZE(TYPE_NULL, 1);
         RETURN_PTYPE_BYTE_SIZE(TYPE_BOOLEAN, 1);

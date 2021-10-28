@@ -9,6 +9,7 @@
 #include "boost/heap/skew_heap.hpp"
 #include "column/chunk.h"
 #include "common/config.h"
+#include "common/status.h"
 #include "runtime/current_mem_tracker.h"
 #include "storage/iterators.h" // StorageReadOptions
 #include "storage/vectorized/chunk_helper.h"
@@ -93,6 +94,14 @@ public:
     void close() override;
 
     size_t merged_rows() const override { return _merged_rows; }
+
+    virtual Status init_encoded_schema(ColumnIdToGlobalDictMap& dict_maps) override {
+        ChunkIterator::init_encoded_schema(dict_maps);
+        for (int i = 0; i < _children.size(); ++i) {
+            RETURN_IF_ERROR(_children[i]->init_encoded_schema(dict_maps));
+        }
+        return Status::OK();
+    }
 
 protected:
     Status do_get_next(Chunk* chunk) override;

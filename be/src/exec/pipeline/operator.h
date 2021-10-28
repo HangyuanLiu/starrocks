@@ -4,6 +4,7 @@
 
 #include "column/vectorized_fwd.h"
 #include "common/statusor.h"
+#include "gutil/casts.h"
 
 namespace starrocks {
 class Expr;
@@ -74,7 +75,7 @@ public:
             : _id(id), _name(name), _plan_node_id(plan_node_id) {}
     virtual ~OperatorFactory() = default;
     // Create the operator for the specific sequence driver
-    // For some operators, when share some status, need to know the the degree_of_parallelism
+    // For some operators, when share some status, need to know the degree_of_parallelism
     virtual OperatorPtr create(int32_t degree_of_parallelism, int32_t driver_sequence) = 0;
     virtual bool is_source() const { return false; }
     int32_t plan_node_id() const { return _plan_node_id; }

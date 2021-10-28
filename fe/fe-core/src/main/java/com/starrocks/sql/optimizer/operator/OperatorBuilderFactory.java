@@ -8,8 +8,10 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalAssertOneRowOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalEsScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalExceptOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalHiveScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalIntersectOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalMetaScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalMysqlScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalSchemaScanOperator;
@@ -29,12 +31,16 @@ public class OperatorBuilderFactory {
             return new LogicalTopNOperator.Builder();
         } else if (operator instanceof LogicalOlapScanOperator) {
             return new LogicalOlapScanOperator.Builder();
+        } else if (operator instanceof LogicalHiveScanOperator) {
+            return new LogicalHiveScanOperator.Builder();
         } else if (operator instanceof LogicalEsScanOperator) {
             return new LogicalEsScanOperator.Builder();
         } else if (operator instanceof LogicalMysqlScanOperator) {
             return new LogicalMysqlScanOperator.Builder();
         } else if (operator instanceof LogicalSchemaScanOperator) {
             return new LogicalSchemaScanOperator.Builder();
+        } else if (operator instanceof LogicalMetaScanOperator) {
+            return new LogicalMetaScanOperator.Builder();
         } else if (operator instanceof LogicalValuesOperator) {
             return new LogicalValuesOperator.Builder();
         } else if (operator instanceof LogicalTableFunctionOperator) {

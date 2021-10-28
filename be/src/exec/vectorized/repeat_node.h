@@ -22,6 +22,9 @@ public:
     Status get_next(RuntimeState* state, ChunkPtr* row_batch, bool* eos) override;
     Status close(RuntimeState* state) override;
 
+    std::vector<std::shared_ptr<pipeline::OperatorFactory>> decompose_to_pipeline(
+            pipeline::PipelineBuilderContext* context) override;
+
 private:
     static ColumnPtr generate_null_column(int64_t num_rows) {
         auto nullable_column = NullableColumn::create(Int8Column::create(), NullColumn::create());
@@ -71,8 +74,6 @@ private:
     TupleId _output_tuple_id;
     const TupleDescriptor* _tuple_desc;
 
-    bool _child_eos = false;
-    int _repeat_id_idx = 0;
     RuntimeState* _runtime_state = nullptr;
 
     // time to append columns for grouping_id column and grouping()/grouping_id()'s virtual columns.
