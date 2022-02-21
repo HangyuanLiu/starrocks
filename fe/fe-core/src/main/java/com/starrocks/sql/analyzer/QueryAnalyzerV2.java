@@ -44,12 +44,6 @@ import com.starrocks.sql.ast.ValuesRelation;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.common.TypeManager;
 import com.starrocks.sql.optimizer.base.SetQualifier;
-import com.starrocks.sql.parser.AstBuilder;
-import com.starrocks.sql.parser.CaseInsensitiveStream;
-import com.starrocks.sql.parser.StarRocksLexer;
-import com.starrocks.sql.parser.StarRocksParser;
-import org.antlr.v4.runtime.CharStreams;
-import org.antlr.v4.runtime.CommonTokenStream;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -212,6 +206,7 @@ public class QueryAnalyzerV2 {
                                 cteRelation.getColumnOutputNames(),
                                 cteRelation.getCteQuery());
                         newCteRelation.setAlias(tableRelation.getAlias());
+                        newCteRelation.setResolvedInFromClause(true);
                         newCteRelation.setScope(
                                 new Scope(RelationId.of(newCteRelation), new RelationFields(outputFields.build())));
                         return newCteRelation;
@@ -221,18 +216,10 @@ public class QueryAnalyzerV2 {
                 Table table = resolveTable(tableRelation.getName());
                 if (table instanceof View) {
                     View view = (View) table;
-                    String inlineViewDef = view.getInlineViewDef();
+                    QueryStatement queryStatement = view.getQueryStatement();
 
-                    StarRocksLexer lexer =
-                            new StarRocksLexer(new CaseInsensitiveStream(CharStreams.fromString(inlineViewDef)));
-                    CommonTokenStream tokenStream = new CommonTokenStream(lexer);
-                    StarRocksParser parser = new StarRocksParser(tokenStream);
-
-                    StarRocksParser.SingleStatementContext singleStatementContext = parser.singleStatement();
-                    QueryStatement stmt =
-                            (QueryStatement) new AstBuilder().visitSingleStatement(singleStatementContext);
-
-                    SubqueryRelation viewRelation = new SubqueryRelation(tableName.getTbl(), stmt.getQueryRelation());
+                    SubqueryRelation viewRelation =
+                            new SubqueryRelation(tableName.getTbl(), queryStatement.getQueryRelation());
                     viewRelation.setAlias(tableName);
                     return viewRelation;
                 } else {
