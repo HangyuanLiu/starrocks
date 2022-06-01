@@ -1550,7 +1550,8 @@ public class ShowExecutor {
     }
 
     private void handleShowAnalyzeStatus() {
-        List<AnalyzeStatus> statuses = ctx.getGlobalStateMgr().getAnalyzeManager().getAllAnalyzeStatus();
+        List<AnalyzeStatus> statuses = new ArrayList<>(ctx.getGlobalStateMgr().getAnalyzeManager()
+                .getAllAnalyzeStatus().values());
         List<List<String>> rows = Lists.newArrayList();
         statuses.sort(Comparator.comparing(AnalyzeStatus::getId));
         for (AnalyzeStatus status : statuses) {

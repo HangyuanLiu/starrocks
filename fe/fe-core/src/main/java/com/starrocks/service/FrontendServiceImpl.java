@@ -904,6 +904,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                 entity.counterRoutineLoadFinishedTotal.increase(1L);
                 entity.counterRoutineLoadBytesTotal.increase(routineAttachment.getReceivedBytes());
                 entity.counterRoutineLoadRowsTotal.increase(routineAttachment.getLoadedRows());
+                entity.counterTotalLoadRowsForAnalyze.increase(routineAttachment.getLoadedRows());
                 break;
             case MANUAL_LOAD:
                 if (!(attachment instanceof ManualLoadTxnCommitAttachment)) {
@@ -913,6 +914,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                 entity.counterStreamLoadFinishedTotal.increase(1L);
                 entity.counterStreamLoadBytesTotal.increase(streamAttachment.getReceivedBytes());
                 entity.counterStreamLoadRowsTotal.increase(streamAttachment.getLoadedRows());
+                entity.counterTotalLoadRowsForAnalyze.increase(streamAttachment.getLoadedRows());
                 break;
             default:
                 break;

@@ -17,6 +17,8 @@ import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.Pair;
 import com.starrocks.common.Status;
+import com.starrocks.metric.TableMetricsEntity;
+import com.starrocks.metric.TableMetricsRegistry;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.Coordinator;
 import com.starrocks.qe.QeProcessorImpl;
@@ -52,6 +54,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -107,7 +110,12 @@ public class StatisticExecutor {
     public List<TStatisticData> queryStatisticSync(Long dbId, Long tableId, List<String> columnNames) throws Exception {
         String sql;
         if (Config.enable_collect_full_statistics) {
-            sql = StatisticSQLBuilder.buildQueryFullStatisticsSQL(dbId, tableId, columnNames);
+            AnalyzeStatus status = GlobalStateMgr.getCurrentAnalyzeMgr().getAllAnalyzeStatus().get(tableId);
+            if (status != null && status.getType().equals(Constants.AnalyzeType.FULL)) {
+                sql = StatisticSQLBuilder.buildQueryFullStatisticsSQL(dbId, tableId, columnNames);
+            } else {
+                sql = StatisticSQLBuilder.buildQuerySampleStatisticsSQL(dbId, tableId, columnNames);
+            }
         } else {
             sql = StatisticSQLBuilder.buildQuerySampleStatisticsSQL(dbId, tableId, columnNames);
         }
@@ -211,6 +219,62 @@ public class StatisticExecutor {
         }
 
         return statistics;
+    }
+
+    public void collectStatistics(TableCollectJob tcj) {
+        AnalyzeJob analyzeJob = tcj.getJob();
+        Database db = tcj.getDb();
+        Table table = tcj.getTable();
+        List<String> columns = tcj.getColumns();
+        List<Long> partitionIdList = tcj.getPartitionIdList();
+
+        analyzeJob.setStatus(Constants.ScheduleStatus.RUNNING);
+        analyzeJob.setReason("");
+        // only update job
+        GlobalStateMgr.getCurrentAnalyzeMgr().updateAnalyzeJobWithoutLog(analyzeJob);
+        try {
+            LOG.info("Statistic collect work job: {}, type: {}, db: {}, table: {}",
+                    analyzeJob.getId(), analyzeJob.getType(), db.getFullName(), table.getName());
+
+            if (Constants.AnalyzeType.FULL == analyzeJob.getType()) {
+                if (Config.enable_collect_full_statistics) {
+                    for (Long partitionId : partitionIdList) {
+                        fullCollectStatisticSyncV2(db.getId(), table.getId(), partitionId, columns);
+                    }
+                } else {
+                    fullCollectStatisticSync(db.getId(), table.getId(), columns);
+                }
+            } else if (Constants.AnalyzeType.SAMPLE == analyzeJob.getType()) {
+                sampleCollectStatisticSync(db.getId(), table.getId(), columns, analyzeJob.getSampleCollectRows());
+            }
+
+            GlobalStateMgr.getCurrentStatisticStorage().expireColumnStatistics(table, columns);
+        } catch (Exception e) {
+            LOG.warn("Statistic collect work job: {}, type: {}, db: {}, table: {}. throw exception.",
+                    analyzeJob.getId(), analyzeJob.getType(), db.getFullName(), table.getName(), e);
+
+            if (analyzeJob.getReason().length() < 40) {
+                String error =
+                        analyzeJob.getReason() + "\n" + db.getFullName() + "." + table.getName() +
+                                ": " + e.getMessage();
+                analyzeJob.setReason(error);
+            }
+        }
+
+        // update & record
+        if (Constants.ScheduleType.ONCE == analyzeJob.getScheduleType()) {
+            analyzeJob.setStatus(Constants.ScheduleStatus.FINISH);
+        } else {
+            analyzeJob.setStatus(Constants.ScheduleStatus.PENDING);
+        }
+        analyzeJob.setWorkTime(LocalDateTime.now());
+        GlobalStateMgr.getCurrentAnalyzeMgr().updateAnalyzeJobWithLog(analyzeJob);
+        if (Config.enable_collect_full_statistics) {
+            GlobalStateMgr.getCurrentAnalyzeMgr().addAnalyzeStatus(analyzeJob);
+            TableMetricsEntity entity =
+                    TableMetricsRegistry.getInstance().getMetricsEntity(analyzeJob.getTableId());
+            entity.counterTotalLoadRowsForAnalyze.reset();
+        }
     }
 
     public void fullCollectStatisticSync(Long dbId, Long tableId, List<String> columnNames) throws Exception {

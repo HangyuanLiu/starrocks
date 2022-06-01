@@ -305,6 +305,8 @@ public class BrokerLoadJob extends BulkLoadJob {
                 if (kv.getValue().containsKey(TableMetricsEntity.TABLE_LOAD_ROWS)) {
                     entity.counterBrokerLoadRowsTotal
                             .increase(kv.getValue().get(TableMetricsEntity.TABLE_LOAD_ROWS));
+                    entity.counterTotalLoadRowsForAnalyze
+                            .increase(kv.getValue().get(TableMetricsEntity.TABLE_LOAD_ROWS));
                 }
                 if (kv.getValue().containsKey(TableMetricsEntity.TABLE_LOAD_FINISHED)) {
                     entity.counterBrokerLoadFinishedTotal

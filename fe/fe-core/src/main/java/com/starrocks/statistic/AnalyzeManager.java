@@ -143,21 +143,12 @@ public class AnalyzeManager implements Writable {
         GlobalStateMgr.getCurrentState().getEditLog().logAddAnalyzeStatus(analyzeStatus);
     }
 
-    public void updateAnalyzeStatusWithLog(AnalyzeJob job) {
-        AnalyzeStatus analyzeStatus = new AnalyzeStatus(job.getId(), job.getDbId(), job.getTableId(),
-                job.getType(),
-                job.getScheduleType(),
-                LocalDateTime.now());
-        analyzeStatusMap.put(job.getTableId(), analyzeStatus);
-        GlobalStateMgr.getCurrentState().getEditLog().logAddAnalyzeStatus(analyzeStatus);
-    }
-
     public void replayAddAnalyzeStatus(AnalyzeStatus status) {
         analyzeStatusMap.put(status.getTableId(), status);
     }
 
-    public List<AnalyzeStatus> getAllAnalyzeStatus() {
-        return Lists.newLinkedList(analyzeStatusMap.values());
+    public Map<Long, AnalyzeStatus> getAllAnalyzeStatus() {
+        return analyzeStatusMap;
     }
 
     public void readFields(DataInputStream dis) throws IOException {
@@ -183,7 +174,7 @@ public class AnalyzeManager implements Writable {
         // save history
         SerializeData data = new SerializeData();
         data.jobs = getAllAnalyzeJobList();
-        data.status = getAllAnalyzeStatus();
+        data.status = new ArrayList<>(getAllAnalyzeStatus().values());
 
         String s = GsonUtils.GSON.toJson(data);
         Text.writeString(out, s);

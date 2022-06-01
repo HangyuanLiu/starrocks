@@ -11,6 +11,8 @@ import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.Config;
 import com.starrocks.common.util.MasterDaemon;
+import com.starrocks.metric.TableMetricsEntity;
+import com.starrocks.metric.TableMetricsRegistry;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.statistic.Constants.AnalyzeType;
 import com.starrocks.statistic.Constants.ScheduleStatus;
@@ -33,30 +35,6 @@ public class StatisticAutoCollector extends MasterDaemon {
 
     public StatisticAutoCollector() {
         super("AutoStatistic", Config.statistic_collect_interval_sec * 1000);
-    }
-
-    private static class TableCollectJob {
-        public AnalyzeJob job;
-        public Database db;
-        public Table table;
-        public List<String> columns;
-
-        public List<Long> partitionIdList = new ArrayList<>();
-
-        private void tryCollect() throws Exception {
-            if (AnalyzeType.FULL == job.getType()) {
-                if (Config.enable_collect_full_statistics) {
-                    for (Long partitionId : partitionIdList) {
-                        statisticExecutor.fullCollectStatisticSyncV2(db.getId(), table.getId(), partitionId, columns);
-                    }
-                } else {
-                    statisticExecutor.fullCollectStatisticSync(db.getId(), table.getId(), columns);
-                }
-            } else if (AnalyzeType.SAMPLE == job.getType()) {
-                statisticExecutor
-                        .sampleCollectStatisticSync(db.getId(), table.getId(), columns, job.getSampleCollectRows());
-            }
-        }
     }
 
     @Override
@@ -86,7 +64,17 @@ public class StatisticAutoCollector extends MasterDaemon {
             allJobs = generateAllJobs();
         }
 
-        collectStatistics(allJobs);
+        for (TableCollectJob tcj : allJobs) {
+            AnalyzeJob analyzeJob = tcj.getJob();
+
+            if (ScheduleType.SCHEDULE == analyzeJob.getScheduleType() &&
+                    LocalDateTime.now().minusSeconds(analyzeJob.getUpdateIntervalSec())
+                            .isBefore(analyzeJob.getWorkTime())) {
+                continue;
+            }
+
+            statisticExecutor.collectStatistics(tcj);
+        }
 
         expireStatistic();
     }
@@ -98,90 +86,16 @@ public class StatisticAutoCollector extends MasterDaemon {
             return;
         }
 
-        AnalyzeJob analyzeJob = new AnalyzeJob();
-        // all databases
-        analyzeJob.setDbId(AnalyzeJob.DEFAULT_ALL_ID);
-        analyzeJob.setTableId(AnalyzeJob.DEFAULT_ALL_ID);
-        analyzeJob.setColumns(Collections.emptyList());
-        analyzeJob.setScheduleType(ScheduleType.SCHEDULE);
-        analyzeJob.setType(AnalyzeType.SAMPLE);
-        analyzeJob.setStatus(ScheduleStatus.PENDING);
-        analyzeJob.setWorkTime(LocalDateTime.MIN);
-
+        AnalyzeJob analyzeJob = new AnalyzeJob(AnalyzeJob.DEFAULT_ALL_ID, AnalyzeJob.DEFAULT_ALL_ID, Collections.emptyList(),
+                AnalyzeType.SAMPLE, ScheduleType.SCHEDULE, Maps.newHashMap(), ScheduleStatus.PENDING, LocalDateTime.MIN);
         GlobalStateMgr.getCurrentAnalyzeMgr().addAnalyzeJob(analyzeJob);
     }
 
-    private void collectStatistics(List<TableCollectJob> allJobs) {
-        // AnalyzeJob-List<TableCollectJob> for update AnalyzeJob status
-        Map<AnalyzeJob, List<TableCollectJob>> analyzeJobMap = Maps.newHashMap();
-
-        for (TableCollectJob tjb : allJobs) {
-            if (!analyzeJobMap.containsKey(tjb.job)) {
-                analyzeJobMap.put(tjb.job, Lists.newArrayList(tjb));
-            } else {
-                analyzeJobMap.get(tjb.job).add(tjb);
-            }
-        }
-
-        for (Map.Entry<AnalyzeJob, List<TableCollectJob>> entry : analyzeJobMap.entrySet()) {
-            AnalyzeJob analyzeJob = entry.getKey();
-            if (analyzeJob.getStatus() == ScheduleStatus.FINISH) {
-                continue;
-            }
-
-            if (ScheduleType.SCHEDULE == analyzeJob.getScheduleType() &&
-                    LocalDateTime.now().minusSeconds(analyzeJob.getUpdateIntervalSec())
-                            .isBefore(analyzeJob.getWorkTime())) {
-                continue;
-            }
-
-            analyzeJob.setStatus(ScheduleStatus.RUNNING);
-            analyzeJob.setReason("");
-            // only update job
-            GlobalStateMgr.getCurrentAnalyzeMgr().updateAnalyzeJobWithoutLog(analyzeJob);
-            for (TableCollectJob tcj : entry.getValue()) {
-                try {
-                    LOG.info("Statistic collect work job: {}, type: {}, db: {}, table: {}",
-                            analyzeJob.getId(), analyzeJob.getType(), tcj.db.getFullName(), tcj.table.getName());
-                    tcj.tryCollect();
-
-                    GlobalStateMgr.getCurrentStatisticStorage().expireColumnStatistics(tcj.table, tcj.columns);
-                } catch (Exception e) {
-                    LOG.warn("Statistic collect work job: {}, type: {}, db: {}, table: {}. throw exception.",
-                            analyzeJob.getId(), analyzeJob.getType(), tcj.db.getFullName(), tcj.table.getName(), e);
-
-                    if (analyzeJob.getReason().length() < 40) {
-                        String error =
-                                analyzeJob.getReason() + "\n" + tcj.db.getFullName() + "." + tcj.table.getName() +
-                                        ": " + e.getMessage();
-                        analyzeJob.setReason(error);
-                    }
-                }
-            }
-
-            // update & record
-            if (ScheduleType.ONCE == analyzeJob.getScheduleType()) {
-                analyzeJob.setStatus(ScheduleStatus.FINISH);
-            } else {
-                analyzeJob.setStatus(ScheduleStatus.PENDING);
-            }
-            analyzeJob.setWorkTime(LocalDateTime.now());
-            GlobalStateMgr.getCurrentAnalyzeMgr().updateAnalyzeJobWithLog(analyzeJob);
-            GlobalStateMgr.getCurrentAnalyzeMgr().updateAnalyzeStatusWithLog(analyzeJob);
-        }
-    }
-
     private List<TableCollectJob> generateFullAnalyzeJobs() {
-        AnalyzeJob analyzeJob = new AnalyzeJob();
-        analyzeJob.setDbId(AnalyzeJob.DEFAULT_ALL_ID);
-        analyzeJob.setTableId(AnalyzeJob.DEFAULT_ALL_ID);
-        analyzeJob.setColumns(Lists.newArrayList());
-        analyzeJob.setType(AnalyzeType.FULL);
-        analyzeJob.setScheduleType(ScheduleType.SCHEDULE);
-        analyzeJob.setWorkTime(LocalDateTime.now());
-        analyzeJob.setStatus(Constants.ScheduleStatus.PENDING);
-
         Map<Long, TableCollectJob> allTableJobMap = Maps.newHashMap();
+
+        AnalyzeJob analyzeJob = new AnalyzeJob(AnalyzeJob.DEFAULT_ALL_ID, AnalyzeJob.DEFAULT_ALL_ID, Lists.newArrayList(),
+                AnalyzeType.FULL, ScheduleType.SCHEDULE, Maps.newHashMap(), ScheduleStatus.PENDING, LocalDateTime.now());
 
         // all database
         List<Long> dbIds = GlobalStateMgr.getCurrentState().getDbIds();
@@ -199,17 +113,28 @@ public class StatisticAutoCollector extends MasterDaemon {
 
         List<TableCollectJob> tableCollectJobs = new ArrayList<>(allTableJobMap.values());
         for (TableCollectJob tableCollectJob : tableCollectJobs) {
-            List<Partition> partitions = Lists.newArrayList(((OlapTable) tableCollectJob.table).getPartitions());
+            List<Partition> partitions = Lists.newArrayList(((OlapTable) tableCollectJob.getTable()).getPartitions());
             for (Partition partition : partitions) {
                 LocalDateTime updateTime = StatisticUtils.getPartitionLastUpdateTime(partition);
 
-                if ((ScheduleType.SCHEDULE.equals(tableCollectJob.job.getScheduleType())
+                TableMetricsEntity entity =
+                        TableMetricsRegistry.getInstance().getMetricsEntity(analyzeJob.getTableId());
+                long totalLoadRows = entity.counterTotalLoadRowsForAnalyze.getValue();
+                long tableRowCount = ((OlapTable) tableCollectJob.getTable()).getRowCount();
+
+                if (((double) totalLoadRows / (double) tableRowCount) < Config.auto_analyze_ratio) {
+                    continue;
+                }
+
+                if ((ScheduleType.SCHEDULE.equals(tableCollectJob.getJob().getScheduleType())
                         && !StatisticUtils.isEmptyPartition(partition)
-                        && tableCollectJob.job.getWorkTime().isBefore(updateTime))) {
-                    tableCollectJob.partitionIdList.add(partition.getId());
+                        && tableCollectJob.getJob().getWorkTime().isBefore(updateTime))) {
+                    tableCollectJob.addPartitionId(partition.getId());
                 }
             }
         }
+
+        tableCollectJobs.removeIf(tJob -> tJob.getPartitionIdList().isEmpty());
 
         return tableCollectJobs;
     }
@@ -287,7 +212,7 @@ public class StatisticAutoCollector extends MasterDaemon {
 
     private void createTableJobs(Map<Long, TableCollectJob> tableJobs, AnalyzeJob job,
                                  Database db, Table table, List<String> columns) {
-        // check table has update
+        // check table has updated
         LocalDateTime updateTime = StatisticUtils.getTableLastUpdateTime(table);
 
         // 1. If job is schedule and the table has update, we need re-collect data
@@ -295,21 +220,12 @@ public class StatisticAutoCollector extends MasterDaemon {
         if ((ScheduleType.SCHEDULE.equals(job.getScheduleType()) && !StatisticUtils.isEmptyTable(table) &&
                 job.getWorkTime().isBefore(updateTime)) ||
                 (ScheduleType.ONCE.equals(job.getScheduleType()) && job.getWorkTime().isAfter(updateTime))) {
-            createJobs(tableJobs, job, db, table, columns);
+            TableCollectJob tableCollectJob = new TableCollectJob(job, db, table, columns);
+            tableJobs.put(table.getId(), tableCollectJob);
         } else {
             LOG.debug("Skip collect on table: " + table.getName() + ", updateTime: " + updateTime +
                     ", JobId: " + job.getId() + ", lastCollectTime: " + job.getWorkTime());
         }
-    }
-
-    private void createJobs(Map<Long, TableCollectJob> result,
-                            AnalyzeJob job, Database db, Table table, List<String> columns) {
-        TableCollectJob tableJob = new TableCollectJob();
-        tableJob.job = job;
-        tableJob.db = db;
-        tableJob.table = table;
-        tableJob.columns = columns;
-        result.put(table.getId(), tableJob);
     }
 
     private void expireStatistic() {

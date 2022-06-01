@@ -49,6 +49,8 @@ public final class TableMetricsEntity {
     public LongCounterMetric counterSparkLoadRowsTotal;
     public LongCounterMetric counterSparkLoadFinishedTotal;
 
+    public LongCounterMetric counterTotalLoadRowsForAnalyze;
+
     public TableMetricsEntity() {
         initTableMetrics();
     }
@@ -134,6 +136,11 @@ public final class TableMetricsEntity {
                 new LongCounterMetric(TABLE_LOAD_FINISHED, MetricUnit.REQUESTS, TABLE_LOAD_FINISHED_COMMENT);
         counterInsertLoadFinishedTotal.addLabel(new MetricLabel("type", "insert_into"));
         metrics.add(counterInsertLoadFinishedTotal);
+
+        counterTotalLoadRowsForAnalyze =
+                new LongCounterMetric(TABLE_LOAD_ROWS, MetricUnit.ROWS, TABLE_LOAD_ROWS_COMMENT);
+        counterTotalLoadRowsForAnalyze.addLabel(new MetricLabel("type", "total_load_for_analyze"));
+        metrics.add(counterTotalLoadRowsForAnalyze);
     }
 }
 
