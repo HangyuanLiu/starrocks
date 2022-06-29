@@ -171,14 +171,7 @@ public:
         histogram_json[histogram_json.size() - 1] = ']';
         histogram_json = histogram_json + " }";
         Slice slice(histogram_json);
-
-        if (to->is_nullable()) {
-            auto* nullable_column = down_cast<NullableColumn*>(to);
-            nullable_column->data_column()->append_datum(slice);
-        } else {
-            BinaryColumn* binary_column = down_cast<BinaryColumn*>(to);
-            binary_column->append(slice);
-        }
+        to->append_datum(slice);
     }
 
     std::string get_name() const override { return "histogram"; }
