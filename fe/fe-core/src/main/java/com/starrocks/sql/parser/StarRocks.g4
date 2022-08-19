@@ -1163,7 +1163,7 @@ primaryExpression
     | primaryExpression '[' start=INTEGER_VALUE? ':' end=INTEGER_VALUE? ']'               #arraySlice
     | primaryExpression ARROW string                                                      #arrowExpression
     | identifier '->' expression                                                          #lambdaFunction
-    | identifierList  '->' expression                                                     #lambdaFunction
+    | identifierLists  '->' expression                                                    #lambdaFunction
     ;
 
 literalExpression
@@ -1462,9 +1462,15 @@ identifier
     | BACKQUOTED_IDENTIFIER  #backQuotedIdentifier
     ;
 
+identifierLists
+    : identifier (',' identifier)*
+    | identifierList
+    ;
+
 identifierList
     : '(' identifier (',' identifier)* ')'
     ;
+
 
 identifierOrString
     : identifier
