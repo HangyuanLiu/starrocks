@@ -3,6 +3,7 @@
 package com.starrocks.sql.optimizer.task;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Stopwatch;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.optimizer.ExpressionContext;
 import com.starrocks.sql.optimizer.OptExpression;
@@ -13,6 +14,7 @@ import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.rule.Rule;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /*
  *
@@ -57,12 +59,13 @@ public class RewriteTreeTask extends OptimizerTask {
             if (!match(rule.getPattern(), root) || !rule.check(root, context.getOptimizerContext())) {
                 continue;
             }
-
+            Stopwatch stopwatch = Stopwatch.createStarted();
             List<OptExpression> result = rule.transform(root, context.getOptimizerContext());
             Preconditions.checkState(result.size() <= 1, "Rewrite rule should provide at most 1 expression");
 
             OptimizerTraceInfo traceInfo = context.getOptimizerContext().getTraceInfo();
-            OptimizerTraceUtil.logApplyRule(sessionVariable, traceInfo, rule, root, result);
+            OptimizerTraceUtil.logApplyRule(sessionVariable, traceInfo, rule, root, result,
+                    stopwatch.elapsed(TimeUnit.MILLISECONDS));
 
             if (result.isEmpty()) {
                 continue;

@@ -2,7 +2,9 @@
 package com.starrocks.sql.optimizer;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
+import com.starrocks.common.Pair;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.Explain;
@@ -49,6 +51,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Optimizer's entrance class
@@ -86,7 +89,10 @@ public class Optimizer {
         TaskContext rootTaskContext =
                 new TaskContext(context, requiredProperty, requiredColumns.clone(), Double.MAX_VALUE);
 
+        Stopwatch stopwatch = Stopwatch.createStarted();
         logicOperatorTree = logicalRuleRewrite(logicOperatorTree, rootTaskContext);
+        context.getTraceInfo().recordRuleTimeCost("RBO", stopwatch.elapsed(TimeUnit.MILLISECONDS));
+        stopwatch.reset().start();
 
         memo.init(logicOperatorTree);
         OptimizerTraceUtil.log(connectContext, "after logical rewrite, root group:\n%s", memo.getRootGroup());
@@ -104,6 +110,8 @@ public class Optimizer {
 
         // Phase 3: optimize based on memo and group
         memoOptimize(connectContext, memo, rootTaskContext);
+        context.getTraceInfo().recordRuleTimeCost("CBO", stopwatch.elapsed(TimeUnit.MILLISECONDS));
+        stopwatch.reset().start();
 
         OptExpression result;
         if (!connectContext.getSessionVariable().isSetUseNthExecPlan()) {
@@ -114,6 +122,8 @@ public class Optimizer {
             result = EnumeratePlan.extractNthPlan(requiredProperty, memo.getRootGroup(), nthExecPlan);
         }
         OptimizerTraceUtil.logOptExpression(connectContext, "after extract best plan:\n%s", result);
+        context.getTraceInfo().recordRuleTimeCost("Best plan search", stopwatch.elapsed(TimeUnit.MILLISECONDS));
+        stopwatch.reset().start();
 
         // set costs audio log before physicalRuleRewrite
         // statistics won't set correctly after physicalRuleRewrite.
@@ -125,6 +135,14 @@ public class Optimizer {
         OptExpression finalPlan = physicalRuleRewrite(rootTaskContext, result);
         OptimizerTraceUtil.logOptExpression(connectContext, "final plan after physical rewrite:\n%s", finalPlan);
         OptimizerTraceUtil.log(connectContext, context.getTraceInfo());
+        context.getTraceInfo().recordRuleTimeCost("Physical rewrite", stopwatch.elapsed(TimeUnit.MILLISECONDS));
+        stopwatch.reset().start();
+
+        List<Pair<String, Long>> out = context.getTraceInfo().getRulesTimeCost();
+        for (Pair<String, Long> o : out) {
+            System.out.println(o.first + " : " + o.second);
+        }
+
         return finalPlan;
     }
 
@@ -133,6 +151,8 @@ public class Optimizer {
         ColumnRefSet requiredColumns = rootTaskContext.getRequiredColumns().clone();
         deriveLogicalProperty(tree);
 
+
+        Stopwatch cteStopWatch = Stopwatch.createStarted();
         SessionVariable sessionVariable = rootTaskContext.getOptimizerContext().getSessionVariable();
         CTEContext cteContext = context.getCteContext();
         CTEUtils.collectCteOperators(tree, context);
@@ -141,6 +161,7 @@ public class Optimizer {
             ruleRewriteOnlyOnce(tree, rootTaskContext, RuleSetType.INLINE_CTE);
             CTEUtils.collectCteOperators(tree, context);
         }
+        cteStopWatch.stop();
 
         ruleRewriteIterative(tree, rootTaskContext, RuleSetType.AGGREGATE_REWRITE);
         ruleRewriteIterative(tree, rootTaskContext, RuleSetType.PUSH_DOWN_SUBQUERY);
@@ -148,7 +169,9 @@ public class Optimizer {
         ruleRewriteIterative(tree, rootTaskContext, RuleSetType.SUBQUERY_REWRITE_TO_WINDOW);
         ruleRewriteIterative(tree, rootTaskContext, RuleSetType.SUBQUERY_REWRITE_TO_JOIN);
         ruleRewriteOnlyOnce(tree, rootTaskContext, new ApplyExceptionRule());
+        cteStopWatch.start();
         CTEUtils.collectCteOperators(tree, context);
+        cteStopWatch.stop();
 
         // Note: PUSH_DOWN_PREDICATE tasks should be executed before MERGE_LIMIT tasks
         // because of the Filter node needs to be merged first to avoid the Limit node
@@ -179,6 +202,7 @@ public class Optimizer {
         ruleRewriteIterative(tree, rootTaskContext, RuleSetType.PRUNE_PROJECT);
         ruleRewriteIterative(tree, rootTaskContext, RuleSetType.PRUNE_SET_OPERATOR);
 
+        cteStopWatch.start();
         CTEUtils.collectCteOperators(tree, context);
         if (cteContext.needOptimizeCTE()) {
             cteContext.reset();
@@ -197,6 +221,7 @@ public class Optimizer {
                 ruleRewriteOnlyOnce(tree, rootTaskContext, RuleSetType.MERGE_LIMIT);
             }
         }
+        cteStopWatch.stop();
 
         tree = new MaterializedViewRule().transform(tree, context).get(0);
         deriveLogicalProperty(tree);
@@ -210,12 +235,14 @@ public class Optimizer {
 
         tree = pushDownAggregation(tree, rootTaskContext, requiredColumns);
 
+        cteStopWatch.start();
         CTEUtils.collectCteOperators(tree, context);
         // inline CTE if consume use once
         while (cteContext.hasInlineCTE()) {
             ruleRewriteOnlyOnce(tree, rootTaskContext, RuleSetType.INLINE_CTE);
             CTEUtils.collectCteOperators(tree, context);
         }
+        cteStopWatch.stop();
 
         ruleRewriteIterative(tree, rootTaskContext, new MergeTwoProjectRule());
         ruleRewriteIterative(tree, rootTaskContext, new MergeProjectWithChildRule());
@@ -223,6 +250,7 @@ public class Optimizer {
         ruleRewriteOnlyOnce(tree, rootTaskContext, new ReorderIntersectRule());
         ruleRewriteIterative(tree, rootTaskContext, new RemoveAggregationFromAggTable());
 
+        System.out.println("CTE rewrite : " + cteStopWatch.elapsed(TimeUnit.MILLISECONDS));
         return tree.getInputs().get(0);
     }
 

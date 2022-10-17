@@ -35,6 +35,7 @@ import com.starrocks.mysql.MysqlCommand;
 import com.starrocks.mysql.MysqlSerializer;
 import com.starrocks.plugin.AuditEvent.AuditEventBuilder;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.OptimizerTrace;
 import com.starrocks.sql.PlannerProfile;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.SetStmt;
@@ -164,6 +165,8 @@ public class ConnectContext {
     protected PlannerProfile plannerProfile;
 
     protected ResourceGroup resourceGroup;
+
+    private OptimizerTrace optimizerTrace;
 
     public static ConnectContext get() {
         return threadLocalInfo.get();

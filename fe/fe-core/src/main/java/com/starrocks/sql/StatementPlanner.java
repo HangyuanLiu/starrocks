@@ -1,6 +1,7 @@
 // This file is licensed under the Elastic License 2.0. Copyright 2021-present, StarRocks Inc.
 package com.starrocks.sql;
 
+import com.google.common.base.Stopwatch;
 import com.starrocks.catalog.Database;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.ResultSink;
@@ -29,6 +30,7 @@ import com.starrocks.thrift.TResultSinkType;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class StatementPlanner {
@@ -38,6 +40,11 @@ public class StatementPlanner {
     }
 
     public static ExecPlan plan(StatementBase stmt, ConnectContext session, boolean lockDb,
+                                TResultSinkType resultSinkType) {
+        return plan(stmt, session, null, lockDb, resultSinkType);
+    }
+
+    public static ExecPlan plan(StatementBase stmt, ConnectContext session, OptimizerTrace trace, boolean lockDb,
                                 TResultSinkType resultSinkType) {
         if (stmt instanceof QueryStatement) {
             OptimizerTraceUtil.logQueryStatement(session, "after parse:\n%s", (QueryStatement) stmt);
@@ -50,7 +57,11 @@ public class StatementPlanner {
         }
         try {
             lock(dbLocks);
+            Stopwatch watch = Stopwatch.createStarted();
             Analyzer.analyze(stmt, session);
+            System.out.println("Analyzer : " + watch.elapsed(TimeUnit.MILLISECONDS));
+
+
             PrivilegeChecker.check(stmt, session);
             if (stmt instanceof QueryStatement) {
                 OptimizerTraceUtil.logQueryStatement(session, "after analyze:\n%s", (QueryStatement) stmt);
@@ -60,7 +71,11 @@ public class StatementPlanner {
                 QueryStatement queryStmt = (QueryStatement) stmt;
                 session.setCurrentSqlDbIds(dbs.values().stream().map(Database::getId).collect(Collectors.toSet()));
                 resultSinkType = queryStmt.hasOutFileClause() ? TResultSinkType.FILE : resultSinkType;
+
+                //OptimizerTrace optimizerTrace = new OptimizerTrace("Optimizer");
+                //trace.addChild(optimizerTrace);
                 ExecPlan plan = createQueryPlan(queryStmt.getQueryRelation(), session, resultSinkType);
+                //optimizerTrace.stop();
                 setOutfileSink(queryStmt, plan);
 
                 return plan;

@@ -22,6 +22,7 @@
 package com.starrocks.utframe;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
@@ -75,7 +76,6 @@ import com.starrocks.sql.optimizer.transformer.RelationTransformer;
 import com.starrocks.sql.parser.ParsingException;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanFragmentBuilder;
-import com.starrocks.sql.plan.ReplayHiveRepository;
 import com.starrocks.statistic.StatsConstants;
 import com.starrocks.system.Backend;
 import com.starrocks.system.BackendCoreStat;
@@ -102,6 +102,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -294,8 +295,11 @@ public class UtFrameUtils {
             throws Exception {
         connectContext.setDumpInfo(new QueryDumpInfo(connectContext.getSessionVariable()));
 
+        Stopwatch watch = Stopwatch.createStarted();
         List<StatementBase> statements =
                 com.starrocks.sql.parser.SqlParser.parse(originStmt, connectContext.getSessionVariable().getSqlMode());
+        System.out.println("Parser : " + watch.elapsed(TimeUnit.MILLISECONDS));
+
         connectContext.getDumpInfo().setOriginStmt(originStmt);
         SessionVariable oldSessionVariable = connectContext.getSessionVariable();
         StatementBase statementBase = statements.get(0);
@@ -317,6 +321,9 @@ public class UtFrameUtils {
             }
 
             ExecPlan execPlan = new StatementPlanner().plan(statementBase, connectContext);
+
+            //rootOptimizerTrace.stop();
+            //rootOptimizerTrace.print(0);
 
             if (statementBase instanceof QueryStatement && !connectContext.getDatabase().isEmpty() &&
                     !statementBase.isExplain()) {
@@ -375,11 +382,6 @@ public class UtFrameUtils {
         // create resource
         for (String createResourceStmt : replayDumpInfo.getCreateResourceStmtList()) {
             starRocksAssert.withResource(createResourceStmt);
-        }
-        // mock replay external table info
-        if (!replayDumpInfo.getHmsTableMap().isEmpty()) {
-            ReplayHiveRepository replayHiveRepository = new ReplayHiveRepository(replayDumpInfo.getHmsTableMap());
-            connectContext.getGlobalStateMgr().setHiveRepository(replayHiveRepository);
         }
 
         // create table
