@@ -344,6 +344,8 @@ YEAR: 'YEAR';
 
 FLOOR: 'FLOOR';
 CEIL: 'CEIL';
+OPTIMIZER: 'OPTIMIZER';
+TRACE: 'TRACE';
 
 EQ  : '=';
 NEQ : '<>' | '!=';

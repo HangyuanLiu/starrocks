@@ -77,6 +77,7 @@ import com.starrocks.qe.QueryState.MysqlStateType;
 import com.starrocks.rpc.RpcException;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.FrontendOptions;
+import com.starrocks.sql.OptimizerTrace;
 import com.starrocks.sql.PlannerProfile;
 import com.starrocks.sql.StatementPlanner;
 import com.starrocks.sql.analyzer.PrivilegeChecker;
@@ -1059,7 +1060,11 @@ public class StmtExecutor {
         if (execPlan == null) {
             explainString += "NOT AVAILABLE";
         } else {
-            explainString += execPlan.getExplainString(parsedStmt.getExplainLevel());
+            if (parsedStmt.getExplainLevel().equals(StatementBase.ExplainLevel.OPTIMIZER)) {
+                explainString += OptimizerTrace.explain(context.getPlannerProfile());
+            } else {
+                explainString += execPlan.getExplainString(parsedStmt.getExplainLevel());
+            }
         }
         return explainString;
     }

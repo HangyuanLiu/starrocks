@@ -1,7 +1,6 @@
 // This file is licensed under the Elastic License 2.0. Copyright 2021-present, StarRocks Inc.
 package com.starrocks.sql;
 
-import com.google.common.base.Stopwatch;
 import com.starrocks.catalog.Database;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.ResultSink;
@@ -30,7 +29,6 @@ import com.starrocks.thrift.TResultSinkType;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class StatementPlanner {
@@ -57,10 +55,9 @@ public class StatementPlanner {
         }
         try {
             lock(dbLocks);
-            Stopwatch watch = Stopwatch.createStarted();
-            Analyzer.analyze(stmt, session);
-            System.out.println("Analyzer : " + watch.elapsed(TimeUnit.MILLISECONDS));
-
+            try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Analyzer")) {
+                Analyzer.analyze(stmt, session);
+            }
 
             PrivilegeChecker.check(stmt, session);
             if (stmt instanceof QueryStatement) {
@@ -72,10 +69,7 @@ public class StatementPlanner {
                 session.setCurrentSqlDbIds(dbs.values().stream().map(Database::getId).collect(Collectors.toSet()));
                 resultSinkType = queryStmt.hasOutFileClause() ? TResultSinkType.FILE : resultSinkType;
 
-                //OptimizerTrace optimizerTrace = new OptimizerTrace("Optimizer");
-                //trace.addChild(optimizerTrace);
                 ExecPlan plan = createQueryPlan(queryStmt.getQueryRelation(), session, resultSinkType);
-                //optimizerTrace.stop();
                 setOutfileSink(queryStmt, plan);
 
                 return plan;
@@ -105,7 +99,7 @@ public class StatementPlanner {
         boolean canUsePipeline =
                 isEnablePipeline && ResultSink.canUsePipeLine(resultSinkType) && logicalPlan.canUsePipeline();
         boolean forceDisablePipeline = isEnablePipeline && !canUsePipeline;
-        try {
+        try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Optimizer")) {
             if (forceDisablePipeline) {
                 session.getSessionVariable().setEnablePipelineEngine(false);
             }
