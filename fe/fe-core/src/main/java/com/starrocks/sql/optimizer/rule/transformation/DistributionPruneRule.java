@@ -4,6 +4,7 @@ package com.starrocks.sql.optimizer.rule.transformation;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.starrocks.catalog.DistributionInfo;
 import com.starrocks.catalog.HashDistributionInfo;
 import com.starrocks.catalog.MaterializedIndex;
@@ -21,9 +22,11 @@ import com.starrocks.sql.optimizer.rule.RuleType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * This class need to run after PartitionPruneRule
@@ -44,18 +47,22 @@ public class DistributionPruneRule extends TransformationRule {
 
         OlapTable olapTable = (OlapTable) olapScanOperator.getTable();
 
-        List<Long> result = Lists.newArrayList();
+        //List<Long> result = Lists.newArrayList();
+        Map<Long, List<Long>> result = Maps.newHashMap();
         for (Long partitionId : olapScanOperator.getSelectedPartitionId()) {
             Partition partition = olapTable.getPartition(partitionId);
             MaterializedIndex table = partition.getIndex(olapScanOperator.getSelectedIndexId());
             Collection<Long> tabletIds = distributionPrune(table, partition.getDistributionInfo(), olapScanOperator);
-            result.addAll(tabletIds);
+
+            result.put(partitionId, new ArrayList<>(tabletIds));
         }
 
         // prune hint tablet
         Preconditions.checkState(olapScanOperator.getHintsTabletIds() != null);
         if (!olapScanOperator.getHintsTabletIds().isEmpty()) {
-            result.retainAll(olapScanOperator.getHintsTabletIds());
+            for (Map.Entry<Long, List<Long>> entry : result.entrySet()) {
+                entry.getValue().retainAll(olapScanOperator.getHintsTabletIds());
+            }
         }
 
         if (result.equals(olapScanOperator.getSelectedTabletId())) {

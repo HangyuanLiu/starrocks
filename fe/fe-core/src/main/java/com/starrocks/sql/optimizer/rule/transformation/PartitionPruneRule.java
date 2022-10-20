@@ -25,7 +25,9 @@ import com.starrocks.sql.optimizer.rule.RuleType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -45,7 +47,7 @@ public class PartitionPruneRule extends TransformationRule {
     @Override
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalOlapScanOperator olapScanOperator = (LogicalOlapScanOperator) input.getOp();
-        if (olapScanOperator.getSelectedPartitionId() != null) {
+        if (olapScanOperator.getSelectedTabletId() != null) {
             return Collections.emptyList();
         }
 
@@ -79,8 +81,13 @@ public class PartitionPruneRule extends TransformationRule {
 
         LogicalOlapScanOperator.Builder builder = new LogicalOlapScanOperator.Builder();
 
+        Map<Long, List<Long>> selectedTablets = new HashMap<>();
+        for (Long partitionId : selectedPartitionIds) {
+            selectedTablets.put(partitionId, new ArrayList<>());
+        }
+
         return Lists.newArrayList(OptExpression.create(
-                builder.withOperator(olapScanOperator).setSelectedPartitionId(selectedPartitionIds).build(),
+                builder.withOperator(olapScanOperator).setSelectedTabletId(selectedTablets).build(),
                 input.getInputs()));
     }
 

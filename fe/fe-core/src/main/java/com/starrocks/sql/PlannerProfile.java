@@ -113,6 +113,10 @@ public class PlannerProfile {
         }
     }
 
+    public Map<String, ScopedTimer> getTimers() {
+        return timers;
+    }
+
     private RuntimeProfile getRuntimeProfile(RuntimeProfile parent, Map<String, RuntimeProfile> cache,
                                              String prefix) {
         if (cache.containsKey(prefix)) {

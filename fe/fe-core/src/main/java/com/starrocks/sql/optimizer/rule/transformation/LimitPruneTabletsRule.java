@@ -14,9 +14,12 @@ import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.rule.RuleType;
+import jersey.repackaged.com.google.common.collect.Maps;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 // For SQL select * from table limit x, we could only query a few of tablets
 public class LimitPruneTabletsRule extends TransformationRule {
@@ -45,14 +48,23 @@ public class LimitPruneTabletsRule extends TransformationRule {
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalOlapScanOperator olapScanOperator = (LogicalOlapScanOperator) input.getOp();
 
-        if (olapScanOperator.getSelectedTabletId().size() <= 1) {
+        long tabletdSize;
+        Map<Long, List<Long>> selectedTableId = ((LogicalOlapScanOperator) olapScanOperator).getSelectedTabletId();
+        if (selectedTableId == null) {
+            tabletdSize = 0;
+        } else {
+            tabletdSize = ((LogicalOlapScanOperator) olapScanOperator).getSelectedTabletId().size();
+        }
+
+        if (tabletdSize <= 1) {
             return Collections.emptyList();
         }
 
         OlapTable olapTable = (OlapTable) olapScanOperator.getTable();
         long limit = olapScanOperator.getLimit();
         long totalRow = 0;
-        List<Long> result = Lists.newArrayList();
+        //List<Long> result = Lists.newArrayList();
+        Map<Long, List<Long>> result = Maps.newHashMap();
         for (Long partitionId : olapScanOperator.getSelectedPartitionId()) {
             if (totalRow >= limit) {
                 break;
@@ -61,6 +73,7 @@ public class LimitPruneTabletsRule extends TransformationRule {
             long version = partition.getVisibleVersion();
             MaterializedIndex index = partition.getIndex(olapScanOperator.getSelectedIndexId());
 
+            List<Long> tablets = new ArrayList<>();
             for (Tablet tablet : index.getTablets()) {
                 long tabletRowCount = tablet.getRowCount(version);
 
@@ -70,11 +83,12 @@ public class LimitPruneTabletsRule extends TransformationRule {
                 }
                 totalRow += tabletRowCount;
 
-                result.add(tablet.getId());
+                tablets.add(tablet.getId());
                 if (totalRow >= limit) {
                     break;
                 }
             }
+            result.put(partitionId, tablets);
         }
 
         // 1. Don't select any tablet

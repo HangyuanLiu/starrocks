@@ -15,7 +15,10 @@ import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import mockit.Mocked;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 
@@ -23,10 +26,15 @@ public class OlapScanImplementationRuleTest {
 
     @Test
     public void transform(@Mocked OlapTable table) {
+        Map<Long, List<Long>> selectedTablets = new HashMap<>();
+        selectedTablets.put(1L, Lists.newArrayList(4L));
+        selectedTablets.put(2L, new ArrayList<>());
+        selectedTablets.put(3L, new ArrayList<>());
+
         LogicalOlapScanOperator logical = new LogicalOlapScanOperator(table, Maps.newHashMap(), Maps.newHashMap(),
                 null, -1, ConstantOperator.createBoolean(true),
-                1, Lists.newArrayList(1L, 2L, 3L), null,
-                Lists.newArrayList(4L), null);
+                1, null,
+                selectedTablets, null);
 
         List<OptExpression> output =
                 new OlapScanImplementationRule().transform(new OptExpression(logical), new OptimizerContext(

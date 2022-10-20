@@ -43,7 +43,6 @@ public class BestIndexRewriter extends OptExpressionVisitor<OptExpression, Long>
                     olapScanOperator.getLimit(),
                     olapScanOperator.getPredicate(),
                     bestIndex,
-                    olapScanOperator.getSelectedPartitionId(),
                     olapScanOperator.getPartitionNames(),
                     olapScanOperator.getSelectedTabletId(),
                     olapScanOperator.getHintsTabletIds());

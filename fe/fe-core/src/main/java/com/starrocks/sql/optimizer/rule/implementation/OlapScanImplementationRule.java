@@ -29,7 +29,6 @@ public class OlapScanImplementationRule extends ImplementationRule {
                 scan.getLimit(),
                 scan.getPredicate(),
                 scan.getSelectedIndexId(),
-                scan.getSelectedPartitionId(),
                 scan.getSelectedTabletId(),
                 scan.getProjection());
 

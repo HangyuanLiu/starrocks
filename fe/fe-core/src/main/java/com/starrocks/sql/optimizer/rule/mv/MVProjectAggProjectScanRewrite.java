@@ -110,7 +110,6 @@ public class MVProjectAggProjectScanRewrite {
                 olapScanOperator.getLimit(),
                 olapScanOperator.getPredicate(),
                 olapScanOperator.getSelectedIndexId(),
-                olapScanOperator.getSelectedPartitionId(),
                 olapScanOperator.getPartitionNames(),
                 olapScanOperator.getSelectedTabletId(),
                 olapScanOperator.getHintsTabletIds());

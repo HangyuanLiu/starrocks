@@ -22,6 +22,9 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalValuesOperator;
 import com.starrocks.sql.optimizer.operator.logical.MockOperator;
 
+import java.util.List;
+import java.util.Map;
+
 public class LogicalProperty implements Property {
     // Operator's output columns
     private ColumnRefSet outputColumns;
@@ -86,7 +89,12 @@ public class LogicalProperty implements Property {
         @Override
         public Integer visitLogicalTableScan(LogicalScanOperator node, ExpressionContext context) {
             if (node instanceof LogicalOlapScanOperator) {
-                return ((LogicalOlapScanOperator) node).getSelectedTabletId().size();
+                Map<Long, List<Long>> selectedTableId = ((LogicalOlapScanOperator) node).getSelectedTabletId();
+                if (selectedTableId == null) {
+                    return 0;
+                } else {
+                    return ((LogicalOlapScanOperator) node).getSelectedTabletId().size();
+                }
             } else {
                 // It's very hard to estimate how many tablets scanned by this operator,
                 // because some operator even does not have the concept of tablets.
@@ -133,7 +141,15 @@ public class LogicalProperty implements Property {
         @Override
         public Boolean visitLogicalTableScan(LogicalScanOperator node, ExpressionContext context) {
             if (node instanceof LogicalOlapScanOperator) {
-                return ((LogicalOlapScanOperator) node).getSelectedTabletId().size() <= 1;
+                long size;
+                Map<Long, List<Long>> selectedTableId = ((LogicalOlapScanOperator) node).getSelectedTabletId();
+                if (selectedTableId == null) {
+                    size = 0;
+                } else {
+                    size = ((LogicalOlapScanOperator) node).getSelectedTabletId().size();
+                }
+
+                return size <= 1;
             } else {
                 return node instanceof LogicalMysqlScanOperator || node instanceof LogicalJDBCScanOperator;
             }

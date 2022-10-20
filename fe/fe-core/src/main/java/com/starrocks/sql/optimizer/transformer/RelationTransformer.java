@@ -427,9 +427,8 @@ public class RelationTransformer extends AstVisitor<LogicalPlan, ExpressionMappi
                         Operator.DEFAULT_LIMIT,
                         null,
                         ((OlapTable) node.getTable()).getBaseIndexId(),
-                        null,
                         node.getPartitionNames(),
-                        Lists.newArrayList(),
+                        null,
                         node.getTabletIds());
             }
         } else if (Table.TableType.HIVE.equals(node.getTable().getType())) {

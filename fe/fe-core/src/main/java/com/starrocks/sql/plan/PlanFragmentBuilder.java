@@ -74,6 +74,7 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.FrontendOptions;
+import com.starrocks.sql.PlannerProfile;
 import com.starrocks.sql.analyzer.DecimalV3FunctionAnalyzer;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
 import com.starrocks.sql.ast.AssertNumRowsElement;
@@ -535,23 +536,23 @@ public class PlanFragmentBuilder {
             scanNode.computeStatistics(optExpr.getStatistics());
 
             // set tablet
-            try {
-                scanNode.updateScanInfo(node.getSelectedPartitionId(),
-                        node.getSelectedTabletId(),
-                        node.getSelectedIndexId());
+            try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("SelectPartition")) {
+                scanNode.updateScanInfo(node.getSelectedTabletId(), node.getSelectedIndexId());
                 long selectedIndexId = node.getSelectedIndexId();
                 long totalTabletsNum = 0;
                 // Compatible with old tablet selected, copy from "OlapScanNode::computeTabletInfo"
                 // we can remove code when refactor tablet select
-                for (Long partitionId : node.getSelectedPartitionId()) {
+                for (Map.Entry<Long, List<Long>> entry : node.getSelectedTabletId().entrySet()) {
+                    Long partitionId = entry.getKey();
+
                     final Partition partition = referenceTable.getPartition(partitionId);
                     final MaterializedIndex selectedTable = partition.getIndex(selectedIndexId);
 
                     final List<Tablet> tablets = Lists.newArrayList();
-                    for (Long id : node.getSelectedTabletId()) {
-                        if (selectedTable.getTablet(id) != null) {
-                            tablets.add(selectedTable.getTablet(id));
-                        }
+                    for (Long id : entry.getValue()) {
+                        //if (selectedTable.getTablet(id) != null) {
+                        tablets.add(selectedTable.getTablet(id));
+                        //}
                     }
 
                     long localBeId = -1;
@@ -568,10 +569,12 @@ public class PlanFragmentBuilder {
 
                     totalTabletsNum += selectedTable.getTablets().size();
                     scanNode.setTabletId2BucketSeq(tabletId2BucketSeq);
-                    scanNode.addScanRangeLocations(partition, selectedTable, tablets, localBeId);
+                    try (PlannerProfile.ScopedTimer ignored2 = PlannerProfile.getScopedTimer("addScanRangeLocations")) {
+                        //scanNode.addScanRangeLocations(partition, selectedTable, tablets, localBeId);
+                    }
                 }
                 scanNode.setTotalTabletsNum(totalTabletsNum);
-            } catch (UserException e) {
+            } catch (Exception e) {
                 throw new StarRocksPlannerException(
                         "Build Exec OlapScanNode fail, scan info is invalid," + e.getMessage(),
                         INTERNAL_ERROR);

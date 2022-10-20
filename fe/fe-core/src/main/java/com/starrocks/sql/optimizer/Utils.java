@@ -44,6 +44,7 @@ import java.util.BitSet;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -406,14 +407,14 @@ public class Utils {
         return smallestColumnRef;
     }
 
-    public static boolean canDoReplicatedJoin(OlapTable table, long selectedIndexId,
-                                              Collection<Long> selectedPartitionId,
-                                              Collection<Long> selectedTabletId) {
+    public static boolean canDoReplicatedJoin(OlapTable table, long selectedIndexId, Map<Long, List<Long>> selectedTabletId) {
         ConnectContext ctx = ConnectContext.get();
         int backendSize = ctx.getTotalBackendNumber();
         int aliveBackendSize = ctx.getAliveBackendNumber();
         int schemaHash = table.getSchemaHashByIndexId(selectedIndexId);
-        for (Long partitionId : selectedPartitionId) {
+        //for (Long partitionId : selectedTabletId.keySet()) {
+        for (Map.Entry<Long, List<Long>> tablets : selectedTabletId.entrySet()) {
+            Long partitionId = tablets.getKey();
             Partition partition = table.getPartition(partitionId);
             if (table.isLakeTable()) {
                 // TODO(wyb): necessary to support?
@@ -424,8 +425,7 @@ public class Utils {
             }
             long visibleVersion = partition.getVisibleVersion();
             MaterializedIndex materializedIndex = partition.getIndex(selectedIndexId);
-            // TODO(kks): improve this for loop
-            for (Long id : selectedTabletId) {
+            for (Long id : tablets.getValue()) {
                 LocalTablet tablet = (LocalTablet) materializedIndex.getTablet(id);
                 if (tablet != null && tablet.getQueryableReplicasSize(visibleVersion, schemaHash)
                         != aliveBackendSize) {

@@ -72,7 +72,6 @@ public class PruneScanColumnRule extends TransformationRule {
                         olapScanOperator.getLimit(),
                         olapScanOperator.getPredicate(),
                         olapScanOperator.getSelectedIndexId(),
-                        olapScanOperator.getSelectedPartitionId(),
                         olapScanOperator.getPartitionNames(),
                         olapScanOperator.getSelectedTabletId(),
                         olapScanOperator.getHintsTabletIds());

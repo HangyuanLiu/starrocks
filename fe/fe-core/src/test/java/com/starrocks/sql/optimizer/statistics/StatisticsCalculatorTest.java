@@ -224,6 +224,11 @@ public class StatisticsCalculatorTest {
             partition.getBaseIndex().setRowCount(1000);
         }
 
+        Map<Long, List<Long>> tabletIds = new HashMap<>();
+        for (Long partitionId : partitionIds) {
+            tabletIds.put(partitionId, new ArrayList<>());
+        }
+
         List<Column> columns = table.getColumns();
         for (int i = 0; i < columns.size(); i++) {
             Map<ColumnRefOperator, Column> refToColumn = Maps.newHashMap();
@@ -237,9 +242,8 @@ public class StatisticsCalculatorTest {
                     refToColumn, columnToRef,
                     null, -1, null,
                     ((OlapTable) table).getBaseIndexId(),
-                    partitionIds,
                     null,
-                    Lists.newArrayList(),
+                    tabletIds,
                     Lists.newArrayList());
 
             GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
@@ -279,6 +283,11 @@ public class StatisticsCalculatorTest {
         List<Long> partitionIds = partitions.stream().filter(partition -> !(partition.getName().equalsIgnoreCase("p1"))).
                 mapToLong(Partition::getId).boxed().collect(Collectors.toList());
 
+        Map<Long, List<Long>> tabletIds = new HashMap<>();
+        for (Long partitionId : partitionIds) {
+            tabletIds.put(partitionId, new ArrayList<>());
+        }
+
         new Expectations() {
             {
                 cachedStatisticStorage.getColumnStatistics(table, Lists.newArrayList("id_date"));
@@ -299,9 +308,8 @@ public class StatisticsCalculatorTest {
                         ImmutableMap.of(new Column("id_date", Type.DATE, true), idDate),
                         null, -1, null,
                         ((OlapTable) table).getBaseIndexId(),
-                        partitionIds,
                         null,
-                        Lists.newArrayList(),
+                        tabletIds,
                         Lists.newArrayList());
 
         GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
@@ -345,6 +353,10 @@ public class StatisticsCalculatorTest {
         for (Partition partition : partitions) {
             partition.getBaseIndex().setRowCount(1000);
         }
+        Map<Long, List<Long>> tabletIds = new HashMap<>();
+        for (Long partitionId : partitionIds) {
+            tabletIds.put(partitionId, new ArrayList<>());
+        }
 
         LogicalOlapScanOperator olapScanOperator =
                 new LogicalOlapScanOperator(table,
@@ -354,9 +366,8 @@ public class StatisticsCalculatorTest {
                         new BinaryPredicateOperator(BinaryPredicateOperator.BinaryType.EQ,
                                 idDate, ConstantOperator.createDate(LocalDateTime.of(2013, 12, 30, 0, 0, 0))),
                         ((OlapTable) table).getBaseIndexId(),
-                        partitionIds,
                         null,
-                        Lists.newArrayList(),
+                        tabletIds,
                         Lists.newArrayList());
 
         GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
@@ -376,14 +387,18 @@ public class StatisticsCalculatorTest {
         partitionIds.clear();
         partitionIds = partitions.stream().filter(partition -> !(partition.getName().equalsIgnoreCase("p1"))).
                 mapToLong(Partition::getId).boxed().collect(Collectors.toList());
+        tabletIds = new HashMap<>();
+        for (Long partitionId : partitionIds) {
+            tabletIds.put(partitionId, new ArrayList<>());
+        }
+
         olapScanOperator =
                 new LogicalOlapScanOperator(table,
                         ImmutableMap.of(idDate, new Column("id_date", Type.DATE, true)),
                         ImmutableMap.of(new Column("id_date", Type.DATE, true), idDate),
                         null, -1, null, ((OlapTable) table).getBaseIndexId(),
-                        partitionIds,
                         null,
-                        Lists.newArrayList(),
+                        tabletIds,
                         Lists.newArrayList());
         olapScanOperator.setPredicate(new BinaryPredicateOperator(BinaryPredicateOperator.BinaryType.GE,
                 idDate, ConstantOperator.createDate(LocalDateTime.of(2014, 5, 1, 0, 0, 0))));
@@ -434,14 +449,19 @@ public class StatisticsCalculatorTest {
             partition.getBaseIndex().setRowCount(1000);
         }
 
+        Map<Long, List<Long>> tabletIds = new HashMap<>();
+        for (Long partitionId : partitionIds) {
+            tabletIds.put(partitionId, new ArrayList<>());
+        }
+
+
         LogicalOlapScanOperator olapScanOperator =
                 new LogicalOlapScanOperator(table,
                         ImmutableMap.of(idDate, new Column("id_date", Type.DATE, true)),
                         ImmutableMap.of(new Column("id_date", Type.DATE, true), idDate), null, -1, null,
                         ((OlapTable) table).getBaseIndexId(),
-                        partitionIds,
                         null,
-                        Lists.newArrayList(),
+                        tabletIds,
                         Lists.newArrayList());
 
         GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
@@ -463,14 +483,18 @@ public class StatisticsCalculatorTest {
         partitionIds.clear();
         partitionIds = partitions.stream().filter(partition -> !(partition.getName().equalsIgnoreCase("p1"))).
                 mapToLong(Partition::getId).boxed().collect(Collectors.toList());
+        tabletIds = new HashMap<>();
+        for (Long partitionId : partitionIds) {
+            tabletIds.put(partitionId, new ArrayList<>());
+        }
+
         olapScanOperator =
                 new LogicalOlapScanOperator(table,
                         ImmutableMap.of(idDate, new Column("id_date", Type.DATE, true)),
                         ImmutableMap.of(new Column("id_date", Type.DATE, true), idDate), null, -1, null,
                         ((OlapTable) table).getBaseIndexId(),
-                        partitionIds,
                         null,
-                        Lists.newArrayList(),
+                        tabletIds,
                         Lists.newArrayList());
         olapScanOperator.setPredicate(new BinaryPredicateOperator(BinaryPredicateOperator.BinaryType.GE,
                 idDate, ConstantOperator.createDate(LocalDateTime.of(2020, 04, 24, 0, 0, 0))));

@@ -21,6 +21,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -29,8 +30,7 @@ import java.util.Set;
 public class PhysicalOlapScanOperator extends PhysicalScanOperator {
     private final HashDistributionSpec hashDistributionSpec;
     private final long selectedIndexId;
-    private final List<Long> selectedTabletId;
-    private final List<Long> selectedPartitionId;
+    private final Map<Long, List<Long>> selectedTabletId;
 
     private boolean isPreAggregation;
     private String turnOffReason;
@@ -48,13 +48,11 @@ public class PhysicalOlapScanOperator extends PhysicalScanOperator {
                                     long limit,
                                     ScalarOperator predicate,
                                     long selectedIndexId,
-                                    List<Long> selectedPartitionId,
-                                    List<Long> selectedTabletId,
+                                    Map<Long, List<Long>> selectedTabletId,
                                     Projection projection) {
         super(OperatorType.PHYSICAL_OLAP_SCAN, table, colRefToColumnMetaMap, limit, predicate, projection);
         this.hashDistributionSpec = hashDistributionDesc;
         this.selectedIndexId = selectedIndexId;
-        this.selectedPartitionId = selectedPartitionId;
         this.selectedTabletId = selectedTabletId;
     }
 
@@ -63,10 +61,10 @@ public class PhysicalOlapScanOperator extends PhysicalScanOperator {
     }
 
     public List<Long> getSelectedPartitionId() {
-        return selectedPartitionId;
+        return new ArrayList<>(selectedTabletId.keySet());
     }
 
-    public List<Long> getSelectedTabletId() {
+    public Map<Long, List<Long>> getSelectedTabletId() {
         return selectedTabletId;
     }
 
@@ -117,7 +115,7 @@ public class PhysicalOlapScanOperator extends PhysicalScanOperator {
     }
 
     public boolean canDoReplicatedJoin() {
-        return Utils.canDoReplicatedJoin((OlapTable) table, selectedIndexId, selectedPartitionId, selectedTabletId);
+        return Utils.canDoReplicatedJoin((OlapTable) table, selectedIndexId, selectedTabletId);
     }
 
     @Override

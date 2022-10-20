@@ -17,6 +17,7 @@ import com.starrocks.sql.optimizer.operator.OperatorVisitor;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,9 +25,8 @@ import java.util.Objects;
 public final class LogicalOlapScanOperator extends LogicalScanOperator {
     private final HashDistributionSpec hashDistributionSpec;
     private final long selectedIndexId;
-    private final List<Long> selectedPartitionId;
     private final PartitionNames partitionNames;
-    private final List<Long> selectedTabletId;
+    private final Map<Long, List<Long>> selectedTabletId;
     private final List<Long> hintsTabletIds;
 
     // Only for UT
@@ -44,8 +44,7 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
         this(table, colRefToColumnMetaMap, columnMetaToColRefMap, hashDistributionSpec, limit, predicate,
                 ((OlapTable) table).getBaseIndexId(),
                 null,
-                null,
-                Lists.newArrayList(),
+                Maps.newHashMap(),
                 Lists.newArrayList());
     }
 
@@ -57,9 +56,8 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
             long limit,
             ScalarOperator predicate,
             long selectedIndexId,
-            List<Long> selectedPartitionId,
             PartitionNames partitionNames,
-            List<Long> selectedTabletId,
+            Map<Long, List<Long>> selectedTabletId,
             List<Long> hintsTabletIds) {
         super(OperatorType.LOGICAL_OLAP_SCAN, table, colRefToColumnMetaMap, columnMetaToColRefMap, limit, predicate,
                 null);
@@ -67,7 +65,6 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
         Preconditions.checkState(table instanceof OlapTable);
         this.hashDistributionSpec = hashDistributionSpec;
         this.selectedIndexId = selectedIndexId;
-        this.selectedPartitionId = selectedPartitionId;
         this.partitionNames = partitionNames;
         this.selectedTabletId = selectedTabletId;
         this.hintsTabletIds = hintsTabletIds;
@@ -81,7 +78,6 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
                 builder.getProjection());
         this.hashDistributionSpec = builder.hashDistributionSpec;
         this.selectedIndexId = builder.selectedIndexId;
-        this.selectedPartitionId = builder.selectedPartitionId;
         this.partitionNames = builder.partitionNames;
         this.selectedTabletId = builder.selectedTabletId;
         this.hintsTabletIds = builder.hintsTabletIds;
@@ -96,14 +92,14 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
     }
 
     public List<Long> getSelectedPartitionId() {
-        return selectedPartitionId;
+        return new ArrayList<>(selectedTabletId.keySet());
     }
 
     public PartitionNames getPartitionNames() {
         return partitionNames;
     }
 
-    public List<Long> getSelectedTabletId() {
+    public Map<Long, List<Long>> getSelectedTabletId() {
         return selectedTabletId;
     }
 
@@ -112,7 +108,7 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
     }
 
     public boolean canDoReplicatedJoin() {
-        return Utils.canDoReplicatedJoin((OlapTable) table, selectedIndexId, selectedPartitionId, selectedTabletId);
+        return Utils.canDoReplicatedJoin((OlapTable) table, selectedIndexId, selectedTabletId);
     }
 
     @Override
@@ -134,7 +130,6 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
         LogicalOlapScanOperator that = (LogicalOlapScanOperator) o;
         return selectedIndexId == that.selectedIndexId &&
                 Objects.equals(hashDistributionSpec, that.hashDistributionSpec) &&
-                Objects.equals(selectedPartitionId, that.selectedPartitionId) &&
                 Objects.equals(partitionNames, that.partitionNames) &&
                 Objects.equals(selectedTabletId, that.selectedTabletId) &&
                 Objects.equals(hintsTabletIds, that.hintsTabletIds);
@@ -142,7 +137,7 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), hashDistributionSpec, selectedIndexId, selectedPartitionId,
+        return Objects.hash(super.hashCode(), hashDistributionSpec, selectedIndexId,
                 partitionNames,
                 selectedTabletId, hintsTabletIds);
     }
@@ -151,9 +146,8 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
             extends LogicalScanOperator.Builder<LogicalOlapScanOperator, LogicalOlapScanOperator.Builder> {
         private HashDistributionSpec hashDistributionSpec;
         private long selectedIndexId;
-        private List<Long> selectedPartitionId;
         private PartitionNames partitionNames;
-        private List<Long> selectedTabletId;
+        private Map<Long, List<Long>> selectedTabletId;
         private List<Long> hintsTabletIds;
 
         @Override
@@ -167,7 +161,6 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
 
             this.hashDistributionSpec = scanOperator.hashDistributionSpec;
             this.selectedIndexId = scanOperator.selectedIndexId;
-            this.selectedPartitionId = scanOperator.selectedPartitionId;
             this.partitionNames = scanOperator.partitionNames;
             this.selectedTabletId = scanOperator.selectedTabletId;
             this.hintsTabletIds = scanOperator.hintsTabletIds;
@@ -179,13 +172,8 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
             return this;
         }
 
-        public Builder setSelectedTabletId(List<Long> selectedTabletId) {
+        public Builder setSelectedTabletId(Map<Long, List<Long>> selectedTabletId) {
             this.selectedTabletId = selectedTabletId;
-            return this;
-        }
-
-        public Builder setSelectedPartitionId(List<Long> selectedPartitionId) {
-            this.selectedPartitionId = selectedPartitionId;
             return this;
         }
     }

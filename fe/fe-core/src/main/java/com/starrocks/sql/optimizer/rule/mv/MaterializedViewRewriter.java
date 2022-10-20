@@ -93,7 +93,6 @@ public class MaterializedViewRewriter extends OptExpressionVisitor<OptExpression
                     olapScanOperator.getLimit(),
                     olapScanOperator.getPredicate(),
                     olapScanOperator.getSelectedIndexId(),
-                    olapScanOperator.getSelectedPartitionId(),
                     olapScanOperator.getPartitionNames(),
                     olapScanOperator.getSelectedTabletId(),
                     olapScanOperator.getHintsTabletIds());
