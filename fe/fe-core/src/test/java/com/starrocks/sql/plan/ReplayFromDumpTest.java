@@ -608,4 +608,12 @@ public class ReplayFromDumpTest {
                 "  |  equal join conjunct: 16: c_0_0 = 1: c_0_0\n" +
                 "  |  other join predicates: if(16: c_0_0 != 1: c_0_0, 4: c_0_3, 18: c_0_3) = '1969-12-28'"));
     }
+
+    @Test
+    public void test() throws Exception {
+        Pair<QueryDumpInfo, String> replayPair =
+                getPlanFragment(getDumpInfoFromFile("query_dump/dump_file"), null,
+                        TExplainLevel.NORMAL);
+        System.out.println(replayPair.second);
+    }
 }

@@ -44,11 +44,11 @@ public class OptimizerTrace {
     }
 
     public static String print(String name, Map<String, Long> times, int step) {
-        StringBuilder trace = new StringBuilder();
+        long total = 0;
         for (Map.Entry<String, Long> t : times.entrySet()) {
-            trace.append(print(t.getKey(), t.getValue(), step));
+            total += t.getValue();
         }
-        return trace.toString();
+        return print(name, total, step);
     }
 
     public static String explain(PlannerProfile profile) {
@@ -66,8 +66,25 @@ public class OptimizerTrace {
         Map<String, Long> analyzer = getPrefix("Analyzer", times);
         trace.append(print("Analyzer", analyzer, 1));
 
+
         Map<String, Long> optimizer = getPrefix("Optimizer", times);
         trace.append(print("Optimizer", optimizer, 1));
+
+        Map<String, Long> rbo = getPrefix("Optimizer.RuleBaseOptimize", times);
+        trace.append(print("Optimizer.RuleBaseOptimize", rbo, 2));
+        Map<String, Long> cbo = getPrefix("Optimizer.CostBaseOptimize", times);
+        trace.append(print("Optimizer.CostBaseOptimize", cbo, 2));
+        Map<String, Long> rewrite = getPrefix("Optimizer.PhysicalRewrite", times);
+        trace.append(print("Optimizer.PhysicalRewrite", rewrite, 2));
+
+        Map<String, Long> exec = getPrefix("ExecPlanBuild", times);
+        trace.append(print("ExecPlanBuild", exec, 1));
+
+        Map<String, Long> t1 = getPrefix("SelectPartition", times);
+        trace.append(print("SelectPartition", t1, 1));
+
+        Map<String, Long> t2 = getPrefix("addScanRangeLocations", times);
+        trace.append(print("addScanRangeLocations", t2, 1));
 
         return trace.toString();
     }

@@ -24,10 +24,14 @@ import java.util.Objects;
 public final class LogicalOlapScanOperator extends LogicalScanOperator {
     private final HashDistributionSpec hashDistributionSpec;
     private final long selectedIndexId;
-    private final List<Long> selectedPartitionId;
+
+    //private final List<Long> selectedPartitionId;
     private final PartitionNames partitionNames;
-    private final List<Long> selectedTabletId;
+    //private final List<Long> selectedTabletId;
     private final List<Long> hintsTabletIds;
+
+
+    private Map<Long, List<Long>> tablets;
 
     // Only for UT
     public LogicalOlapScanOperator(Table table) {
