@@ -255,17 +255,21 @@ public class PredicateStatisticsCalculator {
                 return StatisticsEstimateUtils.adjustStatisticsByRowCount(andStatistics,
                         andStatistics.getOutputRowCount());
             } else if (predicate.isOr()) {
-                Preconditions.checkState(predicate.getChildren().size() == 2);
-                Statistics leftStatistics = predicate.getChild(0).accept(this, null);
-                Statistics rightStatistics = predicate.getChild(1).accept(this, null);
-                Statistics andStatistics = predicate.getChild(1)
-                        .accept(new PredicateStatisticsCalculator.PredicateStatisticsCalculatingVisitor(leftStatistics),
-                                null);
-                double rowCount = leftStatistics.getOutputRowCount() + rightStatistics.getOutputRowCount() -
-                        andStatistics.getOutputRowCount();
-                rowCount = Math.min(rowCount, statistics.getOutputRowCount());
-                return StatisticsEstimateUtils.adjustStatisticsByRowCount(
-                        computeOrPredicateStatistics(leftStatistics, rightStatistics, statistics, rowCount), rowCount);
+                List<ScalarOperator> disjunctive = Utils.extractDisjunctive(predicate);
+                Statistics previous = predicate.getChild(0).accept(this, null);
+
+                for (int i = 1; i < disjunctive.size(); ++i) {
+                    Statistics current = disjunctive.get(i).accept(this, null);
+                    Statistics andStatistics = disjunctive.get(i)
+                            .accept(new PredicateStatisticsCalculator.PredicateStatisticsCalculatingVisitor(previous), null);
+
+                    double rowCount = andStatistics.getOutputRowCount();
+                    rowCount = Math.min(rowCount, statistics.getOutputRowCount());
+                    StatisticsEstimateUtils.adjustStatisticsByRowCount(
+                            computeOrPredicateStatistics(current, andStatistics, statistics, rowCount), rowCount);
+                }
+
+                return statistics;
             } else {
                 Preconditions.checkState(predicate.getChildren().size() == 1);
                 Statistics inputStatistics = predicate.getChild(0).accept(this, null);

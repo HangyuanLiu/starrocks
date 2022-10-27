@@ -71,12 +71,14 @@ import com.starrocks.planner.OlapScanNode;
 import com.starrocks.planner.OlapTableSink;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.ScanNode;
+import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.proto.PQueryStatistics;
 import com.starrocks.proto.QueryStatisticsItemPB;
 import com.starrocks.qe.QueryState.MysqlStateType;
 import com.starrocks.rpc.RpcException;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.FrontendOptions;
+import com.starrocks.sql.OptimizerTrace;
 import com.starrocks.sql.PlannerProfile;
 import com.starrocks.sql.StatementPlanner;
 import com.starrocks.sql.analyzer.PrivilegeChecker;
@@ -99,6 +101,7 @@ import com.starrocks.sql.ast.KillAnalyzeStmt;
 import com.starrocks.sql.ast.KillStmt;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectRelation;
+import com.starrocks.sql.ast.SetRoleStmt;
 import com.starrocks.sql.ast.SetStmt;
 import com.starrocks.sql.ast.SetVar;
 import com.starrocks.sql.ast.ShowStmt;
@@ -194,6 +197,10 @@ public class StmtExecutor {
         this.originStmt = parsedStmt.getOrigStmt();
         this.serializer = context.getSerializer();
         this.isProxy = false;
+    }
+
+    public Coordinator getCoordinator() {
+        return this.coord;
     }
 
     // At the end of query execution, we begin to add up profile
@@ -487,6 +494,8 @@ public class StmtExecutor {
                 handleDelSqlBlackListStmt();
             } else if (parsedStmt instanceof ExecuteAsStmt) {
                 handleExecAsStmt();
+            } else if (parsedStmt instanceof SetRoleStmt) {
+                handleSetRole();
             } else {
                 context.getState().setError("Do not support this query.");
             }
@@ -908,6 +917,10 @@ public class StmtExecutor {
         ExecuteAsExecutor.execute((ExecuteAsStmt) parsedStmt, context);
     }
 
+    private void handleSetRole() throws PrivilegeException, UserException {
+        SetRoleExecutor.execute((SetRoleStmt) parsedStmt, context);
+    }
+
     private void handleUnsupportedStmt() {
         context.getMysqlChannel().reset();
         // do nothing
@@ -1059,7 +1072,11 @@ public class StmtExecutor {
         if (execPlan == null) {
             explainString += "NOT AVAILABLE";
         } else {
-            explainString += execPlan.getExplainString(parsedStmt.getExplainLevel());
+            if (parsedStmt.getExplainLevel().equals(StatementBase.ExplainLevel.OPTIMIZER)) {
+                explainString += OptimizerTrace.explain(context.getPlannerProfile());
+            } else {
+                explainString += execPlan.getExplainString(parsedStmt.getExplainLevel());
+            }
         }
         return explainString;
     }

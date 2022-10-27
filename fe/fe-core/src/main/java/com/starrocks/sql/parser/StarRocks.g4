@@ -221,6 +221,7 @@ statement
     // Set Statement
     | setStatement
     | setUserPropertyStatement
+    | setRoleStatement
 
     //Unsupported Statement
     | unsupportedStatement
@@ -282,6 +283,7 @@ createTableStatement
           comment?
           partitionDesc?
           distributionDesc?
+          orderByDesc?
           rollupDesc?
           properties?
           extProperties?
@@ -315,6 +317,10 @@ charsetDesc
 
 keyDesc
     : (AGGREGATE | UNIQUE | PRIMARY | DUPLICATE) KEY identifierList
+    ;
+
+orderByDesc
+    : ORDER BY identifierList
     ;
 
 aggDesc
@@ -1203,11 +1209,13 @@ revokePrivilegeStatement
     ;
 
 grantRoleStatement
-    : GRANT identifierOrString TO user
+    : GRANT identifierOrString TO user                          #grantRoleToUser
+    | GRANT identifierOrString TO ROLE identifierOrString       #grantRoleToRole
     ;
 
 revokeRoleStatement
-    : REVOKE identifierOrString FROM user
+    : REVOKE identifierOrString FROM user                       #revokeRoleFromUser
+    | REVOKE identifierOrString FROM ROLE identifierOrString    #revokeRoleFromRole
     ;
 
 executeAsStatement
@@ -1405,6 +1413,15 @@ setUserPropertyStatement
     : SET PROPERTY (FOR string)? userPropertyList
     ;
 
+roleList
+    : string (',' string)*
+    ;
+
+setRoleStatement
+    : SET ROLE roleList                #setRole
+    | SET ROLE ALL (EXCEPT roleList)?  #setRoleAll
+    ;
+
 unsupportedStatement
     : START TRANSACTION (WITH CONSISTENT SNAPSHOT)?
     | BEGIN WORK?
@@ -1415,7 +1432,7 @@ unsupportedStatement
 // ------------------------------------------- Query Statement ---------------------------------------------------------
 
 queryStatement
-    : explainDesc? queryRelation outfile?;
+    : (explainDesc | optimizerTrace) ? queryRelation outfile?;
 
 queryRelation
     : withClause? queryNoWith
@@ -1792,6 +1809,10 @@ restoreTableDesc
 
 explainDesc
     : (DESC | DESCRIBE | EXPLAIN) (LOGICAL | VERBOSE | COSTS)?
+    ;
+
+optimizerTrace
+    : TRACE OPTIMIZER
     ;
 
 partitionDesc

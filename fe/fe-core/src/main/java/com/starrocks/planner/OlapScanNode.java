@@ -190,13 +190,13 @@ public class OlapScanNode extends ScanNode {
 
     private final List<String> unUsedOutputStringColumns = new ArrayList<>();
 
-    public void setUnUsedOutputStringColumns(Set<Integer> unUsedOutputColumnIds, Set<String> aggTableValueColumnNames) {
+    public void setUnUsedOutputStringColumns(Set<Integer> unUsedOutputColumnIds, Set<String> aggOrPrimaryKeyTableValueColumnNames) {
         for (SlotDescriptor slot : desc.getSlots()) {
             if (!slot.isMaterialized()) {
                 continue;
             }
             if (unUsedOutputColumnIds.contains(slot.getId().asInt()) &&
-                    !aggTableValueColumnNames.contains(slot.getColumn().getName())) {
+                    !aggOrPrimaryKeyTableValueColumnNames.contains(slot.getColumn().getName())) {
                 unUsedOutputStringColumns.add(slot.getColumn().getName());
             }
         }
@@ -306,92 +306,101 @@ public class OlapScanNode extends ScanNode {
         String visibleVersionStr = String.valueOf(visibleVersion);
         selectedPartitionNames.add(partition.getName());
         selectedPartitionVersions.add(visibleVersion);
+
         for (Tablet tablet : tablets) {
-            long tabletId = tablet.getId();
-            LOG.debug("{} tabletId={}", (logNum++), tabletId);
-            TScanRangeLocations scanRangeLocations = new TScanRangeLocations();
+            try (PlannerProfile.ScopedTimer ignored5 = PlannerProfile.getScopedTimer("EEE")) {
+                long tabletId;
+                tabletId = tablet.getId();
+                //LOG.debug("{} tabletId={}", (logNum++), tabletId);
 
-            TInternalScanRange internalRange = new TInternalScanRange();
-            internalRange.setDb_name("");
-            internalRange.setSchema_hash(schemaHashStr);
-            internalRange.setVersion(visibleVersionStr);
-            internalRange.setVersion_hash("0");
-            internalRange.setTablet_id(tabletId);
-            internalRange.setPartition_id(partition.getId());
+                TScanRangeLocations scanRangeLocations = new TScanRangeLocations();
+                TInternalScanRange internalRange = new TInternalScanRange();
+                internalRange.setDb_name("");
+                internalRange.setSchema_hash(schemaHashStr);
+                internalRange.setVersion(visibleVersionStr);
+                internalRange.setVersion_hash("0");
+                internalRange.setTablet_id(tabletId);
+                internalRange.setPartition_id(partition.getId());
 
-            // random shuffle List && only collect one copy
-            List<Replica> allQueryableReplicas = Lists.newArrayList();
-            List<Replica> localReplicas = Lists.newArrayList();
-            try (PlannerProfile.ScopedTimer ignored2 = PlannerProfile.getScopedTimer("AAA")) {
+                try (PlannerProfile.ScopedTimer ignored2 = PlannerProfile.getScopedTimer("AAA")) {
+                    // random shuffle List && only collect one copy
 
-                tablet.getQueryableReplicas(allQueryableReplicas, localReplicas,
-                        visibleVersion, localBeId, schemaHash);
-                if (allQueryableReplicas.isEmpty()) {
-                    String replicaInfos = "";
-                    if (tablet instanceof LocalTablet) {
-                        replicaInfos = ((LocalTablet) tablet).getReplicaInfos();
-                    }
-                    LOG.error("no queryable replica found in tablet {}. visible version {} replicas:{}",
-                            tabletId, visibleVersion, replicaInfos);
-                    if (LOG.isDebugEnabled()) {
-                        if (olapTable.isLakeTable()) {
-                            LOG.debug("tablet: {}, shard: {}, backends: {}", tabletId, ((LakeTablet) tablet).getShardId(),
-                                    tablet.getBackendIds());
-                        } else {
-                            for (Replica replica : ((LocalTablet) tablet).getImmutableReplicas()) {
-                                LOG.debug("tablet {}, replica: {}", tabletId, replica.toString());
+                    List<Replica> allQueryableReplicas = Lists.newArrayList();
+                    List<Replica> localReplicas = Lists.newArrayList();
+
+                    tablet.getQueryableReplicas(allQueryableReplicas, localReplicas,
+                            visibleVersion, localBeId, schemaHash);
+                    if (allQueryableReplicas.isEmpty()) {
+                        String replicaInfos = "";
+                        if (tablet instanceof LocalTablet) {
+                            replicaInfos = ((LocalTablet) tablet).getReplicaInfos();
+                        }
+                        LOG.error("no queryable replica found in tablet {}. visible version {} replicas:{}",
+                                tabletId, visibleVersion, replicaInfos);
+                        if (LOG.isDebugEnabled()) {
+                            if (olapTable.isLakeTable()) {
+                                LOG.debug("tablet: {}, shard: {}, backends: {}", tabletId, ((LakeTablet) tablet).getShardId(),
+                                        tablet.getBackendIds());
+                            } else {
+                                for (Replica replica : ((LocalTablet) tablet).getImmutableReplicas()) {
+                                    LOG.debug("tablet {}, replica: {}", tabletId, replica.toString());
+                                }
                             }
                         }
+                        throw new UserException(
+                                "Failed to get scan range, no queryable replica found in tablet: " + tabletId + " " + replicaInfos);
                     }
-                    throw new UserException(
-                            "Failed to get scan range, no queryable replica found in tablet: " + tabletId + " " + replicaInfos);
+
+
+                    List<Replica> replicas = null;
+                    if (!localReplicas.isEmpty()) {
+                        replicas = localReplicas;
+                    } else {
+                        replicas = allQueryableReplicas;
+                    }
+
+                    Collections.shuffle(replicas);
+                    boolean tabletIsNull = true;
+                    boolean collectedStat = false;
+
+                    try (PlannerProfile.ScopedTimer ignored_b = PlannerProfile.getScopedTimer("BBB")) {
+                        for (Replica replica : replicas) {
+                            Backend backend = GlobalStateMgr.getCurrentSystemInfo().getBackend(replica.getBackendId());
+                            if (backend == null) {
+                                LOG.debug("replica {} not exists", replica.getBackendId());
+                                continue;
+                            }
+                            String ip = backend.getHost();
+                            int port = backend.getBePort();
+                            TScanRangeLocation scanRangeLocation = new TScanRangeLocation(new TNetworkAddress(ip, port));
+                            scanRangeLocation.setBackend_id(replica.getBackendId());
+                            scanRangeLocations.addToLocations(scanRangeLocation);
+                            //internalRange.addToHosts(new TNetworkAddress(ip, port));
+                            tabletIsNull = false;
+
+                            //for CBO
+                            if (!collectedStat && replica.getRowCount() != -1) {
+                                actualRows += replica.getRowCount();
+                                collectedStat = true;
+                            }
+                            scanBackendIds.add(backend.getId());
+                        }
+                    }
+
+
+                    if (tabletIsNull) {
+                        throw new UserException(tabletId + "have no alive replicas");
+                    }
+
+                    TScanRange scanRange = new TScanRange();
+                    scanRange.setInternal_scan_range(internalRange);
+                    scanRangeLocations.setScan_range(scanRange);
+
+                    bucketSeq2locations.put(tabletId2BucketSeq.get(tabletId), scanRangeLocations);
                 }
+                result.add(scanRangeLocations);
             }
 
-            List<Replica> replicas = null;
-            if (!localReplicas.isEmpty()) {
-                replicas = localReplicas;
-            } else {
-                replicas = allQueryableReplicas;
-            }
-
-            try (PlannerProfile.ScopedTimer ignored2 = PlannerProfile.getScopedTimer("BBB")) {
-
-                Collections.shuffle(replicas);
-                boolean tabletIsNull = true;
-                boolean collectedStat = false;
-                for (Replica replica : replicas) {
-                    Backend backend = GlobalStateMgr.getCurrentSystemInfo().getBackend(replica.getBackendId());
-                    if (backend == null) {
-                        LOG.debug("replica {} not exists", replica.getBackendId());
-                        continue;
-                    }
-                    String ip = backend.getHost();
-                    int port = backend.getBePort();
-                    TScanRangeLocation scanRangeLocation = new TScanRangeLocation(new TNetworkAddress(ip, port));
-                    scanRangeLocation.setBackend_id(replica.getBackendId());
-                    scanRangeLocations.addToLocations(scanRangeLocation);
-                    //internalRange.addToHosts(new TNetworkAddress(ip, port));
-                    tabletIsNull = false;
-
-                    //for CBO
-                    if (!collectedStat && replica.getRowCount() != -1) {
-                        actualRows += replica.getRowCount();
-                        collectedStat = true;
-                    }
-                    scanBackendIds.add(backend.getId());
-                }
-                if (tabletIsNull) {
-                    throw new UserException(tabletId + "have no alive replicas");
-                }
-                TScanRange scanRange = new TScanRange();
-                scanRange.setInternal_scan_range(internalRange);
-                scanRangeLocations.setScan_range(scanRange);
-
-                bucketSeq2locations.put(tabletId2BucketSeq.get(tabletId), scanRangeLocations);
-            }
-
-            result.add(scanRangeLocations);
         }
     }
 
@@ -751,7 +760,7 @@ public class OlapScanNode extends ScanNode {
         List<Integer> remappedSlotIds = normalizer.remapSlotIds(slotIds);
 
         planNode.olap_scan_node.setRemapped_slot_ids(remappedSlotIds);
-        planNode.olap_scan_node.setSelected_column(slotIdToColNames.stream().map(c->c.second).collect(Collectors.toList()));
+        planNode.olap_scan_node.setSelected_column(slotIdToColNames.stream().map(c -> c.second).collect(Collectors.toList()));
 
         List<Map.Entry<Long, Range<PartitionKey>>> rangeMap = Lists.newArrayList();
         try {

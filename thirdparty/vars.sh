@@ -171,10 +171,10 @@ RE2_SOURCE=re2-2017-05-01
 RE2_MD5SUM="4aa65a0b22edacb7ddcd7e4aec038dcf"
 
 # boost
-BOOST_DOWNLOAD="http://sourceforge.net/projects/boost/files/boost/1.75.0/boost_1_75_0.tar.gz"
-BOOST_NAME=boost_1_75_0.tar.gz
-BOOST_SOURCE=boost_1_75_0
-BOOST_MD5SUM="38813f6feb40387dfe90160debd71251"
+BOOST_DOWNLOAD="https://boostorg.jfrog.io/artifactory/main/release/1.80.0/source/boost_1_80_0.tar.gz"
+BOOST_NAME=boost_1_80_0.tar.gz
+BOOST_SOURCE=boost_1_80_0
+BOOST_MD5SUM="077f074743ea7b0cb49c6ed43953ae95"
 
 # leveldb
 LEVELDB_DOWNLOAD="https://github.com/google/leveldb/archive/v1.20.tar.gz"
@@ -332,8 +332,14 @@ CACHELIB_NAME="cachelib.tar.gz"
 CACHELIB_SOURCE="cachelib"
 CACHELIB_MD5SUM="ec03040667144771955277fcc18f0da8"
 
+# streamvbyte
+STREAMVBYTE_DOWNLOAD="https://github.com/lemire/streamvbyte/archive/refs/tags/v0.5.1.tar.gz"
+STREAMVBYTE_NAME="streamvbyte-0.5.1.tar.gz"
+STREAMVBYTE_SOURCE="streamvbyte-0.5.1"
+STREAMVBYTE_MD5SUM="251d9200d27dda9120653b4928a23a86"
+
 # all thirdparties which need to be downloaded is set in array TP_ARCHIVES
 TP_ARCHIVES="LIBEVENT OPENSSL THRIFT PROTOBUF GFLAGS GLOG GTEST RAPIDJSON SIMDJSON SNAPPY GPERFTOOLS ZLIB LZ4 BZIP CURL \
             RE2 BOOST LEVELDB BRPC ROCKSDB LIBRDKAFKA PULSAR FLATBUFFERS ARROW BROTLI ZSTD S2 BITSHUFFLE CROARINGBITMAP \
             JEMALLOC CCTZ FMT RYU BREAK_PAD HADOOP JDK RAGEL HYPERSCAN MARIADB ALIYUN_OSS_JARS AWS_SDK_CPP VPACK OPENTELEMETRY \
-            BENCHMARK FAST_FLOAT CACHELIB"
+            BENCHMARK FAST_FLOAT CACHELIB STREAMVBYTE"

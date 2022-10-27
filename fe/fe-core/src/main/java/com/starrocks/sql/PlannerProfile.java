@@ -3,6 +3,7 @@
 package com.starrocks.sql;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Stopwatch;
 import com.starrocks.common.util.RuntimeProfile;
 import com.starrocks.qe.ConnectContext;
 import org.apache.logging.log4j.LogManager;
@@ -14,6 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import static com.starrocks.external.hive.HiveMetastoreOperations.BACKGROUND_THREAD_NAME_PREFIX;
 
@@ -43,10 +45,14 @@ public class PlannerProfile {
         private int totalCount = 0;
         // possible to record p99?
 
+        private final Stopwatch watch = Stopwatch.createUnstarted();
+
         public void start() {
             Preconditions.checkState(currentThreadId == 0);
             currentThreadId = Thread.currentThread().getId();
             startTime = System.currentTimeMillis();
+
+            watch.start();
         }
 
         public void close() {
@@ -54,6 +60,9 @@ public class PlannerProfile {
             currentThreadId = 0;
             totalTime += (System.currentTimeMillis() - startTime);
             totalCount += 1;
+
+            watch.stop();
+            
             printBackgroundLog();
         }
 
@@ -65,7 +74,7 @@ public class PlannerProfile {
         }
 
         public long getTotalTime() {
-            return totalTime;
+            return watch.elapsed(TimeUnit.MICROSECONDS) / 1000;
         }
 
         public int getTotalCount() {
