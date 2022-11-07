@@ -2,6 +2,7 @@
 package com.starrocks.sql.analyzer;
 
 import com.clearspring.analytics.util.Lists;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -158,7 +159,7 @@ public class QueryAnalyzer {
         public Scope visitSelect(SelectRelation selectRelation, Scope scope) {
             AnalyzeState analyzeState = new AnalyzeState();
             //Record aliases at this level to prevent alias conflicts
-            Set<String> aliasSet = new HashSet<>();
+            Set<TableName> aliasSet = new HashSet<>();
             Relation resolvedRelation = resolveTableRef(selectRelation.getRelation(), scope, aliasSet);
             if (resolvedRelation instanceof TableFunctionRelation) {
                 throw unsupportedException("Table function must be used with lateral join");
@@ -183,7 +184,7 @@ public class QueryAnalyzer {
             return analyzeState.getOutputScope();
         }
 
-        private Relation resolveTableRef(Relation relation, Scope scope, Set<String> aliasSet) {
+        private Relation resolveTableRef(Relation relation, Scope scope, Set<TableName> aliasSet) {
             if (relation instanceof JoinRelation) {
                 JoinRelation join = (JoinRelation) relation;
                 join.setLeft(resolveTableRef(join.getLeft(), scope, aliasSet));
@@ -194,17 +195,16 @@ public class QueryAnalyzer {
                 }
                 return join;
             } else if (relation instanceof TableRelation) {
-                if (aliasSet.contains(relation.getResolveTableName().getTbl())) {
-                    ErrorReport.reportSemanticException(ErrorCode.ERR_NONUNIQ_TABLE,
-                            relation.getResolveTableName().getTbl());
-                } else {
-                    aliasSet.add(relation.getResolveTableName().getTbl());
-                }
-
                 TableRelation tableRelation = (TableRelation) relation;
-                TableName tableName = tableRelation.getName();
-                if (tableName != null && Strings.isNullOrEmpty(tableName.getDb())) {
-                    Optional<CTERelation> withQuery = scope.getCteQueries(tableName.getTbl());
+                TableName resolveTableName = tableRelation.getResolveTableName();
+                Preconditions.checkState(resolveTableName != null);
+
+                // Because there may be cases where the cte name and the table name in the database have the same name.
+                // When the name has the same name, the CTE is parsed first.
+                // However, if the database name is specified, it will be resolved to the actual table in the db,
+                // because CTE does not have a library name and cannot be queried using db_name.cte_name.
+                if (Strings.isNullOrEmpty(resolveTableName.getDb())) {
+                    Optional<CTERelation> withQuery = scope.getCteQueries(resolveTableName.getTbl());
                     if (withQuery.isPresent()) {
                         CTERelation cteRelation = withQuery.get();
                         RelationFields withRelationFields = withQuery.get().getRelationFields();
@@ -213,7 +213,7 @@ public class QueryAnalyzer {
                         for (int fieldIdx = 0; fieldIdx < withRelationFields.getAllFields().size(); ++fieldIdx) {
                             Field originField = withRelationFields.getAllFields().get(fieldIdx);
                             outputFields.add(new Field(
-                                    originField.getName(), originField.getType(), tableRelation.getResolveTableName(),
+                                    originField.getName(), originField.getType(), resolveTableName,
                                     originField.getOriginExpression()));
                         }
 
@@ -223,7 +223,7 @@ public class QueryAnalyzer {
                         // eg: with w as (select * from t0) select v1,sum(v2) from w group by v1 " +
                         //                "having v1 in (select v3 from w where v2 = 2)
                         // cte used in outer query and subquery can't use same relation-id and field
-                        CTERelation newCteRelation = new CTERelation(cteRelation.getCteMouldId(), tableName.getTbl(),
+                        CTERelation newCteRelation = new CTERelation(cteRelation.getCteMouldId(), resolveTableName.getTbl(),
                                 cteRelation.getColumnOutputNames(),
                                 cteRelation.getCteQueryStatement());
                         newCteRelation.setAlias(tableRelation.getAlias());
@@ -234,11 +234,18 @@ public class QueryAnalyzer {
                     }
                 }
 
+                MetaUtils.normalizationTableName(session, resolveTableName);
                 Table table = resolveTable(tableRelation.getName());
+                if (aliasSet.contains(resolveTableName)) {
+                    ErrorReport.reportSemanticException(ErrorCode.ERR_NONUNIQ_TABLE, resolveTableName.getTbl());
+                } else {
+                    aliasSet.add(resolveTableName);
+                }
+
                 if (table instanceof View) {
                     View view = (View) table;
                     QueryStatement queryStatement = view.getQueryStatement();
-                    ViewRelation viewRelation = new ViewRelation(tableName, view, queryStatement);
+                    ViewRelation viewRelation = new ViewRelation(resolveTableName, view, queryStatement);
                     viewRelation.setAlias(tableRelation.getAlias());
                     return viewRelation;
                 } else {
@@ -251,11 +258,12 @@ public class QueryAnalyzer {
                 }
             } else {
                 if (relation.getResolveTableName() != null) {
-                    if (aliasSet.contains(relation.getResolveTableName().getTbl())) {
+                    MetaUtils.normalizationTableName(session, relation.getResolveTableName());
+                    if (aliasSet.contains(relation.getResolveTableName())) {
                         ErrorReport.reportSemanticException(ErrorCode.ERR_NONUNIQ_TABLE,
                                 relation.getResolveTableName().getTbl());
                     } else {
-                        aliasSet.add(relation.getResolveTableName().getTbl());
+                        aliasSet.add(relation.getResolveTableName());
                     }
                 }
                 return relation;
@@ -704,38 +712,34 @@ public class QueryAnalyzer {
     }
 
     private Table resolveTable(TableName tableName) {
-        try {
-            MetaUtils.normalizationTableName(session, tableName);
-            String catalogName = tableName.getCatalog();
-            String dbName = tableName.getDb();
-            String tbName = tableName.getTbl();
-            if (Strings.isNullOrEmpty(dbName)) {
-                ErrorReport.reportAnalysisException(ErrorCode.ERR_NO_DB_ERROR);
-            }
-
-            if (!GlobalStateMgr.getCurrentState().getCatalogMgr().catalogExists(catalogName)) {
-                ErrorReport.reportAnalysisException(ErrorCode.ERR_BAD_CATALOG_ERROR, catalogName);
-            }
-
-            Database database = metadataMgr.getDb(catalogName, dbName);
-            if (database == null) {
-                ErrorReport.reportAnalysisException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
-            }
-
-            Table table = metadataMgr.getTable(catalogName, dbName, tbName);
-            if (table == null) {
-                ErrorReport.reportAnalysisException(ErrorCode.ERR_BAD_TABLE_ERROR, tbName);
-            }
-
-            if (table.isNativeTable() &&
-                    (((OlapTable) table).getState() == OlapTable.OlapTableState.RESTORE
-                            || ((OlapTable) table).getState() == OlapTable.OlapTableState.RESTORE_WITH_LOAD)) {
-                ErrorReport.reportAnalysisException(ErrorCode.ERR_BAD_TABLE_STATE, "RESTORING");
-            }
-            return table;
-        } catch (AnalysisException e) {
-            throw new SemanticException(e.getMessage());
+        MetaUtils.normalizationTableName(session, tableName);
+        String catalogName = tableName.getCatalog();
+        String dbName = tableName.getDb();
+        String tbName = tableName.getTbl();
+        if (Strings.isNullOrEmpty(dbName)) {
+            ErrorReport.reportSemanticException(ErrorCode.ERR_NO_DB_ERROR);
         }
+
+        if (!GlobalStateMgr.getCurrentState().getCatalogMgr().catalogExists(catalogName)) {
+            ErrorReport.reportSemanticException(ErrorCode.ERR_BAD_CATALOG_ERROR, catalogName);
+        }
+
+        Database database = metadataMgr.getDb(catalogName, dbName);
+        if (database == null) {
+            ErrorReport.reportSemanticException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
+        }
+
+        Table table = metadataMgr.getTable(catalogName, dbName, tbName);
+        if (table == null) {
+            ErrorReport.reportSemanticException(ErrorCode.ERR_BAD_TABLE_ERROR, tbName);
+        }
+
+        if (table.isNativeTable() &&
+                (((OlapTable) table).getState() == OlapTable.OlapTableState.RESTORE
+                        || ((OlapTable) table).getState() == OlapTable.OlapTableState.RESTORE_WITH_LOAD)) {
+            ErrorReport.reportSemanticException(ErrorCode.ERR_BAD_TABLE_STATE, "RESTORING");
+        }
+        return table;
     }
 
     private void analyzeExpression(Expr expr, AnalyzeState analyzeState, Scope scope) {

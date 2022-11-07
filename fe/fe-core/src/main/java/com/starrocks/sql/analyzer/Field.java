@@ -64,7 +64,7 @@ public class Field {
             if (relationAlias == null) {
                 return false;
             }
-            return relationAlias.getTbl().equals(expr.getTblNameWithoutAnalyzed().getTbl())
+            return relationAlias.equals(expr.getTblNameWithoutAnalyzed())
                     && expr.getColumnName().equalsIgnoreCase(this.name);
         } else {
             return expr.getColumnName().equalsIgnoreCase(this.name);
