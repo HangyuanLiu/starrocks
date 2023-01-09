@@ -46,6 +46,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -170,7 +171,7 @@ public class PrivilegeManager {
                 initPrivilegeCollections(
                         rolePrivilegeCollection,
                         systemTypes.name(),
-                        Arrays.asList(PrivilegeType.SystemAction.NODE.name()),
+                        Collections.singletonList(PrivilegeType.SystemAction.NODE.name()),
                         null,
                         false);
                 rolePrivilegeCollection.disableMutable(); // not mutable
@@ -183,7 +184,7 @@ public class PrivilegeManager {
                 initPrivilegeCollections(
                         rolePrivilegeCollection,
                         systemTypes.name(),
-                        Arrays.asList(PrivilegeType.SystemAction.GRANT.name()),
+                        Collections.singletonList(PrivilegeType.SystemAction.GRANT.name()),
                         null,
                         false);
                 PrivilegeType t = PrivilegeType.USER;
@@ -197,11 +198,11 @@ public class PrivilegeManager {
             rolePrivilegeCollection = initBuiltinRoleUnlocked(PUBLIC_ROLE_ID, publicRoleName);
             if (rolePrivilegeCollection != null) {
                 // GRANT SELECT ON ALL TABLES IN information_schema
-                List<PEntryObject> object = Arrays.asList(new TablePEntryObject(
+                List<PEntryObject> object = Collections.singletonList(new TablePEntryObject(
                         SystemId.INFORMATION_SCHEMA_DB_ID, TablePEntryObject.ALL_TABLES_ID));
-                short tableTypeId = provider.getTypeIdByName(PrivilegeType.TABLE.name());
+                short tableTypeId = (short) provider.getPrivilegeType(PrivilegeType.TABLE.name()).getId();
                 ActionSet selectAction =
-                        analyzeActionSet(tableTypeId, Arrays.asList(PrivilegeType.TableAction.SELECT.name()));
+                        analyzeActionSet(tableTypeId, Collections.singletonList(PrivilegeType.TableAction.SELECT.name()));
                 rolePrivilegeCollection.grant(tableTypeId, selectAction, object, false);
             }
 
@@ -223,7 +224,7 @@ public class PrivilegeManager {
         ActionSet actionSet = analyzeActionSet(typeId, actionList);
         List<PEntryObject> object = null;
         if (tokens != null) {
-            object = Arrays.asList(provider.generateObject(type, tokens, globalStateMgr));
+            object = Collections.singletonList(provider.generateObject(type, tokens, globalStateMgr));
         }
         collection.grant(typeId, actionSet, object, isGrant);
     }
@@ -323,14 +324,14 @@ public class PrivilegeManager {
             if (stmt.getRole() != null) {
                 grantToRole(
                         stmt.getTypeId(),
-                        stmt.getActionList(),
+                        stmt.getActionSet(),
                         stmt.getObjectList(),
                         stmt.isWithGrantOption(),
                         stmt.getRole());
             } else {
                 grantToUser(
                         stmt.getTypeId(),
-                        stmt.getActionList(),
+                        stmt.getActionSet(),
                         stmt.getObjectList(),
                         stmt.isWithGrantOption(),
                         stmt.getUserIdentity());
@@ -382,14 +383,14 @@ public class PrivilegeManager {
             if (stmt.getRole() != null) {
                 revokeFromRole(
                         stmt.getTypeId(),
-                        stmt.getActionList(),
+                        stmt.getActionSet(),
                         stmt.getObjectList(),
                         stmt.isWithGrantOption(),
                         stmt.getRole());
             } else {
                 revokeFromUser(
                         stmt.getTypeId(),
-                        stmt.getActionList(),
+                        stmt.getActionSet(),
                         stmt.getObjectList(),
                         stmt.isWithGrantOption(),
                         stmt.getUserIdentity());
@@ -1088,6 +1089,11 @@ public class PrivilegeManager {
         }
     }
 
+    //FIXME : refactor
+    public AuthorizationProvider getProvider() {
+        return provider;
+    }
+
     public short getProviderPluginId() {
         return provider.getPluginId();
     }
@@ -1191,7 +1197,7 @@ public class PrivilegeManager {
         }
     }
 
-    protected UserPrivilegeCollection getUserPrivilegeCollectionUnlocked(UserIdentity userIdentity)
+    public UserPrivilegeCollection getUserPrivilegeCollectionUnlocked(UserIdentity userIdentity)
             throws PrivilegeException {
         UserPrivilegeCollection userCollection = userToPrivilegeCollection.get(userIdentity);
         if (userCollection == null) {
@@ -1205,7 +1211,7 @@ public class PrivilegeManager {
         return userToPrivilegeCollection.get(userIdentity);
     }
 
-    private RolePrivilegeCollection getRolePrivilegeCollectionUnlocked(long roleId, boolean exceptionIfNotExists)
+    public RolePrivilegeCollection getRolePrivilegeCollectionUnlocked(long roleId, boolean exceptionIfNotExists)
             throws PrivilegeException {
         RolePrivilegeCollection collection = roleIdToPrivilegeCollection.get(roleId);
         if (collection == null) {
@@ -1240,7 +1246,15 @@ public class PrivilegeManager {
     }
 
     public short analyzeType(String typeName) throws PrivilegeException {
-        return provider.getTypeIdByName(typeName);
+        return (short) provider.getPrivilegeType(typeName).getId();
+    }
+
+    public PrivilegeType getPrivilegeType(short typeId) throws PrivilegeException {
+        return provider.getPrivilegeType(typeId);
+    }
+
+    public PrivilegeType getPrivilegeType(String typeName) throws PrivilegeException {
+        return provider.getPrivilegeType(typeName);
     }
 
     public void createRole(CreateRoleStmt stmt) throws DdlException {

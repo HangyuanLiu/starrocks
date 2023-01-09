@@ -48,13 +48,22 @@ import com.starrocks.analysis.SubfieldExpr;
 import com.starrocks.analysis.Subquery;
 import com.starrocks.analysis.TimestampArithmeticExpr;
 import com.starrocks.analysis.VariableExpr;
+import com.starrocks.catalog.Database;
 import com.starrocks.catalog.FunctionSet;
+import com.starrocks.catalog.Table;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.PrintableMap;
 import com.starrocks.mysql.privilege.Privilege;
+import com.starrocks.privilege.Action;
+import com.starrocks.privilege.PEntryObject;
+import com.starrocks.privilege.PrivilegeType;
+import com.starrocks.privilege.TablePEntryObject;
+import com.starrocks.privilege.UserPEntryObject;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.ArrayExpr;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.BaseGrantRevokePrivilegeStmt;
+import com.starrocks.sql.ast.BaseGrantRevokeRoleStmt;
 import com.starrocks.sql.ast.CTERelation;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
 import com.starrocks.sql.ast.DataDescription;
@@ -63,6 +72,7 @@ import com.starrocks.sql.ast.DropMaterializedViewStmt;
 import com.starrocks.sql.ast.ExceptRelation;
 import com.starrocks.sql.ast.FieldReference;
 import com.starrocks.sql.ast.GrantPrivilegeStmt;
+import com.starrocks.sql.ast.GrantRoleStmt;
 import com.starrocks.sql.ast.IntersectRelation;
 import com.starrocks.sql.ast.JoinRelation;
 import com.starrocks.sql.ast.LambdaFunctionExpr;
@@ -90,6 +100,7 @@ import com.starrocks.sql.ast.ViewRelation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.toList;
@@ -241,41 +252,118 @@ public class AstToStringBuilder {
 
         @Override
         public String visitGrantRevokePrivilegeStatement(BaseGrantRevokePrivilegeStmt stmt, Void context) {
-            StringBuilder sb = new StringBuilder();
-            if (stmt instanceof GrantPrivilegeStmt) {
-                sb.append("GRANT ");
-            } else {
-                sb.append("REVOKE ");
-            }
-            boolean firstLine = true;
-            for (Privilege privilege : stmt.getPrivBitSet().toPrivilegeList()) {
-                if (firstLine) {
-                    firstLine = false;
+            if (GlobalStateMgr.getCurrentState().isUsingNewPrivilege()) {
+                StringBuilder sb = new StringBuilder();
+                if (stmt instanceof GrantPrivilegeStmt) {
+                    sb.append("GRANT ");
                 } else {
-                    sb.append(", ");
+                    sb.append("REVOKE ");
                 }
-                String priv = privilege.toString().toUpperCase();
-                sb.append(priv.substring(0, priv.length() - 5));
-            }
-            if (stmt.getPrivType().equals("TABLE") || stmt.getPrivType().equals("DATABASE")) {
-                sb.append(" ON " + stmt.getTblPattern());
-            } else if (stmt.getPrivType().equals("RESOURCE")) {
-                sb.append(" ON RESOURCE ").append(stmt.getResourcePattern());
-            } else {
-                sb.append(" ON ").append(stmt.getUserPrivilegeObject());
-            }
-            if (stmt instanceof GrantPrivilegeStmt) {
-                sb.append(" TO ");
-            } else {
-                sb.append(" FROM ");
-            }
-            if (stmt.getUserIdentity() != null) {
-                sb.append(stmt.getUserIdentity());
-            } else {
-                sb.append("ROLE '" + stmt.getRole() + "'");
-            }
 
-            return sb.toString();
+                switch (stmt.getPrivilegeType()) {
+                    case TABLE:
+                    case DATABASE:
+                    case RESOURCE:
+                    case VIEW:
+                    case CATALOG:
+                    case MATERIALIZED_VIEW:
+                    case FUNCTION:
+                    case RESOURCE_GROUP:
+                    case GLOBAL_FUNCTION: {
+                        List<String> privList = new ArrayList<>();
+                        for (Map.Entry<String, Action> actionEntry : stmt.getPrivilegeType().getActionMap().entrySet()) {
+                            if (stmt.getActionSet().contains(actionEntry.getValue())) {
+                                privList.add(actionEntry.getValue().getName());
+                            }
+                        }
+                        sb.append(Joiner.on(",").join(privList));
+
+                        sb.append(" ON ");
+                        sb.append(stmt.getPrivilegeType().getPlural()).append(" ");
+                        TablePEntryObject tablePEntryObject = (TablePEntryObject) stmt.getObjectList().get(0);
+                        Database database = GlobalStateMgr.getCurrentState().getDb(tablePEntryObject.getDatabaseId());
+                        Table table = database.getTable(tablePEntryObject.getTableId());
+                        sb.append(database.getFullName()).append(".").append(table.getName());
+                        break;
+                    }
+                    case USER: {
+                        List<String> privList = new ArrayList<>();
+                        for (Map.Entry<String, Action> actionEntry : PrivilegeType.USER.getActionMap().entrySet()) {
+                            if (stmt.getActionSet().contains(actionEntry.getValue())) {
+                                privList.add(actionEntry.getValue().getName());
+                            }
+                        }
+                        sb.append(Joiner.on(",").join(privList));
+
+                        sb.append(" ON ");
+                        List<PEntryObject> pEntryObjects = stmt.getObjectList();
+                        sb.append(Joiner.on(",").join(pEntryObjects.stream().map(pEntryObject ->
+                                ((UserPEntryObject) pEntryObjects).getUserIdentity().toString()).collect(toList())));
+                        break;
+                    }
+                }
+                if (stmt instanceof GrantPrivilegeStmt) {
+                    sb.append(" TO ");
+                } else {
+                    sb.append(" FROM ");
+                }
+                if (stmt.getUserIdentity() != null) {
+                    sb.append(stmt.getUserIdentity());
+                } else {
+                    sb.append("ROLE '" + stmt.getRole() + "'");
+                }
+
+                return sb.toString();
+            } else {
+                StringBuilder sb = new StringBuilder();
+                if (stmt instanceof GrantPrivilegeStmt) {
+                    sb.append("GRANT ");
+                } else {
+                    sb.append("REVOKE ");
+                }
+                boolean firstLine = true;
+                for (Privilege privilege : stmt.getPrivBitSet().toPrivilegeList()) {
+                    if (firstLine) {
+                        firstLine = false;
+                    } else {
+                        sb.append(", ");
+                    }
+                    String priv = privilege.toString().toUpperCase();
+                    sb.append(priv.substring(0, priv.length() - 5));
+                }
+                if (stmt.getPrivType().equals("TABLE") || stmt.getPrivType().equals("DATABASE")) {
+                    sb.append(" ON " + stmt.getTblPattern());
+                } else if (stmt.getPrivType().equals("RESOURCE")) {
+                    sb.append(" ON RESOURCE ").append(stmt.getResourcePattern());
+                } else {
+                    sb.append(" ON ").append(stmt.getUserPrivilegeObject());
+                }
+                if (stmt instanceof GrantPrivilegeStmt) {
+                    sb.append(" TO ");
+                } else {
+                    sb.append(" FROM ");
+                }
+                if (stmt.getUserIdentity() != null) {
+                    sb.append(stmt.getUserIdentity());
+                } else {
+                    sb.append("ROLE '" + stmt.getRole() + "'");
+                }
+
+                return sb.toString();
+            }
+        }
+
+        public String visitGrantRevokeRoleStatement(BaseGrantRevokeRoleStmt statement, Void context) {
+            StringBuilder sqlBuilder = new StringBuilder();
+            if (statement instanceof GrantRoleStmt) {
+                sqlBuilder.append("GRANT ");
+            } else {
+                sqlBuilder.append("REVOKE ");
+            }
+            sqlBuilder.append(statement.getRole());
+            sqlBuilder.append(" TO ");
+            sqlBuilder.append(statement.getUserIdent());
+            return sqlBuilder.toString();
         }
 
         @Override
