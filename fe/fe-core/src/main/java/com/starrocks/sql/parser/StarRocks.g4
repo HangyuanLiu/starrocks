@@ -1140,46 +1140,12 @@ helpStatement
 
 // ------------------------------------------- Privilege Statement -----------------------------------------------------
 
-
-identifierOrStringList
-    : identifierOrString (',' identifierOrString)*
+privilegeObjectName
+    : identifierOrStringOrStar ('.' identifierOrStringOrStar)?
     ;
 
-// [deprecated] grant select on *
-// [deprecated] grant select on *.*
-// grant select on db1.tbl1,db2.tbl2
-// grant select on db1,db2
-tableDbPrivilegeObjectNameList
-    : identifierOrStringOrStar                                  #deprecatedDbPrivilegeObject
-    | identifierOrStringOrStar '.' identifierOrStringOrStar     #deprecatedTablePrivilegeObject
-    | tablePrivilegeObjectNameList                              #tablePrivilegeObjectList
-    | identifierOrStringList                                    #defaultPrivilegeObjectList
-    ;
-
-userList
-    : user (',' user)*
-    ;
-
-tablePrivilegeObjectNameList
-    : tablePrivilegeObjectName (',' tablePrivilegeObjectName)*
-    ;
-
-tablePrivilegeObjectName
-    : identifierOrString '.' identifierOrString
-    ;
-
-// the last one is deprecated
 privilegeObjectNameList
-    : tablePrivilegeObjectNameList
-    | identifierOrStringList
-    | userList
-    | ASTERISK_SYMBOL
-    ;
-
-identifierOrStringOrStar
-    : ASTERISK_SYMBOL
-    | identifier
-    | string
+    : privilegeObjectName (',' privilegeObjectName)*
     ;
 
 privilegeActionReserved
@@ -1198,7 +1164,7 @@ privilegeActionReserved
     | EXPORT
     | REPOSITORY
     | CREATE_MATERIALIZED_VIEW
-    | ALL
+    | ALL PRIVILEGES?
     ;
 
 privilegeActionList
@@ -1226,43 +1192,39 @@ privilegeType
     ;
 
 grantRevokeClause
-    : (user | ROLE identifierOrString ) (WITH GRANT OPTION)?
+    : (USER? user | ROLE identifierOrString) (WITH GRANT OPTION)?
     ;
 
 grantPrivilegeStatement
-    : GRANT IMPERSONATE ON user TO grantRevokeClause                                                    #grantImpersonateBrief
-    | GRANT privilegeActionList ON tableDbPrivilegeObjectNameList
-        TO grantRevokeClause                                                                            #grantTablePrivBrief
+    : GRANT IMPERSONATE ON USER user (',' user)* TO grantRevokeClause                                   #grantImpersonate
     | GRANT privilegeActionList ON privilegeType (privilegeObjectNameList)?
         TO grantRevokeClause                                                                            #grantPrivWithType
     | GRANT privilegeActionList ON GLOBAL? privilegeType qualifiedName '(' typeList ')'
         TO grantRevokeClause                                                                            #grantPrivWithFunc
-    | GRANT privilegeActionList ON ALL privilegeType (IN ALL privilegeType)*
-        (IN privilegeType identifierOrString)? TO grantRevokeClause                                     #grantOnAll
+    | GRANT privilegeActionList ON ALL privilegeType
+        (IN isAll=ALL DATABASES| IN DATABASE identifierOrString)? TO grantRevokeClause                   #grantOnAll
     | GRANT privilegeActionList ON ALL GLOBAL FUNCTIONS TO grantRevokeClause                            #grantOnAllGlobalFunctions
     ;
 
 revokePrivilegeStatement
-    : REVOKE IMPERSONATE ON user FROM grantRevokeClause                                                 #revokeImpersonateBrief
-    | REVOKE privilegeActionList ON tableDbPrivilegeObjectNameList
-        FROM grantRevokeClause                                                                          #revokeTablePrivBrief
+    : REVOKE IMPERSONATE ON USER user (',' user)* FROM grantRevokeClause                                #revokeImpersonate
     | REVOKE privilegeActionList ON privilegeType (privilegeObjectNameList)?
         FROM grantRevokeClause                                                                          #revokePrivWithType
     | REVOKE privilegeActionList ON GLOBAL? privilegeType qualifiedName '(' typeList ')'
         FROM grantRevokeClause                                                                          #revokePrivWithFunc
-    | REVOKE privilegeActionList ON ALL privilegeType (IN ALL privilegeType)*
-        (IN privilegeType identifierOrString)? FROM grantRevokeClause                                   #revokeOnAll
+    | REVOKE privilegeActionList ON ALL privilegeType
+        (IN isAll=ALL DATABASE| IN DATABASE identifierOrString)? FROM grantRevokeClause                 #revokeOnAll
     | REVOKE privilegeActionList ON ALL GLOBAL FUNCTIONS FROM grantRevokeClause                         #revokeOnAllGlobalFunctions
     ;
 
 grantRoleStatement
-    : GRANT identifierOrString TO user                                                                  #grantRoleToUser
-    | GRANT identifierOrString TO ROLE identifierOrString                                               #grantRoleToRole
+    : GRANT identifierOrStringList TO user                                                              #grantRoleToUser
+    | GRANT identifierOrStringList TO ROLE identifierOrString                                           #grantRoleToRole
     ;
 
 revokeRoleStatement
-    : REVOKE identifierOrString FROM user                                                               #revokeRoleFromUser
-    | REVOKE identifierOrString FROM ROLE identifierOrString                                            #revokeRoleFromRole
+    : REVOKE identifierOrStringList FROM user                                                           #revokeRoleFromUser
+    | REVOKE identifierOrStringList FROM ROLE identifierOrString                                        #revokeRoleFromRole
     ;
 
 executeAsStatement
@@ -1295,7 +1257,9 @@ showRolesStatement
     ;
 
 showGrantsStatement
-    : SHOW ALL? GRANTS (FOR user)?
+    : SHOW ALL? GRANTS
+    | SHOW GRANTS FOR user
+    | SHOW GRANTS FOR ROLE identifierOrString
     ;
 
 dropRoleStatement
@@ -2121,6 +2085,16 @@ identifierList
 
 identifierOrString
     : identifier
+    | string
+    ;
+
+identifierOrStringList
+    : identifierOrString (',' identifierOrString)*
+    ;
+
+identifierOrStringOrStar
+    : ASTERISK_SYMBOL
+    | identifier
     | string
     ;
 

@@ -560,30 +560,30 @@ public class PrivilegeManagerTest {
         List<PEntryObject> objects = Arrays.asList(goodTableObject);
         // 3. add invalidate entry: select on invalidatedb.table
         objects = Arrays.asList(new TablePEntryObject(-1, goodTableObject.tableId));
-        manager.grantToUser(grantTableStmt.getTypeId(), grantTableStmt.getActionList(), objects, false, testUser);
+        manager.grantToUser(grantTableStmt.getTypeId(), grantTableStmt.getActionSet(), objects, false, testUser);
         // 4. add invalidate entry: select on db.invalidatetable
         objects = Arrays.asList(new TablePEntryObject(goodTableObject.databaseId, -1));
-        manager.grantToUser(grantTableStmt.getTypeId(), grantTableStmt.getActionList(), objects, false, testUser);
+        manager.grantToUser(grantTableStmt.getTypeId(), grantTableStmt.getActionSet(), objects, false, testUser);
         // 5. add invalidate entry: create_table, drop on invalidatedb
         objects = Arrays.asList(new DbPEntryObject(-1));
-        manager.grantToUser(grantDbStmt.getTypeId(), grantDbStmt.getActionList(), objects, false, testUser);
+        manager.grantToUser(grantDbStmt.getTypeId(), grantDbStmt.getActionSet(), objects, false, testUser);
         // 6. add valid entry: ALL databases
         objects = Arrays.asList(new DbPEntryObject(DbPEntryObject.ALL_DATABASE_ID));
-        manager.grantToUser(grantDbStmt.getTypeId(), grantDbStmt.getActionList(), objects, false, testUser);
+        manager.grantToUser(grantDbStmt.getTypeId(), grantDbStmt.getActionSet(), objects, false, testUser);
         // 7. add valid user
         sql = "grant impersonate on root to test_user";
         GrantPrivilegeStmt grantUserStmt = (GrantPrivilegeStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
         manager.grant(grantUserStmt);
         // 8. add invalidate entry: bad impersonate user
         objects = Arrays.asList(new UserPEntryObject(UserIdentity.createAnalyzedUserIdentWithIp("bad", "%")));
-        manager.grantToUser(grantUserStmt.getTypeId(), grantUserStmt.getActionList(), objects, false, testUser);
+        manager.grantToUser(grantUserStmt.getTypeId(), grantUserStmt.getActionSet(), objects, false, testUser);
         // 9. add valid resource
         sql = "grant usage on resource 'hive0' to test_user";
         GrantPrivilegeStmt grantResourceStmt = (GrantPrivilegeStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
         manager.grant(grantResourceStmt);
         // 10. add invalidate entry: bad resource name
         objects = Arrays.asList(new ResourcePEntryObject("bad_resource"));
-        manager.grantToUser(grantResourceStmt.getTypeId(), grantResourceStmt.getActionList(), objects, false, testUser);
+        manager.grantToUser(grantResourceStmt.getTypeId(), grantResourceStmt.getActionSet(), objects, false, testUser);
 
         // check before clean up:
         System.out.println(GsonUtils.GSON.toJson(manager.userToPrivilegeCollection));

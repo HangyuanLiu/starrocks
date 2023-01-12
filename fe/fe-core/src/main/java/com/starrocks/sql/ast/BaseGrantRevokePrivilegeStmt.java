@@ -15,12 +15,14 @@
 
 package com.starrocks.sql.ast;
 
+import com.google.common.collect.Lists;
 import com.starrocks.analysis.ResourcePattern;
 import com.starrocks.analysis.TablePattern;
 import com.starrocks.analysis.UserIdentity;
 import com.starrocks.mysql.privilege.PrivBitSet;
 import com.starrocks.privilege.ActionSet;
 import com.starrocks.privilege.PEntryObject;
+import com.starrocks.privilege.PrivilegeType;
 
 import java.util.List;
 
@@ -38,8 +40,8 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
     private ResourcePattern resourcePattern = null;
 
     // the following fields is set by analyzer, for new RBAC privilege framework
-    private short typeId;
-    private ActionSet actionList;
+    private PrivilegeType privilegeType;
+    private ActionSet actionSet;
     private List<PEntryObject> objectList;
 
     public BaseGrantRevokePrivilegeStmt(
@@ -86,17 +88,6 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
     public String getFunctionName() {
         return objects.getFunctionName();
     }
-    public List<String> getAllTypeList() {
-        return objects.getAllTypeList();
-    }
-
-    public String getRestrictType() {
-        return objects.getRestrictType();
-    }
-
-    public String getRestrictName() {
-        return objects.getRestrictName();
-    }
 
     public void setPrivBitSet(PrivBitSet privBitSet) {
         this.privBitSet = privBitSet;
@@ -122,6 +113,16 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
         return privType;
     }
 
+    public List<String> getTokens() {
+        if (!objects.isAllDB() && objects.getDbName() == null) {
+            return Lists.newArrayList("*");
+        } else if (objects.getDbName() != null) {
+            return Lists.newArrayList("*", objects.getDbName());
+        } else {
+            return Lists.newArrayList("*", "*");
+        }
+    }
+
     public List<String> getPrivList() {
         return privList;
     }
@@ -143,19 +144,23 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
     }
 
     public short getTypeId() {
-        return typeId;
+        return (short) privilegeType.getId();
     }
 
-    public void setTypeId(short typeId) {
-        this.typeId = typeId;
+    public PrivilegeType getPrivilegeType() {
+        return privilegeType;
     }
 
-    public ActionSet getActionList() {
-        return actionList;
+    public void setPrivilegeType(PrivilegeType privilegeType) {
+        this.privilegeType = privilegeType;
     }
 
-    public void setActionList(ActionSet actionList) {
-        this.actionList = actionList;
+    public ActionSet getActionSet() {
+        return actionSet;
+    }
+
+    public void setActionSet(ActionSet actionSet) {
+        this.actionSet = actionSet;
     }
 
     public List<PEntryObject> getObjectList() {

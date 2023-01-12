@@ -21,53 +21,48 @@ import com.starrocks.analysis.UserIdentity;
 import java.util.List;
 
 public class GrantRevokePrivilegeObjects implements ParseNode {
-    private List<List<String>> privilegeObjectNameTokensList = null;
-    private List<UserIdentity> userPrivilegeObjectList = null;
-    // grant create_table on all databases to userx
-    // ==> allTypeList: ["databases"], restrictType: null, restrictName: null
-    // grant select on all tables in database db1 to userx
-    // ==> allTypeList: ["tables"], restrictType: database, restrictName: db1
-    // grant select on all tables in all databases to userx
-    // ==> allTypeList: ["tables", "databases"], restrictType: null, restrictName: null
-    private List<String> allTypeList = null;
-    private String restrictType = null;
-    private String restrictName = null;
+    private List<List<String>> privilegeObjectNameTokensList;
+    private List<UserIdentity> userPrivilegeObjectList;
 
-    private FunctionArgsDef functionArgsDef = null;
+    private String privType;
+    private boolean isAllDB;
+    private String dbName;
 
-    private String functionName = null;
-    public void setPrivilegeObjectNameTokensList(List<List<String>> privilegeObjectNameTokensList) {
-        this.privilegeObjectNameTokensList = privilegeObjectNameTokensList;
-    }
-
-    public void setUserPrivilegeObjectList(List<UserIdentity> userPrivilegeObjectList) {
-        this.userPrivilegeObjectList = userPrivilegeObjectList;
-    }
-
-    public void setAll(List<String> allTypeList, String restrictType, String restrictName) {
-        this.allTypeList = allTypeList;
-        this.restrictType = restrictType;
-        this.restrictName = restrictName;
-    }
+    private FunctionArgsDef functionArgsDef;
+    private String functionName;
 
     public List<List<String>> getPrivilegeObjectNameTokensList() {
         return privilegeObjectNameTokensList;
+    }
+
+    public void setPrivilegeObjectNameTokensList(List<List<String>> privilegeObjectNameTokensList) {
+        this.privilegeObjectNameTokensList = privilegeObjectNameTokensList;
     }
 
     public List<UserIdentity> getUserPrivilegeObjectList() {
         return userPrivilegeObjectList;
     }
 
-    public List<String> getAllTypeList() {
-        return allTypeList;
+    public void setUserPrivilegeObjectList(List<UserIdentity> userPrivilegeObjectList) {
+        this.userPrivilegeObjectList = userPrivilegeObjectList;
     }
 
-    public String getRestrictType() {
-        return restrictType;
+    public String getPrivType() {
+        return privType;
     }
 
-    public String getRestrictName() {
-        return restrictName;
+    public boolean isAllDB() {
+        return isAllDB;
+    }
+
+    public String getDbName() {
+        return dbName;
+    }
+
+    public void setAllPrivilegeObject(String privilegeType, boolean isAllDB, String dbName) {
+        this.privType = privilegeType;
+        this.isAllDB = isAllDB;
+        this.dbName = dbName;
     }
 
     public String getFunctionName() {

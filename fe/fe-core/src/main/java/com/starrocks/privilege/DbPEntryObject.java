@@ -23,28 +23,29 @@ import java.util.List;
 import java.util.Objects;
 
 public class DbPEntryObject implements PEntryObject {
-    protected static final long ALL_DATABASE_ID = -2; // -2 represent all
+    public static final long ALL_DATABASE_ID = -2; // -2 represent all
+
     @SerializedName(value = "i")
     private long id;
+
+    public long getId() {
+        return id;
+    }
 
     public static DbPEntryObject generate(GlobalStateMgr mgr, List<String> tokens) throws PrivilegeException {
         if (tokens.size() != 1) {
             throw new PrivilegeException("invalid object tokens, should have one: " + tokens);
         }
+
+        if (tokens.get(0).equals("*")) {
+            return new DbPEntryObject(ALL_DATABASE_ID);
+        }
+
         Database database = mgr.getDb(tokens.get(0));
         if (database == null) {
             throw new PrivilegeException("cannot find db: " + tokens.get(0));
         }
         return new DbPEntryObject(database.getId());
-    }
-
-    public static DbPEntryObject generate(
-            List<String> allTypes, String restrictType, String restrictName) throws PrivilegeException {
-        // only support ON ALL DATABASE
-        if (allTypes.size() != 1 || restrictType != null || restrictName != null) {
-            throw new PrivilegeException("invalid ALL statement for databases! only support ON ALL DATABASES");
-        }
-        return new DbPEntryObject(ALL_DATABASE_ID);
     }
 
     protected DbPEntryObject(long dbId) {
@@ -53,7 +54,7 @@ public class DbPEntryObject implements PEntryObject {
 
     /**
      * if the current db matches other db, including fuzzy matching.
-     *
+     * <p>
      * this(db1), other(db1) -> true
      * this(db1), other(ALL) -> true
      * this(ALL), other(db1) -> false

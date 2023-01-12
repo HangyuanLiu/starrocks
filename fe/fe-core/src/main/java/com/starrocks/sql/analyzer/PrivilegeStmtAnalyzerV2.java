@@ -14,6 +14,7 @@
 
 package com.starrocks.sql.analyzer;
 
+import com.google.common.base.Preconditions;
 import com.starrocks.analysis.FunctionName;
 import com.starrocks.analysis.UserIdentity;
 import com.starrocks.authentication.AuthenticationException;
@@ -46,6 +47,7 @@ import com.starrocks.sql.ast.DropUserStmt;
 import com.starrocks.sql.ast.ExecuteAsStmt;
 import com.starrocks.sql.ast.FunctionArgsDef;
 import com.starrocks.sql.ast.SetRoleStmt;
+import com.starrocks.sql.ast.ShowGrantsStmt;
 import com.starrocks.sql.ast.StatementBase;
 
 import java.util.ArrayList;
@@ -167,7 +169,7 @@ public class PrivilegeStmtAnalyzerV2 {
 
         private FunctionName parseFunctionName(BaseGrantRevokePrivilegeStmt stmt)
                 throws PrivilegeException, AnalysisException {
-            stmt.setTypeId(privilegeManager.analyzeType(stmt.getPrivType()));
+            stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
             String[] name = stmt.getFunctionName().split("\\.");
             FunctionName functionName;
             if (stmt.getTypeId() == PrivilegeType.GLOBAL_FUNCTION.getId()) {
@@ -237,14 +239,14 @@ public class PrivilegeStmtAnalyzerV2 {
                     List<PEntryObject> objectList = new ArrayList<>();
                     if (stmt.getUserPrivilegeObjectList() != null) {
                         // objects are user
-                        stmt.setTypeId(privilegeManager.analyzeType(stmt.getPrivType()));
+                        stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
                         for (UserIdentity userIdentity : stmt.getUserPrivilegeObjectList()) {
                             analyseUser(userIdentity, true);
                             objectList.add(privilegeManager.analyzeUserObject(stmt.getPrivType(), userIdentity));
                         }
                     } else if (stmt.getPrivilegeObjectNameTokensList() != null) {
                         // normal objects
-                        stmt.setTypeId(privilegeManager.analyzeType(stmt.getPrivType()));
+                        stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
                         for (List<String> tokens : stmt.getPrivilegeObjectNameTokensList()) {
                             objectList.add(privilegeManager.analyzeObject(stmt.getPrivType(), tokens));
                         }
@@ -262,18 +264,16 @@ public class PrivilegeStmtAnalyzerV2 {
                         // TABLES -> TABLE
                         stmt.setPrivType(privilegeManager.analyzeTypeInPlural(stmt.getPrivType()));
                         // TABLE -> 0/1
-                        stmt.setTypeId(privilegeManager.analyzeType(stmt.getPrivType()));
-                        objectList.add(privilegeManager.analyzeObject(
-                                stmt.getPrivType(), stmt.getAllTypeList(), stmt.getRestrictType(),
-                                stmt.getRestrictName()));
+                        stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
+                        objectList.add(privilegeManager.analyzeObject(stmt.getPrivType(), stmt.getTokens()));
                     }
                     stmt.setObjectList(objectList);
                 } else {
-                    stmt.setTypeId(privilegeManager.analyzeType(stmt.getPrivType()));
+                    stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
                     stmt.setObjectList(null);
                 }
                 privilegeManager.validateGrant(stmt.getPrivType(), stmt.getPrivList(), stmt.getObjectList());
-                stmt.setActionList(privilegeManager.analyzeActionSet(stmt.getTypeId(), stmt.getPrivList()));
+                stmt.setActionSet(privilegeManager.analyzeActionSet(stmt.getTypeId(), stmt.getPrivList()));
             } catch (PrivilegeException | AnalysisException e) {
                 SemanticException exception = new SemanticException(e.getMessage());
                 exception.initCause(e);
@@ -302,10 +302,12 @@ public class PrivilegeStmtAnalyzerV2 {
         public Void visitGrantRevokeRoleStatement(BaseGrantRevokeRoleStmt stmt, ConnectContext session) {
             if (stmt.getUserIdent() != null) {
                 analyseUser(stmt.getUserIdent(), true);
-                validRoleName(stmt.getGranteeRole(), "Can not granted/revoke role to user", true);
+                stmt.getGranteeRole().forEach(role ->
+                        validRoleName(role, "Can not granted/revoke role to user", true));
             } else {
-                validRoleName(stmt.getGranteeRole(), "Can not granted/revoke role to role", true);
                 validRoleName(stmt.getRole(), "Can not granted/revoke role to role", true);
+                stmt.getGranteeRole().forEach(role ->
+                        validRoleName(role, "Can not granted/revoke role to user", true));
             }
             return null;
         }
@@ -319,5 +321,21 @@ public class PrivilegeStmtAnalyzerV2 {
             return null;
         }
 
+        @Override
+        public Void visitShowGrantsStatement(ShowGrantsStmt stmt, ConnectContext session) {
+            if (stmt.getUserIdent() != null) {
+                if (stmt.isAll()) {
+                    throw new SemanticException("Can not specified keyword ALL when specified user");
+                }
+                analyseUser(stmt.getUserIdent(), true);
+            } else {
+                if (!stmt.isAll()) {
+                    // self
+                    stmt.setUserIdent(session.getCurrentUserIdentity());
+                }
+            }
+            Preconditions.checkState(stmt.isAll() || session.getCurrentUserIdentity() != null);
+            return null;
+        }
     }
 }

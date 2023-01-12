@@ -19,7 +19,6 @@ import com.google.gson.annotations.SerializedName;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.Function;
 import com.starrocks.server.GlobalStateMgr;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 
@@ -29,10 +28,18 @@ public class FunctionPEntryObject implements PEntryObject {
     protected long databaseId;
     @SerializedName(value = "f")
     protected String functionSig;
-    protected static final long ALL_DATABASE_ID = -2; // -2 represent all databases
-    protected static final String ALL_FUNCTIONS_SIG = "AS"; // AS represent all functions
+    public static final long ALL_DATABASE_ID = -2; // -2 represent all databases
+    public static final String ALL_FUNCTIONS_SIG = "AS"; // AS represent all functions
 
     public static final String FUNC_NOT_FOUND = "funcNotFound";
+
+    public long getDatabaseId() {
+        return databaseId;
+    }
+
+    public String getFunctionSig() {
+        return functionSig;
+    }
 
     public static FunctionPEntryObject generate(GlobalStateMgr mgr, List<String> tokens) throws PrivilegeException {
         if (tokens.size() != 2) {
@@ -41,38 +48,27 @@ public class FunctionPEntryObject implements PEntryObject {
         if (tokens.get(1).equals(FUNC_NOT_FOUND)) {
             throw new PrivilegeException("func not found");
         }
-        Database database = mgr.getDb(tokens.get(0));
-        if (database == null) {
-            throw new PrivilegeException("cannot find db: " + tokens.get(0));
-        }
-        String funcSig = tokens.get(1);
-        return new FunctionPEntryObject(database.getId(), funcSig);
-    }
 
-    public static FunctionPEntryObject generate(
-            GlobalStateMgr mgr, List<String> allTypes, String restrictType, String restrictName)
-            throws PrivilegeException {
-        if (allTypes.size() == 1) {
-            if (StringUtils.isEmpty(restrictType)
-                    || !restrictType.equals(PrivilegeType.DATABASE.toString())
-                    || StringUtils.isEmpty(restrictName)) {
-                throw new PrivilegeException("ALL FUNCTIONS must be restricted with database!");
-            }
-
-            Database database = mgr.getDb(restrictName);
-            if (database == null) {
-                throw new PrivilegeException("cannot find db: " + restrictName);
-            }
-            return new FunctionPEntryObject(database.getId(), ALL_FUNCTIONS_SIG);
-        } else if (allTypes.size() == 2) {
-            if (!allTypes.get(1).equals(PrivilegeType.DATABASE.getPlural())) {
-                throw new PrivilegeException(
-                        "ALL FUNCTIONS must be restricted with ALL DATABASES instead of ALL " + allTypes.get(1));
-            }
-            return new FunctionPEntryObject(ALL_DATABASE_ID, ALL_FUNCTIONS_SIG);
+        long dbId;
+        String funcSig;
+        if (tokens.get(0).equals("*")) {
+            dbId = ALL_DATABASE_ID;
+            funcSig = ALL_FUNCTIONS_SIG;
         } else {
-            throw new PrivilegeException("invalid ALL statement for functions!");
+            Database database = mgr.getDb(tokens.get(0));
+            if (database == null) {
+                throw new PrivilegeException("cannot find db: " + tokens.get(0));
+            }
+            dbId = database.getId();
+
+            if (tokens.get(1).equals("*")) {
+                funcSig = ALL_FUNCTIONS_SIG;
+            } else {
+                funcSig = tokens.get(1);
+            }
         }
+
+        return new FunctionPEntryObject(dbId, funcSig);
     }
 
     protected FunctionPEntryObject(long databaseId, String functionSig) {

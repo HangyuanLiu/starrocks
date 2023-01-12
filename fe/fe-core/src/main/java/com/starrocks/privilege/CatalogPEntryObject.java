@@ -32,15 +32,23 @@ import java.util.Objects;
  * don't support create database under external catalog for now.
  */
 public class CatalogPEntryObject implements PEntryObject {
-    protected static final long ALL_CATALOG_ID = -1; // -1 represent all
+    public static final long ALL_CATALOG_ID = -1; // -1 represent all
     @SerializedName(value = "i")
     private long id;
+
+    public long getId() {
+        return id;
+    }
 
     public static CatalogPEntryObject generate(GlobalStateMgr mgr, List<String> tokens) throws PrivilegeException {
         if (tokens.size() != 1) {
             throw new PrivilegeException("invalid object tokens, should have only one, token: " + tokens);
         }
         String name = tokens.get(0);
+        if (name.equals("*")) {
+            return new CatalogPEntryObject(ALL_CATALOG_ID);
+        }
+
         long id;
         if (CatalogMgr.isInternalCatalog(name)) {
             id = InternalCatalog.DEFAULT_INTERNAL_CATALOG_ID;
@@ -52,14 +60,6 @@ public class CatalogPEntryObject implements PEntryObject {
             id = catalog.getId();
         }
         return new CatalogPEntryObject(id);
-    }
-
-    public static CatalogPEntryObject generate(
-            List<String> allTypes, String restrictType, String restrictName) throws PrivilegeException {
-        if (allTypes.size() != 1 || restrictType != null || restrictName != null) {
-            throw new PrivilegeException("invalid ALL statement for catalogs! only support ON ALL CATALOGS");
-        }
-        return new CatalogPEntryObject(ALL_CATALOG_ID);
     }
 
     protected CatalogPEntryObject(long id) {

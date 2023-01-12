@@ -28,18 +28,23 @@ public interface AuthorizationProvider {
      * return plugin id & version
      */
     short getPluginId();
+
     short getPluginVersion();
 
     /**
      * analyze type string -> id
      */
     Set<String> getAllTypes();
-    short getTypeIdByName(String typeStr) throws PrivilegeException;
+
+    PrivilegeType getPrivilegeType(String typeStr) throws PrivilegeException;
+
+    PrivilegeType getPrivilegeType(short typeId) throws PrivilegeException;
 
     /**
      * analyze action type id -> action
      */
     Collection<Action> getAllActions(short typeId) throws PrivilegeException;
+
     Action getAction(short typeId, String actionName) throws PrivilegeException;
 
     /**
@@ -53,20 +58,6 @@ public interface AuthorizationProvider {
     PEntryObject generateObject(String type, List<String> objectTokens, GlobalStateMgr mgr) throws PrivilegeException;
 
     PEntryObject generateUserObject(String type, UserIdentity user, GlobalStateMgr mgr) throws PrivilegeException;
-
-    /**
-     * generate PEntryObject by ON/IN ALL statements
-     * e.g. GRANT SELECT ON ALL TABLES IN DATABASE db
-     * grant create_table on all databases to userx
-     * ==> allTypeList: ["databases"], restrictType: null, restrictName: null
-     * grant select on all tables in database db1 to userx
-     * ==> allTypeList: ["tables"], restrictType: database, restrictName: db1
-     * grant select on all tables in all databases to userx
-     * ==> allTypeList: ["tables", "databases"], restrictType: null, restrictName: null
-     **/
-    PEntryObject generateObject(
-            String typeStr, List<String> allTypes, String restrictType, String restrictName, GlobalStateMgr mgr)
-            throws PrivilegeException;
 
     /**
      * validate if grant is allowed
@@ -98,7 +89,6 @@ public interface AuthorizationProvider {
             PrivilegeCollection currentPrivilegeCollection);
 
     /**
-     *
      * Search if any object in collection matches the specified object with required action.
      */
     boolean searchActionOnObject(

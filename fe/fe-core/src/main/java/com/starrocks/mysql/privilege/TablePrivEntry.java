@@ -149,5 +149,4 @@ public class TablePrivEntry extends DbPrivEntry {
         stmt.setAnalysedTable(privSet, new TablePattern(origDb, origTbl));
         return AstToStringBuilder.toString(stmt);
     }
-
 }
