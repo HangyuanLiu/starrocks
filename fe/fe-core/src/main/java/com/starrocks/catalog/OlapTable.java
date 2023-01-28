@@ -67,7 +67,6 @@ import com.starrocks.common.util.RangeUtils;
 import com.starrocks.common.util.Util;
 import com.starrocks.lake.StorageCacheInfo;
 import com.starrocks.persist.ColocatePersistInfo;
-import com.starrocks.persist.gson.GsonPostProcessable;
 import com.starrocks.qe.OriginStatement;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.CreateTableStmt;
@@ -111,7 +110,7 @@ import java.util.zip.Adler32;
  * Note: when you add a new olap table property, you should modify TableProperty class
  * ATTN: serialize by gson is used by MaterializedView
  */
-public class OlapTable extends Table implements GsonPostProcessable {
+public class OlapTable extends Table {
     private static final Logger LOG = LogManager.getLogger(OlapTable.class);
 
     public enum OlapTableState {
@@ -274,24 +273,8 @@ public class OlapTable extends Table implements GsonPostProcessable {
         if (tableProperty == null) {
             tableProperty = new TableProperty(Maps.newHashMap());
         }
-        Map<String, String> properties = curBinlogConfig.toProperties();
-
-        // log binlogAvilableVerison when it's valid
-        // need't log if it's invalid
-        // for replay updateBinlogConfigInfo will invalidate binlogAvailableVersion
-        if (curBinlogConfig.getBinlogEnable()) {
-            Collection<Partition> allPartitions = getAllPartitions();
-            Map<String, String> partitonIdToAvailableVersion = new HashMap<>();
-            allPartitions.forEach(partition -> partitonIdToAvailableVersion.put(
-                    TableProperty.BINLOG_PARTITION + partition.getId(),
-                    String.valueOf(partition.getVisibleVersion())));
-            properties.putAll(partitonIdToAvailableVersion);
-        }
-        tableProperty.modifyTableProperties(properties);
+        tableProperty.modifyTableProperties(curBinlogConfig.toProperties());
         tableProperty.setBinlogConfig(curBinlogConfig);
-        if (curBinlogConfig.getBinlogEnable()) {
-            tableProperty.buildBinlogAvailableVersion();
-        }
     }
 
     public boolean containsBinlogConfig() {
@@ -1056,7 +1039,7 @@ public class OlapTable extends Table implements GsonPostProcessable {
         if (colocateMaterializedViewNames.contains(mvName)) {
             if (colocateMaterializedViewNames.size() == 1 && isInColocateMvGroup()) {
                 ColocateTableIndex colocateTableIndex = GlobalStateMgr.getCurrentColocateIndex();
-                colocateTableIndex.removeTable(this.id);
+                colocateTableIndex.removeTable(this.id, null, false /* isReplay */);
                 setInColocateMvGroup(false);
                 setColocateGroup(null);
             }
@@ -1070,7 +1053,12 @@ public class OlapTable extends Table implements GsonPostProcessable {
         if (!colocateTableIndex.isColocateTable(this.id) && colocateMaterializedViewNames.contains(rollupIndexName)) {
             String dbName = GlobalStateMgr.getCurrentState().getDb(dbId).getFullName();
             String groupName = dbName + ":" + rollupIndexName;
-            colocateTableIndex.addTableToGroup(dbId, this, groupName, null);
+            try {
+                colocateTableIndex.addTableToGroup(dbId, this, groupName, null, false /* isReplay */);
+            } catch (DdlException e) {
+                // should not happen, just log an error here
+                LOG.error(e.getMessage());
+            }
             setInColocateMvGroup(true);
             setColocateGroup(groupName);
 
@@ -1434,6 +1422,7 @@ public class OlapTable extends Table implements GsonPostProcessable {
 
     @Override
     public void gsonPostProcess() throws IOException {
+        super.gsonPostProcess();
         // In the present, the fullSchema could be rebuilt by schema change while the properties is changed by MV.
         // After that, some properties of fullSchema and nameToColumn may be not same as properties of base columns.
         // So, here we need to rebuild the fullSchema to ensure the correctness of the properties.
@@ -1717,7 +1706,7 @@ public class OlapTable extends Table implements GsonPostProcessable {
         return false;
     }
 
-    public Boolean enableBinlog() {
+    public Boolean isBinlogEnabled() {
         if (tableProperty == null || tableProperty.getBinlogConfig() == null) {
             return false;
         }
@@ -2050,7 +2039,7 @@ public class OlapTable extends Table implements GsonPostProcessable {
 
     @Override
     public Runnable delete(boolean replay) {
-        GlobalStateMgr.getCurrentState().getLocalMetastore().onEraseTable(this);
+        GlobalStateMgr.getCurrentState().getLocalMetastore().onEraseTable(this, replay);
         return replay ? null : new DeleteOlapTableTask(this);
     }
 

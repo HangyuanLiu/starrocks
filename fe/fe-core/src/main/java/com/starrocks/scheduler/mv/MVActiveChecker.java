@@ -47,20 +47,19 @@ public class MVActiveChecker extends LeaderDaemon {
         List<String> dbNames = GlobalStateMgr.getCurrentState().getMetadataMgr().
                 listDbNames(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME);
 
-        long startMillis = System.currentTimeMillis();
         for (String dbName : dbNames) {
             Database db = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME,
                     dbName);
             for (MaterializedView mv : db.getMaterializedViews()) {
                 for (MaterializedView.BaseTableInfo baseTableInfo : mv.getBaseTableInfos()) {
                     Table table = baseTableInfo.getTable();
-                    if (table == null) {
+                    if (table == null && mv.isActive()) {
                         LOG.warn("tableName :{} do not exist. set materialized view:{} to invalid",
                                 baseTableInfo.getTableName(), mv.getId());
                         mv.setActive(false);
                         continue;
                     }
-                    if (table instanceof MaterializedView && !((MaterializedView) table).isActive()) {
+                    if (mv.isActive() && table instanceof MaterializedView && !((MaterializedView) table).isActive()) {
                         LOG.warn("tableName :{} is invalid. set materialized view:{} to invalid",
                                 baseTableInfo.getTableName(), mv.getId());
                         mv.setActive(false);
@@ -71,8 +70,5 @@ public class MVActiveChecker extends LeaderDaemon {
                 }
             }
         }
-
-        long duration = System.currentTimeMillis() - startMillis;
-        LOG.info("[MVActiveChecker] finish check all materialized view in {}ms", duration);
     }
 }

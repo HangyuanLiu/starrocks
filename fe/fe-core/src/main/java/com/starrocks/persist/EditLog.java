@@ -738,6 +738,8 @@ public class EditLog {
                 case OperationType.OP_MODIFY_REPLICATION_NUM:
                 case OperationType.OP_MODIFY_WRITE_QUORUM:
                 case OperationType.OP_MODIFY_REPLICATED_STORAGE:
+                case OperationType.OP_MODIFY_BINLOG_AVAILABLE_VERSION:
+                case OperationType.OP_MODIFY_BINLOG_CONFIG:
                 case OperationType.OP_MODIFY_ENABLE_PERSISTENT_INDEX: {
                     ModifyTablePropertyOperationLog modifyTablePropertyOperationLog =
                             (ModifyTablePropertyOperationLog) journal.getData();
@@ -941,6 +943,11 @@ public class EditLog {
                     MVManager.getInstance().replay(job);
                     break;
                 }
+                case OperationType.OP_MV_EPOCH_UPDATE: {
+                    MVEpoch epoch = (MVEpoch) journal.getData();
+                    MVManager.getInstance().replayEpoch(epoch);
+                    break;
+                }
                 default: {
                     if (Config.ignore_unknown_log_id) {
                         LOG.warn("UNKNOWN Operation Type {}", opCode);
@@ -1019,8 +1026,8 @@ public class EditLog {
                     Thread.sleep(1000);
                 }
                 // return true if JournalWriter wrote log successfully
-                // return false if JournalWriter wrote log failed, which WON'T HAPPEN for now because on such scenerio JournalWriter
-                // will simplely exit the whole process
+                // return false if JournalWriter wrote log failed, which WON'T HAPPEN for now because on such
+                // scenario JournalWriter will simply exit the whole process
                 result = task.get();
                 break;
             } catch (InterruptedException | ExecutionException e) {

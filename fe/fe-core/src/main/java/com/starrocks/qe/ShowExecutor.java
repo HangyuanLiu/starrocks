@@ -61,6 +61,7 @@ import com.starrocks.catalog.Function;
 import com.starrocks.catalog.HiveMetaStoreTable;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.Index;
+import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.catalog.LocalTablet;
 import com.starrocks.catalog.MaterializedIndex;
 import com.starrocks.catalog.MaterializedIndex.IndexExtState;
@@ -95,6 +96,7 @@ import com.starrocks.common.proc.ProcNodeInterface;
 import com.starrocks.common.proc.SchemaChangeProcDir;
 import com.starrocks.common.util.ListComparator;
 import com.starrocks.common.util.OrderByPair;
+import com.starrocks.common.util.PrintableMap;
 import com.starrocks.lake.LakeTable;
 import com.starrocks.load.DeleteHandler;
 import com.starrocks.load.ExportJob;
@@ -144,6 +146,7 @@ import com.starrocks.sql.ast.ShowCollationStmt;
 import com.starrocks.sql.ast.ShowColumnStmt;
 import com.starrocks.sql.ast.ShowComputeNodesStmt;
 import com.starrocks.sql.ast.ShowCreateDbStmt;
+import com.starrocks.sql.ast.ShowCreateExternalCatalogStmt;
 import com.starrocks.sql.ast.ShowCreateTableStmt;
 import com.starrocks.sql.ast.ShowDataStmt;
 import com.starrocks.sql.ast.ShowDbStmt;
@@ -334,6 +337,8 @@ public class ShowExecutor {
             handleShowComputeNodes();
         } else if (stmt instanceof ShowAuthenticationStmt) {
             handleShowAuthentication();
+        }  else if (stmt instanceof ShowCreateExternalCatalogStmt) {
+            handleShowCreateExternalCatalog();
         } else {
             handleEmtpy();
         }
@@ -1319,7 +1324,7 @@ public class ShowExecutor {
         ProcNodeInterface procNodeI = showStmt.getNode();
         Preconditions.checkNotNull(procNodeI);
         List<List<String>> rows;
-        //Only SchemaChangeProc support where/order by/limit syntax
+        // Only SchemaChangeProc support where/order by/limit syntax
         if (procNodeI instanceof SchemaChangeProcDir) {
             rows = ((SchemaChangeProcDir) procNodeI).fetchResultByFilter(showStmt.getFilterMap(),
                     showStmt.getOrderPairs(), showStmt.getLimitElement()).getRows();
@@ -2158,5 +2163,33 @@ public class ShowExecutor {
         }
 
         return returnRows;
+    }
+
+    private void handleShowCreateExternalCatalog() {
+        ShowCreateExternalCatalogStmt showStmt = (ShowCreateExternalCatalogStmt) stmt;
+        String catalogName = showStmt.getCatalogName();
+        Catalog catalog =  connectContext.getGlobalStateMgr().getCatalogMgr().getCatalogByName(catalogName);
+        List<List<String>> rows = Lists.newArrayList();
+        if (InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME.equalsIgnoreCase(catalogName)) {
+            resultSet = new ShowResultSet(stmt.getMetaData(), rows);
+            return;
+        }
+        // Create external catalog catalogName (
+        StringBuilder createCatalogSql = new StringBuilder();
+        createCatalogSql.append("CREATE EXTERNAL CATALOG ")
+                .append("`").append(catalogName).append("`")
+                .append("\n");
+
+        // Comment
+        String comment = catalog.getComment();
+        if (comment != null) {
+            createCatalogSql.append("comment \"").append(catalog.getComment()).append("\"\n");
+        }
+        // Properties
+        createCatalogSql.append("PROPERTIES (")
+                .append(new PrintableMap<>(catalog.getConfig(), " = ", true, true))
+                .append("\n)");
+        rows.add(Lists.newArrayList(catalogName, createCatalogSql.toString()));
+        resultSet = new ShowResultSet(stmt.getMetaData(), rows);
     }
 }

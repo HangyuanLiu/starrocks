@@ -76,12 +76,14 @@ import com.starrocks.catalog.HiveTable;
 import com.starrocks.catalog.HudiTable;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.Index;
+import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.catalog.JDBCTable;
 import com.starrocks.catalog.KeysType;
 import com.starrocks.catalog.MaterializedIndexMeta;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.MetaReplayState;
 import com.starrocks.catalog.MetaVersion;
+import com.starrocks.catalog.MvId;
 import com.starrocks.catalog.MysqlTable;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Partition;
@@ -1362,9 +1364,50 @@ public class GlobalStateMgr {
             domainResolver = new DomainResolver(auth);
         }
 
+        try {
+            postLoadImage();
+        } catch (Exception t) {
+            LOG.warn("there is an exception during processing after load image. exception:", t);
+        }
+
         long loadImageEndTime = System.currentTimeMillis();
         this.imageJournalId = storage.getImageJournalId();
         LOG.info("finished to load image in " + (loadImageEndTime - loadImageStartTime) + " ms");
+    }
+
+    private void postLoadImage() {
+        processMvRelatedMeta();
+    }
+
+    private void processMvRelatedMeta() {
+        List<String> dbNames = metadataMgr.listDbNames(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME);
+
+        long startMillis = System.currentTimeMillis();
+        for (String dbName : dbNames) {
+            Database db = metadataMgr.getDb(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName);
+            for (MaterializedView mv : db.getMaterializedViews()) {
+                for (MaterializedView.BaseTableInfo baseTableInfo : mv.getBaseTableInfos()) {
+                    Table table = baseTableInfo.getTable();
+                    if (table == null) {
+                        LOG.warn("tableName :{} do not exist. set materialized view:{} to invalid",
+                                baseTableInfo.getTableName(), mv.getId());
+                        mv.setActive(false);
+                        continue;
+                    }
+                    if (table instanceof MaterializedView && !((MaterializedView) table).isActive()) {
+                        LOG.warn("tableName :{} is invalid. set materialized view:{} to invalid",
+                                baseTableInfo.getTableName(), mv.getId());
+                        mv.setActive(false);
+                        continue;
+                    }
+                    MvId mvId = new MvId(db.getId(), mv.getId());
+                    table.addRelatedMaterializedView(mvId);
+                }
+            }
+        }
+
+        long duration = System.currentTimeMillis() - startMillis;
+        LOG.info("finish processing all tables' related materialized views in {}ms", duration);
     }
 
     public long loadHeader(DataInputStream dis, long checksum) throws IOException {
@@ -2276,12 +2319,10 @@ public class GlobalStateMgr {
                 sb.append(olapTable.enablePersistentIndex()).append("\"");
 
                 // replicated_storage
-                if (olapTable.enableReplicatedStorage()) {
-                    sb.append(StatsConstants.TABLE_PROPERTY_SEPARATOR)
-                            .append(PropertyAnalyzer.PROPERTIES_REPLICATED_STORAGE)
-                            .append("\" = \"");
-                    sb.append(olapTable.enableReplicatedStorage()).append("\"");
-                }
+                sb.append(StatsConstants.TABLE_PROPERTY_SEPARATOR)
+                        .append(PropertyAnalyzer.PROPERTIES_REPLICATED_STORAGE)
+                        .append("\" = \"");
+                sb.append(olapTable.enableReplicatedStorage()).append("\"");
 
                 // binlog config
                 if (olapTable.containsBinlogConfig()) {
@@ -3126,6 +3167,11 @@ public class GlobalStateMgr {
             ctx.setCurrentCatalog(newCatalogName);
         }
 
+        if (metadataMgr.getDb(ctx.getCurrentCatalog(), dbName) == null) {
+            LOG.debug("Unknown catalog '%s' and db '%s'", ctx.getCurrentCatalog(), dbName);
+            ErrorReport.reportDdlException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
+        }
+
         // Check auth for internal catalog.
         // Here we check the request permission that sent by the mysql client or jdbc.
         // So we didn't check UseDbStmt permission in PrivilegeChecker.
@@ -3141,11 +3187,6 @@ public class GlobalStateMgr {
                             ctx.getQualifiedUser(), dbName);
                 }
             }
-        }
-
-        if (metadataMgr.getDb(ctx.getCurrentCatalog(), dbName) == null) {
-            LOG.debug("Unknown catalog '%s' and db '%s'", ctx.getCurrentCatalog(), dbName);
-            ErrorReport.reportDdlException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
         }
 
         ctx.setDatabase(dbName);
