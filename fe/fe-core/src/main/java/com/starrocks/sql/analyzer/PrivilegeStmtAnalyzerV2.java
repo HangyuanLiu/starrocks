@@ -176,7 +176,7 @@ public class PrivilegeStmtAnalyzerV2 {
             }
 
             if (stmt.hasRole()) {
-                throw new SemanticException("role not supported!");
+                validRoleName(stmt.getQualifiedRole(), "Valid role name fail", true);
             }
             return null;
         }
@@ -322,10 +322,8 @@ public class PrivilegeStmtAnalyzerV2 {
 
         @Override
         public Void visitSetRoleStatement(SetRoleStmt stmt, ConnectContext session) {
-            if (stmt.getRoles() != null) {
-                for (String roleName : stmt.getRoles()) {
-                    validRoleName(roleName, "Cannot set role", true);
-                }
+            for (String roleName : stmt.getRoles()) {
+                validRoleName(roleName, "Cannot set role", true);
             }
             return null;
         }

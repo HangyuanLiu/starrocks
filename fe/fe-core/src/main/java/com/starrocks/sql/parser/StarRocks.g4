@@ -182,7 +182,6 @@ statement
     | showTabletStatement
     | showTransactionStatement
     | showTriggersStatement
-    | showUserStatement
     | showUserPropertyStatement
     | showVariablesStatement
     | showWarningStatement
@@ -199,9 +198,12 @@ statement
     | createRoleStatement
     | grantPrivilegeStatement
     | revokePrivilegeStatement
+    | showUserStatement
     | showRolesStatement
     | showGrantsStatement
     | dropRoleStatement
+    | setRoleStatement
+    | setDefaultRoleStatement
 
     // Backup Restore Statement
     | backupStatement
@@ -237,7 +239,6 @@ statement
     // Set Statement
     | setStatement
     | setUserPropertyStatement
-    | setRoleStatement
 
     //Unsupported Statement
     | unsupportedStatement
@@ -1123,10 +1124,6 @@ showTriggersStatement
     : SHOW FULL? TRIGGERS ((FROM | IN) catalog=qualifiedName)? ((LIKE pattern=string) | (WHERE expression))?
     ;
 
-showUserStatement
-    : SHOW USER
-    ;
-
 showUserPropertyStatement
     : SHOW PROPERTY (FOR string)? (LIKE string)?
     ;
@@ -1223,12 +1220,14 @@ revokePrivilegeStatement
     ;
 
 grantRoleStatement
-    : GRANT identifierOrStringList TO user                                                              #grantRoleToUser
+    : GRANT identifierOrStringList TO user                                                              #grantRole
+    | GRANT identifierOrStringList TO USER user                                                         #grantRoleToUser
     | GRANT identifierOrStringList TO ROLE identifierOrString                                           #grantRoleToRole
     ;
 
 revokeRoleStatement
-    : REVOKE identifierOrStringList FROM user                                                           #revokeRoleFromUser
+    : REVOKE identifierOrStringList FROM user                                                           #revokeRole
+    | REVOKE identifierOrStringList FROM USER user                                                      #revokeRoleFromUser
     | REVOKE identifierOrStringList FROM ROLE identifierOrString                                        #revokeRoleFromRole
     ;
 
@@ -1238,6 +1237,7 @@ executeAsStatement
 
 alterUserStatement
     : ALTER USER user authOption
+    | ALTER USER user DEFAULT ROLE (NONE| ALL | roleList)
     ;
 
 createUserStatement
@@ -1257,19 +1257,32 @@ createRoleStatement
     : CREATE ROLE identifierOrString
     ;
 
+showUserStatement
+    : SHOW (USER | USERS)
+    ;
+
 showRolesStatement
     : SHOW ROLES
     ;
 
 showGrantsStatement
-    : SHOW ALL? GRANTS
-    | SHOW GRANTS FOR user
+    : SHOW GRANTS FOR USER user
     | SHOW GRANTS FOR ROLE identifierOrString
     ;
 
 dropRoleStatement
     : DROP ROLE identifierOrString
     ;
+
+setRoleStatement
+    : SET ROLE DEFAULT
+    | SET ROLE NONE
+    | SET ROLE ALL (EXCEPT roleList)?
+    | SET ROLE roleList
+    ;
+
+setDefaultRoleStatement
+    : SET DEFAULT ROLE (NONE | ALL | roleList) TO user;
 
 // ---------------------------------------- Backup Restore Statement ---------------------------------------------------
 
@@ -1430,12 +1443,7 @@ setUserPropertyStatement
     ;
 
 roleList
-    : string (',' string)*
-    ;
-
-setRoleStatement
-    : SET ROLE roleList                #setRole
-    | SET ROLE ALL (EXCEPT roleList)?  #setRoleAll
+    : identifierOrString (',' identifierOrString)*
     ;
 
 unsupportedStatement
@@ -1765,6 +1773,7 @@ informationFunctionExpression
     | name = USER '(' ')'
     | name = CONNECTION_ID '(' ')'
     | name = CURRENT_USER ('(' ')')?
+    | name = CURRENT_ROLE '(' ')'
     ;
 
 specialDateTimeExpression
@@ -2142,7 +2151,7 @@ nonReserved
     | JOB
     | LABEL | LAST | LESS | LEVEL | LIST | LOCAL | LOGICAL
     | MANUAL | MAP | MATERIALIZED | MAX | META | MIN | MINUTE | MODE | MODIFY | MONTH | MERGE
-    | NAME | NAMES | NEGATIVE | NO | NODE | NULLS
+    | NAME | NAMES | NEGATIVE | NO | NODE | NONE | NULLS
     | OBSERVER | OF | OFFSET | ONLY | OPEN | OPTION | OVERWRITE
     | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | PRECEDING | PROC | PROCESSLIST
     | PROPERTIES | PROPERTY
@@ -2153,7 +2162,7 @@ nonReserved
     | STORAGE| STRING | STRUCT | STATS | SUBMIT | SYNC | SYSTEM_TIME
     | TABLES | TABLET | TASK | TEMPORARY | TIMESTAMP | TIMESTAMPADD | TIMESTAMPDIFF | THAN | TIME | TRANSACTION
     | TRIGGERS | TRUNCATE | TYPE | TYPES
-    | UNBOUNDED | UNCOMMITTED | UNINSTALL | USER
+    | UNBOUNDED | UNCOMMITTED | UNINSTALL | USER | USERS
     | VALUE | VARIABLES | VIEW | VERBOSE
     | WARNINGS | WEEK | WHITELIST | WORK | WRITE
     | YEAR

@@ -36,7 +36,7 @@ package com.starrocks.analysis;
 
 // Description of user in SQL statement
 public class UserDesc {
-    private UserIdentity userIdent;
+    private final UserIdentity userIdent;
     private String password;
     private boolean isPasswordPlain;
     private String authPlugin;

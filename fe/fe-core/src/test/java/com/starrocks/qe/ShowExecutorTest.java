@@ -783,7 +783,7 @@ public class ShowExecutorTest {
     @Test
     public void testShowUser() throws AnalysisException, DdlException {
         ctx.setQualifiedUser("root");
-        ShowUserStmt stmt = new ShowUserStmt();
+        ShowUserStmt stmt = new ShowUserStmt(false);
         ShowExecutor executor = new ShowExecutor(ctx, stmt);
         ShowResultSet resultSet = executor.execute();
         Assert.assertTrue(resultSet.next());

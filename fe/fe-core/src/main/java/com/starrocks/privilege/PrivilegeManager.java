@@ -72,8 +72,8 @@ public class PrivilegeManager {
     public static final Set<String> BUILT_IN_ROLE_NAMES =
             new HashSet<>(Arrays.asList("root", "db_admin", "user_admin", "cluster_admin", "public"));
 
-    public static final Set<Long> BUILD_IN_ROLE_IDS = new HashSet<>(Arrays.asList(
-            ROOT_ROLE_ID, DB_ADMIN_ROLE_ID, CLUSTER_ADMIN_ROLE_ID, USER_ADMIN_ROLE_ID, PUBLIC_ROLE_ID));
+    public static final Set<Long> IMMUTABLE_BUILT_IN_ROLE_IDS = new HashSet<>(Arrays.asList(
+            ROOT_ROLE_ID, DB_ADMIN_ROLE_ID, CLUSTER_ADMIN_ROLE_ID, USER_ADMIN_ROLE_ID));
 
     @SerializedName(value = "r")
     private final Map<String, Long> roleNameToId;
@@ -212,7 +212,9 @@ public class PrivilegeManager {
 
             // 6. builtin user root
             UserPrivilegeCollection rootCollection = new UserPrivilegeCollection();
-            rootCollection.grantRole(getRoleIdByNameNoLock(ROOT_ROLE_NAME));
+            RolePrivilegeCollection rootRolePrivCollection =
+                    getRolePrivilegeCollectionUnlocked(getRoleIdByNameNoLock(ROOT_ROLE_NAME), true);
+            rootCollection.merge(rootRolePrivCollection);
             userToPrivilegeCollection.put(UserIdentity.createAnalyzedUserIdentWithIp("root", "%"), rootCollection);
         } catch (PrivilegeException e) {
             // all initial privileges are supposed to be legal
@@ -615,10 +617,12 @@ public class PrivilegeManager {
         provider.validateGrant(type, actions, objects);
     }
 
-    private static ConnectContext createTmpContext(UserIdentity currentUser) {
+    private static ConnectContext createTmpContext(UserIdentity currentUser) throws PrivilegeException {
         ConnectContext tmpContext = new ConnectContext();
         tmpContext.setCurrentUserIdentity(currentUser);
         tmpContext.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
+        tmpContext.setCurrentRoleIds(currentUser);
+
         return tmpContext;
     }
 
@@ -636,7 +640,14 @@ public class PrivilegeManager {
 
     public static boolean checkSystemAction(
             UserIdentity currentUser, PrivilegeType.SystemAction action) {
-        return checkSystemAction(createTmpContext(currentUser), action);
+        ConnectContext tmpContext;
+        try {
+            tmpContext = createTmpContext(currentUser);
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking action[{}] on system", action, e);
+            return false;
+        }
+        return checkSystemAction(tmpContext, action);
     }
 
     public static boolean checkTableAction(
@@ -653,7 +664,14 @@ public class PrivilegeManager {
 
     public static boolean checkTableAction(
             UserIdentity currentUser, String db, String table, PrivilegeType.TableAction action) {
-        return checkTableAction(createTmpContext(currentUser), db, table, action);
+        ConnectContext tmpContext;
+        try {
+            tmpContext = createTmpContext(currentUser);
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking action[{}] on db {}", action, db, e);
+            return false;
+        }
+        return checkTableAction(tmpContext, db, table, action);
     }
 
     public static boolean checkDbAction(ConnectContext context, String db, PrivilegeType.DbAction action) {
@@ -801,9 +819,16 @@ public class PrivilegeManager {
         }
     }
 
-    public static boolean checkAnyActionOnMaterializedView(
-            UserIdentity currentUser, String db, String materializedView) {
-        return checkAnyActionOnMaterializedView(createTmpContext(currentUser), db, materializedView);
+    public static boolean checkAnyActionOnMaterializedView(UserIdentity currentUser, String db, String materializedView) {
+        ConnectContext tmpContext;
+        try {
+            tmpContext = createTmpContext(currentUser);
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking any action on materialized view {}", db, e);
+            return false;
+        }
+
+        return checkAnyActionOnMaterializedView(tmpContext, db, materializedView);
     }
 
     public static boolean checkAnyActionOnView(
@@ -823,7 +848,15 @@ public class PrivilegeManager {
 
     public static boolean checkAnyActionOnView(
             UserIdentity currentUser, String db, String view) {
-        return checkAnyActionOnView(createTmpContext(currentUser), db, view);
+        ConnectContext tmpContext;
+        try {
+            tmpContext = createTmpContext(currentUser);
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking any action on view {}", db, e);
+            return false;
+        }
+
+        return checkAnyActionOnView(tmpContext, db, view);
     }
 
     /**
@@ -888,7 +921,15 @@ public class PrivilegeManager {
     }
 
     public static boolean checkAnyActionOnOrInDb(UserIdentity currentUser, String db) {
-        return checkAnyActionOnOrInDb(createTmpContext(currentUser), db);
+        ConnectContext tmpContext;
+        try {
+            tmpContext = createTmpContext(currentUser);
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking any action in db {}", db, e);
+            return false;
+        }
+
+        return checkAnyActionOnOrInDb(tmpContext, db);
     }
 
     /**
@@ -958,7 +999,15 @@ public class PrivilegeManager {
     }
 
     public static boolean checkAnyActionOnTable(UserIdentity currentUser, String db, String table) {
-        return checkAnyActionOnTable(createTmpContext(currentUser), db, table);
+        ConnectContext tmpContext;
+        try {
+            tmpContext = createTmpContext(currentUser);
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking any action on db {}", db, e);
+            return false;
+        }
+
+        return checkAnyActionOnTable(tmpContext, db, table);
     }
 
     public static Set<Long> getOwnedRolesByUser(UserIdentity userIdentity) throws PrivilegeException {
@@ -1406,6 +1455,48 @@ public class PrivilegeManager {
         }
     }
 
+    public void setUserDefaultRole(Set<Long> roleName, UserIdentity user) throws PrivilegeException {
+        userWriteLock();
+        try {
+            UserPrivilegeCollection collection = getUserPrivilegeCollectionUnlocked(user);
+
+            roleReadLock();
+            try {
+                collection.setDefaultRoleIds(roleName);
+            } finally {
+                roleReadUnlock();
+            }
+
+            globalStateMgr.getEditLog().logUpdateUserPrivilege(
+                    user, collection, provider.getPluginId(), provider.getPluginVersion());
+            invalidateUserInCache(user);
+            LOG.info("grant role {} to user {}", roleName, user);
+        } finally {
+            userWriteUnlock();
+        }
+    }
+
+    public Set<Long> getDefaultRoleIdsByUser(UserIdentity user) throws PrivilegeException {
+        userReadLock();
+        try {
+            Set<Long> ret = new HashSet<>();
+            roleReadLock();
+            try {
+                for (long roleId : getUserPrivilegeCollectionUnlocked(user).getDefaultRoleIds()) {
+                    // role may be removed
+                    if (getRolePrivilegeCollectionUnlocked(roleId, false) != null) {
+                        ret.add(roleId);
+                    }
+                }
+                return ret;
+            } finally {
+                roleReadUnlock();
+            }
+        } finally {
+            userReadUnlock();
+        }
+    }
+
     public List<String> getRoleNamesByUser(UserIdentity user) throws PrivilegeException {
         try {
             userReadLock();
@@ -1710,6 +1801,13 @@ public class PrivilegeManager {
                     UserIdentity userIdentity = (UserIdentity) reader.readJson(UserIdentity.class);
                     UserPrivilegeCollection collection =
                             (UserPrivilegeCollection) reader.readJson(UserPrivilegeCollection.class);
+
+                    UserIdentity rootUser = UserIdentity.createAnalyzedUserIdentWithIp("root", "%");
+                    if (userIdentity.equals(rootUser)) {
+                        UserPrivilegeCollection rootUserPrivCollection = ret.getUserPrivilegeCollectionUnlocked(rootUser);
+                        collection.typeToPrivilegeEntryList = rootUserPrivCollection.typeToPrivilegeEntryList;
+                    }
+
                     // upgrade meta to current version
                     ret.provider.upgradePrivilegeCollection(collection, ret.pluginId, ret.pluginVersion);
                     ret.userToPrivilegeCollection.put(userIdentity, collection);
@@ -1720,12 +1818,16 @@ public class PrivilegeManager {
                 for (int i = 0; i != numRole; ++i) {
                     // 2 json for each role(kv)
                     Long roleId = (Long) reader.readJson(Long.class);
-
                     RolePrivilegeCollection collection =
                             (RolePrivilegeCollection) reader.readJson(RolePrivilegeCollection.class);
-                    if (BUILD_IN_ROLE_IDS.contains(roleId)) {
-                        RolePrivilegeCollection buildInRolePrivilegeCollection = ret.roleIdToPrivilegeCollection.get(roleId);
-                        collection.typeToPrivilegeEntryList = buildInRolePrivilegeCollection.getTypeToPrivilegeEntryList();
+
+                    // Use hard-code PrivilegeCollection in the memory as the built-in role permission.
+                    // The reason why need to replay from the image here
+                    // is because the associated information of the role-id is stored in the image.
+                    if (IMMUTABLE_BUILT_IN_ROLE_IDS.contains(roleId)) {
+                        RolePrivilegeCollection builtInRolePrivilegeCollection =
+                                ret.roleIdToPrivilegeCollection.get(roleId);
+                        collection.typeToPrivilegeEntryList = builtInRolePrivilegeCollection.typeToPrivilegeEntryList;
                     }
                     // upgrade meta to current version
                     ret.provider.upgradePrivilegeCollection(collection, ret.pluginId, ret.pluginVersion);

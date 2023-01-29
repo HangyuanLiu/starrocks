@@ -48,6 +48,7 @@ import com.starrocks.mysql.MysqlSerializer;
 import com.starrocks.mysql.ssl.SSLChannel;
 import com.starrocks.mysql.ssl.SSLChannelImpClassLoader;
 import com.starrocks.plugin.AuditEvent.AuditEventBuilder;
+import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.PlannerProfile;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -304,6 +305,16 @@ public class ConnectContext {
 
     public Set<Long> getCurrentRoleIds() {
         return currentRoleIds;
+    }
+
+    public void setCurrentRoleIds(UserIdentity user) throws PrivilegeException {
+        Set<Long> defaultRoleIds;
+        if (this.getSessionVariable().isActivateAllRolesOnLogin()) {
+            defaultRoleIds = this.getGlobalStateMgr().getPrivilegeManager().getRoleIdsByUser(user);
+        } else {
+            defaultRoleIds = this.getGlobalStateMgr().getPrivilegeManager().getDefaultRoleIdsByUser(user);
+        }
+        this.currentRoleIds = defaultRoleIds;
     }
 
     public void setCurrentRoleIds(Set<Long> roleIds) {

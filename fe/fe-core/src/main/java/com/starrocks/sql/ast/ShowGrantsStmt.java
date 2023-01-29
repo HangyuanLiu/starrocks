@@ -57,28 +57,17 @@ public class ShowGrantsStmt extends ShowStmt {
         META_DATA_V2 = builder.build();
     }
 
-    private final boolean isAll;
     private UserIdentity userIdent;
-    private String role;
-
-    public ShowGrantsStmt() {
-        this.isAll = true;
-    }
+    private final String role;
 
     public ShowGrantsStmt(UserIdentity userIdent) {
-        this.isAll = false;
         this.userIdent = userIdent;
         this.role = null;
     }
 
     public ShowGrantsStmt(String role) {
-        this.isAll = false;
         this.userIdent = null;
         this.role = role;
-    }
-
-    public boolean isAll() {
-        return isAll;
     }
 
     public UserIdentity getUserIdent() {

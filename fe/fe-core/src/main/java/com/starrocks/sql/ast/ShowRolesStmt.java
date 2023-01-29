@@ -41,15 +41,9 @@ public class ShowRolesStmt extends ShowStmt {
     static {
         ShowResultSetMetaData.Builder builder = ShowResultSetMetaData.builder();
 
-        builder.addColumn(new Column("TO_TYPE", ScalarType.createVarchar(300)));
-        builder.addColumn(new Column("TO_NAME", ScalarType.createVarchar(300)));
-        builder.addColumn(new Column("FROM_ROLE", ScalarType.createVarchar(300)));
+        builder.addColumn(new Column("Name", ScalarType.createVarchar(100)));
 
         META_DATA_V2 = builder.build();
-    }
-
-    public ShowRolesStmt() {
-
     }
 
     @Override
