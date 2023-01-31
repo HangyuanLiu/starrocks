@@ -12,11 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package com.starrocks.sql.common;
 
-package com.starrocks.privilege;
+import com.starrocks.common.Config;
 
-public class PEntryObjNotExistException extends PrivilegeException {
-    public PEntryObjNotExistException(String msg) {
-        super(msg);
+public enum EngineType {
+    OLAP,
+    MYSQL,
+    BROKER,
+    ELASTICSEARCH,
+    HIVE,
+    ICEBERG,
+    HUDI,
+    JDBC,
+    STARROCKS,
+    FILE;
+
+    public static EngineType defaultEngine() {
+        return Config.use_staros ? STARROCKS : OLAP;
     }
 }

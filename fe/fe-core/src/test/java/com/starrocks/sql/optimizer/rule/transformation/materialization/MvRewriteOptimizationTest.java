@@ -20,7 +20,6 @@ import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.Config;
-import com.starrocks.common.TimeoutException;
 import com.starrocks.pseudocluster.PseudoCluster;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.scheduler.Task;
@@ -44,7 +43,7 @@ public class MvRewriteOptimizationTest {
 
     @BeforeClass
     public static void beforeClass() throws Exception {
-        Config.dynamic_partition_check_interval_seconds = 1;
+        Config.dynamic_partition_check_interval_seconds = 10000;
         Config.bdbje_heartbeat_timeout_second = 60;
         Config.bdbje_replica_ack_timeout_second = 60;
         Config.bdbje_lock_timeout_second = 60;
@@ -273,6 +272,13 @@ public class MvRewriteOptimizationTest {
                 "     PREAGGREGATION: ON\n" +
                 "     partitions=1/1\n" +
                 "     rollup: mv_1");
+
+        String query7 = "select empid, deptno from emps where empid = 5";
+        String plan7 = getCostsFragmentPlan(query7);
+        PlanTestBase.assertContains(plan7, "mv_1");
+        // column prune
+        PlanTestBase.assertNotContains(plan7, "name-->");
+        PlanTestBase.assertNotContains(plan7, "salary-->");
 
         connectContext.getSessionVariable().setEnableMaterializedViewRewrite(false);
         String query6 = "select empid, deptno, name, salary from emps where empid = 5";
@@ -556,6 +562,9 @@ public class MvRewriteOptimizationTest {
                 " from t0 join test_all_type on t0.v1 = test_all_type.t1d where t0.v1 < 100";
         String plan1 = getFragmentPlan(query1);
         PlanTestBase.assertContains(plan1, "join_mv_1");
+        String costPlan1 = getCostsFragmentPlan(query1);
+        // column prune
+        PlanTestBase.assertNotContains(costPlan1, "t1d-->");
 
         // t1e is not the output of mv
         String query2 = "SELECT (test_all_type.t1d + 1) * 2, test_all_type.t1c, test_all_type.t1e" +
@@ -637,6 +646,31 @@ public class MvRewriteOptimizationTest {
         String query11 = "select empid, depts.deptno from emps join depts using (deptno) where empid = 1";
         String plan11 = getFragmentPlan(query11);
         PlanTestBase.assertContains(plan11, "join_mv_3");
+        String costPlan2 = getFragmentPlan(query11);
+        PlanTestBase.assertContains(costPlan2, "join_mv_3");
+        PlanTestBase.assertNotContains(costPlan2, "name-->");
+        String newQuery11 = "select depts.deptno from emps join depts using (deptno) where empid = 1";
+        String costPlan3 = getCostsFragmentPlan(newQuery11);
+        PlanTestBase.assertContains(costPlan3, "join_mv_3");
+        // empid is kept for predicate
+        PlanTestBase.assertContains(costPlan3, "empid-->", "deptno-->");
+        // column prune
+        PlanTestBase.assertNotContains(costPlan3, "name-->");
+
+        String newQuery12 = "select depts.name from emps join depts using (deptno)";
+        String costPlan4 = getCostsFragmentPlan(newQuery12);
+        PlanTestBase.assertContains(costPlan4, "join_mv_3");
+        PlanTestBase.assertContains(costPlan4, "name-->");
+        // deptno is not projected
+        PlanTestBase.assertNotContains(costPlan4, "deptno-->");
+
+        // join to scan with projection
+        String newQuery13 = "select upper(depts.name) from emps join depts using (deptno)";
+        String costPlan5 = getCostsFragmentPlan(newQuery13);
+        PlanTestBase.assertContains(costPlan5, "join_mv_3");
+        PlanTestBase.assertContains(costPlan5, "name-->");
+        // deptno is not projected
+        PlanTestBase.assertNotContains(costPlan4, "deptno-->");
 
         // output on equivalence classes
         String query12 = "select empid, emps.deptno from emps join depts using (deptno) where empid = 1";
@@ -653,16 +687,34 @@ public class MvRewriteOptimizationTest {
 
         // query delta(query has three tables and view has two tabels) is supported
         // depts.name should be in the output of mv
-        String query15 = "select emps.empid, emps.deptno from emps join depts using (deptno)" +
+        String query15 = "select emps.empid from emps join depts using (deptno)" +
                 " join dependents on (depts.name = dependents.name)";
         String plan15 = getFragmentPlan(query15);
         PlanTestBase.assertContains(plan15, "join_mv_3");
+        String costPlan15 = getCostsFragmentPlan(query15);
+        PlanTestBase.assertContains(costPlan15, "join_mv_3");
+        PlanTestBase.assertContains(costPlan15, "name-->");
+        // column prune
+        PlanTestBase.assertNotContains(costPlan15, "deptno-->");
 
         // query delta depends on join reorder
         String query16 = "select dependents.empid from depts join dependents on (depts.name = dependents.name)" +
                 " join emps on (emps.deptno = depts.deptno)";
         String plan16 = getFragmentPlan(query16);
         PlanTestBase.assertContains(plan16, "join_mv_3");
+        String costPlan16 = getCostsFragmentPlan(query16);
+        PlanTestBase.assertContains(costPlan16, "join_mv_3");
+        PlanTestBase.assertContains(costPlan16, "name-->");
+        // column prune
+        PlanTestBase.assertNotContains(costPlan16, "deptno-->");
+
+        String query23 = "select dependents.empid from depts join dependents on (depts.name = dependents.name)" +
+                " join emps on (emps.deptno = depts.deptno) where emps.deptno = 1";
+        String costPlan23 = getCostsFragmentPlan(query23);
+        PlanTestBase.assertContains(costPlan23, "join_mv_3");
+        PlanTestBase.assertContains(costPlan23, "name-->");
+        // deptno is kept for predicate
+        PlanTestBase.assertContains(costPlan23, "deptno-->");
 
         // more tables
         String query17 = "select dependents.empid from depts join dependents on (depts.name = dependents.name)" +
@@ -827,8 +879,6 @@ public class MvRewriteOptimizationTest {
 
     @Test
     public void testAggregateMvRewrite() throws Exception {
-        starRocksAssert.getCtx().getSessionVariable().setOptimizerExecuteTimeout(300000000);
-
         createAndRefreshMv("test", "agg_join_mv_1", "create materialized view agg_join_mv_1" +
                 " distributed by hash(v1) as SELECT t0.v1 as v1," +
                 " test_all_type.t1d, sum(test_all_type.t1c) as total_sum, count(test_all_type.t1c) as total_num" +
@@ -987,10 +1037,16 @@ public class MvRewriteOptimizationTest {
         String query10 = "select deptno, count(*) from emps group by deptno";
         String plan10 = getFragmentPlan(query10);
         PlanTestBase.assertContains(plan10, "agg_join_mv_4");
+        String costPlan10 = getCostsFragmentPlan(query10);
+        PlanTestBase.assertContains(costPlan10, "agg_join_mv_4", "deptno-->", "num-->");
 
         String query11 = "select count(*) from emps";
         String plan11 = getFragmentPlan(query11);
         PlanTestBase.assertContains(plan11, "agg_join_mv_4");
+        String costPlan11 = getCostsFragmentPlan(query11);
+        PlanTestBase.assertContains(costPlan11, "agg_join_mv_4");
+        // column prune
+        PlanTestBase.assertNotContains(costPlan11, "deptno-->");
         dropMv("test", "agg_join_mv_4");
 
         createAndRefreshMv("test", "agg_join_mv_5", "create materialized view agg_join_mv_5" +
@@ -1010,9 +1066,12 @@ public class MvRewriteOptimizationTest {
         String plan13 = getFragmentPlan(query13);
         PlanTestBase.assertContains(plan13, "agg_mv_6");
 
+
         String query14 = "select empid, avg(salary) from emps group by empid";
-        String plan14 = getFragmentPlan(query14);
+        String plan14 = getCostsFragmentPlan(query14);
         PlanTestBase.assertContains(plan14, "agg_mv_6");
+        // column prune
+        PlanTestBase.assertNotContains(plan14, "abs_empid");
 
         String query15 = "select abs(empid), avg(salary) from emps group by empid";
         String plan15 = getFragmentPlan(query15);
@@ -1033,17 +1092,25 @@ public class MvRewriteOptimizationTest {
         String plan17 = getFragmentPlan(query17);
         PlanTestBase.assertContains(plan17, "agg_mv_7");
 
-        String query18 = "select empid, sum(salary), count(salary) from emps group by empid";
-        String plan18 = getFragmentPlan(query18);
-        PlanTestBase.assertContains(plan18, "agg_mv_7");
+        String query18 = "select empid, sum(salary), count(salary) + 1 from emps group by empid";
+        String plan18 = getCostsFragmentPlan(query18);
+        PlanTestBase.assertContains(plan18, "agg_mv_7", "cnt-->", "total-->");
 
         String query19 = "select abs(empid), sum(salary), count(salary) from emps group by empid";
         String plan19 = getFragmentPlan(query19);
         PlanTestBase.assertContains(plan19, "agg_mv_7");
 
         String query20 = "select sum(salary), count(salary) from emps";
-        String plan20 = getFragmentPlan(query20);
+        String plan20 = getCostsFragmentPlan(query20);
         PlanTestBase.assertContains(plan20, "agg_mv_7");
+        PlanTestBase.assertNotContains(plan20, "empid-->");
+        PlanTestBase.assertNotContains(plan20, "abs_empid-->");
+
+        String query27 = "select sum(salary), count(salary) from emps";
+        String plan27 = getCostsFragmentPlan(query27);
+        PlanTestBase.assertContains(plan27, "agg_mv_7");
+        PlanTestBase.assertNotContains(plan27, "empid-->");
+        PlanTestBase.assertNotContains(plan27, "abs_empid-->");
 
         dropMv("test", "agg_mv_7");
 
@@ -1170,7 +1237,6 @@ public class MvRewriteOptimizationTest {
     @Test
     public void testHiveUnionRewrite() throws Exception {
         connectContext.getSessionVariable().setEnableMaterializedViewUnionRewrite(true);
-        connectContext.getSessionVariable().setOptimizerExecuteTimeout(300000000);
         createAndRefreshMv("test", "hive_union_mv_1",
                 "create materialized view hive_union_mv_1 distributed by hash(s_suppkey) " +
                         "PROPERTIES (\n" +
@@ -1191,7 +1257,6 @@ public class MvRewriteOptimizationTest {
     @Test
     public void testUnionRewrite() throws Exception {
         connectContext.getSessionVariable().setEnableMaterializedViewUnionRewrite(true);
-        connectContext.getSessionVariable().setOptimizerExecuteTimeout(300000000);
 
         Table emps = getTable("test", "emps");
         PlanTestBase.setTableStatistics((OlapTable) emps, 1000000);
@@ -1220,6 +1285,13 @@ public class MvRewriteOptimizationTest {
                 "     TABLE: emps\n" +
                 "     PREAGGREGATION: ON\n" +
                 "     PREDICATES: 9: empid < 5, 9: empid > 2");
+
+        String query7 = "select deptno, empid from emps where empid < 5";
+        String plan7 = getCostsFragmentPlan(query7);
+        PlanTestBase.assertContains(plan7, "union_mv_1", "empid-->", "deptno-->");
+        PlanTestBase.assertNotContains(plan7, "name-->");
+        PlanTestBase.assertNotContains(plan7, "salary-->");
+
         dropMv("test", "union_mv_1");
 
         // multi tables query
@@ -1261,6 +1333,7 @@ public class MvRewriteOptimizationTest {
         cluster.runSql("test", "insert into test_base_part values(1000, 1, 2, 3)");
         cluster.runSql("test", "insert into test_base_part values(2000, 1, 2, 3)");
         cluster.runSql("test", "insert into test_base_part values(2500, 1, 2, 3)");
+
         createAndRefreshMv("test", "ttl_union_mv_1", "CREATE MATERIALIZED VIEW `ttl_union_mv_1`\n" +
                 "COMMENT \"MATERIALIZED_VIEW\"\n" +
                 "PARTITION BY (`c3`)\n" +
@@ -1274,9 +1347,12 @@ public class MvRewriteOptimizationTest {
                 "AS SELECT `test_base_part`.`c1`, `test_base_part`.`c3`, sum(`test_base_part`.`c2`) AS `c2`\n" +
                 "FROM `test_base_part`\n" +
                 "GROUP BY `test_base_part`.`c1`, `test_base_part`.`c3`;");
+
         MaterializedView ttlMv1 = getMv("test", "ttl_union_mv_1");
         Assert.assertNotNull(ttlMv1);
-        waitTtl(ttlMv1, 3, 200);
+        GlobalStateMgr.getCurrentState().getDynamicPartitionScheduler().runOnceForTest();
+        Assert.assertEquals(3, ttlMv1.getPartitions().size());
+
         String query4 = "select c3, sum(c2) from test_base_part group by c3";
         String plan4 = getFragmentPlan(query4);
         PlanTestBase.assertContains(plan4, "ttl_union_mv_1", "UNION", "test_base_part");
@@ -1362,7 +1438,7 @@ public class MvRewriteOptimizationTest {
         createAndRefreshMv("test", "nested_mv_1", "CREATE MATERIALIZED VIEW nested_mv_2 " +
                 "PARTITION BY k1 DISTRIBUTED BY HASH(k1) BUCKETS 10\n" +
                 "REFRESH MANUAL AS SELECT k1, count(k2) as count_k2, sum(k3) as sum_k3 from nested_mv_1 group by k1;");
-        starRocksAssert.withNewMaterializedView("CREATE MATERIALIZED VIEW nested_mv_3 DISTRIBUTED BY HASH(k1)\n" +
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW nested_mv_3 DISTRIBUTED BY HASH(k1)\n" +
                 "REFRESH MANUAL AS SELECT k1, count_k2, sum_k3 from nested_mv_2 where k1 >1;");
         cluster.runSql("test", "insert into t1 values (4,1,1);");
         refreshMaterializedView("test", "nested_mv_1");
@@ -1377,24 +1453,9 @@ public class MvRewriteOptimizationTest {
         starRocksAssert.dropTable("nest_base_table_1");
     }
 
-    private void waitTtl(MaterializedView mv, int number, int maxRound) throws InterruptedException, TimeoutException {
-        int round = 0;
-        while (true) {
-            if (mv.getPartitions().size() == number) {
-                break;
-            }
-            if (round >= maxRound) {
-                throw new TimeoutException("wait ttl timeout");
-            }
-            Thread.sleep(1000);
-            round++;
-        }
-    }
-
     @Test
     public void testPartialPartition() throws Exception {
         starRocksAssert.getCtx().getSessionVariable().setEnableMaterializedViewUnionRewrite(true);
-        starRocksAssert.getCtx().getSessionVariable().setOptimizerExecuteTimeout(300000000);
 
         cluster.runSql("test", "insert into table_with_partition values(\"varchar1\", '1991-02-01', 1, 1, 1)");
         cluster.runSql("test", "insert into table_with_partition values(\"varchar2\", '1992-02-01', 2, 1, 1)");
@@ -1598,7 +1659,8 @@ public class MvRewriteOptimizationTest {
                 "               )\n" +
                 "               AS SELECT k1, sum(v1) as sum_v1 FROM ttl_base_table group by k1;");
         MaterializedView ttlMv2 = getMv("test", "ttl_mv_2");
-        waitTtl(ttlMv2, 4, 100);
+        GlobalStateMgr.getCurrentState().getDynamicPartitionScheduler().runOnceForTest();
+        Assert.assertEquals(4, ttlMv2.getPartitions().size());
 
         String query16 = "select k1, sum(v1) FROM ttl_base_table where k1=3 group by k1";
         String plan16 = getFragmentPlan(query16);
@@ -1643,6 +1705,12 @@ public class MvRewriteOptimizationTest {
         return s;
     }
 
+    public String getCostsFragmentPlan(String sql) throws Exception {
+        String s = UtFrameUtils.getPlanAndFragment(connectContext, sql).second.
+                getExplainString(TExplainLevel.COSTS);
+        return s;
+    }
+
     private Table getTable(String dbName, String mvName) {
         Database db = GlobalStateMgr.getCurrentState().getDb(dbName);
         Table table = db.getTable(mvName);
@@ -1670,7 +1738,7 @@ public class MvRewriteOptimizationTest {
     }
 
     private void createAndRefreshMv(String dbName, String mvName, String sql) throws Exception {
-        starRocksAssert.withNewMaterializedView(sql);
+        starRocksAssert.withMaterializedView(sql);
         refreshMaterializedView(dbName, mvName);
     }
 

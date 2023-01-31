@@ -46,7 +46,7 @@ public class FunctionPEntryObject implements PEntryObject {
             throw new PrivilegeException("invalid object tokens, should have two: " + tokens);
         }
         if (tokens.get(1).equals(FUNC_NOT_FOUND)) {
-            throw new PrivilegeException("func not found");
+            throw new PrivObjNotFoundException("func not found");
         }
 
         long dbId;
@@ -57,7 +57,7 @@ public class FunctionPEntryObject implements PEntryObject {
         } else {
             Database database = mgr.getDb(tokens.get(0));
             if (database == null) {
-                throw new PrivilegeException("cannot find db: " + tokens.get(0));
+                throw new PrivObjNotFoundException("cannot find db: " + tokens.get(0));
             }
             dbId = database.getId();
 

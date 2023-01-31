@@ -31,6 +31,40 @@
 
 namespace starrocks {
 
+std::string AggrAutoContext::get_auto_state_string(const AggrAutoState& state) {
+    switch (state) {
+    case INIT_PREAGG:
+        return "INIT_PREAGG";
+    case ADJUST:
+        return "ADJUST";
+    case PASS_THROUGH:
+        return "PASS_THROUGH";
+    case FORCE_PREAGG:
+        return "FORCE_PREAGG";
+    case PREAGG:
+        return "PREAGG";
+    case SELECTIVE_PREAGG:
+        return "SELECTIVE_PREAGG";
+    }
+    return "UNKNOWN";
+}
+
+void AggrAutoContext::update_continuous_limit() {
+    continuous_limit = continuous_limit * 2 > ContinuousUpperLimit ? ContinuousUpperLimit : continuous_limit * 2;
+}
+
+size_t AggrAutoContext::get_continuous_limit() {
+    return continuous_limit;
+}
+
+bool AggrAutoContext::is_high_reduction(const size_t agg_count, const size_t chunk_size) {
+    return agg_count >= HighReduction * chunk_size;
+}
+
+bool AggrAutoContext::is_low_reduction(const size_t agg_count, const size_t chunk_size) {
+    return agg_count <= LowReduction * chunk_size;
+}
+
 Status init_udaf_context(int64_t fid, const std::string& url, const std::string& checksum, const std::string& symbol,
                          FunctionContext* context);
 
@@ -417,6 +451,12 @@ void Aggregator::close(RuntimeState* state) {
             }
 
             _mem_pool->free_all();
+        }
+
+        if (_is_only_group_by_columns) {
+            _hash_set_variant.reset();
+        } else {
+            _hash_map_variant.reset();
         }
 
         Expr::close(_group_by_expr_ctxs, state);

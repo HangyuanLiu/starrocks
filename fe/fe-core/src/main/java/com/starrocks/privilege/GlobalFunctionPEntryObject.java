@@ -38,7 +38,7 @@ public class GlobalFunctionPEntryObject implements PEntryObject {
             throw new PrivilegeException("invalid object tokens: " + tokens);
         }
         if (tokens.get(0).equals(FUNC_NOT_FOUND)) {
-            throw new PrivilegeException("func not found");
+            throw new PrivObjNotFoundException("func not found");
         }
 
         if (tokens.get(0).equals("*")) {

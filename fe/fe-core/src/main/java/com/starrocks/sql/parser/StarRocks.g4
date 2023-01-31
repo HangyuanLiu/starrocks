@@ -31,6 +31,16 @@ statement
     // Query Statement
     : queryStatement
 
+    // Warehouse Statement
+    | useWarehouseStatement
+    | createWarehouseStatement
+    | dropWarehouseStatement
+    | showWarehousesStatement
+    | alterWarehouseStatement
+    | showClustersStatement
+    | suspendWarehouseStatement
+    | resumeWarehouseStatement
+
     // Database Statement
     | useDatabaseStatement
     | useCatalogStatement
@@ -599,6 +609,43 @@ showCatalogsStatement
     ;
 
 
+// ---------------------------------------- Warehouse Statement ---------------------------------------------------------
+
+createWarehouseStatement
+    : CREATE (WAREHOUSE) (IF NOT EXISTS)? warehouseName=identifierOrString
+    properties?
+    ;
+
+showWarehousesStatement
+    : SHOW WAREHOUSES ((LIKE pattern=string) | (WHERE expression))?
+    ;
+
+useWarehouseStatement
+    : USE WAREHOUSE identifierOrString
+    ;
+
+dropWarehouseStatement
+    : DROP WAREHOUSE (IF EXISTS)? warehouseName=identifierOrString
+    ;
+
+alterWarehouseStatement
+    : ALTER WAREHOUSE identifier ADD CLUSTER
+    | ALTER WAREHOUSE identifier REMOVE CLUSTER
+    | ALTER WAREHOUSE identifier SET propertyList
+    ;
+
+showClustersStatement
+    : SHOW CLUSTERS FROM WAREHOUSE identifier
+    ;
+
+suspendWarehouseStatement
+    : SUSPEND WAREHOUSE (IF EXISTS)? identifier
+    ;
+
+resumeWarehouseStatement
+    : RESUME WAREHOUSE (IF EXISTS)? identifier
+    ;
+
 // ------------------------------------------- Alter Clause ------------------------------------------------------------
 
 alterClause
@@ -741,6 +788,7 @@ rollupRenameClause
 
 addPartitionClause
     : ADD TEMPORARY? (singleRangePartition | PARTITIONS multiRangePartition) distributionDesc? properties?
+    | ADD TEMPORARY? (singleItemListPartitionDesc | multiItemListPartitionDesc) distributionDesc? properties?
     ;
 
 dropPartitionClause
@@ -1266,7 +1314,8 @@ showRolesStatement
     ;
 
 showGrantsStatement
-    : SHOW GRANTS FOR USER user
+    : SHOW GRANTS
+    | SHOW GRANTS FOR USER? user
     | SHOW GRANTS FOR ROLE identifierOrString
     ;
 
@@ -1871,14 +1920,7 @@ optimizerTrace
 partitionDesc
     : PARTITION BY RANGE identifierList '(' (rangePartitionDesc (',' rangePartitionDesc)*)? ')'
     | PARTITION BY LIST identifierList '(' (listPartitionDesc (',' listPartitionDesc)*)? ')'
-    | PARTITION BY partitionExpression '(' (rangePartitionDesc (',' rangePartitionDesc)*)? ')'
-    ;
-
-partitionExpression
-    : YEAR '(' expression ')'
-    | MONTH '(' expression ')'
-    | DAY '(' expression ')'
-    | HOUR '(' expression ')'
+    | PARTITION BY functionCall '(' (rangePartitionDesc (',' rangePartitionDesc)*)? ')'
     ;
 
 listPartitionDesc
@@ -2140,8 +2182,8 @@ authOption
 nonReserved
     : AFTER | AGGREGATE | ASYNC | AUTHORS | AVG | ADMIN
     | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BOOLEAN | BROKER | BUCKETS | BUILTIN
-    | CAST | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CURRENT | COLLATION | COLUMNS | COMMENT | COMMIT | COMMITTED
-    | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT | CONFIG
+    | CAST | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CLUSTER | CLUSTERS | CURRENT | COLLATION | COLUMNS
+    | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT | CONFIG
     | DATA | DATE | DATETIME | DAY | DECOMMISSION | DISTRIBUTION | DUPLICATE | DYNAMIC
     | END | ENGINE | ENGINES | ERRORS | EVENTS | EXECUTE | EXTERNAL | EXTRACT | EVERY
     | FILE | FILTER | FIRST | FLOOR | FOLLOWING | FORMAT | FN | FRONTEND | FRONTENDS | FOLLOWER | FREE | FUNCTIONS
@@ -2159,12 +2201,12 @@ nonReserved
     | RANDOM | RECOVER | REFRESH | REPAIR | REPEATABLE | REPLACE_IF_NOT_NULL | REPLICA | REPOSITORY | REPOSITORIES
     | RESOURCE | RESOURCES | RESTORE | RESUME | RETURNS | REVERT | ROLE | ROLES | ROLLUP | ROLLBACK | ROUTINE | ROW
     | SAMPLE | SECOND | SERIALIZABLE | SESSION | SETS | SIGNED | SNAPSHOT | SQLBLACKLIST | START | SUM | STATUS | STOP
-    | STORAGE| STRING | STRUCT | STATS | SUBMIT | SYNC | SYSTEM_TIME
+    | STORAGE| STRING | STRUCT | STATS | SUBMIT | SUSPEND | SYNC | SYSTEM_TIME
     | TABLES | TABLET | TASK | TEMPORARY | TIMESTAMP | TIMESTAMPADD | TIMESTAMPDIFF | THAN | TIME | TRANSACTION
     | TRIGGERS | TRUNCATE | TYPE | TYPES
     | UNBOUNDED | UNCOMMITTED | UNINSTALL | USER | USERS
     | VALUE | VARIABLES | VIEW | VERBOSE
-    | WARNINGS | WEEK | WHITELIST | WORK | WRITE
+    | WARNINGS | WEEK | WHITELIST | WORK | WRITE  | WAREHOUSE | WAREHOUSES
     | YEAR
     | DOTDOTDOT
     ;

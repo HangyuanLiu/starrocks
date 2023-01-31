@@ -120,6 +120,7 @@ import com.starrocks.privilege.UserPrivilegeCollection;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.MetadataMgr;
+import com.starrocks.server.WarehouseManager;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.analyzer.AstToStringBuilder;
 import com.starrocks.sql.analyzer.PrivilegeChecker;
@@ -142,6 +143,7 @@ import com.starrocks.sql.ast.ShowBackupStmt;
 import com.starrocks.sql.ast.ShowBasicStatsMetaStmt;
 import com.starrocks.sql.ast.ShowBrokerStmt;
 import com.starrocks.sql.ast.ShowCatalogsStmt;
+import com.starrocks.sql.ast.ShowClustersStmt;
 import com.starrocks.sql.ast.ShowCollationStmt;
 import com.starrocks.sql.ast.ShowColumnStmt;
 import com.starrocks.sql.ast.ShowComputeNodesStmt;
@@ -184,12 +186,14 @@ import com.starrocks.sql.ast.ShowTransactionStmt;
 import com.starrocks.sql.ast.ShowUserPropertyStmt;
 import com.starrocks.sql.ast.ShowUserStmt;
 import com.starrocks.sql.ast.ShowVariablesStmt;
+import com.starrocks.sql.ast.ShowWarehousesStmt;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.statistic.AnalyzeJob;
 import com.starrocks.statistic.AnalyzeStatus;
 import com.starrocks.statistic.BasicStatsMeta;
 import com.starrocks.statistic.HistogramStatsMeta;
 import com.starrocks.transaction.GlobalTransactionMgr;
+import com.starrocks.warehouse.Warehouse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -235,6 +239,10 @@ public class ShowExecutor {
             handleShowProc();
         } else if (stmt instanceof HelpStmt) {
             handleHelp();
+        } else if (stmt instanceof ShowWarehousesStmt) {
+            handleShowWarehouses();
+        } else if (stmt instanceof ShowClustersStmt) {
+            handleShowClusters();
         } else if (stmt instanceof ShowDbStmt) {
             handleShowDb();
         } else if (stmt instanceof ShowTableStmt) {
@@ -420,7 +428,10 @@ public class ShowExecutor {
                 if (GlobalStateMgr.getCurrentState().isUsingNewPrivilege()) {
                     AtomicBoolean baseTableHasPrivilege = new AtomicBoolean(true);
                     mvTable.getBaseTableInfos().forEach(baseTableInfo -> {
-                        if (!PrivilegeManager.checkTableAction(connectContext, db.getFullName(),
+                        Table baseTable = baseTableInfo.getTable();
+                        // TODO: external table should check table action after PrivilegeManager support it.
+                        if (baseTable != null && baseTable.isLocalTable() && !PrivilegeManager.
+                                checkTableAction(connectContext, baseTableInfo.getDbName(),
                                 baseTableInfo.getTableName(),
                                 PrivilegeType.TableAction.SELECT)) {
                             baseTableHasPrivilege.set(false);
@@ -2135,6 +2146,29 @@ public class ShowExecutor {
                 .sorted(Comparator.comparing(o -> o.get(0))).collect(Collectors.toList());
         resultSet = new ShowResultSet(showCatalogsStmt.getMetaData(), rowSet);
     }
+
+    // show warehouse statement
+    private void handleShowWarehouses() {
+        ShowWarehousesStmt showStmt = (ShowWarehousesStmt) stmt;
+        GlobalStateMgr globalStateMgr = GlobalStateMgr.getCurrentState();
+        WarehouseManager warehouseMgr = globalStateMgr.getWarehouseMgr();
+        List<List<String>> rowSet = warehouseMgr.getWarehousesInfo().stream()
+                .sorted(Comparator.comparing(o -> o.get(0))).collect(Collectors.toList());
+        resultSet = new ShowResultSet(showStmt.getMetaData(), rowSet);
+    }
+
+    // show cluster statement
+    private void handleShowClusters() {
+        ShowClustersStmt showStmt = (ShowClustersStmt) stmt;
+        GlobalStateMgr globalStateMgr = GlobalStateMgr.getCurrentState();
+        WarehouseManager warehouseMgr = globalStateMgr.getWarehouseMgr();
+        Warehouse warehouse = warehouseMgr.getWarehouse(showStmt.getWarehouseName());
+        List<List<String>> rowSet = warehouse.getClustersInfo().stream()
+                .sorted(Comparator.comparing(o -> o.get(0))).collect(Collectors.toList());
+
+        resultSet = new ShowResultSet(showStmt.getMetaData(), rowSet);
+    }
+
 
     private List<List<String>> doPredicate(ShowStmt showStmt,
                                            ShowResultSetMetaData showResultSetMetaData,

@@ -14,7 +14,6 @@
 
 package com.starrocks.sql.analyzer;
 
-import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.starrocks.analysis.FunctionName;
 import com.starrocks.analysis.UserIdentity;
@@ -360,17 +359,13 @@ public class PrivilegeStmtAnalyzerV2 {
         @Override
         public Void visitShowGrantsStatement(ShowGrantsStmt stmt, ConnectContext session) {
             if (stmt.getUserIdent() != null) {
-                if (stmt.isAll()) {
-                    throw new SemanticException("Can not specified keyword ALL when specified user");
-                }
                 analyseUser(stmt.getUserIdent(), true);
+            } else if (stmt.getRole() != null) {
+                validRoleName(stmt.getRole(), "There is no such grant defined for role " + stmt.getRole(), true);
             } else {
-                if (!stmt.isAll()) {
-                    // self
-                    stmt.setUserIdent(session.getCurrentUserIdentity());
-                }
+                stmt.setUserIdent(session.getCurrentUserIdentity());
             }
-            Preconditions.checkState(stmt.isAll() || session.getCurrentUserIdentity() != null);
+
             return null;
         }
     }

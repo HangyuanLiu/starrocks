@@ -186,7 +186,6 @@ set(EXEC_FILES
         ./storage/lake/tablet_reader_test.cpp
         ./storage/lake/tablet_writer_test.cpp
         ./storage/lake/primary_key_compaction_task_test.cpp
-        ./storage/lake/primary_key_test.cpp
         ./storage/rowset_update_state_test.cpp
         ./storage/rowset/rowset_test.cpp
         ./storage/rowset/binary_dict_page_test.cpp
@@ -338,18 +337,6 @@ endif ()
 if ("${WITH_BLOCK_CACHE}" STREQUAL "ON")
     list(APPEND EXEC_FILES ./block_cache/block_cache_test.cpp)
     list(APPEND EXEC_FILES ./io/cache_input_stream_test.cpp)
-endif ()
-# simdjson Runtime Implement Dispatch: https://github.com/simdjson/simdjson/blob/master/doc/implementation-selection.md#runtime-cpu-detection
-# Unset architecture-specific flags to avoid breaking implement runtime dispatch.
-
-if ("${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86" OR "${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86_64")
-    set_source_files_properties(./exprs/json_functions_test.cpp PROPERTIES COMPILE_FLAGS -mno-avx)
-    set_source_files_properties(./exprs/json_functions_test.cpp PROPERTIES COMPILE_FLAGS -mno-avx2)
-    set_source_files_properties(./exprs/json_functions_test.cpp PROPERTIES COMPILE_FLAGS -mno-avx)
-    set_source_files_properties(./exprs/json_functions_test.cpp PROPERTIES COMPILE_FLAGS -mno-avx2)
-    set_source_files_properties(./formats/json/binary_column_test.cpp PROPERTIES COMPILE_FLAGS -mno-avx2)
-    set_source_files_properties(./formats/json/numeric_column_test.cpp PROPERTIES COMPILE_FLAGS -mno-avx2)
-    set_source_files_properties(./formats/json/nullable_column_test.cpp PROPERTIES COMPILE_FLAGS -mno-avx2)
 endif ()
 
 if (USE_AVX2)

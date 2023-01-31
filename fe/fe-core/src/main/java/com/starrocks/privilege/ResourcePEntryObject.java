@@ -38,7 +38,7 @@ public class ResourcePEntryObject implements PEntryObject {
             return new ResourcePEntryObject(null);
         } else {
             if (!mgr.getResourceMgr().containsResource(name)) {
-                throw new PrivilegeException("cannot find resource: " + tokens.get(0));
+                throw new PrivObjNotFoundException("cannot find resource: " + tokens.get(0));
             }
             return new ResourcePEntryObject(name);
         }

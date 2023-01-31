@@ -901,19 +901,24 @@ public class PrivilegeCheckerV2Test {
                 "INSERT command denied to user 'test'@'localhost' for table 'tbl1'");
 
         // check CTAS: CREATE_TABLE on db and SELECT on source table
-        String submitTaskSql = "submit task as create table db1.ctas_t1 as select k1,k2 from db1.tbl1;";
+        List<String> submitTaskSqls = Arrays.asList(
+                "submit task as create table db1.ctas_t1 as select k1,k2 from db1.tbl1;",
+                "submit task as create table ctas_t11 as select k1,k2 from tbl1;" // test unqualified name
+        );
         ctx.setDatabase("db1");
-        verifyMultiGrantRevoke(
-                submitTaskSql,
-                Arrays.asList(
-                        "grant create_table on database db1 to test",
-                        "grant select on table db1.tbl1 to test"
-                ),
-                Arrays.asList(
-                        "revoke create_table on database db1 from test",
-                        "revoke select on table db1.tbl1 from test"
-                ),
-                "Access denied for user 'test' to database 'db1'");
+        for (String submitTaskSql : submitTaskSqls) {
+            verifyMultiGrantRevoke(
+                    submitTaskSql,
+                    Arrays.asList(
+                            "grant create_table on database db1 to test",
+                            "grant select on table db1.tbl1 to test"
+                    ),
+                    Arrays.asList(
+                            "revoke create_table on database db1 from test",
+                            "revoke select on table db1.tbl1 from test"
+                    ),
+                    "Access denied for user 'test' to database 'db1'");
+        }
 
         // check drop non-existed table
         statement = UtFrameUtils.parseStmtWithNewParser(
@@ -2052,7 +2057,7 @@ public class PrivilegeCheckerV2Test {
                 "\"replication_num\" = \"1\"\n" +
                 ") " +
                 "as select k1, db1.tbl1.k2 from db1.tbl1;";
-        starRocksAssert.withMaterializedStatementView(createSql);
+        starRocksAssert.withMaterializedView(createSql);
         verifyGrantRevoke(
                 "alter materialized view db1.mv1 rename mv2;",
                 "grant alter on materialized_view db1.mv1 to test",
@@ -2076,7 +2081,7 @@ public class PrivilegeCheckerV2Test {
                 "\"replication_num\" = \"1\"\n" +
                 ") " +
                 "as select k1, db1.tbl1.k2 from db1.tbl1;";
-        starRocksAssert.withMaterializedStatementView(createSql);
+        starRocksAssert.withMaterializedView(createSql);
         verifyGrantRevoke(
                 "REFRESH MATERIALIZED VIEW db1.mv2;",
                 "grant refresh on materialized_view db1.mv2 to test",
@@ -2104,7 +2109,7 @@ public class PrivilegeCheckerV2Test {
                 "\"replication_num\" = \"1\"\n" +
                 ") " +
                 "as select k1, db1.tbl1.k2 from db1.tbl1;";
-        starRocksAssert.withMaterializedStatementView(createSql);
+        starRocksAssert.withMaterializedView(createSql);
         String showBackupSql = "SHOW MATERIALIZED VIEW FROM db1;";
         StatementBase showExportSqlStmt = UtFrameUtils.parseStmtWithNewParser(showBackupSql, starRocksAssert.getCtx());
         ShowExecutor executor = new ShowExecutor(starRocksAssert.getCtx(), (ShowStmt) showExportSqlStmt);
@@ -2140,7 +2145,7 @@ public class PrivilegeCheckerV2Test {
                 "\"replication_num\" = \"1\"\n" +
                 ") " +
                 "as select k1, db1.tbl1.k2 from db1.tbl1;";
-        starRocksAssert.withMaterializedStatementView(createSql);
+        starRocksAssert.withMaterializedView(createSql);
 
         DropMaterializedViewStmt statement = (DropMaterializedViewStmt) UtFrameUtils.parseStmtWithNewParser(
                 "drop materialized view db1.mv4", starRocksAssert.getCtx());
@@ -2205,7 +2210,6 @@ public class PrivilegeCheckerV2Test {
 
     @Test
     public void testDropFunc() throws Exception {
-
         Database db1 = GlobalStateMgr.getCurrentState().getDb("db1");
         FunctionName fn = FunctionName.createFnName("db1.my_udf_json_get");
         Function function = new Function(fn, Arrays.asList(Type.STRING, Type.STRING), Type.STRING, false);
@@ -2226,6 +2230,15 @@ public class PrivilegeCheckerV2Test {
                 "grant drop on FUNCTION db1.MY_UDF_JSON_GET(string, string) to test",
                 "revoke drop on FUNCTION db1.MY_UDF_JSON_GET(string, string) from test",
                 "Access denied; you need (at least one of) the DROP FUNCTION privilege(s) for this operation");
+
+        // add test for drop non-existed function
+        ctxToTestUser();
+        try {
+            UtFrameUtils.parseStmtWithNewParser("drop function db1.non_existed_fn(int,int)",
+                    starRocksAssert.getCtx());
+        } catch (Exception e) {
+            Assert.assertTrue(e.getMessage().contains("Unknown function"));
+        }
     }
 
     @Test
@@ -2277,7 +2290,7 @@ public class PrivilegeCheckerV2Test {
         }
         ctxToRoot();
         grantOrRevoke("grant create_materialized_view on db1 to test");
-        expectError = "Access denied; you need (at least one of) the TABLE/VIEW/MV privilege(s) for this operation";
+        expectError = "You need any privilege on any TABLE/VIEW/MV in database";
         ctxToTestUser();
         try {
             PrivilegeCheckerV2.check(statement, starRocksAssert.getCtx());

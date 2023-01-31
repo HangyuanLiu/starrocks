@@ -79,6 +79,7 @@ set(EXEC_FILES
     arrow_to_json_converter.cpp
     parquet_scanner.cpp
     parquet_reader.cpp
+    parquet_builder.cpp
     file_scan_node.cpp
     assert_num_rows_node.cpp
     intersect_hash_set.cpp
@@ -226,13 +227,6 @@ set(EXEC_FILES
     stream/aggregate/stream_aggregator.cpp
     stream/aggregate/stream_aggregate_operator.cpp
     stream/stream_aggregate_node.cpp)
-
-# simdjson Runtime Implement Dispatch: https://github.com/simdjson/simdjson/blob/master/doc/implementation-selection.md#runtime-cpu-detection
-# Unset architecture-specific flags to avoid breaking implement runtime dispatch.
-if ("${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86" OR "${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86_64")
-    set_source_files_properties(json_scanner.cpp PROPERTIES COMPILE_FLAGS "-mno-avx -mno-avx2")
-    set_source_files_properties(json_parser.cpp PROPERTIES COMPILE_FLAGS "-mno-avx -mno-avx2")
-endif()
 
 add_library(Exec STATIC
     ${EXEC_FILES}

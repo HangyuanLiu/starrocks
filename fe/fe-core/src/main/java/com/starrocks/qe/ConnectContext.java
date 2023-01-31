@@ -123,6 +123,8 @@ public class ConnectContext {
     protected volatile String currentCatalog = InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME;
     // Db
     protected String currentDb = "";
+    // warehouse
+    protected String currentWarehouse;
 
     // username@host of current login user
     protected String qualifiedUser;
@@ -579,6 +581,14 @@ public class ConnectContext {
         this.currentCatalog = currentCatalog;
     }
 
+    public String getCurrentWarehouse() {
+        return currentWarehouse;
+    }
+
+    public void setCurrentWarehouse(String currentWarehouse) {
+        this.currentWarehouse = currentWarehouse;
+    }
+
     // kill operation with no protect.
     public void kill(boolean killConnection) {
         LOG.warn("kill query, {}, kill connection: {}",
@@ -734,6 +744,7 @@ public class ConnectContext {
             }
             row.add(stmt);
             row.add(Boolean.toString(isPending));
+            row.add(currentWarehouse);
             return row;
         }
     }

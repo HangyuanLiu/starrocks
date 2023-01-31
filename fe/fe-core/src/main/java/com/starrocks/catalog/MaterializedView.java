@@ -148,7 +148,7 @@ public class MaterializedView extends OlapTable implements GsonPostProcessable {
         }
 
         public String getDbName() {
-            return this.dbName;
+            return this.dbName != null ? this.dbName : getDb().getFullName();
         }
 
         public String getTableName() {
@@ -305,6 +305,17 @@ public class MaterializedView extends OlapTable implements GsonPostProcessable {
 
         public void setTimeUnit(String timeUnit) {
             this.timeUnit = timeUnit;
+        }
+
+        @Override
+        public String toString() {
+            return "AsyncRefreshContext{" +
+                    "baseTableVisibleVersionMap=" + baseTableVisibleVersionMap +
+                    ", defineStartTime=" + defineStartTime +
+                    ", startTime=" + startTime +
+                    ", step=" + step +
+                    ", timeUnit='" + timeUnit + '\'' +
+                    '}';
         }
     }
 

@@ -26,7 +26,8 @@ public class MaterializedViewPEntryObject extends TablePEntryObject {
         super(databaseId, tableId);
     }
 
-    public static MaterializedViewPEntryObject generate(GlobalStateMgr mgr, List<String> tokens) throws PrivilegeException {
+    public static MaterializedViewPEntryObject generate(GlobalStateMgr mgr, List<String> tokens)
+            throws PrivilegeException {
         if (tokens.size() != 2) {
             throw new PrivilegeException("invalid object tokens, should have two: " + tokens);
         }
@@ -39,7 +40,7 @@ public class MaterializedViewPEntryObject extends TablePEntryObject {
         } else {
             Database database = mgr.getDb(tokens.get(0));
             if (database == null) {
-                throw new PrivilegeException("cannot find db: " + tokens.get(0));
+                throw new PrivObjNotFoundException("cannot find db: " + tokens.get(0));
             }
             dbId = database.getId();
 
@@ -47,8 +48,9 @@ public class MaterializedViewPEntryObject extends TablePEntryObject {
                 tableId = ALL_TABLES_ID;
             } else {
                 Table table = database.getTable(tokens.get(1));
-                if (table == null) {
-                    throw new PrivilegeException("cannot find table " + tokens.get(1) + " in db " + tokens.get(0));
+                if (table == null || !table.getType().equals(Table.TableType.MATERIALIZED_VIEW)) {
+                    throw new PrivObjNotFoundException(
+                            "cannot find materialized view " + tokens.get(1) + " in db " + tokens.get(0));
                 }
                 tableId = table.getId();
             }

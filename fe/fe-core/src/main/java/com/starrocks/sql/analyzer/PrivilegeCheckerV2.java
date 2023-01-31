@@ -176,6 +176,7 @@ import com.starrocks.sql.ast.UninstallPluginStmt;
 import com.starrocks.sql.ast.UpdateStmt;
 import com.starrocks.sql.ast.UseCatalogStmt;
 import com.starrocks.sql.ast.UseDbStmt;
+import com.starrocks.sql.ast.UseWarehouseStmt;
 import com.starrocks.sql.ast.ViewRelation;
 import com.starrocks.statistic.AnalyzeJob;
 import com.starrocks.statistic.AnalyzeManager;
@@ -192,8 +193,8 @@ public class PrivilegeCheckerV2 {
     private PrivilegeCheckerV2() {
     }
 
-    public static void check(StatementBase statement, ConnectContext session) {
-        new PrivilegeCheckerVisitor().check(statement, session);
+    public static void check(StatementBase statement, ConnectContext context) {
+        new PrivilegeCheckerVisitor().check(statement, context);
     }
 
     public static void checkTableAction(ConnectContext context,
@@ -486,19 +487,19 @@ public class PrivilegeCheckerV2 {
      * check privilege by AST tree
      */
     private static class PrivilegeCheckerVisitor extends AstVisitor<Void, ConnectContext> {
-        public void check(StatementBase statement, ConnectContext session) {
-            visit(statement, session);
+        public void check(StatementBase statement, ConnectContext context) {
+            visit(statement, context);
         }
 
         @Override
-        public Void visitDeleteStatement(DeleteStmt statement, ConnectContext session) {
-            checkTableAction(session, statement.getTableName(), PrivilegeType.TableAction.DELETE);
+        public Void visitDeleteStatement(DeleteStmt statement, ConnectContext context) {
+            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.DELETE);
             return null;
         }
 
         @Override
-        public Void visitInsertStatement(InsertStmt statement, ConnectContext session) {
-            checkTableAction(session, statement.getTableName(), PrivilegeType.TableAction.INSERT);
+        public Void visitInsertStatement(InsertStmt statement, ConnectContext context) {
+            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.INSERT);
             return null;
         }
 
@@ -607,16 +608,16 @@ public class PrivilegeCheckerV2 {
         // --------------------------------- Query Statement -------------------------------------
 
         @Override
-        public Void visitQueryStatement(QueryStatement stmt, ConnectContext session) {
-            new TablePrivilegeChecker(session).visit(stmt);
+        public Void visitQueryStatement(QueryStatement stmt, ConnectContext context) {
+            new TablePrivilegeChecker(context).visit(stmt);
             return null;
         }
 
         private static class TablePrivilegeChecker extends AstVisitor<Void, Void> {
-            private ConnectContext session;
+            private ConnectContext context;
 
-            public TablePrivilegeChecker(ConnectContext session) {
-                this.session = session;
+            public TablePrivilegeChecker(ConnectContext context) {
+                this.context = context;
             }
 
             @Override
@@ -630,10 +631,10 @@ public class PrivilegeCheckerV2 {
             }
 
             @Override
-            public Void visitView(ViewRelation node, Void context) {
+            public Void visitView(ViewRelation node, Void session) {
                 // if user has select privilege for the view, then there's no need to check base table
                 if (PrivilegeManager.checkViewAction(
-                        session, node.getName().getDb(), node.getName().getTbl(), PrivilegeType.ViewAction.SELECT)) {
+                        context, node.getName().getDb(), node.getName().getTbl(), PrivilegeType.ViewAction.SELECT)) {
                     return null;
                 }
                 return visit(node.getQueryStatement());
@@ -670,11 +671,11 @@ public class PrivilegeCheckerV2 {
             }
 
             @Override
-            public Void visitTable(TableRelation node, Void context) {
+            public Void visitTable(TableRelation node, Void session) {
                 if (node.getTable().isMaterializedView()) {
-                    checkMvAction(session, node.getName(), PrivilegeType.MaterializedViewAction.SELECT);
+                    checkMvAction(context, node.getName(), PrivilegeType.MaterializedViewAction.SELECT);
                 } else {
-                    checkTableAction(session, node.getName(), PrivilegeType.TableAction.SELECT);
+                    checkTableAction(context, node.getName(), PrivilegeType.TableAction.SELECT);
                 }
                 return null;
             }
@@ -793,6 +794,12 @@ public class PrivilegeCheckerV2 {
 
         public Void visitShowResourceGroupStatement(ShowResourceGroupStmt statement, ConnectContext context) {
             // we don't check privilege for `show resource groups` statement
+            return null;
+        }
+
+        // --------------------------------- Warehouse Statement ------------------------------------------
+        @Override
+        public Void visitUseWarehouseStatement(UseWarehouseStmt statement, ConnectContext context) {
             return null;
         }
 
@@ -1015,9 +1022,9 @@ public class PrivilegeCheckerV2 {
         // ---------------------------------------- Privilege Statement -----------------------------------
 
         @Override
-        public Void visitGrantRevokePrivilegeStatement(BaseGrantRevokePrivilegeStmt stmt, ConnectContext session) {
-            PrivilegeManager privilegeManager = session.getGlobalStateMgr().getPrivilegeManager();
-            if (!privilegeManager.allowGrant(session, stmt.getTypeId(), stmt.getActionSet(), stmt.getObjectList())) {
+        public Void visitGrantRevokePrivilegeStatement(BaseGrantRevokePrivilegeStmt stmt, ConnectContext context) {
+            PrivilegeManager privilegeManager = context.getGlobalStateMgr().getPrivilegeManager();
+            if (!privilegeManager.allowGrant(context, stmt.getTypeId(), stmt.getActionSet(), stmt.getObjectList())) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1165,18 +1172,19 @@ public class PrivilegeCheckerV2 {
         // ---------------------------------------- Table Statement ---------------------------------------
 
         @Override
-        public Void visitCreateTableStatement(CreateTableStmt statement, ConnectContext session) {
+        public Void visitCreateTableStatement(CreateTableStmt statement, ConnectContext context) {
             TableName tableName = statement.getDbTbl();
             String catalog = tableName.getCatalog();
             if (catalog == null) {
-                catalog = session.getCurrentCatalog();
+                catalog = context.getCurrentCatalog();
             }
-            checkDbAction(session, catalog, tableName.getDb(), PrivilegeType.DbAction.CREATE_TABLE);
+            String dbName = tableName.getDb() == null ? context.getDatabase() : tableName.getDb();
+            checkDbAction(context, catalog, dbName, PrivilegeType.DbAction.CREATE_TABLE);
             return null;
         }
 
         @Override
-        public Void visitDropTableStatement(DropTableStmt statement, ConnectContext session) {
+        public Void visitDropTableStatement(DropTableStmt statement, ConnectContext context) {
             GlobalStateMgr globalStateMgr = GlobalStateMgr.getCurrentState();
             if (statement.isSetIfExists() &&
                     globalStateMgr.getDb(statement.getDbName()).getTable(statement.getTableName()) == null) {
@@ -1184,9 +1192,9 @@ public class PrivilegeCheckerV2 {
             }
 
             if (statement.isView()) {
-                checkViewAction(session, statement.getTbl(), PrivilegeType.ViewAction.DROP);
+                checkViewAction(context, statement.getTbl(), PrivilegeType.ViewAction.DROP);
             } else {
-                checkTableAction(session, statement.getTbl(), PrivilegeType.TableAction.DROP);
+                checkTableAction(context, statement.getTbl(), PrivilegeType.TableAction.DROP);
             }
             return null;
         }
@@ -1710,7 +1718,8 @@ public class PrivilegeCheckerV2 {
                 }
             }
             if (!hasPrivilege) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "TABLE/VIEW/MV");
+                ErrorReport.reportSemanticException(ErrorCode.ERR_ANY_ACTION_IN_DB_ACCESS_DENIED_ERROR,
+                        statement.getDbName());
             }
             return null;
         }
@@ -1722,10 +1731,7 @@ public class PrivilegeCheckerV2 {
             if (functionName.isGlobalFunction()) {
                 FunctionSearchDesc desc = statement.getFunction();
                 Function function = GlobalStateMgr.getCurrentState().getGlobalFunctionMgr().getFunction(desc);
-                if (function == null) {
-                    ErrorReport.reportSemanticException(ErrorCode.ERR_PRIVILEGE_FUNC_NOT_FOUND);
-                }
-                if (!PrivilegeManager.checkGlobalFunctionAction(context, function.signatureString(),
+                if (function != null && !PrivilegeManager.checkGlobalFunctionAction(context, function.signatureString(),
                         PrivilegeType.GlobalFunctionAction.DROP)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                             "DROP GLOBAL FUNCTION");
@@ -1735,13 +1741,18 @@ public class PrivilegeCheckerV2 {
 
             // db function.
             Database db = GlobalStateMgr.getCurrentState().getDb(functionName.getDb());
-            Function function = db.getFunction(statement.getFunction());
-            if (null == function) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_PRIVILEGE_FUNC_NOT_FOUND);
-            }
-            if (!PrivilegeManager.checkFunctionAction(context, functionName.getDb(), function.signatureString(),
-                    PrivilegeType.FunctionAction.DROP)) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "DROP FUNCTION");
+            if (db != null) {
+                try {
+                    db.readLock();
+                    Function function = db.getFunction(statement.getFunction());
+                    if (null != function && !PrivilegeManager.checkFunctionAction(context, functionName.getDb(),
+                            function.signatureString(), PrivilegeType.FunctionAction.DROP)) {
+                        ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
+                                "DROP FUNCTION");
+                    }
+                } finally {
+                    db.readUnlock();
+                }
             }
             return null;
         }
