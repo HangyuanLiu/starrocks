@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.privilege;
 
 import com.starrocks.analysis.UserIdentity;
@@ -36,16 +35,16 @@ public interface AuthorizationProvider {
      */
     Set<String> getAllTypes();
 
-    PrivilegeType getPrivilegeType(String typeStr) throws PrivilegeException;
+    ObjectType getObjectType(String typeStr) throws PrivilegeException;
 
-    PrivilegeType getPrivilegeType(short typeId) throws PrivilegeException;
+    ObjectType getObjectType(short typeId) throws PrivilegeException;
 
     /**
      * analyze action type id -> action
      */
     Collection<Action> getAllActions(short typeId) throws PrivilegeException;
 
-    Action getAction(short typeId, String actionName) throws PrivilegeException;
+    Action getAction(short objectTypeId, String actionName) throws PrivilegeException;
 
     /**
      * analyze plural type name -> type name

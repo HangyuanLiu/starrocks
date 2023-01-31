@@ -24,10 +24,9 @@ public class LDAPAuthenticationProvider implements AuthenticationProvider {
     public static final String PLUGIN_NAME = AUTHENTICATION_LDAP_SIMPLE.name();
 
     @Override
-    public UserAuthenticationInfo validAuthenticationInfo(UserIdentity userIdentity, String password, String textForAuthPlugin)
-            throws AuthenticationException {
+    public UserAuthenticationInfo validAuthenticationInfo(UserIdentity userIdentity, String password, String textForAuthPlugin) {
         UserAuthenticationInfo info = new UserAuthenticationInfo();
-        info.setPassword(null);
+        info.setPassword(new byte[0]);
         info.setTextForAuthPlugin(textForAuthPlugin);
         return info;
     }

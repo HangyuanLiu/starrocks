@@ -33,10 +33,10 @@ import com.starrocks.common.FeNameFormat;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.privilege.FunctionPEntryObject;
 import com.starrocks.privilege.GlobalFunctionPEntryObject;
+import com.starrocks.privilege.ObjectType;
 import com.starrocks.privilege.PEntryObject;
 import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.privilege.PrivilegeManager;
-import com.starrocks.privilege.PrivilegeType;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AlterUserStmt;
@@ -206,10 +206,10 @@ public class PrivilegeStmtAnalyzerV2 {
 
         private FunctionName parseFunctionName(BaseGrantRevokePrivilegeStmt stmt)
                 throws PrivilegeException, AnalysisException {
-            stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
+            stmt.setObjectType(privilegeManager.getObjectType(stmt.getPrivType()));
             String[] name = stmt.getFunctionName().split("\\.");
             FunctionName functionName;
-            if (stmt.getTypeId() == PrivilegeType.GLOBAL_FUNCTION.getId()) {
+            if (stmt.getTypeId() == ObjectType.GLOBAL_FUNCTION.getId()) {
                 if (name.length != 1) {
                     throw new AnalysisException("global function has no database");
                 }
@@ -276,14 +276,14 @@ public class PrivilegeStmtAnalyzerV2 {
                     List<PEntryObject> objectList = new ArrayList<>();
                     if (stmt.getUserPrivilegeObjectList() != null) {
                         // objects are user
-                        stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
+                        stmt.setObjectType(privilegeManager.getObjectType(stmt.getPrivType()));
                         for (UserIdentity userIdentity : stmt.getUserPrivilegeObjectList()) {
                             analyseUser(userIdentity, true);
                             objectList.add(privilegeManager.analyzeUserObject(stmt.getPrivType(), userIdentity));
                         }
                     } else if (stmt.getPrivilegeObjectNameTokensList() != null) {
                         // normal objects
-                        stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
+                        stmt.setObjectType(privilegeManager.getObjectType(stmt.getPrivType()));
                         for (List<String> tokens : stmt.getPrivilegeObjectNameTokensList()) {
                             objectList.add(privilegeManager.analyzeObject(stmt.getPrivType(), tokens));
                         }
@@ -301,12 +301,12 @@ public class PrivilegeStmtAnalyzerV2 {
                         // TABLES -> TABLE
                         stmt.setPrivType(privilegeManager.analyzeTypeInPlural(stmt.getPrivType()));
                         // TABLE -> 0/1
-                        stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
+                        stmt.setObjectType(privilegeManager.getObjectType(stmt.getPrivType()));
                         objectList.add(privilegeManager.analyzeObject(stmt.getPrivType(), stmt.getTokens()));
                     }
                     stmt.setObjectList(objectList);
                 } else {
-                    stmt.setPrivilegeType(privilegeManager.getPrivilegeType(stmt.getPrivType()));
+                    stmt.setObjectType(privilegeManager.getObjectType(stmt.getPrivType()));
                     stmt.setObjectList(null);
                 }
                 privilegeManager.validateGrant(stmt.getPrivType(), stmt.getPrivList(), stmt.getObjectList());

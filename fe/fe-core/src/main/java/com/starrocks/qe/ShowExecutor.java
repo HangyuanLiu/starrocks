@@ -111,6 +111,7 @@ import com.starrocks.meta.SqlBlackList;
 import com.starrocks.mysql.privilege.PrivPredicate;
 import com.starrocks.privilege.Action;
 import com.starrocks.privilege.CatalogPEntryObject;
+import com.starrocks.privilege.ObjectType;
 import com.starrocks.privilege.PrivilegeCollection;
 import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.privilege.PrivilegeManager;
@@ -433,7 +434,7 @@ public class ShowExecutor {
                         if (baseTable != null && baseTable.isLocalTable() && !PrivilegeManager.
                                 checkTableAction(connectContext, baseTableInfo.getDbName(),
                                 baseTableInfo.getTableName(),
-                                PrivilegeType.TableAction.SELECT)) {
+                                PrivilegeType.SELECT)) {
                             baseTableHasPrivilege.set(false);
                         }
                     });
@@ -523,27 +524,6 @@ public class ShowExecutor {
         }
 
         resultSet = new ShowResultSet(showStmt.getMetaData(), rowSet);
-    }
-
-    private void handleShowUser() {
-        List<List<String>> rowSet = Lists.newArrayList();
-
-        ShowUserStmt showUserStmt = (ShowUserStmt) stmt;
-        if (showUserStmt.isAll()) {
-            Set<UserIdentity> userIdentities =
-                    GlobalStateMgr.getCurrentState().getPrivilegeManager().getUserToPrivilegeCollection().keySet();
-            for (UserIdentity userIdentity : userIdentities) {
-                List<String> row = Lists.newArrayList();
-                row.add(userIdentity.toString());
-                rowSet.add(row);
-            }
-        } else {
-            List<String> row = Lists.newArrayList();
-            row.add(connectContext.getCurrentUserIdentity().toString());
-            rowSet.add(row);
-        }
-
-        resultSet = new ShowResultSet(stmt.getMetaData(), rowSet);
     }
 
     // Handle show authors
@@ -1684,7 +1664,7 @@ public class ShowExecutor {
             tableRefs.forEach(tableRef -> {
                 TableName tableName = tableRef.getName();
                 if (!PrivilegeManager.checkTableAction(connectContext, tableName.getDb(), tableName.getTbl(),
-                        PrivilegeType.TableAction.EXPORT)) {
+                        PrivilegeType.EXPORT)) {
                     privilegeDeny.set(true);
                 }
             });
@@ -1754,8 +1734,8 @@ public class ShowExecutor {
                             String roleName = showStmt.getRole();
                             info.add(roleName);
 
-                            PrivilegeType privilegeType = privilegeManager.getPrivilegeType(typeToPrivilegeEntry.getKey());
-                            if (privilegeType.equals(PrivilegeType.CATALOG)) {
+                            ObjectType objectType = privilegeManager.getObjectType(typeToPrivilegeEntry.getKey());
+                            if (objectType.equals(ObjectType.CATALOG)) {
                                 CatalogPEntryObject catalogPEntryObject = (CatalogPEntryObject) privilegeEntry.getObject();
                                 if (catalogPEntryObject.getId() == CatalogPEntryObject.ALL_CATALOG_ID) {
                                     info.add(null);
@@ -1776,8 +1756,8 @@ public class ShowExecutor {
                             }
 
                             GrantPrivilegeStmt grantPrivilegeStmt =
-                                    new GrantPrivilegeStmt(new ArrayList<>(), privilegeType.name(), roleName);
-                            grantPrivilegeStmt.setPrivilegeType(privilegeType);
+                                    new GrantPrivilegeStmt(new ArrayList<>(), objectType.name(), roleName);
+                            grantPrivilegeStmt.setObjectType(objectType);
                             grantPrivilegeStmt.setActionSet(privilegeEntry.getActionSet());
                             grantPrivilegeStmt.setObjectList(Lists.newArrayList(privilegeEntry.getObject()));
                             info.add(AstToStringBuilder.toString(grantPrivilegeStmt));
@@ -1814,8 +1794,8 @@ public class ShowExecutor {
                             List<String> info = new ArrayList<>();
                             info.add(userIdentity.toString());
 
-                            PrivilegeType privilegeType = privilegeManager.getPrivilegeType(typeToPrivilegeEntry.getKey());
-                            if (privilegeType.equals(PrivilegeType.CATALOG)) {
+                            ObjectType objectType = privilegeManager.getObjectType(typeToPrivilegeEntry.getKey());
+                            if (objectType.equals(ObjectType.CATALOG)) {
                                 CatalogPEntryObject catalogPEntryObject = (CatalogPEntryObject) privilegeEntry.getObject();
                                 if (catalogPEntryObject.getId() == CatalogPEntryObject.ALL_CATALOG_ID) {
                                     info.add(null);
@@ -1833,13 +1813,13 @@ public class ShowExecutor {
 
                                     List<String> privList = new ArrayList<>();
                                     for (Map.Entry<String, Action> actionEntry
-                                            : PrivilegeType.CATALOG.getActionMap().entrySet()) {
+                                            : ObjectType.CATALOG.getActionMap().entrySet()) {
                                         if (privilegeEntry.getActionSet().contains(actionEntry.getValue())) {
                                             privList.add(actionEntry.getValue().getName());
                                         }
                                     }
                                     GrantPrivilegeStmt grantPrivilegeStmt =
-                                            new GrantPrivilegeStmt(privList, PrivilegeType.CATALOG.name(), userIdentity);
+                                            new GrantPrivilegeStmt(privList, ObjectType.CATALOG.name(), userIdentity);
                                     info.add(AstToStringBuilder.toString(grantPrivilegeStmt));
                                 }
                             } else {
@@ -1847,8 +1827,8 @@ public class ShowExecutor {
                             }
 
                             GrantPrivilegeStmt grantPrivilegeStmt =
-                                    new GrantPrivilegeStmt(new ArrayList<>(), privilegeType.name(), userIdentity);
-                            grantPrivilegeStmt.setPrivilegeType(privilegeType);
+                                    new GrantPrivilegeStmt(new ArrayList<>(), objectType.name(), userIdentity);
+                            grantPrivilegeStmt.setObjectType(objectType);
                             grantPrivilegeStmt.setActionSet(privilegeEntry.getActionSet());
                             grantPrivilegeStmt.setObjectList(Lists.newArrayList(privilegeEntry.getObject()));
                             info.add(AstToStringBuilder.toString(grantPrivilegeStmt));
@@ -1894,6 +1874,27 @@ public class ShowExecutor {
             List<List<String>> infos = GlobalStateMgr.getCurrentState().getAuth().getRoleInfo();
             resultSet = new ShowResultSet(showStmt.getMetaData(), infos);
         }
+    }
+
+    private void handleShowUser() {
+        List<List<String>> rowSet = Lists.newArrayList();
+
+        ShowUserStmt showUserStmt = (ShowUserStmt) stmt;
+        if (showUserStmt.isAll()) {
+            Set<UserIdentity> userIdentities =
+                    GlobalStateMgr.getCurrentState().getPrivilegeManager().getUserToPrivilegeCollection().keySet();
+            for (UserIdentity userIdentity : userIdentities) {
+                List<String> row = Lists.newArrayList();
+                row.add(userIdentity.toString());
+                rowSet.add(row);
+            }
+        } else {
+            List<String> row = Lists.newArrayList();
+            row.add(connectContext.getCurrentUserIdentity().toString());
+            rowSet.add(row);
+        }
+
+        resultSet = new ShowResultSet(stmt.getMetaData(), rowSet);
     }
 
     private void handleAdminShowTabletStatus() throws AnalysisException {

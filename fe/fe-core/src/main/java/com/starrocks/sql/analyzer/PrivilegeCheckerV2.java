@@ -199,7 +199,7 @@ public class PrivilegeCheckerV2 {
 
     public static void checkTableAction(ConnectContext context,
                                         TableName tableName,
-                                        PrivilegeType.TableAction action) {
+                                        PrivilegeType action) {
         String catalogName = tableName.getCatalog();
         if (catalogName == null) {
             catalogName = context.getCurrentCatalog();
@@ -213,7 +213,7 @@ public class PrivilegeCheckerV2 {
 
     public static void checkTableAction(ConnectContext context,
                                         String dbName, String tableName,
-                                        PrivilegeType.TableAction action) {
+                                        PrivilegeType action) {
         String actionStr = action.toString();
         if (!PrivilegeManager.checkTableAction(context, dbName, tableName, action)) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_TABLEACCESS_DENIED_ERROR,
@@ -242,7 +242,7 @@ public class PrivilegeCheckerV2 {
 
     public static void checkMvAction(ConnectContext context,
                                      TableName tableName,
-                                     PrivilegeType.MaterializedViewAction action) {
+                                     PrivilegeType action) {
         String catalogName = tableName.getCatalog();
         if (catalogName == null) {
             catalogName = context.getCurrentCatalog();
@@ -279,7 +279,7 @@ public class PrivilegeCheckerV2 {
     }
 
     static void checkDbAction(ConnectContext context, String catalogName, String dbName,
-                              PrivilegeType.DbAction action) {
+                              PrivilegeType action) {
         if (!CatalogMgr.isInternalCatalog(catalogName)) {
             // throw new SemanticException(EXTERNAL_CATALOG_NOT_SUPPORT_ERR_MSG);
             return;
@@ -290,7 +290,7 @@ public class PrivilegeCheckerV2 {
         }
     }
 
-    static void checkCatalogAction(ConnectContext context, String catalogName, PrivilegeType.CatalogAction action) {
+    static void checkCatalogAction(ConnectContext context, String catalogName, PrivilegeType action) {
         if (!PrivilegeManager.checkCatalogAction(context, catalogName, action)) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_CATALOG_ACCESS_DENIED,
                     context.getQualifiedUser(), catalogName);
@@ -328,7 +328,7 @@ public class PrivilegeCheckerV2 {
         }
     }
 
-    static void checkViewAction(ConnectContext context, TableName tableName, PrivilegeType.ViewAction action) {
+    static void checkViewAction(ConnectContext context, TableName tableName, PrivilegeType action) {
         String catalogName = tableName.getCatalog();
         if (catalogName == null) {
             catalogName = context.getCurrentCatalog();
@@ -345,19 +345,19 @@ public class PrivilegeCheckerV2 {
     }
 
     static void checkStmtOperatePrivilege(ConnectContext context) {
-        if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.OPERATE)) {
+        if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.OPERATE)) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "OPERATE");
         }
     }
 
     static void checkSystemRepository(ConnectContext context) {
-        if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.REPOSITORY)) {
+        if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.REPOSITORY)) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "REPOSITORY");
         }
     }
 
     static void checkStmtNodePrivilege(ConnectContext context) {
-        if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.OPERATE)) {
+        if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.OPERATE)) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "NODE");
         }
     }
@@ -403,9 +403,9 @@ public class PrivilegeCheckerV2 {
                                                             Table table, long analyzeId) {
         if (db != null && table != null) {
             if (!PrivilegeManager.checkTableAction(context, db.getOriginName(),
-                    table.getName(), PrivilegeType.TableAction.SELECT) ||
+                    table.getName(), PrivilegeType.SELECT) ||
                     !PrivilegeManager.checkTableAction(context, db.getOriginName(),
-                            table.getName(), PrivilegeType.TableAction.INSERT)
+                            table.getName(), PrivilegeType.INSERT)
             ) {
                 throw new SemanticException(String.format(
                         "You need SELECT and INSERT action on %s.%s to kill analyze job %d",
@@ -454,12 +454,12 @@ public class PrivilegeCheckerV2 {
             try {
                 if (loadJob instanceof SparkLoadJob &&
                         !PrivilegeManager.checkResourceAction(context, loadJob.getResourceName(),
-                                PrivilegeType.ResourceAction.USAGE)) {
+                                PrivilegeType.USAGE)) {
                     forbiddenUseResourceList.add(loadJob.getResourceName());
                 }
                 loadJob.getTableNames().forEach(tableName -> {
                     if (!PrivilegeManager.checkTableAction(context, dbName, tableName,
-                            PrivilegeType.TableAction.INSERT)) {
+                            PrivilegeType.INSERT)) {
                         forbiddenInsertTableList.add(tableName);
                     }
                 });
@@ -469,14 +469,14 @@ public class PrivilegeCheckerV2 {
         });
         if (forbiddenUseResourceList.size() > 0) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_PRIVILEGE_ACCESS_RESOURCE_DENIED,
-                    PrivilegeType.ResourceAction.USAGE.toString(),
+                    PrivilegeType.USAGE.toString(),
                     context.getQualifiedUser(),
                     context.getRemoteIP(),
                     forbiddenUseResourceList.toString());
         }
         if (forbiddenInsertTableList.size() > 0) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_TABLEACCESS_DENIED_ERROR,
-                    PrivilegeType.TableAction.INSERT.toString(),
+                    PrivilegeType.INSERT.toString(),
                     context.getQualifiedUser(),
                     context.getRemoteIP(),
                     forbiddenInsertTableList.toString());
@@ -493,54 +493,53 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitDeleteStatement(DeleteStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.DELETE);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.DELETE);
             return null;
         }
 
         @Override
         public Void visitInsertStatement(InsertStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.INSERT);
             return null;
         }
 
         @Override
         public Void visitUpdateStatement(UpdateStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.UPDATE);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.UPDATE);
             return null;
         }
 
         // --------------------------------- Routine Load Statement ---------------------------------
         public Void visitCreateRoutineLoadStatement(CreateRoutineLoadStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getDBName(), statement.getTableName(),
-                    PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getDBName(), statement.getTableName(), PrivilegeType.INSERT);
             return null;
         }
 
         @Override
         public Void visitAlterRoutineLoadStatement(AlterRoutineLoadStmt statement, ConnectContext context) {
             String tableName = getTableNameByRoutineLoadLabel(context, statement.getDbName(), statement.getLabel());
-            checkTableAction(context, statement.getDbName(), tableName, PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getDbName(), tableName, PrivilegeType.INSERT);
             return null;
         }
 
         @Override
         public Void visitStopRoutineLoadStatement(StopRoutineLoadStmt statement, ConnectContext context) {
             String tableName = getTableNameByRoutineLoadLabel(context, statement.getDbFullName(), statement.getName());
-            checkTableAction(context, statement.getDbFullName(), tableName, PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getDbFullName(), tableName, PrivilegeType.INSERT);
             return null;
         }
 
         @Override
         public Void visitPauseRoutineLoadStatement(PauseRoutineLoadStmt statement, ConnectContext context) {
             String tableName = getTableNameByRoutineLoadLabel(context, statement.getDbFullName(), statement.getName());
-            checkTableAction(context, statement.getDbFullName(), tableName, PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getDbFullName(), tableName, PrivilegeType.INSERT);
             return null;
         }
 
         @Override
         public Void visitResumeRoutineLoadStatement(ResumeRoutineLoadStmt statement, ConnectContext context) {
             String tableName = getTableNameByRoutineLoadLabel(context, statement.getDbFullName(), statement.getName());
-            checkTableAction(context, statement.getDbFullName(), tableName, PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getDbFullName(), tableName, PrivilegeType.INSERT);
             return null;
         }
 
@@ -570,7 +569,7 @@ public class PrivilegeCheckerV2 {
             // check resource privilege
             if (null != statement.getResourceDesc()) {
                 String resourceName = statement.getResourceDesc().getName();
-                if (!PrivilegeManager.checkResourceAction(context, resourceName, PrivilegeType.ResourceAction.USAGE)) {
+                if (!PrivilegeManager.checkResourceAction(context, resourceName, PrivilegeType.USAGE)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "USAGE");
                 }
             }
@@ -579,13 +578,13 @@ public class PrivilegeCheckerV2 {
             List<String> forbiddenInsertTableList = new ArrayList<>();
             statement.getDataDescriptions().forEach(dataDescription -> {
                 String tableName = dataDescription.getTableName();
-                if (!PrivilegeManager.checkTableAction(context, dbName, tableName, PrivilegeType.TableAction.INSERT)) {
+                if (!PrivilegeManager.checkTableAction(context, dbName, tableName, PrivilegeType.INSERT)) {
                     forbiddenInsertTableList.add(tableName);
                 }
             });
             if (forbiddenInsertTableList.size() > 0) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_TABLEACCESS_DENIED_ERROR,
-                        PrivilegeType.TableAction.INSERT.toString(),
+                        PrivilegeType.INSERT.toString(),
                         context.getQualifiedUser(),
                         context.getRemoteIP(),
                         forbiddenInsertTableList.toString());
@@ -634,7 +633,7 @@ public class PrivilegeCheckerV2 {
             public Void visitView(ViewRelation node, Void session) {
                 // if user has select privilege for the view, then there's no need to check base table
                 if (PrivilegeManager.checkViewAction(
-                        context, node.getName().getDb(), node.getName().getTbl(), PrivilegeType.ViewAction.SELECT)) {
+                        context, node.getName().getDb(), node.getName().getTbl(), PrivilegeType.SELECT)) {
                     return null;
                 }
                 return visit(node.getQueryStatement());
@@ -673,9 +672,9 @@ public class PrivilegeCheckerV2 {
             @Override
             public Void visitTable(TableRelation node, Void session) {
                 if (node.getTable().isMaterializedView()) {
-                    checkMvAction(context, node.getName(), PrivilegeType.MaterializedViewAction.SELECT);
+                    checkMvAction(context, node.getName(), PrivilegeType.SELECT);
                 } else {
-                    checkTableAction(context, node.getName(), PrivilegeType.TableAction.SELECT);
+                    checkTableAction(context, node.getName(), PrivilegeType.SELECT);
                 }
                 return null;
             }
@@ -698,19 +697,19 @@ public class PrivilegeCheckerV2 {
         @Override
         public Void visitRecoverDbStatement(RecoverDbStmt statement, ConnectContext context) {
             // Need to check the `CREATE_DATABASE` action on corresponding catalog
-            checkCatalogAction(context, statement.getCatalogName(), PrivilegeType.CatalogAction.CREATE_DATABASE);
+            checkCatalogAction(context, statement.getCatalogName(), PrivilegeType.CREATE_DATABASE);
             return null;
         }
 
         @Override
         public Void visitAlterDatabaseQuotaStatement(AlterDatabaseQuotaStmt statement, ConnectContext context) {
-            checkDbAction(context, statement.getCatalogName(), statement.getDbName(), PrivilegeType.DbAction.ALTER);
+            checkDbAction(context, statement.getCatalogName(), statement.getDbName(), PrivilegeType.ALTER);
             return null;
         }
 
         @Override
         public Void visitAlterDatabaseRenameStatement(AlterDatabaseRenameStatement statement, ConnectContext context) {
-            checkDbAction(context, statement.getCatalogName(), statement.getDbName(), PrivilegeType.DbAction.ALTER);
+            checkDbAction(context, statement.getCatalogName(), statement.getDbName(), PrivilegeType.ALTER);
             return null;
         }
 
@@ -721,13 +720,13 @@ public class PrivilegeCheckerV2 {
                 return null;
             }
 
-            checkDbAction(context, statement.getCatalogName(), statement.getDbName(), PrivilegeType.DbAction.DROP);
+            checkDbAction(context, statement.getCatalogName(), statement.getDbName(), PrivilegeType.DROP);
             return null;
         }
 
         @Override
         public Void visitCreateDbStatement(CreateDbStmt statement, ConnectContext context) {
-            checkCatalogAction(context, context.getCurrentCatalog(), PrivilegeType.CatalogAction.CREATE_DATABASE);
+            checkCatalogAction(context, context.getCurrentCatalog(), PrivilegeType.CREATE_DATABASE);
             return null;
         }
 
@@ -735,7 +734,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitCreateResourceStatement(CreateResourceStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.CREATE_RESOURCE)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.CREATE_RESOURCE)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "CREATE_RESOURCE");
             }
             return null;
@@ -744,7 +743,7 @@ public class PrivilegeCheckerV2 {
         @Override
         public Void visitDropResourceStatement(DropResourceStmt statement, ConnectContext context) {
             if (!PrivilegeManager.checkResourceAction(
-                    context, statement.getResourceName(), PrivilegeType.ResourceAction.DROP)) {
+                    context, statement.getResourceName(), PrivilegeType.DROP)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "DROP");
             }
             return null;
@@ -753,7 +752,7 @@ public class PrivilegeCheckerV2 {
         @Override
         public Void visitAlterResourceStatement(AlterResourceStmt statement, ConnectContext context) {
             if (!PrivilegeManager.checkResourceAction(
-                    context, statement.getResourceName(), PrivilegeType.ResourceAction.ALTER)) {
+                    context, statement.getResourceName(), PrivilegeType.ALTER)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ALTER");
             }
             return null;
@@ -769,7 +768,7 @@ public class PrivilegeCheckerV2 {
         // --------------------------------- Resource Group Statement -------------------------------------
         public Void visitCreateResourceGroupStatement(CreateResourceGroupStmt statement, ConnectContext context) {
             if (!PrivilegeManager.checkSystemAction(
-                    context, PrivilegeType.SystemAction.CREATE_RESOURCE_GROUP)) {
+                    context, PrivilegeType.CREATE_RESOURCE_GROUP)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                         "CREATE_RESOURCE_GROUP");
             }
@@ -778,7 +777,7 @@ public class PrivilegeCheckerV2 {
 
         public Void visitDropResourceGroupStatement(DropResourceGroupStmt statement, ConnectContext context) {
             if (!PrivilegeManager.checkResourceGroupAction(
-                    context, statement.getName(), PrivilegeType.ResourceGroupAction.DROP)) {
+                    context, statement.getName(), PrivilegeType.DROP)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "DROP");
             }
             return null;
@@ -786,7 +785,7 @@ public class PrivilegeCheckerV2 {
 
         public Void visitAlterResourceGroupStatement(AlterResourceGroupStmt statement, ConnectContext context) {
             if (!PrivilegeManager.checkResourceGroupAction(
-                    context, statement.getName(), PrivilegeType.ResourceGroupAction.ALTER)) {
+                    context, statement.getName(), PrivilegeType.ALTER)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ALTER");
             }
             return null;
@@ -820,7 +819,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitCreateCatalogStatement(CreateCatalogStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.CREATE_EXTERNAL_CATALOG)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.CREATE_EXTERNAL_CATALOG)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_CATALOG_ACCESS_DENIED,
                         context.getQualifiedUser(), statement.getCatalogName());
             }
@@ -829,7 +828,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitDropCatalogStatement(DropCatalogStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkCatalogAction(context, statement.getName(), PrivilegeType.CatalogAction.DROP)) {
+            if (!PrivilegeManager.checkCatalogAction(context, statement.getName(), PrivilegeType.DROP)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_CATALOG_ACCESS_DENIED,
                         context.getQualifiedUser(), statement.getName());
             }
@@ -847,7 +846,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitInstallPluginStatement(InstallPluginStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.PLUGIN)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.PLUGIN)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "PLUGIN");
             }
             return null;
@@ -875,8 +874,8 @@ public class PrivilegeCheckerV2 {
         }
 
         private Void checkShowNodePrivilege(ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.OPERATE)
-                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.NODE)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.OPERATE)
+                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.NODE)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "OPERATE/NODE");
             }
             return null;
@@ -884,7 +883,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitUninstallPluginStatement(UninstallPluginStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.PLUGIN)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.PLUGIN)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "PLUGIN");
             }
             return null;
@@ -892,7 +891,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitShowPluginsStatement(ShowPluginsStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.PLUGIN)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.PLUGIN)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "PLUGIN");
             }
             return null;
@@ -903,7 +902,7 @@ public class PrivilegeCheckerV2 {
         @Override
         public Void visitCreateFileStatement(CreateFileStmt statement, ConnectContext context) {
             checkAnyActionOnOrInDb(context, context.getCurrentCatalog(), statement.getDbName());
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.FILE)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.FILE)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "FILE");
             }
             return null;
@@ -912,7 +911,7 @@ public class PrivilegeCheckerV2 {
         @Override
         public Void visitDropFileStatement(DropFileStmt statement, ConnectContext context) {
             checkAnyActionOnOrInDb(context, context.getCurrentCatalog(), statement.getDbName());
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.FILE)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.FILE)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "FILE");
             }
             return null;
@@ -928,8 +927,8 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitAnalyzeStatement(AnalyzeStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.SELECT);
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.SELECT);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.INSERT);
             return null;
         }
 
@@ -937,23 +936,23 @@ public class PrivilegeCheckerV2 {
         public Void visitCreateAnalyzeJobStatement(CreateAnalyzeJobStmt statement, ConnectContext context) {
             Set<TableName> tableNames = getAllTableNamesForAnalyzeJobStmt(statement.getDbId(), statement.getTableId());
             tableNames.forEach(tableName -> {
-                checkTableAction(context, tableName, PrivilegeType.TableAction.SELECT);
-                checkTableAction(context, tableName, PrivilegeType.TableAction.INSERT);
+                checkTableAction(context, tableName, PrivilegeType.SELECT);
+                checkTableAction(context, tableName, PrivilegeType.INSERT);
             });
             return null;
         }
 
         @Override
         public Void visitDropHistogramStatement(DropHistogramStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.SELECT);
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.SELECT);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.INSERT);
             return null;
         }
 
         @Override
         public Void visitDropStatsStatement(DropStatsStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.SELECT);
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.INSERT);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.SELECT);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.INSERT);
             return null;
         }
 
@@ -997,7 +996,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitAddSqlBlackListStatement(AddSqlBlackListStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.BLACKLIST)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.BLACKLIST)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "BLACKLIST");
             }
             return null;
@@ -1005,7 +1004,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitDelSqlBlackListStatement(DelSqlBlackListStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.BLACKLIST)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.BLACKLIST)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "BLACKLIST");
             }
             return null;
@@ -1013,7 +1012,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitShowSqlBlackListStatement(ShowSqlBlackListStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.BLACKLIST)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.BLACKLIST)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "BLACKLIST");
             }
             return null;
@@ -1032,7 +1031,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitGrantRevokeRoleStatement(BaseGrantRevokeRoleStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1042,7 +1041,7 @@ public class PrivilegeCheckerV2 {
         public Void visitShowGrantsStatement(ShowGrantsStmt statement, ConnectContext context) {
             UserIdentity user = statement.getUserIdent();
             if (user != null && !user.equals(context.getCurrentUserIdentity())
-                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1050,7 +1049,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitCreateAlterUserStatement(BaseCreateAlterUserStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1058,7 +1057,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitDropUserStatement(DropUserStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1067,7 +1066,7 @@ public class PrivilegeCheckerV2 {
         @Override
         public Void visitShowUserStatement(ShowUserStmt statement, ConnectContext context) {
             if (statement.isAll()) {
-                if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+                if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
                 }
             }
@@ -1076,7 +1075,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitShowRolesStatement(ShowRolesStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1084,7 +1083,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitCreateRoleStatement(CreateRoleStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1092,7 +1091,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitDropRoleStatement(DropRoleStmt statement, ConnectContext context) {
-            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+            if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1102,7 +1101,7 @@ public class PrivilegeCheckerV2 {
         public Void visitShowAuthenticationStatement(ShowAuthenticationStmt statement, ConnectContext context) {
             UserIdentity user = statement.getUserIdent();
             if ((user != null && !user.equals(context.getCurrentUserIdentity()) || statement.isAll())
-                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1112,7 +1111,7 @@ public class PrivilegeCheckerV2 {
         public Void visitShowUserPropertyStatement(ShowUserPropertyStmt statement, ConnectContext context) {
             String user = statement.getUser();
             if (user != null && !user.equals(context.getCurrentUserIdentity().getQualifiedUser())
-                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1131,7 +1130,7 @@ public class PrivilegeCheckerV2 {
         public Void visitSetUserPropertyStatement(SetUserPropertyStmt statement, ConnectContext context) {
             String user = statement.getUser();
             if (user != null && !user.equals(context.getCurrentUserIdentity().getQualifiedUser())
-                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+                    && !PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1147,7 +1146,7 @@ public class PrivilegeCheckerV2 {
             if (catalog == null) {
                 catalog = context.getCurrentCatalog();
             }
-            checkDbAction(context, catalog, tableName.getDb(), PrivilegeType.DbAction.CREATE_VIEW);
+            checkDbAction(context, catalog, tableName.getDb(), PrivilegeType.CREATE_VIEW);
             // 2. check if user can query
             check(statement.getQueryStatement(), context);
             return null;
@@ -1163,7 +1162,7 @@ public class PrivilegeCheckerV2 {
         @Override
         public Void visitAlterViewStatement(AlterViewStmt statement, ConnectContext context) {
             // 1. check if user can alter view in this db
-            checkViewAction(context, statement.getTableName(), PrivilegeType.ViewAction.ALTER);
+            checkViewAction(context, statement.getTableName(), PrivilegeType.ALTER);
             // 2. check if user can query
             check(statement.getQueryStatement(), context);
             return null;
@@ -1179,7 +1178,7 @@ public class PrivilegeCheckerV2 {
                 catalog = context.getCurrentCatalog();
             }
             String dbName = tableName.getDb() == null ? context.getDatabase() : tableName.getDb();
-            checkDbAction(context, catalog, dbName, PrivilegeType.DbAction.CREATE_TABLE);
+            checkDbAction(context, catalog, dbName, PrivilegeType.CREATE_TABLE);
             return null;
         }
 
@@ -1192,9 +1191,9 @@ public class PrivilegeCheckerV2 {
             }
 
             if (statement.isView()) {
-                checkViewAction(context, statement.getTbl(), PrivilegeType.ViewAction.DROP);
+                checkViewAction(context, statement.getTbl(), PrivilegeType.DROP);
             } else {
-                checkTableAction(context, statement.getTbl(), PrivilegeType.TableAction.DROP);
+                checkTableAction(context, statement.getTbl(), PrivilegeType.DROP);
             }
             return null;
         }
@@ -1214,8 +1213,8 @@ public class PrivilegeCheckerV2 {
             if (catalog == null) {
                 catalog = context.getCurrentCatalog();
             }
-            checkDbAction(context, catalog, tableName.getDb(), PrivilegeType.DbAction.CREATE_TABLE);
-            checkTableAction(context, existedTableName, PrivilegeType.TableAction.SELECT);
+            checkDbAction(context, catalog, tableName.getDb(), PrivilegeType.CREATE_TABLE);
+            checkTableAction(context, existedTableName, PrivilegeType.SELECT);
             return null;
         }
 
@@ -1226,7 +1225,7 @@ public class PrivilegeCheckerV2 {
             if (catalog == null) {
                 catalog = context.getCurrentCatalog();
             }
-            checkDbAction(context, catalog, tableName.getDb(), PrivilegeType.DbAction.CREATE_TABLE);
+            checkDbAction(context, catalog, tableName.getDb(), PrivilegeType.CREATE_TABLE);
             return null;
         }
 
@@ -1234,19 +1233,19 @@ public class PrivilegeCheckerV2 {
         public Void visitTruncateTableStatement(TruncateTableStmt statement, ConnectContext context) {
             checkTableAction(context,
                     new TableName(context.getCurrentCatalog(), statement.getDbName(), statement.getTblName()),
-                    PrivilegeType.TableAction.DELETE);
+                    PrivilegeType.DELETE);
             return null;
         }
 
         @Override
         public Void visitRefreshTableStatement(RefreshTableStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getTableName(), PrivilegeType.TableAction.ALTER);
+            checkTableAction(context, statement.getTableName(), PrivilegeType.ALTER);
             return null;
         }
 
         @Override
         public Void visitAlterTableStatement(AlterTableStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getTbl(), PrivilegeType.TableAction.ALTER);
+            checkTableAction(context, statement.getTbl(), PrivilegeType.ALTER);
             return null;
         }
 
@@ -1269,11 +1268,11 @@ public class PrivilegeCheckerV2 {
                 if (!PrivilegeManager.checkMaterializedViewAction(context,
                         statement.getDbName(),
                         statement.getTableName(),
-                        PrivilegeType.MaterializedViewAction.ALTER)) {
+                        PrivilegeType.ALTER)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ALTER");
                 }
             } else {
-                checkTableAction(context, statement.getDbTableName(), PrivilegeType.TableAction.ALTER);
+                checkTableAction(context, statement.getDbTableName(), PrivilegeType.ALTER);
             }
             return null;
         }
@@ -1311,8 +1310,8 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitRecoverPartitionStatement(RecoverPartitionStmt statement, ConnectContext context) {
-            checkTableAction(context, statement.getDbTblName(), PrivilegeType.TableAction.INSERT);
-            checkTableAction(context, statement.getDbTblName(), PrivilegeType.TableAction.ALTER);
+            checkTableAction(context, statement.getDbTblName(), PrivilegeType.INSERT);
+            checkTableAction(context, statement.getDbTblName(), PrivilegeType.ALTER);
             return null;
         }
 
@@ -1438,7 +1437,7 @@ public class PrivilegeCheckerV2 {
                         ErrorReport.reportSemanticException(ErrorCode.ERR_UNKNOWN_ERROR, "ANALYZE ERROR");
                     }
                     if (!context.getUserIdentity().equals(prepareChangeUser)) {
-                        if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.SystemAction.GRANT)) {
+                        if (!PrivilegeManager.checkSystemAction(context, PrivilegeType.GRANT)) {
                             ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
                         }
                     }
@@ -1458,7 +1457,7 @@ public class PrivilegeCheckerV2 {
             if (!PrivilegeManager.checkTableAction(context,
                     statement.getTblName().getDb(),
                     statement.getTblName().getTbl(),
-                    PrivilegeType.TableAction.EXPORT)) {
+                    PrivilegeType.EXPORT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "EXPORT");
             }
             return null;
@@ -1480,7 +1479,7 @@ public class PrivilegeCheckerV2 {
             if (!PrivilegeManager.checkTableAction(context,
                     exportJob.getTableName().getDb(),
                     exportJob.getTableName().getTbl(),
-                    PrivilegeType.TableAction.EXPORT)) {
+                    PrivilegeType.EXPORT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "EXPORT");
             }
             return null;
@@ -1520,7 +1519,7 @@ public class PrivilegeCheckerV2 {
                 checkTableAction(context,
                         tableName.getDb(),
                         tableName.getTbl(),
-                        PrivilegeType.TableAction.EXPORT);
+                        PrivilegeType.EXPORT);
             });
             return null;
         }
@@ -1555,7 +1554,7 @@ public class PrivilegeCheckerV2 {
                     checkTableAction(context,
                             tableName.getDb(),
                             tableName.getTbl(),
-                            PrivilegeType.TableAction.EXPORT);
+                            PrivilegeType.EXPORT);
                 });
             }
             return null;
@@ -1570,7 +1569,7 @@ public class PrivilegeCheckerV2 {
             List<TableRef> tableRefs = statement.getTableRefs();
             // check create_database on current catalog if we're going to restore the whole database
             if (tableRefs == null || tableRefs.isEmpty()) {
-                checkCatalogAction(context, context.getCurrentCatalog(), PrivilegeType.CatalogAction.CREATE_DATABASE);
+                checkCatalogAction(context, context.getCurrentCatalog(), PrivilegeType.CREATE_DATABASE);
             } else {
                 // going to restore some tables in database or some partitions in table
                 Database db = globalStateMgr.getDb(statement.getDbName());
@@ -1579,7 +1578,7 @@ public class PrivilegeCheckerV2 {
                         db.readLock();
                         // check create_table on specified database
                         checkDbAction(context, context.getCurrentCatalog(), db.getFullName(),
-                                PrivilegeType.DbAction.CREATE_TABLE);
+                                PrivilegeType.CREATE_TABLE);
                         // check insert on specified table
                         for (TableRef tableRef : tableRefs) {
                             Table table = db.getTable(tableRef.getName().getTbl());
@@ -1587,7 +1586,7 @@ public class PrivilegeCheckerV2 {
                                 checkTableAction(context,
                                         statement.getDbName(),
                                         tableRef.getName().getTbl(),
-                                        PrivilegeType.TableAction.INSERT);
+                                        PrivilegeType.INSERT);
                             }
                         }
                     } finally {
@@ -1610,7 +1609,7 @@ public class PrivilegeCheckerV2 {
         public Void visitCreateMaterializedViewStatement(CreateMaterializedViewStatement statement,
                                                          ConnectContext context) {
             if (!PrivilegeManager.checkDbAction(context, statement.getTableName().getDb(),
-                    PrivilegeType.DbAction.CREATE_MATERIALIZED_VIEW)) {
+                    PrivilegeType.CREATE_MATERIALIZED_VIEW)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                         "CREATE MATERIALIZED VIEW");
             }
@@ -1622,7 +1621,7 @@ public class PrivilegeCheckerV2 {
             if (!PrivilegeManager.checkMaterializedViewAction(context,
                     statement.getMvName().getDb(),
                     statement.getMvName().getTbl(),
-                    PrivilegeType.MaterializedViewAction.ALTER)) {
+                    PrivilegeType.ALTER)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                         "ALTER MATERIALIZED VIEW");
             }
@@ -1635,7 +1634,7 @@ public class PrivilegeCheckerV2 {
             if (!PrivilegeManager.checkMaterializedViewAction(context,
                     statement.getMvName().getDb(),
                     statement.getMvName().getTbl(),
-                    PrivilegeType.MaterializedViewAction.REFRESH)) {
+                    PrivilegeType.REFRESH)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                         "REFRESH MATERIALIZED VIEW");
             }
@@ -1648,7 +1647,7 @@ public class PrivilegeCheckerV2 {
             if (!PrivilegeManager.checkMaterializedViewAction(context,
                     statement.getMvName().getDb(),
                     statement.getMvName().getTbl(),
-                    PrivilegeType.MaterializedViewAction.REFRESH)) {
+                    PrivilegeType.REFRESH)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                         "REFRESH MATERIALIZED VIEW");
             }
@@ -1675,12 +1674,12 @@ public class PrivilegeCheckerV2 {
             FunctionName name = statement.getFunctionName();
             if (name.isGlobalFunction()) {
                 if (!PrivilegeManager.checkSystemAction(
-                        context, PrivilegeType.SystemAction.CREATE_GLOBAL_FUNCTION)) {
+                        context, PrivilegeType.CREATE_GLOBAL_FUNCTION)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                             "CREATE_GLOBAL_FUNCTION");
                 }
             } else {
-                if (!PrivilegeManager.checkDbAction(context, name.getDb(), PrivilegeType.DbAction.CREATE_FUNCTION)) {
+                if (!PrivilegeManager.checkDbAction(context, name.getDb(), PrivilegeType.CREATE_FUNCTION)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "CREATE FUNCTION");
                 }
             }
@@ -1732,7 +1731,7 @@ public class PrivilegeCheckerV2 {
                 FunctionSearchDesc desc = statement.getFunction();
                 Function function = GlobalStateMgr.getCurrentState().getGlobalFunctionMgr().getFunction(desc);
                 if (function != null && !PrivilegeManager.checkGlobalFunctionAction(context, function.signatureString(),
-                        PrivilegeType.GlobalFunctionAction.DROP)) {
+                        PrivilegeType.DROP)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                             "DROP GLOBAL FUNCTION");
                 }
@@ -1746,7 +1745,7 @@ public class PrivilegeCheckerV2 {
                     db.readLock();
                     Function function = db.getFunction(statement.getFunction());
                     if (null != function && !PrivilegeManager.checkFunctionAction(context, functionName.getDb(),
-                            function.signatureString(), PrivilegeType.FunctionAction.DROP)) {
+                            function.signatureString(), PrivilegeType.DROP)) {
                         ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                                 "DROP FUNCTION");
                     }
