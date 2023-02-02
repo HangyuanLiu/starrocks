@@ -906,9 +906,9 @@ public class Auth implements Writable {
     @Deprecated
     public void grant(GrantPrivilegeStmt stmt) throws DdlException {
         PrivBitSet privs = stmt.getPrivBitSet();
-        if (stmt.getPrivType().equals("TABLE") || stmt.getPrivType().equals("DATABASE")) {
+        if (stmt.getObjectTypeString().equals("TABLE") || stmt.getObjectTypeString().equals("DATABASE")) {
             grantInternal(stmt.getUserIdentity(), stmt.getRole(), stmt.getTblPattern(), privs, true, false);
-        } else if (stmt.getPrivType().equals("RESOURCE")) {
+        } else if (stmt.getObjectTypeString().equals("RESOURCE")) {
             grantInternal(stmt.getUserIdentity(), stmt.getRole(), stmt.getResourcePattern(), privs, true, false);
         } else {
             if (stmt.getRole() == null) {
@@ -1158,10 +1158,10 @@ public class Auth implements Writable {
     @Deprecated
     public void revoke(RevokePrivilegeStmt stmt) throws DdlException {
         PrivBitSet privs = stmt.getPrivBitSet();
-        if (stmt.getPrivType().equals("TABLE")) {
+        if (stmt.getObjectTypeString().equals("TABLE")) {
             revokeInternal(stmt.getUserIdentity(), stmt.getRole(), stmt.getTblPattern(), privs,
                     true /* err on non exist */, false /* is replay */);
-        } else if (stmt.getPrivType().equals("RESOURCE")) {
+        } else if (stmt.getObjectTypeString().equals("RESOURCE")) {
             revokeInternal(stmt.getUserIdentity(), stmt.getRole(), stmt.getResourcePattern(), privs,
                     true /* err on non exist */, false /* is replay */);
         } else {

@@ -136,8 +136,8 @@ public class PrivilegeStmtAnalyzer {
             }
 
             // parse privilege actions to PrivBitSet
-            PrivBitSet privs = getPrivBitSet(stmt.getPrivList());
-            String privType = stmt.getPrivType();
+            PrivBitSet privs = getPrivBitSet(stmt.getPrivTypeStringList());
+            String privType = stmt.getObjectTypeString();
             if (privType.equals("TABLE") || privType.equals("DATABASE")) {
                 if (stmt.getPrivilegeObjectNameTokensList().size() != 1) {
                     throw new SemanticException("unsupported syntax: can only grant/revoke on one " + privType);
@@ -149,7 +149,7 @@ public class PrivilegeStmtAnalyzer {
                 }
                 analyseResourcePrivs(stmt, privs, stmt.getPrivilegeObjectNameTokensList().get(0));
             } else if (privType.equals("USER")) {
-                if (stmt.getPrivList().size() != 1 || !privs.containsPrivs(Privilege.IMPERSONATE_PRIV)) {
+                if (stmt.getPrivTypeStringList().size() != 1 || !privs.containsPrivs(Privilege.IMPERSONATE_PRIV)) {
                     throw new SemanticException("only IMPERSONATE can only be granted on user");
                 }
                 if (stmt.getUserPrivilegeObjectList().size() != 1) {

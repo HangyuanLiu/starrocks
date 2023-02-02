@@ -55,12 +55,11 @@ import com.starrocks.catalog.Table;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.PrintableMap;
 import com.starrocks.mysql.privilege.Privilege;
-import com.starrocks.privilege.Action;
 import com.starrocks.privilege.CatalogPEntryObject;
 import com.starrocks.privilege.DbPEntryObject;
 import com.starrocks.privilege.FunctionPEntryObject;
 import com.starrocks.privilege.GlobalFunctionPEntryObject;
-import com.starrocks.privilege.ObjectType;
+import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.privilege.ResourceGroupPEntryObject;
 import com.starrocks.privilege.ResourcePEntryObject;
 import com.starrocks.privilege.TablePEntryObject;
@@ -108,7 +107,6 @@ import com.starrocks.sql.ast.ViewRelation;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -318,14 +316,16 @@ public class AstToStringBuilder {
                     sb.append("REVOKE ");
                 }
 
-                List<String> privList = new ArrayList<>();
-                for (Map.Entry<String, Action> actionEntry : stmt.getObjectType().getActionMap().entrySet()) {
-                    if (stmt.getActionSet().contains(actionEntry.getValue())) {
-                        privList.add(actionEntry.getValue().getName());
-                    }
-                }
+                List<String> privList = stmt.getPrivilegeTypes().stream().map(Enum::name).collect(toList());
                 sb.append(Joiner.on(", ").join(privList));
                 sb.append(" ON ");
+
+                String plural;
+                try {
+                    plural = GlobalStateMgr.getCurrentState().getPrivilegeManager().getObjectTypePlural(stmt.getObjectType());
+                } catch (PrivilegeException e) {
+                    throw new SemanticException(e.getMessage());
+                }
 
                 switch (stmt.getObjectType()) {
                     case TABLE:
@@ -333,7 +333,7 @@ public class AstToStringBuilder {
                     case MATERIALIZED_VIEW: {
                         TablePEntryObject tablePEntryObject = (TablePEntryObject) stmt.getObjectList().get(0);
                         if (tablePEntryObject.getDatabaseId() == TablePEntryObject.ALL_DATABASE_ID) {
-                            sb.append("ALL ").append(stmt.getObjectType().getPlural()).append(" IN ALL DATABASES");
+                            sb.append("ALL ").append(plural).append(" IN ALL DATABASES");
                         } else {
                             Database database = GlobalStateMgr.getCurrentState().getDb(tablePEntryObject.getDatabaseId());
                             if (tablePEntryObject.getTableId() == TablePEntryObject.ALL_TABLES_ID) {
@@ -378,7 +378,7 @@ public class AstToStringBuilder {
                     case RESOURCE: {
                         ResourcePEntryObject resourcePEntryObject = (ResourcePEntryObject) stmt.getObjectList().get(0);
                         if (resourcePEntryObject.getName() == null) {
-                            sb.append("ALL ").append(stmt.getObjectType().getPlural());
+                            sb.append("ALL ").append(plural);
                         } else {
                             sb.append(stmt.getObjectType().name()).append(" ");
                             sb.append(resourcePEntryObject.getName());
@@ -447,7 +447,7 @@ public class AstToStringBuilder {
                                 (GlobalFunctionPEntryObject) stmt.getObjectList().get(0);
                         if (globalFunctionPEntryObject.getFunctionSig()
                                 .equals(GlobalFunctionPEntryObject.ALL_GLOBAL_FUNCTION_SIGS)) {
-                            sb.append("ALL ").append(ObjectType.GLOBAL_FUNCTION.getPlural());
+                            sb.append("ALL ").append(plural);
                         } else {
                             sb.append(stmt.getObjectType().name()).append(" ");
                             sb.append(globalFunctionPEntryObject.getFunctionSig());
@@ -485,9 +485,9 @@ public class AstToStringBuilder {
                     String priv = privilege.toString().toUpperCase();
                     sb.append(priv, 0, priv.length() - 5);
                 }
-                if (stmt.getPrivType().equals("TABLE") || stmt.getPrivType().equals("DATABASE")) {
+                if (stmt.getObjectTypeString().equals("TABLE") || stmt.getObjectTypeString().equals("DATABASE")) {
                     sb.append(" ON ").append(stmt.getTblPattern());
-                } else if (stmt.getPrivType().equals("RESOURCE")) {
+                } else if (stmt.getObjectTypeString().equals("RESOURCE")) {
                     sb.append(" ON RESOURCE ").append(stmt.getResourcePattern());
                 } else {
                     sb.append(" ON ").append(stmt.getUserPrivilegeObject());

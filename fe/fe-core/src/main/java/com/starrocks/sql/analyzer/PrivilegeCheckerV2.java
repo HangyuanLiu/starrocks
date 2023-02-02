@@ -1091,7 +1091,7 @@ public class PrivilegeCheckerV2 {
         @Override
         public Void visitGrantRevokePrivilegeStatement(BaseGrantRevokePrivilegeStmt stmt, ConnectContext context) {
             PrivilegeManager privilegeManager = context.getGlobalStateMgr().getPrivilegeManager();
-            if (!privilegeManager.allowGrant(context, stmt.getTypeId(), stmt.getActionSet(), stmt.getObjectList())) {
+            if (!privilegeManager.allowGrant(context, stmt.getObjectType(), stmt.getPrivilegeTypes(), stmt.getObjectList())) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
