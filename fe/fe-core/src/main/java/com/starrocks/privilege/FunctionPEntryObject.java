@@ -23,15 +23,14 @@ import com.starrocks.server.GlobalStateMgr;
 import java.util.List;
 
 public class FunctionPEntryObject implements PEntryObject {
+    public static final long ALL_DATABASE_ID = -2; // -2 represent all databases
+    public static final String ALL_FUNCTIONS_SIG = "AS"; // AS represent all functions
+    public static final String FUNC_NOT_FOUND = "funcNotFound";
 
     @SerializedName(value = "d")
     protected long databaseId;
     @SerializedName(value = "f")
     protected String functionSig;
-    public static final long ALL_DATABASE_ID = -2; // -2 represent all databases
-    public static final String ALL_FUNCTIONS_SIG = "AS"; // AS represent all functions
-
-    public static final String FUNC_NOT_FOUND = "funcNotFound";
 
     public long getDatabaseId() {
         return databaseId;

@@ -198,22 +198,22 @@ statement
     | helpStatement
 
     // Privilege Statement
-    | grantRoleStatement
-    | revokeRoleStatement
-    | executeAsStatement
-    | alterUserStatement
     | createUserStatement
     | dropUserStatement
-    | showAuthenticationStatement
-    | createRoleStatement
-    | grantPrivilegeStatement
-    | revokePrivilegeStatement
+    | alterUserStatement
     | showUserStatement
-    | showRolesStatement
-    | showGrantsStatement
+    | showAuthenticationStatement
+    | executeAsStatement
+    | createRoleStatement
     | dropRoleStatement
+    | showRolesStatement
+    | grantRoleStatement
+    | revokeRoleStatement
     | setRoleStatement
     | setDefaultRoleStatement
+    | grantPrivilegeStatement
+    | revokePrivilegeStatement
+    | showGrantsStatement
 
     // Backup Restore Statement
     | backupStatement
@@ -1241,53 +1241,6 @@ privilegeType
     | identifier
     ;
 
-grantRevokeClause
-    : (USER? user | ROLE identifierOrString) (WITH GRANT OPTION)?
-    ;
-
-grantPrivilegeStatement
-    : GRANT IMPERSONATE ON USER user (',' user)* TO grantRevokeClause                                   #grantImpersonate
-    | GRANT privilegeActionList ON privilegeType (privilegeObjectNameList)?
-        TO grantRevokeClause                                                                            #grantPrivWithType
-    | GRANT privilegeActionList ON GLOBAL? privilegeType qualifiedName '(' typeList ')'
-        TO grantRevokeClause                                                                            #grantPrivWithFunc
-    | GRANT privilegeActionList ON ALL privilegeType
-        (IN isAll=ALL DATABASES| IN DATABASE identifierOrString)? TO grantRevokeClause                   #grantOnAll
-    | GRANT privilegeActionList ON ALL GLOBAL FUNCTIONS TO grantRevokeClause                            #grantOnAllGlobalFunctions
-    ;
-
-revokePrivilegeStatement
-    : REVOKE IMPERSONATE ON USER user (',' user)* FROM grantRevokeClause                                #revokeImpersonate
-    | REVOKE privilegeActionList ON privilegeType (privilegeObjectNameList)?
-        FROM grantRevokeClause                                                                          #revokePrivWithType
-    | REVOKE privilegeActionList ON GLOBAL? privilegeType qualifiedName '(' typeList ')'
-        FROM grantRevokeClause                                                                          #revokePrivWithFunc
-    | REVOKE privilegeActionList ON ALL privilegeType
-        (IN isAll=ALL DATABASE| IN DATABASE identifierOrString)? FROM grantRevokeClause                 #revokeOnAll
-    | REVOKE privilegeActionList ON ALL GLOBAL FUNCTIONS FROM grantRevokeClause                         #revokeOnAllGlobalFunctions
-    ;
-
-grantRoleStatement
-    : GRANT identifierOrStringList TO user                                                              #grantRole
-    | GRANT identifierOrStringList TO USER user                                                         #grantRoleToUser
-    | GRANT identifierOrStringList TO ROLE identifierOrString                                           #grantRoleToRole
-    ;
-
-revokeRoleStatement
-    : REVOKE identifierOrStringList FROM user                                                           #revokeRole
-    | REVOKE identifierOrStringList FROM USER user                                                      #revokeRoleFromUser
-    | REVOKE identifierOrStringList FROM ROLE identifierOrString                                        #revokeRoleFromRole
-    ;
-
-executeAsStatement
-    : EXECUTE AS user (WITH NO REVERT)?
-    ;
-
-alterUserStatement
-    : ALTER USER user authOption
-    | ALTER USER user DEFAULT ROLE (NONE| ALL | roleList)
-    ;
-
 createUserStatement
     : CREATE USER (IF NOT EXISTS)? user authOption? (DEFAULT ROLE string)?
     ;
@@ -1296,31 +1249,44 @@ dropUserStatement
     : DROP USER user
     ;
 
-showAuthenticationStatement
-    : SHOW ALL AUTHENTICATION                                                                           #showAllAuthentication
-    | SHOW AUTHENTICATION (FOR user)?                                                                   #showAuthenticationForUser
-    ;
-
-createRoleStatement
-    : CREATE ROLE identifierOrString
+alterUserStatement
+    : ALTER USER user authOption
+    | ALTER USER user DEFAULT ROLE (NONE| ALL | roleList)
     ;
 
 showUserStatement
     : SHOW (USER | USERS)
     ;
 
-showRolesStatement
-    : SHOW ROLES
+showAuthenticationStatement
+    : SHOW ALL AUTHENTICATION                                                                           #showAllAuthentication
+    | SHOW AUTHENTICATION (FOR user)?                                                                   #showAuthenticationForUser
     ;
 
-showGrantsStatement
-    : SHOW GRANTS
-    | SHOW GRANTS FOR USER? user
-    | SHOW GRANTS FOR ROLE identifierOrString
+executeAsStatement
+    : EXECUTE AS user (WITH NO REVERT)?
+    ;
+
+createRoleStatement
+    : CREATE ROLE identifierOrString
     ;
 
 dropRoleStatement
     : DROP ROLE identifierOrString
+    ;
+
+showRolesStatement
+    : SHOW ROLES
+    ;
+
+grantRoleStatement
+    : GRANT identifierOrStringList TO USER? user                                                        #grantRoleToUser
+    | GRANT identifierOrStringList TO ROLE identifierOrString                                           #grantRoleToRole
+    ;
+
+revokeRoleStatement
+    : REVOKE identifierOrStringList FROM USER? user                                                     #revokeRoleFromUser
+    | REVOKE identifierOrStringList FROM ROLE identifierOrString                                        #revokeRoleFromRole
     ;
 
 setRoleStatement
@@ -1333,6 +1299,37 @@ setRoleStatement
 setDefaultRoleStatement
     : SET DEFAULT ROLE (NONE | ALL | roleList) TO user;
 
+grantRevokeClause
+    : (USER? user | ROLE identifierOrString) (WITH GRANT OPTION)?
+    ;
+
+grantPrivilegeStatement
+    : GRANT IMPERSONATE ON USER user (',' user)* TO grantRevokeClause                                   #grantImpersonate
+    | GRANT privilegeActionList ON privilegeType (privilegeObjectNameList)?
+        TO grantRevokeClause                                                                            #grantPrivWithType
+    | GRANT privilegeActionList ON GLOBAL? privilegeType qualifiedName '(' typeList ')'
+        TO grantRevokeClause                                                                            #grantPrivWithFunc
+    | GRANT privilegeActionList ON ALL privilegeType
+        (IN isAll=ALL DATABASES| IN DATABASE identifierOrString)? TO grantRevokeClause                  #grantOnAll
+    | GRANT privilegeActionList ON ALL GLOBAL FUNCTIONS TO grantRevokeClause                            #grantOnAllGlobalFunctions
+    ;
+
+revokePrivilegeStatement
+    : REVOKE IMPERSONATE ON USER user (',' user)* FROM grantRevokeClause                                #revokeImpersonate
+    | REVOKE privilegeActionList ON privilegeType (privilegeObjectNameList)?
+        FROM grantRevokeClause                                                                          #revokePrivWithType
+    | REVOKE privilegeActionList ON GLOBAL? privilegeType qualifiedName '(' typeList ')'
+        FROM grantRevokeClause                                                                          #revokePrivWithFunc
+    | REVOKE privilegeActionList ON ALL privilegeType
+        (IN isAll=ALL DATABASES| IN DATABASE identifierOrString)? FROM grantRevokeClause                #revokeOnAll
+    | REVOKE privilegeActionList ON ALL GLOBAL FUNCTIONS FROM grantRevokeClause                         #revokeOnAllGlobalFunctions
+    ;
+
+showGrantsStatement
+    : SHOW GRANTS
+    | SHOW GRANTS FOR USER? user
+    | SHOW GRANTS FOR ROLE identifierOrString
+    ;
 // ---------------------------------------- Backup Restore Statement ---------------------------------------------------
 
 backupStatement

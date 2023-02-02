@@ -144,10 +144,9 @@ public class PrivilegeManager {
             // 1. builtin root role
             RolePrivilegeCollection rolePrivilegeCollection = initBuiltinRoleUnlocked(ROOT_ROLE_ID, ROOT_ROLE_NAME);
             // GRANT ALL ON ALL
-            for (String typeStr : provider.getAllTypes()) {
-                ObjectType t = ObjectType.valueOf(typeStr);
-                initPrivilegeCollectionAllObjects(rolePrivilegeCollection, t,
-                        new ArrayList<>(t.getActionMap().keySet()));
+            for (ObjectType objectType : provider.getAllPrivObjectTypes()) {
+                initPrivilegeCollectionAllObjects(rolePrivilegeCollection, objectType,
+                        new ArrayList<>(objectType.getActionMap().keySet()));
             }
             rolePrivilegeCollection.disableMutable();  // not mutable
 
@@ -205,7 +204,7 @@ public class PrivilegeManager {
             // GRANT SELECT ON ALL TABLES IN information_schema
             List<PEntryObject> object = Collections.singletonList(new TablePEntryObject(
                     SystemId.INFORMATION_SCHEMA_DB_ID, TablePEntryObject.ALL_TABLES_ID));
-            short tableTypeId = (short) provider.getObjectType(ObjectType.TABLE.name()).getId();
+            short tableTypeId = (short) ObjectType.TABLE.getId();
             ActionSet selectAction =
                     analyzeActionSet(tableTypeId, Collections.singletonList(PrivilegeType.SELECT.name()));
             rolePrivilegeCollection.grant(tableTypeId, selectAction, object, false);
@@ -1406,15 +1405,11 @@ public class PrivilegeManager {
     }
 
     public short analyzeType(String typeName) throws PrivilegeException {
-        return (short) (provider.getObjectType(typeName).ordinal());
+        return (short) ObjectType.valueOf(typeName).getId();
     }
 
     public ObjectType getObjectType(short typeId) throws PrivilegeException {
         return provider.getObjectType(typeId);
-    }
-
-    public ObjectType getObjectType(String typeName) throws PrivilegeException {
-        return provider.getObjectType(typeName);
     }
 
     public void createRole(CreateRoleStmt stmt) throws DdlException {
@@ -1876,9 +1871,9 @@ public class PrivilegeManager {
                     UserPrivilegeCollection collection =
                             (UserPrivilegeCollection) reader.readJson(UserPrivilegeCollection.class);
 
-                    UserIdentity rootUser = UserIdentity.createAnalyzedUserIdentWithIp("root", "%");
-                    if (userIdentity.equals(rootUser)) {
-                        UserPrivilegeCollection rootUserPrivCollection = ret.getUserPrivilegeCollectionUnlocked(rootUser);
+                    if (userIdentity.equals(UserIdentity.ROOT)) {
+                        UserPrivilegeCollection rootUserPrivCollection =
+                                ret.getUserPrivilegeCollectionUnlocked(UserIdentity.ROOT);
                         collection.typeToPrivilegeEntryList = rootUserPrivCollection.typeToPrivilegeEntryList;
                     }
 

@@ -279,18 +279,18 @@ public class AstToStringBuilder {
             } else {
                 sb.append(stmt.getTblName().toSql());
             }
-            
+
             if (stmt.getPartitions() != null && !stmt.getPartitions().isEmpty()) {
                 sb.append(" PARTITION (");
                 Joiner.on(",").appendTo(sb, stmt.getPartitions()).append(")");
             }
-            
+
             if (stmt.getColumnNames() != null && !stmt.getColumnNames().isEmpty()) {
                 sb.append("(");
                 Joiner.on(",").appendTo(sb, stmt.getColumnNames()).append(")");
             }
             sb.append(" TO ");
-            sb.append("\"" + stmt.getPath() +  "\" ");
+            sb.append("\"" + stmt.getPath() + "\" ");
             if (stmt.getProperties() != null && !stmt.getProperties().isEmpty()) {
                 sb.append("PROPERTIES (");
                 sb.append(new PrintableMap<String, String>(stmt.getProperties(), "=", true, false));
@@ -516,7 +516,8 @@ public class AstToStringBuilder {
                 sqlBuilder.append("REVOKE ");
             }
 
-            sqlBuilder.append(Joiner.on(", ").join(statement.getGranteeRole()));
+            sqlBuilder.append(Joiner.on(", ")
+                    .join(statement.getGranteeRole().stream().map(r -> "'" + r + "'").collect(toList())));
             sqlBuilder.append(" ");
             if (statement instanceof GrantRoleStmt) {
                 sqlBuilder.append("TO ");

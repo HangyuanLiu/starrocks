@@ -3932,12 +3932,6 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     // ------------------------------------------- Privilege Statement -------------------------------------------------
 
     @Override
-    public ParseNode visitDropUserStatement(StarRocksParser.DropUserStatementContext context) {
-        UserIdentifier user = (UserIdentifier) visit(context.user());
-        return new DropUserStmt(user.getUserIdentity());
-    }
-
-    @Override
     public ParseNode visitCreateUserStatement(StarRocksParser.CreateUserStatementContext context) {
         UserDesc userDesc;
         UserIdentifier user = (UserIdentifier) visit(context.user());
@@ -3953,6 +3947,12 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         boolean ifNotExists = context.IF() != null;
         String userRole = context.string() == null ? null : ((StringLiteral) visit(context.string())).getStringValue();
         return new CreateUserStmt(ifNotExists, userDesc, userRole);
+    }
+
+    @Override
+    public ParseNode visitDropUserStatement(StarRocksParser.DropUserStatementContext context) {
+        UserIdentifier user = (UserIdentifier) visit(context.user());
+        return new DropUserStmt(user.getUserIdentity());
     }
 
     @Override
@@ -3989,18 +3989,18 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitCreateRoleStatement(StarRocksParser.CreateRoleStatementContext context) {
-        Identifier role = (Identifier) visit(context.identifierOrString());
-        return new CreateRoleStmt(role.getValue());
-    }
-
-    @Override
     public ParseNode visitShowUserStatement(StarRocksParser.ShowUserStatementContext context) {
         if (context.USERS() != null) {
             return new ShowUserStmt(true);
         } else {
             return new ShowUserStmt(false);
         }
+    }
+
+    @Override
+    public ParseNode visitCreateRoleStatement(StarRocksParser.CreateRoleStatementContext context) {
+        Identifier role = (Identifier) visit(context.identifierOrString());
+        return new CreateRoleStmt(role.getValue());
     }
 
     @Override
@@ -4057,17 +4057,6 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             arguments.add(new LambdaArgument(names.get(i)));
         }
         return new LambdaFunctionExpr(arguments);
-    }
-
-    @Override
-    public ParseNode visitGrantRole(StarRocksParser.GrantRoleContext context) {
-        UserIdentifier user = (UserIdentifier) visit(context.user());
-        List<String> roleNameList = new ArrayList<>();
-        for (StarRocksParser.IdentifierOrStringContext oneContext : context.identifierOrStringList().identifierOrString()) {
-            roleNameList.add(((Identifier) visit(oneContext)).getValue());
-        }
-
-        return new GrantRoleStmt(roleNameList, user.getUserIdentity());
     }
 
     @Override

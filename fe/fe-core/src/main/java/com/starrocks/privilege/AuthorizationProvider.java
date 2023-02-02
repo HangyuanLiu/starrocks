@@ -30,12 +30,7 @@ public interface AuthorizationProvider {
 
     short getPluginVersion();
 
-    /**
-     * analyze type string -> id
-     */
-    Set<String> getAllTypes();
-
-    ObjectType getObjectType(String typeStr) throws PrivilegeException;
+    Set<ObjectType> getAllPrivObjectTypes();
 
     ObjectType getObjectType(short typeId) throws PrivilegeException;
 

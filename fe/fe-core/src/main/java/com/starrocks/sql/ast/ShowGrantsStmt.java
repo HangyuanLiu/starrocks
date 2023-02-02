@@ -95,5 +95,4 @@ public class ShowGrantsStmt extends ShowStmt {
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
         return visitor.visitShowGrantsStatement(this, context);
     }
-
 }

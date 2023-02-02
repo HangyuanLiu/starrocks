@@ -24,6 +24,7 @@ import java.util.Objects;
 
 public class ResourceGroupPEntryObject implements PEntryObject {
     public static final long ALL_RESOURCE_GROUP_ID = -1; // -1 represent all
+
     @SerializedName(value = "i")
     private long id;
 

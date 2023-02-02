@@ -600,20 +600,20 @@ public abstract class AstVisitor<R, C> {
         return visitStatement(statement, context);
     }
 
-    public R visitSetRoleStatement(SetRoleStmt statement, C context) {
-        return visitStatement(statement, context);
-    }
-
-    public R visitSetDefaultRoleStatement(SetDefaultRoleStmt statement, C context) {
-        return visitStatement(statement, context);
-    }
-
     public R visitShowRolesStatement(ShowRolesStmt statement, C context) {
         return visitShowStatement(statement, context);
     }
 
     public R visitShowUserStatement(ShowUserStmt statement, C context) {
         return visitShowStatement(statement, context);
+    }
+
+    public R visitSetRoleStatement(SetRoleStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    public R visitSetDefaultRoleStatement(SetDefaultRoleStmt statement, C context) {
+        return visitStatement(statement, context);
     }
 
     // ---------------------------------------- Backup Restore Statement -----------------------------------------------

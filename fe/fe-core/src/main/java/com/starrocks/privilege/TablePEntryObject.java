@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Objects;
 
 public class TablePEntryObject implements PEntryObject {
+    public static final long ALL_DATABASE_ID = -2; // -2 represent all databases
+    public static final long ALL_TABLES_ID = -3; // -3 represent all tables
+
     @SerializedName(value = "d")
     protected long databaseId;
     @SerializedName(value = "t")
@@ -36,9 +39,6 @@ public class TablePEntryObject implements PEntryObject {
     public long getTableId() {
         return tableId;
     }
-
-    public static final long ALL_DATABASE_ID = -2; // -2 represent all databases
-    public static final long ALL_TABLES_ID = -3; // -3 represent all tables
 
     public static TablePEntryObject generate(GlobalStateMgr mgr, List<String> tokens) throws PrivilegeException {
         if (tokens.size() != 2) {

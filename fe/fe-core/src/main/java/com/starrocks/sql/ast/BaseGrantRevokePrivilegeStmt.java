@@ -117,7 +117,7 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
         if (!objects.isAllDB() && objects.getDbName() == null) {
             return Lists.newArrayList("*");
         } else if (objects.getDbName() != null) {
-            return Lists.newArrayList("*", objects.getDbName());
+            return Lists.newArrayList(objects.getDbName(), "*");
         } else {
             return Lists.newArrayList("*", "*");
         }
