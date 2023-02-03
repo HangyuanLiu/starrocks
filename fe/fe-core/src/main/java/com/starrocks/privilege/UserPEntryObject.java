@@ -39,7 +39,7 @@ public class UserPEntryObject implements PEntryObject {
         }
 
         if (!mgr.getAuthenticationManager().doesUserExist(user)) {
-            throw new PrivilegeException("cannot find user " + user);
+            throw new PrivObjNotFoundException("cannot find user " + user);
         }
         return new UserPEntryObject(user);
     }

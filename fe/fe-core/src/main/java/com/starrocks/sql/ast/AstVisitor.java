@@ -596,15 +596,15 @@ public abstract class AstVisitor<R, C> {
         return visitStatement(statement, context);
     }
 
+    public R visitShowUserStatement(ShowUserStmt statement, C context) {
+        return visitShowStatement(statement, context);
+    }
+
     public R visitDropRoleStatement(DropRoleStmt statement, C context) {
         return visitStatement(statement, context);
     }
 
     public R visitShowRolesStatement(ShowRolesStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
-
-    public R visitShowUserStatement(ShowUserStmt statement, C context) {
         return visitShowStatement(statement, context);
     }
 

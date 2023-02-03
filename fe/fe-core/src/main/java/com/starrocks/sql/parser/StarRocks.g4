@@ -421,7 +421,7 @@ showCreateTableStatement
     ;
 
 showColumnStatement
-    : SHOW FULL? COLUMNS ((FROM | IN) table=qualifiedName) ((FROM | IN) db=qualifiedName)?
+    : SHOW FULL? (COLUMNS | FIELDS) ((FROM | IN) table=qualifiedName) ((FROM | IN) db=qualifiedName)?
         ((LIKE pattern=string) | (WHERE expression))?
     ;
 
@@ -1190,57 +1190,6 @@ helpStatement
 
 // ------------------------------------------- Privilege Statement -----------------------------------------------------
 
-privilegeObjectName
-    : identifierOrStringOrStar ('.' identifierOrStringOrStar)?
-    ;
-
-privilegeObjectNameList
-    : privilegeObjectName (',' privilegeObjectName)*
-    ;
-
-privilegeActionReserved
-    : ADMIN
-    | ALTER
-    | CREATE
-    | DROP
-    | GRANT
-    | LOAD
-    | SELECT
-    | INSERT
-    | DELETE
-    | USAGE
-    | CREATE_DATABASE
-    | UPDATE
-    | EXPORT
-    | REPOSITORY
-    | CREATE_MATERIALIZED_VIEW
-    | ALL PRIVILEGES?
-    ;
-
-privilegeActionList
-    :  privilegeAction (',' privilegeAction)*
-    ;
-
-privilegeAction
-    : privilegeActionReserved
-    | identifier
-    ;
-
-privilegeTypeReserved
-    : SYSTEM
-    | TABLE
-    | DATABASE
-    | CATALOG
-    | DATABASES
-    | FUNCTION
-    | RESOURCE_GROUP
-    ;
-
-privilegeType
-    : privilegeTypeReserved
-    | identifier
-    ;
-
 createUserStatement
     : CREATE USER (IF NOT EXISTS)? user authOption? (DEFAULT ROLE string)?
     ;
@@ -1305,24 +1254,26 @@ grantRevokeClause
 
 grantPrivilegeStatement
     : GRANT IMPERSONATE ON USER user (',' user)* TO grantRevokeClause                                   #grantImpersonate
-    | GRANT privilegeActionList ON privilegeType (privilegeObjectNameList)?
+    | GRANT privilegeTypeList ON privObjectNameList TO grantRevokeClause                                #grantTablePrivBrief
+    | GRANT privilegeTypeList ON privObjectType (privObjectNameList)?
         TO grantRevokeClause                                                                            #grantPrivWithType
-    | GRANT privilegeActionList ON GLOBAL? privilegeType qualifiedName '(' typeList ')'
+    | GRANT privilegeTypeList ON GLOBAL? privObjectType qualifiedName '(' typeList ')'
         TO grantRevokeClause                                                                            #grantPrivWithFunc
-    | GRANT privilegeActionList ON ALL privilegeType
+    | GRANT privilegeTypeList ON ALL privObjectType
         (IN isAll=ALL DATABASES| IN DATABASE identifierOrString)? TO grantRevokeClause                  #grantOnAll
-    | GRANT privilegeActionList ON ALL GLOBAL FUNCTIONS TO grantRevokeClause                            #grantOnAllGlobalFunctions
+    | GRANT privilegeTypeList ON ALL GLOBAL FUNCTIONS TO grantRevokeClause                              #grantOnAllGlobalFunctions
     ;
 
 revokePrivilegeStatement
     : REVOKE IMPERSONATE ON USER user (',' user)* FROM grantRevokeClause                                #revokeImpersonate
-    | REVOKE privilegeActionList ON privilegeType (privilegeObjectNameList)?
+    | REVOKE privilegeTypeList ON privObjectNameList FROM grantRevokeClause                             #revokeTablePrivBrief
+    | REVOKE privilegeTypeList ON privObjectType (privObjectNameList)?
         FROM grantRevokeClause                                                                          #revokePrivWithType
-    | REVOKE privilegeActionList ON GLOBAL? privilegeType qualifiedName '(' typeList ')'
+    | REVOKE privilegeTypeList ON GLOBAL? privObjectType qualifiedName '(' typeList ')'
         FROM grantRevokeClause                                                                          #revokePrivWithFunc
-    | REVOKE privilegeActionList ON ALL privilegeType
+    | REVOKE privilegeTypeList ON ALL privObjectType
         (IN isAll=ALL DATABASES| IN DATABASE identifierOrString)? FROM grantRevokeClause                #revokeOnAll
-    | REVOKE privilegeActionList ON ALL GLOBAL FUNCTIONS FROM grantRevokeClause                         #revokeOnAllGlobalFunctions
+    | REVOKE privilegeTypeList ON ALL GLOBAL FUNCTIONS FROM grantRevokeClause                           #revokeOnAllGlobalFunctions
     ;
 
 showGrantsStatement
@@ -1330,6 +1281,34 @@ showGrantsStatement
     | SHOW GRANTS FOR USER? user
     | SHOW GRANTS FOR ROLE identifierOrString
     ;
+
+authOption
+    : IDENTIFIED BY PASSWORD? string                                                                    #authWithoutPlugin
+    | IDENTIFIED WITH identifierOrString ((BY | AS) string)?                                            #authWithPlugin
+    ;
+
+privObjectName
+    : identifierOrStringOrStar ('.' identifierOrStringOrStar)?
+    ;
+
+privObjectNameList
+    : privObjectName (',' privObjectName)*
+    ;
+
+privilegeTypeList
+    :  privilegeType (',' privilegeType)*
+    ;
+
+privilegeType
+    : ADMIN| ALTER| CREATE| DROP| GRANT| LOAD| SELECT| INSERT| DELETE| UPDATE| EXPORT| REPOSITORY| ALL PRIVILEGES?
+    | identifier
+    ;
+
+privObjectType
+    : SYSTEM | TABLE | DATABASE | CATALOG | DATABASES | FUNCTION
+    | identifier
+    ;
+
 // ---------------------------------------- Backup Restore Statement ---------------------------------------------------
 
 backupStatement
@@ -2171,11 +2150,6 @@ number
     | INTEGER_VALUE  #integerValue
     ;
 
-authOption
-    : IDENTIFIED BY PASSWORD? string                            # authWithoutPlugin
-    | IDENTIFIED WITH identifierOrString ((BY | AS) string)?    # authWithPlugin
-    ;
-
 nonReserved
     : AFTER | AGGREGATE | ASYNC | AUTHORS | AVG | ADMIN
     | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BOOLEAN | BROKER | BUCKETS | BUILTIN
@@ -2183,7 +2157,7 @@ nonReserved
     | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT | CONFIG
     | DATA | DATE | DATETIME | DAY | DECOMMISSION | DISTRIBUTION | DUPLICATE | DYNAMIC
     | END | ENGINE | ENGINES | ERRORS | EVENTS | EXECUTE | EXTERNAL | EXTRACT | EVERY
-    | FILE | FILTER | FIRST | FLOOR | FOLLOWING | FORMAT | FN | FRONTEND | FRONTENDS | FOLLOWER | FREE | FUNCTIONS
+    | FIELDS | FILE | FILTER | FIRST | FLOOR | FOLLOWING | FORMAT | FN | FRONTEND | FRONTENDS | FOLLOWER | FREE | FUNCTIONS
     | GLOBAL | GRANTS
     | HASH | HISTOGRAM | HELP | HLL_UNION | HOUR | HUB
     | IDENTIFIED | IMPERSONATE | INDEXES | INSTALL | INTERMEDIATE | INTERVAL | ISOLATION

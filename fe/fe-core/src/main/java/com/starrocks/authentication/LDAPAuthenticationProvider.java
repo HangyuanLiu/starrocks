@@ -14,6 +14,7 @@
 package com.starrocks.authentication;
 
 import com.starrocks.analysis.UserIdentity;
+import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.Password;
 import com.starrocks.mysql.security.LdapSecurity;
 import org.apache.parquet.Strings;
@@ -26,7 +27,7 @@ public class LDAPAuthenticationProvider implements AuthenticationProvider {
     @Override
     public UserAuthenticationInfo validAuthenticationInfo(UserIdentity userIdentity, String password, String textForAuthPlugin) {
         UserAuthenticationInfo info = new UserAuthenticationInfo();
-        info.setPassword(new byte[0]);
+        info.setPassword(MysqlPassword.EMPTY_PASSWORD);
         info.setTextForAuthPlugin(textForAuthPlugin);
         return info;
     }

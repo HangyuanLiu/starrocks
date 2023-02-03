@@ -21,13 +21,17 @@ import com.starrocks.analysis.UserIdentity;
 import java.util.List;
 
 public class GrantRevokePrivilegeObjects implements ParseNode {
+    //UnResolved AST used in syntax grantPrivWithType
     private List<List<String>> privilegeObjectNameTokensList;
+
+    //UnResolved AST used in syntax grantImpersonate
     private List<UserIdentity> userPrivilegeObjectList;
 
-    private String privType;
+    //UnResolved AST used in syntax grantOnAll
     private boolean isAllDB;
     private String dbName;
 
+    //UnResolved AST used in syntax grantPrivWithFunc
     private FunctionArgsDef functionArgsDef;
     private String functionName;
 
@@ -47,10 +51,6 @@ public class GrantRevokePrivilegeObjects implements ParseNode {
         this.userPrivilegeObjectList = userPrivilegeObjectList;
     }
 
-    public String getPrivType() {
-        return privType;
-    }
-
     public boolean isAllDB() {
         return isAllDB;
     }
@@ -59,8 +59,7 @@ public class GrantRevokePrivilegeObjects implements ParseNode {
         return dbName;
     }
 
-    public void setAllPrivilegeObject(String privilegeType, boolean isAllDB, String dbName) {
-        this.privType = privilegeType;
+    public void setAllPrivilegeObject(boolean isAllDB, String dbName) {
         this.isAllDB = isAllDB;
         this.dbName = dbName;
     }
@@ -79,10 +78,5 @@ public class GrantRevokePrivilegeObjects implements ParseNode {
 
     public void setFunctionArgsDef(FunctionArgsDef functionArgsDef) {
         this.functionArgsDef = functionArgsDef;
-    }
-
-    @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return null;
     }
 }

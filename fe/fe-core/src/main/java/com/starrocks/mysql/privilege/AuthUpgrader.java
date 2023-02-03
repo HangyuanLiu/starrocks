@@ -21,12 +21,15 @@ import com.starrocks.analysis.TablePattern;
 import com.starrocks.analysis.UserIdentity;
 import com.starrocks.authentication.AuthenticationException;
 import com.starrocks.authentication.AuthenticationManager;
+import com.starrocks.catalog.Database;
 import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.Config;
 import com.starrocks.common.Pair;
+import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.privilege.ObjectType;
 import com.starrocks.privilege.PEntryObject;
+import com.starrocks.privilege.PrivObjNotFoundException;
 import com.starrocks.privilege.PrivilegeCollection;
 import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.privilege.PrivilegeManager;
@@ -90,6 +93,16 @@ public class AuthUpgrader {
         LOG.info("replayed upgrade journal successfully.");
     }
 
+    private Table getTableObject(String db, String table) {
+        Database dbObj = globalStateMgr.getDb(db);
+        Table tableObj = null;
+        if (dbObj != null) {
+            tableObj = dbObj.getTable(table);
+        }
+
+        return tableObj;
+    }
+
     protected void upgradeUser() throws AuthUpgradeUnrecoverableException {
         UserPrivTable userPrivTable = this.auth.getUserPrivTable();
         DbPrivTable dbTable = this.auth.getDbPrivTable();
@@ -104,7 +117,10 @@ public class AuthUpgrader {
             try {
                 UserIdentity userIdentity = entry.getUserIdent();
                 if (userIdentity.equals(UserIdentity.ROOT)) {
-                    LOG.info("ignore root entry : {}", entry);
+                    // we should keep the password for root after upgrade
+                    byte[] p = entry.getPassword().getPassword() == null ?
+                            MysqlPassword.EMPTY_PASSWORD : entry.getPassword().getPassword();
+                    authenticationManager.getUserToAuthenticationInfo().get(UserIdentity.ROOT).setPassword(p);
                     continue;
                 }
                 // 1. ignore fake entries created by domain resolver
@@ -133,7 +149,8 @@ public class AuthUpgrader {
             try {
                 authenticationManager.upgradeUserProperty(userName, userProperty.getMaxConn());
                 for (String hostname : whiteList.getAllDomains()) {
-                    byte[] p = whiteList.getPassword(hostname);
+                    byte[] p = whiteList.getPassword(hostname) == null ?
+                            MysqlPassword.EMPTY_PASSWORD : whiteList.getPassword(hostname);
                     Password password = new Password(p, null, null);
                     UserIdentity user = UserIdentity.createAnalyzedUserIdentWithDomain(userName, hostname);
                     authenticationManager.upgradeUserUnlocked(user, password);
@@ -163,6 +180,8 @@ public class AuthUpgrader {
                     LOG.info("ignore entry created by domain resolver : {}", entry);
                     continue;
                 }
+
+                LOG.info("upgrade auth for user '{}'", userIdentity);
 
                 UserPrivilegeCollection collection = new UserPrivilegeCollection();
                 // mark all the old grant pattern, will be used in lower level
@@ -368,7 +387,11 @@ public class AuthUpgrader {
                     case DROP_PRIV:
                     case ALTER_PRIV:
                     case SELECT_PRIV: {
-                        Table.TableType tableType = globalStateMgr.getDb(dbName).getTable(tableName).getType();
+                        Table tableObj = getTableObject(dbName, tableName);
+                        if (tableObj == null) {
+                            break;
+                        }
+                        Table.TableType tableType = tableObj.getType();
                         if (tableType.equals(Table.TableType.VIEW)) {
                             upgradeViewPrivileges(dbName, tableName, privilege, collection, grantPatterns);
                         } else if (tableType.equals(Table.TableType.MATERIALIZED_VIEW)) {
@@ -477,6 +500,9 @@ public class AuthUpgrader {
                     // built roles has been automatically created
                     continue;
                 }
+
+                LOG.info("upgrade auth for role '{}'", roleName);
+
                 // create new role
                 RolePrivilegeCollection collection = new RolePrivilegeCollection(
                         roleName, RolePrivilegeCollection.RoleFlags.MUTABLE,
@@ -541,7 +567,11 @@ public class AuthUpgrader {
                 switch (privilege) {
                     case SELECT_PRIV:
                         if (!table.equals(STAR)) {
-                            Table.TableType tableType = globalStateMgr.getDb(db).getTable(table).getType();
+                            Table tableObj = getTableObject(db, table);
+                            if (tableObj == null) {
+                                break;
+                            }
+                            Table.TableType tableType = tableObj.getType();
                             if (tableType.equals(Table.TableType.VIEW)) {
                                 upgradeViewPrivileges(db, table, privilege, collection, grantPatterns);
                             } else if (tableType.equals(Table.TableType.MATERIALIZED_VIEW)) {
@@ -577,7 +607,11 @@ public class AuthUpgrader {
                     case DROP_PRIV:
                     case ALTER_PRIV:
                         if (!table.equals(STAR)) {
-                            Table.TableType tableType = globalStateMgr.getDb(db).getTable(table).getType();
+                            Table tableObj = getTableObject(db, table);
+                            if (tableObj == null) {
+                                break;
+                            }
+                            Table.TableType tableType = tableObj.getType();
                             if (tableType.equals(Table.TableType.VIEW)) {
                                 upgradeViewPrivileges(db, table, privilege, collection, grantPatterns);
                             } else if (tableType.equals(Table.TableType.MATERIALIZED_VIEW)) {
@@ -744,24 +778,35 @@ public class AuthUpgrader {
             isGrant = matchTableGrant(grantPatterns, db, STAR);
         }
 
+
         // object
         List<PEntryObject> objects;
-        if (db.equals(STAR)) {
-            // for *.*
-            objects = Collections.singletonList(
-                    privilegeManager.analyzeObject(ObjectType.DATABASE, Lists.newArrayList("*")));
-            if (privilege == Privilege.CREATE_PRIV) {
-                // for CREATE_PRIV on *.*, we also need to grant create_database on default_catalog
-                collection.grant(ObjectType.CATALOG,
-                        Collections.singletonList(PrivilegeType.CREATE_DATABASE),
-                        Collections.singletonList(privilegeManager.analyzeObject(ObjectType.CATALOG,
-                                Collections.singletonList(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME))),
-                        isGrant);
+        try {
+            if (db.equals(STAR)) {
+                // for *.*
+                objects = Collections.singletonList(
+                        privilegeManager.analyzeObject(ObjectType.DATABASE, Lists.newArrayList("*")));
+                if (privilege == Privilege.CREATE_PRIV) {
+                    // for CREATE_PRIV on *.*, we also need to grant create_database on default_catalog
+                    collection.grant(ObjectType.CATALOG,
+                            Collections.singletonList(PrivilegeType.CREATE_DATABASE),
+                            Collections.singletonList(privilegeManager.analyzeObject(ObjectType.CATALOG,
+                                    Collections.singletonList(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME))),
+                            isGrant);
+                }
+            } else {
+                // for db.*
+                objects = Collections.singletonList(privilegeManager.analyzeObject(
+                        ObjectType.DATABASE, Collections.singletonList(db)));
             }
-        } else {
-            // for db.*
-            objects = Collections.singletonList(privilegeManager.analyzeObject(
-                    ObjectType.DATABASE, Collections.singletonList(db)));
+        } catch (PrivObjNotFoundException e) {
+            // In old {@link Auth} module, privilege entry is not removed after corresponding object(db, table etc.)
+            // is dropped, so in the upgrade process we should always ignore the exception because of non-existed
+            // object, for those privilege entries, we don't need to transform them to privilege entry in new RBAC
+            // based privilege framework.
+            LOG.info("Privilege '{}' on db {} is ignored when upgrading from" +
+                    " old auth because of non-existed object, message: {}", privilege, db, e.getMessage());
+            return;
         }
 
         // grant db
@@ -769,7 +814,7 @@ public class AuthUpgrader {
     }
 
     protected void upgradeViewPrivileges(
-            String db, String table, Privilege privilege, PrivilegeCollection collection,
+            String db, String view, Privilege privilege, PrivilegeCollection collection,
             Set<Pair<String, String>> grantPatterns)
             throws PrivilegeException, AuthUpgradeUnrecoverableException {
 
@@ -795,23 +840,30 @@ public class AuthUpgrader {
 
         // object
         List<PEntryObject> objects;
-        if (db.equals(STAR)) {
-            objects = Collections.singletonList(privilegeManager.analyzeObject(
-                    ObjectType.VIEW, Lists.newArrayList("*", "*")));
-        } else if (table.equals(STAR)) {
-            // ALL TABLES in db
-            objects = Collections.singletonList(
-                    privilegeManager.analyzeObject(ObjectType.VIEW, Lists.newArrayList(db, "*")));
-        } else {
-            // db.view
-            objects = Collections.singletonList(privilegeManager.analyzeObject(
-                    ObjectType.VIEW, Arrays.asList(db, table)));
+        try {
+            if (db.equals(STAR)) {
+                objects = Collections.singletonList(privilegeManager.analyzeObject(
+                        ObjectType.VIEW, Lists.newArrayList("*", "*")));
+            } else if (view.equals(STAR)) {
+                // ALL TABLES in db
+                objects = Collections.singletonList(
+                        privilegeManager.analyzeObject(ObjectType.VIEW, Lists.newArrayList(db, "*")));
+            } else {
+                // db.view
+                objects = Collections.singletonList(privilegeManager.analyzeObject(
+                        ObjectType.VIEW, Arrays.asList(db, view)));
+            }
+        } catch (PrivObjNotFoundException e) {
+            LOG.info("Privilege '{}' on view {}.{} is ignored when upgrading from" +
+                    " old auth because of non-existed object, message: {}", privilege, db, view, e.getMessage());
+            return;
         }
+
 
         // isGrant
         boolean isGrant = false;
         if (grantPatterns != null) {
-            isGrant = matchTableGrant(grantPatterns, db, table);
+            isGrant = matchTableGrant(grantPatterns, db, view);
         }
 
         // grant table
@@ -851,14 +903,23 @@ public class AuthUpgrader {
 
         // object
         List<PEntryObject> objects;
-        if (db.equals(STAR)) {
-            objects = Collections.singletonList(privilegeManager.analyzeObject(ObjectType.TABLE, Lists.newArrayList("*", "*")));
-        } else if (table.equals(STAR)) {
-            // ALL TABLES in db
-            objects = Collections.singletonList(privilegeManager.analyzeObject(ObjectType.TABLE, Lists.newArrayList(db, "*")));
-        } else {
-            // db.table
-            objects = Collections.singletonList(privilegeManager.analyzeObject(ObjectType.TABLE, Arrays.asList(db, table)));
+        try {
+            if (db.equals(STAR)) {
+                objects = Collections.singletonList(privilegeManager.analyzeObject(ObjectType.TABLE,
+                        Lists.newArrayList("*", "*")));
+            } else if (table.equals(STAR)) {
+                // ALL TABLES in db
+                objects = Collections.singletonList(privilegeManager.analyzeObject(ObjectType.TABLE,
+                        Lists.newArrayList(db, "*")));
+            } else {
+                // db.table
+                objects = Collections.singletonList(privilegeManager.analyzeObject(ObjectType.TABLE,
+                        Arrays.asList(db, table)));
+            }
+        } catch (PrivObjNotFoundException e) {
+            LOG.info("Privilege '{}' on table {}.{} is ignored when upgrading from" +
+                    " old auth because of non-existed object, message: {}", privilege, db, table, e.getMessage());
+            return;
         }
 
         // isGrant
@@ -872,7 +933,7 @@ public class AuthUpgrader {
     }
 
     protected void upgradeMaterializedViewPrivileges(
-            String db, String table, Privilege privilege, PrivilegeCollection collection,
+            String db, String mv, Privilege privilege, PrivilegeCollection collection,
             Set<Pair<String, String>> grantPatterns) throws PrivilegeException, AuthUpgradeUnrecoverableException {
 
         // actionSet
@@ -897,23 +958,30 @@ public class AuthUpgrader {
 
         // object
         List<PEntryObject> objects;
-        if (db.equals(STAR)) {
-            objects = Collections.singletonList(
-                    privilegeManager.analyzeObject(ObjectType.MATERIALIZED_VIEW, Lists.newArrayList("*", "*")));
-        } else if (table.equals(STAR)) {
-            // ALL TABLES in db
-            objects = Collections.singletonList(privilegeManager.analyzeObject(
-                    ObjectType.MATERIALIZED_VIEW, Lists.newArrayList(db, "*")));
-        } else {
-            // db.mv
-            objects = Collections.singletonList(
-                    privilegeManager.analyzeObject(ObjectType.MATERIALIZED_VIEW, Arrays.asList(db, table)));
+        try {
+            if (db.equals(STAR)) {
+                objects = Collections.singletonList(
+                        privilegeManager.analyzeObject(ObjectType.MATERIALIZED_VIEW, Lists.newArrayList("*", "*")));
+            } else if (mv.equals(STAR)) {
+                // ALL TABLES in db
+                objects = Collections.singletonList(privilegeManager.analyzeObject(
+                        ObjectType.MATERIALIZED_VIEW, Lists.newArrayList(db, "*")));
+            } else {
+                // db.mv
+                objects = Collections.singletonList(
+                        privilegeManager.analyzeObject(ObjectType.MATERIALIZED_VIEW, Arrays.asList(db, mv)));
+            }
+        } catch (PrivObjNotFoundException e) {
+            LOG.info("Privilege '{}' on materialized view {}.{} is ignored when upgrading from" +
+                    " old auth because of non-existed object, message: {}", privilege, db, mv, e.getMessage());
+            return;
         }
+
 
         // isGrant
         boolean isGrant = false;
         if (grantPatterns != null) {
-            isGrant = matchTableGrant(grantPatterns, db, table);
+            isGrant = matchTableGrant(grantPatterns, db, mv);
         }
 
         // grant table
@@ -928,7 +996,14 @@ public class AuthUpgrader {
 
     protected void upgradeImpersonatePrivileges(UserIdentity user, PrivilegeCollection collection)
             throws PrivilegeException {
-        List<PEntryObject> objects = Collections.singletonList(privilegeManager.analyzeUserObject(ObjectType.USER, user));
+        List<PEntryObject> objects;
+        try {
+            objects = Collections.singletonList(privilegeManager.analyzeUserObject(ObjectType.USER, user));
+        } catch (PrivObjNotFoundException e) {
+            LOG.info("Privilege 'IMPERSONATE' on user {} is ignored when upgrading from" +
+                    " old auth because of non-existed object, message: {}", user, e.getMessage());
+            return;
+        }
         collection.grant(ObjectType.USER, Collections.singletonList(PrivilegeType.IMPERSONATE), objects, false);
     }
 
@@ -938,12 +1013,18 @@ public class AuthUpgrader {
         switch (privilege) {
             case USAGE_PRIV: {
                 List<PEntryObject> objects;
-                if (name.equals(STAR)) {
-                    objects = Collections.singletonList(privilegeManager.analyzeObject(
-                            ObjectType.RESOURCE, Lists.newArrayList("*")));
-                } else {
-                    objects = Collections.singletonList(privilegeManager.analyzeObject(
-                            ObjectType.RESOURCE, Collections.singletonList(name)));
+                try {
+                    if (name.equals(STAR)) {
+                        objects = Collections.singletonList(privilegeManager.analyzeObject(
+                                ObjectType.RESOURCE, Lists.newArrayList("*")));
+                    } else {
+                        objects = Collections.singletonList(privilegeManager.analyzeObject(
+                                ObjectType.RESOURCE, Collections.singletonList(name)));
+                    }
+                } catch (PrivObjNotFoundException e) {
+                    LOG.info("Privilege '{}' on resource {} is ignored when upgrading from" +
+                            " old auth because of non-existed object, message: {}", privilege, name, e.getMessage());
+                    return;
                 }
                 collection.grant(ObjectType.RESOURCE, Collections.singletonList(PrivilegeType.USAGE), objects, isGrant);
                 break;
