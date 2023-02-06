@@ -1432,6 +1432,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return enableQueryDebugTrace;
     }
 
+    public void setEnableQueryDebugTrace(boolean val) {
+        this.enableQueryDebugTrace = val;
+    }
+
     public String getloadTransmissionCompressionType() {
         return loadTransmissionCompressionType;
     }

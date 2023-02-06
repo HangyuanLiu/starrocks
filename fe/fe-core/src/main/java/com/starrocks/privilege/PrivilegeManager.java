@@ -14,6 +14,7 @@
 
 package com.starrocks.privilege;
 
+import com.google.common.base.Joiner;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -492,7 +493,7 @@ public class PrivilegeManager {
                 Set<Long> parentRolePredecessors = getAllPredecessorsUnlocked(parentRoleId);
                 if (parentRolePredecessors.contains(roleId)) {
                     throw new PrivilegeException(String.format("role %s[%d] is already a predecessor role of %s[%d]",
-                            roleName, roleId, parentRoleName, parentRoleId));
+                            roleName, roleId, parentRole, parentRoleId));
                 }
 
                 // temporarily add sub role to parent role to verify inheritance depth

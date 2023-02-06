@@ -1071,7 +1071,7 @@ public class StmtExecutor {
         for (List<String> row : resultSet.getResultRows()) {
             serializer.reset();
             for (String item : row) {
-                if (item == null || item.equals(FeConstants.null_string)) {
+                if (item == null || item.equals(FeConstants.NULL_STRING)) {
                     serializer.writeNull();
                 } else {
                     serializer.writeLenEncodedString(item);
