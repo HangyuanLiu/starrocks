@@ -31,8 +31,8 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
     protected GrantRevokePrivilegeObjects objects;
 
     protected String role;
-    protected String objectTypeString;
-    protected List<String> privTypeStringList;
+    protected String objectTypeUnResolved;
+    protected List<String> privilegeTypeUnResolved;
 
     // the following fields is set by analyzer for old privilege framework and will be removed after 2.5 released
     private PrivBitSet privBitSet = null;
@@ -45,12 +45,12 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
     private List<PEntryObject> objectList;
 
     public BaseGrantRevokePrivilegeStmt(
-            List<String> privTypeStringList,
-            String objectTypeString,
+            List<String> privilegeTypeUnResolved,
+            String objectTypeUnResolved,
             GrantRevokeClause clause,
             GrantRevokePrivilegeObjects objects) {
-        this.privTypeStringList = privTypeStringList;
-        this.objectTypeString = objectTypeString;
+        this.privilegeTypeUnResolved = privilegeTypeUnResolved;
+        this.objectTypeUnResolved = objectTypeUnResolved;
         this.clause = clause;
         this.objects = objects;
         this.role = clause.getRoleName();
@@ -97,10 +97,6 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
         this.role = role;
     }
 
-    public void setObjectTypeString(String objectTypeString) {
-        this.objectTypeString = objectTypeString;
-    }
-
     public String getRole() {
         return role;
     }
@@ -109,22 +105,12 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
         return clause.getUserIdentity();
     }
 
-    public String getObjectTypeString() {
-        return objectTypeString;
+    public String getObjectTypeUnResolved() {
+        return objectTypeUnResolved;
     }
 
-    public List<String> getTokens() {
-        if (!objects.isAllDB() && objects.getDbName() == null) {
-            return Lists.newArrayList("*");
-        } else if (objects.getDbName() != null) {
-            return Lists.newArrayList(objects.getDbName(), "*");
-        } else {
-            return Lists.newArrayList("*", "*");
-        }
-    }
-
-    public List<String> getPrivTypeStringList() {
-        return privTypeStringList;
+    public List<String> getPrivilegeTypeUnResolved() {
+        return privilegeTypeUnResolved;
     }
 
     public TablePattern getTblPattern() {
@@ -169,6 +155,16 @@ public class BaseGrantRevokePrivilegeStmt extends DdlStmt {
 
     public boolean hasPrivilegeObject() {
         return this.objects != null;
+    }
+
+    public List<String> getTokens() {
+        if (!objects.isAllDB() && objects.getDbName() == null) {
+            return Lists.newArrayList("*");
+        } else if (objects.getDbName() != null) {
+            return Lists.newArrayList(objects.getDbName(), "*");
+        } else {
+            return Lists.newArrayList("*", "*");
+        }
     }
 
     @Override

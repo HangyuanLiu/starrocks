@@ -58,9 +58,12 @@ public class StatementPlanner {
 
         Map<String, Database> dbs = AnalyzerUtils.collectAllDatabase(session, stmt);
         Map<String, Database> dbLocks = null;
+
         if (lockDb) {
             dbLocks = dbs;
         }
+
+        // 1. For all queries, we need db lock when analyze phase
         try {
             lock(dbLocks);
             try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Analyzer")) {
@@ -73,6 +76,18 @@ public class StatementPlanner {
             }
 
             session.setCurrentSqlDbIds(dbs.values().stream().map(Database::getId).collect(Collectors.toSet()));
+        } finally {
+            unLock(dbLocks);
+        }
+
+        // 2. For only olap table queries, we have snapshot the olap table metadata, so we needn't db lock again
+        boolean isOnlyOlapTableQueries = AnalyzerUtils.isOnlyHasOlapTables(stmt);
+        if (isOnlyOlapTableQueries && stmt instanceof QueryStatement) {
+            dbLocks = null;
+        }
+
+        try {
+            lock(dbLocks);
             if (stmt instanceof QueryStatement) {
                 QueryStatement queryStmt = (QueryStatement) stmt;
                 resultSinkType = queryStmt.hasOutFileClause() ? TResultSinkType.FILE : resultSinkType;

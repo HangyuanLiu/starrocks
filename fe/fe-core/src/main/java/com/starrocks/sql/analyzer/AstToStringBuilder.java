@@ -59,7 +59,6 @@ import com.starrocks.privilege.CatalogPEntryObject;
 import com.starrocks.privilege.DbPEntryObject;
 import com.starrocks.privilege.FunctionPEntryObject;
 import com.starrocks.privilege.GlobalFunctionPEntryObject;
-import com.starrocks.privilege.ObjectType;
 import com.starrocks.privilege.PEntryObject;
 import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.privilege.ResourceGroupPEntryObject;
@@ -376,6 +375,7 @@ public class AstToStringBuilder {
                         if (userPEntryObject.getUserIdentity() == null) {
                             sb.append("ALL USERS");
                         } else {
+                            sb.append(stmt.getObjectType().name());
                             sb.append(Joiner.on(",").join(stmt.getObjectList().stream()
                                     .map(pEntryObject -> ((UserPEntryObject) pEntryObject).getUserIdentity().toString())
                                     .collect(toList())));
@@ -474,12 +474,12 @@ public class AstToStringBuilder {
                     String priv = privilege.toString().toUpperCase();
                     sb.append(priv, 0, priv.length() - 5);
                 }
-                if (stmt.getObjectTypeString().equals("TABLE") || stmt.getObjectTypeString().equals("DATABASE")) {
+                if (stmt.getObjectTypeUnResolved().equals("TABLE") || stmt.getObjectTypeUnResolved().equals("DATABASE")) {
                     sb.append(" ON ").append(stmt.getTblPattern());
-                } else if (stmt.getObjectTypeString().equals("RESOURCE")) {
+                } else if (stmt.getObjectTypeUnResolved().equals("RESOURCE")) {
                     sb.append(" ON RESOURCE ").append(stmt.getResourcePattern());
                 } else {
-                    sb.append(" ON ").append(stmt.getUserPrivilegeObject());
+                    sb.append(" ON USER ").append(stmt.getUserPrivilegeObject());
                 }
 
             }

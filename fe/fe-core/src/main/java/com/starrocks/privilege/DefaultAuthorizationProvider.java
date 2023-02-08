@@ -30,8 +30,6 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
     private static final short PLUGIN_ID = 1;
     private static final short PLUGIN_VERSION = 1;
 
-    //private static final Map<ObjectType, Map<PrivilegeType, PrivilegeType>> TYPE_TO_ACTION_MAP = new HashMap<>();
-
     private static final Map<ObjectType, List<PrivilegeType>> TYPE_TO_ACTION_LIST =
             new HashMap<ObjectType, List<PrivilegeType>>() {
                 {
@@ -146,31 +144,8 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
     }
 
     @Override
-    public List<PrivilegeType> getActions(ObjectType objectType) {
+    public List<PrivilegeType> getAvailablePrivType(ObjectType objectType) {
         return new ArrayList<>(TYPE_TO_ACTION_LIST.get(objectType));
-    }
-
-    /*
-    @Override
-    public PrivilegeType getAction(ObjectType objectTypeId, PrivilegeType privilegeType) throws PrivilegeException {
-        Map<PrivilegeType, Action> actionMap = TY.get(objectTypeId);
-        if (actionMap == null) {
-            throw new PrivilegeException("cannot find type " + objectTypeId.name() +
-                    " in " + TYPE_TO_ACTION_MAP.keySet());
-        }
-        Action action = actionMap.get(privilegeType);
-        if (action == null) {
-            throw new PrivilegeException("cannot find action " + privilegeType + " in " + actionMap.keySet() +
-                    " on object type " + objectTypeId.name());
-        }
-        return action;
-    }
-
-     */
-
-    @Override
-    public List<PrivilegeType> getObjectAvailablePrivType(ObjectType objectType) {
-        return TYPE_TO_ACTION_LIST.get(objectType);
     }
 
     @Override
@@ -202,9 +177,9 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
 
 
     @Override
-    public PEntryObject generateObject(ObjectType type, List<String> objectTokens, GlobalStateMgr mgr)
+    public PEntryObject generateObject(ObjectType objectType, List<String> objectTokens, GlobalStateMgr mgr)
             throws PrivilegeException {
-        switch (type) {
+        switch (objectType) {
             case TABLE:
                 return TablePEntryObject.generate(mgr, objectTokens);
 
@@ -233,27 +208,27 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
                 return GlobalFunctionPEntryObject.generate(mgr, objectTokens);
 
             default:
-                throw new PrivilegeException(UNEXPECTED_TYPE + type.name());
+                throw new PrivilegeException(UNEXPECTED_TYPE + objectType.name());
         }
     }
 
     @Override
     public PEntryObject generateUserObject(
-            ObjectType type, UserIdentity user, GlobalStateMgr globalStateMgr) throws PrivilegeException {
-        if (type.equals(ObjectType.USER)) {
+            ObjectType objectType, UserIdentity user, GlobalStateMgr globalStateMgr) throws PrivilegeException {
+        if (objectType.equals(ObjectType.USER)) {
             return UserPEntryObject.generate(globalStateMgr, user);
         }
-        throw new PrivilegeException(UNEXPECTED_TYPE + type.name());
+        throw new PrivilegeException(UNEXPECTED_TYPE + objectType.name());
     }
 
-    private static final List<String> BAD_SYSTEM_ACTIONS = Arrays.asList("GRANT", "NODE");
+    private static final List<PrivilegeType> BAD_SYSTEM_ACTIONS = Arrays.asList(PrivilegeType.GRANT, PrivilegeType.NODE);
 
     @Override
-    public void validateGrant(String type, List<String> actions, List<PEntryObject> objects) throws
-            PrivilegeException {
-        if (type.equals("SYSTEM")) {
-            for (String badAction : BAD_SYSTEM_ACTIONS) {
-                if (actions.contains(badAction)) {
+    public void validateGrant(ObjectType objectType, List<PrivilegeType> privilegeTypes, List<PEntryObject> objects)
+            throws PrivilegeException {
+        if (objectType.equals(ObjectType.SYSTEM)) {
+            for (PrivilegeType badAction : BAD_SYSTEM_ACTIONS) {
+                if (privilegeTypes.contains(badAction)) {
                     throw new PrivilegeException("cannot grant/revoke system privilege: " + badAction);
                 }
             }
@@ -261,27 +236,27 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
     }
 
     @Override
-    public boolean check(ObjectType type, PrivilegeType want, PEntryObject object, PrivilegeCollection
+    public boolean check(ObjectType objectType, PrivilegeType want, PEntryObject object, PrivilegeCollection
             currentPrivilegeCollection) {
-        return currentPrivilegeCollection.check(type, want, object);
+        return currentPrivilegeCollection.check(objectType, want, object);
     }
 
     @Override
-    public boolean searchAnyActionOnObject(ObjectType type, PEntryObject object,
+    public boolean searchAnyActionOnObject(ObjectType objectType, PEntryObject object,
                                            PrivilegeCollection currentPrivilegeCollection) {
-        return currentPrivilegeCollection.searchAnyActionOnObject(type, object);
+        return currentPrivilegeCollection.searchAnyActionOnObject(objectType, object);
     }
 
     @Override
-    public boolean searchActionOnObject(ObjectType type, PEntryObject object,
+    public boolean searchActionOnObject(ObjectType objectType, PEntryObject object,
                                         PrivilegeCollection currentPrivilegeCollection, PrivilegeType want) {
-        return currentPrivilegeCollection.searchActionOnObject(type, object, want);
+        return currentPrivilegeCollection.searchActionOnObject(objectType, object, want);
     }
 
     @Override
-    public boolean allowGrant(ObjectType type, List<PrivilegeType> wants, List<PEntryObject> objects,
+    public boolean allowGrant(ObjectType objectType, List<PrivilegeType> wants, List<PEntryObject> objects,
                               PrivilegeCollection currentPrivilegeCollection) {
-        return currentPrivilegeCollection.allowGrant(type, wants, objects);
+        return currentPrivilegeCollection.allowGrant(objectType, wants, objects);
     }
 
     @Override

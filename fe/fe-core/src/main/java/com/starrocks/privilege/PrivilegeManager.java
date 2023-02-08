@@ -40,7 +40,6 @@ import com.starrocks.sql.ast.RevokePrivilegeStmt;
 import com.starrocks.sql.ast.RevokeRoleStmt;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.spark_project.guava.base.Joiner;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -146,14 +145,14 @@ public class PrivilegeManager {
             RolePrivilegeCollection rolePrivilegeCollection = initBuiltinRoleUnlocked(ROOT_ROLE_ID, ROOT_ROLE_NAME);
             // GRANT ALL ON ALL
             for (ObjectType objectType : provider.getAllPrivObjectTypes()) {
-                initPrivilegeCollectionAllObjects(rolePrivilegeCollection, objectType, provider.getActions(objectType));
+                initPrivilegeCollectionAllObjects(rolePrivilegeCollection, objectType, provider.getAvailablePrivType(objectType));
             }
             rolePrivilegeCollection.disableMutable();  // not mutable
 
             // 2. builtin db_admin role
             rolePrivilegeCollection = initBuiltinRoleUnlocked(DB_ADMIN_ROLE_ID, "db_admin");
             // ALL system but GRANT AND NODE
-            List<PrivilegeType> actionWithoutNodeGrant = provider.getActions(ObjectType.SYSTEM).stream().filter(
+            List<PrivilegeType> actionWithoutNodeGrant = provider.getAvailablePrivType(ObjectType.SYSTEM).stream().filter(
                     x -> !x.equals(PrivilegeType.GRANT) && !x.equals(PrivilegeType.NODE)).collect(Collectors.toList());
             initPrivilegeCollections(rolePrivilegeCollection, ObjectType.SYSTEM, actionWithoutNodeGrant, null,
                     false);
@@ -167,7 +166,7 @@ public class PrivilegeManager {
                     ObjectType.RESOURCE_GROUP,
                     ObjectType.FUNCTION,
                     ObjectType.GLOBAL_FUNCTION)) {
-                initPrivilegeCollectionAllObjects(rolePrivilegeCollection, t, provider.getActions(t));
+                initPrivilegeCollectionAllObjects(rolePrivilegeCollection, t, provider.getAvailablePrivType(t));
             }
             rolePrivilegeCollection.disableMutable(); // not mutable
 
@@ -192,7 +191,7 @@ public class PrivilegeManager {
                     null,
                     false);
             ObjectType t = ObjectType.USER;
-            initPrivilegeCollectionAllObjects(rolePrivilegeCollection, t, provider.getActions(t));
+            initPrivilegeCollectionAllObjects(rolePrivilegeCollection, t, provider.getAvailablePrivType(t));
             rolePrivilegeCollection.disableMutable(); // not mutable
 
             // 5. public
@@ -605,8 +604,9 @@ public class PrivilegeManager {
         }
     }
 
-    public void validateGrant(String type, List<String> actions, List<PEntryObject> objects) throws PrivilegeException {
-        provider.validateGrant(type, actions, objects);
+    public void validateGrant(ObjectType objectType, List<PrivilegeType> privilegeTypes, List<PEntryObject> objects)
+            throws PrivilegeException {
+        provider.validateGrant(objectType, privilegeTypes, objects);
     }
 
     private static ConnectContext createTmpContext(UserIdentity currentUser) throws PrivilegeException {
@@ -1354,7 +1354,7 @@ public class PrivilegeManager {
     }
 
     public List<PrivilegeType> analyzeActionSet(ObjectType objectType, ActionSet actionSet) throws PrivilegeException {
-        List<PrivilegeType> privilegeTypes = provider.getActions(objectType);
+        List<PrivilegeType> privilegeTypes = provider.getAvailablePrivType(objectType);
         List<PrivilegeType> actions = new ArrayList<>();
         for (PrivilegeType actionName : privilegeTypes) {
             if (actionSet.contains(actionName)) {
@@ -1370,6 +1370,10 @@ public class PrivilegeManager {
 
     public String getObjectTypePlural(ObjectType objectType) throws PrivilegeException {
         return provider.getPlural(objectType);
+    }
+
+    public boolean isAvailablePirvType(ObjectType objectType, PrivilegeType privilegeType) {
+        return provider.isAvailablePrivType(objectType, privilegeType);
     }
 
     public void createRole(CreateRoleStmt stmt) throws DdlException {

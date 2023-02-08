@@ -209,8 +209,6 @@ statement
     | showRolesStatement
     | grantRoleStatement
     | revokeRoleStatement
-    | setRoleStatement
-    | setDefaultRoleStatement
     | grantPrivilegeStatement
     | revokePrivilegeStatement
     | showGrantsStatement
@@ -323,6 +321,7 @@ columnDesc
 charsetName
     : CHAR SET identifier
     | CHARSET identifier
+    | CHARACTER SET identifier
     ;
 
 defaultDesc
@@ -1104,7 +1103,7 @@ showBrokerStatement
     ;
 
 showCharsetStatement
-    : SHOW (CHAR SET | CHARSET) ((LIKE pattern=string) | (WHERE expression))?
+    : SHOW (CHAR SET | CHARSET | CHARACTER SET) ((LIKE pattern=string) | (WHERE expression))?
     ;
 
 showCollationStatement
@@ -1238,16 +1237,6 @@ revokeRoleStatement
     | REVOKE identifierOrStringList FROM ROLE identifierOrString                                        #revokeRoleFromRole
     ;
 
-setRoleStatement
-    : SET ROLE DEFAULT
-    | SET ROLE NONE
-    | SET ROLE ALL (EXCEPT roleList)?
-    | SET ROLE roleList
-    ;
-
-setDefaultRoleStatement
-    : SET DEFAULT ROLE (NONE | ALL | roleList) TO user;
-
 grantRevokeClause
     : (USER? user | ROLE identifierOrString) (WITH GRANT OPTION)?
     ;
@@ -1300,7 +1289,8 @@ privilegeTypeList
     ;
 
 privilegeType
-    : ADMIN| ALTER| CREATE| DROP| GRANT| LOAD| SELECT| INSERT| DELETE| UPDATE| EXPORT| REPOSITORY| ALL PRIVILEGES?
+    : ADMIN | ALTER | CREATE | DROP | GRANT | LOAD
+    | SELECT | INSERT | DELETE | UPDATE | EXPORT | REPOSITORY| ALL PRIVILEGES?
     | identifier
     ;
 
@@ -1422,7 +1412,7 @@ setStatement
     ;
 
 setVar
-    : (CHAR SET | CHARSET) (identifierOrString | DEFAULT)                                       #setNames
+    : (CHAR SET | CHARSET | CHARACTER SET) (identifierOrString | DEFAULT)                       #setNames
     | NAMES (charset = identifierOrString | DEFAULT)
         (COLLATE (collate = identifierOrString | DEFAULT))?                                     #setNames
     | PASSWORD '=' (string | PASSWORD '(' string ')')                                           #setPassword
@@ -1697,8 +1687,8 @@ tupleInSubquery
     ;
 
 predicateOperations [ParserRuleContext value]
-    : NOT? IN '(' expressionList ')'                                                      #inList
-    | NOT? IN '(' queryRelation ')'                                                       #inSubquery
+    : NOT? IN '(' queryRelation ')'                                                       #inSubquery
+    | NOT? IN '(' expressionList ')'                                                      #inList
     | NOT? BETWEEN lower = valueExpression AND upper = predicate                          #between
     | NOT? (LIKE | RLIKE | REGEXP) pattern=valueExpression                                #like
     ;
@@ -2162,7 +2152,7 @@ nonReserved
     | HASH | HISTOGRAM | HELP | HLL_UNION | HOUR | HUB
     | IDENTIFIED | IMPERSONATE | INDEXES | INSTALL | INTERMEDIATE | INTERVAL | ISOLATION
     | JOB
-    | LABEL | LAST | LESS | LEVEL | LIST | LOCAL | LOGICAL
+    | LABEL | LAST | LESS | LEVEL | LIST | LOCAL | LOCATION | LOGICAL
     | MANUAL | MAP | MATERIALIZED | MAX | META | MIN | MINUTE | MODE | MODIFY | MONTH | MERGE
     | NAME | NAMES | NEGATIVE | NO | NODE | NONE | NULLS
     | OBSERVER | OF | OFFSET | ONLY | OPEN | OPTION | OVERWRITE

@@ -31,13 +31,7 @@ public interface AuthorizationProvider {
 
     Set<ObjectType> getAllPrivObjectTypes();
 
-    /**
-     * analyze action type id -> action
-     */
-
-    List<PrivilegeType> getActions(ObjectType objectType);
-
-    List<PrivilegeType> getObjectAvailablePrivType(ObjectType objectType);
+    List<PrivilegeType> getAvailablePrivType(ObjectType objectType);
 
     boolean isAvailablePrivType(ObjectType objectType, PrivilegeType privilegeType);
 
@@ -51,17 +45,17 @@ public interface AuthorizationProvider {
     /**
      * generate PEntryObject by tokenlist
      */
-    PEntryObject generateObject(ObjectType type, List<String> objectTokens, GlobalStateMgr mgr) throws PrivilegeException;
+    PEntryObject generateObject(ObjectType objectType, List<String> objectTokens, GlobalStateMgr mgr) throws PrivilegeException;
 
-    PEntryObject generateUserObject(ObjectType type, UserIdentity user, GlobalStateMgr mgr) throws PrivilegeException;
+    PEntryObject generateUserObject(ObjectType objectType, UserIdentity user, GlobalStateMgr mgr) throws PrivilegeException;
 
     /**
      * validate if grant is allowed
      * e.g. To forbid `NODE` privilege being granted, we should put some code here.
      */
     void validateGrant(
-            String type,
-            List<String> actions,
+            ObjectType objectType,
+            List<PrivilegeType> privilegeTypes,
             List<PEntryObject> objects) throws PrivilegeException;
 
     /**
@@ -69,7 +63,7 @@ public interface AuthorizationProvider {
      * Developers can implement their own logic here.
      */
     boolean check(
-            ObjectType type,
+            ObjectType objectType,
             PrivilegeType want,
             PEntryObject object,
             PrivilegeCollection currentPrivilegeCollection);
@@ -80,7 +74,7 @@ public interface AuthorizationProvider {
      * For example, `use db1` statement will pass a (db1, ALL) as the object to check if any table exists
      */
     boolean searchAnyActionOnObject(
-            ObjectType type,
+            ObjectType objectType,
             PEntryObject object,
             PrivilegeCollection currentPrivilegeCollection);
 
@@ -88,13 +82,13 @@ public interface AuthorizationProvider {
      * Search if any object in collection matches the specified object with required action.
      */
     boolean searchActionOnObject(
-            ObjectType type,
+            ObjectType objectType,
             PEntryObject object,
             PrivilegeCollection currentPrivilegeCollection,
             PrivilegeType want);
 
     boolean allowGrant(
-            ObjectType type,
+            ObjectType objectType,
             List<PrivilegeType> wants,
             List<PEntryObject> objects,
             PrivilegeCollection currentPrivilegeCollection);

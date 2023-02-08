@@ -32,6 +32,11 @@ public class FunctionPEntryObject implements PEntryObject {
     @SerializedName(value = "f")
     protected String functionSig;
 
+    protected FunctionPEntryObject(long databaseId, String functionSig) {
+        this.databaseId = databaseId;
+        this.functionSig = functionSig;
+    }
+
     public long getDatabaseId() {
         return databaseId;
     }
@@ -68,11 +73,6 @@ public class FunctionPEntryObject implements PEntryObject {
         }
 
         return new FunctionPEntryObject(dbId, funcSig);
-    }
-
-    protected FunctionPEntryObject(long databaseId, String functionSig) {
-        this.databaseId = databaseId;
-        this.functionSig = functionSig;
     }
 
     @Override
