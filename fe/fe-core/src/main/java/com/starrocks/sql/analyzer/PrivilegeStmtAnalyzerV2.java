@@ -52,6 +52,7 @@ import com.starrocks.sql.ast.DropRoleStmt;
 import com.starrocks.sql.ast.DropUserStmt;
 import com.starrocks.sql.ast.ExecuteAsStmt;
 import com.starrocks.sql.ast.FunctionArgsDef;
+import com.starrocks.sql.ast.SetDefaultRoleStmt;
 import com.starrocks.sql.ast.SetRoleStmt;
 import com.starrocks.sql.ast.ShowGrantsStmt;
 import com.starrocks.sql.ast.StatementBase;
@@ -387,6 +388,14 @@ public class PrivilegeStmtAnalyzerV2 {
 
         @Override
         public Void visitSetRoleStatement(SetRoleStmt stmt, ConnectContext session) {
+            for (String roleName : stmt.getRoles()) {
+                validRoleName(roleName, "Cannot set role", true);
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitSetDefaultRoleStatement(SetDefaultRoleStmt stmt, ConnectContext session) {
             for (String roleName : stmt.getRoles()) {
                 validRoleName(roleName, "Cannot set role", true);
             }

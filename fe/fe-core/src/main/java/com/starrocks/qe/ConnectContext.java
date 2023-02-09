@@ -309,14 +309,18 @@ public class ConnectContext {
         return currentRoleIds;
     }
 
-    public void setCurrentRoleIds(UserIdentity user) throws PrivilegeException {
-        Set<Long> defaultRoleIds;
-        if (this.getSessionVariable().isActivateAllRolesOnLogin()) {
-            defaultRoleIds = this.getGlobalStateMgr().getPrivilegeManager().getRoleIdsByUser(user);
-        } else {
-            defaultRoleIds = this.getGlobalStateMgr().getPrivilegeManager().getDefaultRoleIdsByUser(user);
+    public void setCurrentRoleIds(UserIdentity user) {
+        try {
+            Set<Long> defaultRoleIds;
+            if (this.getSessionVariable().isActivateAllRolesOnLogin()) {
+                defaultRoleIds = this.getGlobalStateMgr().getPrivilegeManager().getRoleIdsByUser(user);
+            } else {
+                defaultRoleIds = this.getGlobalStateMgr().getPrivilegeManager().getDefaultRoleIdsByUser(user);
+            }
+            this.currentRoleIds = defaultRoleIds;
+        } catch (PrivilegeException e) {
+            LOG.warn("Set current role fail : {}", e.getMessage());
         }
-        this.currentRoleIds = defaultRoleIds;
     }
 
     public void setCurrentRoleIds(Set<Long> roleIds) {

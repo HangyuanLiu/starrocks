@@ -53,7 +53,6 @@ import com.starrocks.http.rest.RestBaseResult;
 import com.starrocks.mysql.privilege.PrivBitSet;
 import com.starrocks.mysql.privilege.PrivPredicate;
 import com.starrocks.mysql.privilege.Privilege;
-import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.privilege.PrivilegeType;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
@@ -200,11 +199,7 @@ public class WebBaseAction extends BaseAction {
             ctx.setRemoteIP(authInfo.remoteIp);
             ctx.setCurrentUserIdentity(currentUser);
             ctx.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
-            try {
-                ctx.setCurrentRoleIds(currentUser);
-            } catch (PrivilegeException e) {
-                throw new UnauthorizedException(e.getMessage());
-            }
+            ctx.setCurrentRoleIds(currentUser);
 
             ctx.setThreadLocalInfo();
 
@@ -251,12 +246,7 @@ public class WebBaseAction extends BaseAction {
                 ctx.setRemoteIP(request.getHostString());
                 ctx.setCurrentUserIdentity(sessionValue.currentUser);
                 ctx.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
-
-                try {
-                    ctx.setCurrentRoleIds(sessionValue.currentUser);
-                } catch (PrivilegeException e) {
-                    return false;
-                }
+                ctx.setCurrentRoleIds(sessionValue.currentUser);
 
                 ctx.setThreadLocalInfo();
                 return true;

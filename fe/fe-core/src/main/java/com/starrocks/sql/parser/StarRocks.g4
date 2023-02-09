@@ -209,6 +209,8 @@ statement
     | showRolesStatement
     | grantRoleStatement
     | revokeRoleStatement
+    | setRoleStatement
+    | setDefaultRoleStatement
     | grantPrivilegeStatement
     | revokePrivilegeStatement
     | showGrantsStatement
@@ -1236,6 +1238,16 @@ revokeRoleStatement
     : REVOKE identifierOrStringList FROM USER? user                                                     #revokeRoleFromUser
     | REVOKE identifierOrStringList FROM ROLE identifierOrString                                        #revokeRoleFromRole
     ;
+
+setRoleStatement
+    : SET ROLE DEFAULT
+    | SET ROLE NONE
+    | SET ROLE ALL (EXCEPT roleList)?
+    | SET ROLE roleList
+    ;
+
+setDefaultRoleStatement
+    : SET DEFAULT ROLE (NONE | ALL | roleList) TO user;
 
 grantRevokeClause
     : (USER? user | ROLE identifierOrString) (WITH GRANT OPTION)?

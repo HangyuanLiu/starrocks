@@ -42,7 +42,6 @@ import com.starrocks.http.BaseAction;
 import com.starrocks.http.BaseRequest;
 import com.starrocks.http.BaseResponse;
 import com.starrocks.http.UnauthorizedException;
-import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.thrift.TNetworkAddress;
@@ -94,13 +93,7 @@ public class RestBaseAction extends BaseAction {
         ctx.setQueryId(UUIDUtil.genUUID());
         ctx.setRemoteIP(authInfo.remoteIp);
         ctx.setCurrentUserIdentity(currentUser);
-
-        try {
-            ctx.setCurrentRoleIds(currentUser);
-        } catch (PrivilegeException e) {
-            throw new UnauthorizedException(e.getMessage());
-        }
-
+        ctx.setCurrentRoleIds(currentUser);
         ctx.setThreadLocalInfo();
         executeWithoutPassword(request, response);
     }

@@ -39,7 +39,7 @@ public class SetDefaultRoleExecutor {
 
     public static void execute(SetDefaultRoleStmt stmt, ConnectContext context) throws UserException, PrivilegeException {
         PrivilegeManager manager = context.getGlobalStateMgr().getPrivilegeManager();
-        UserIdentity user = context.getCurrentUserIdentity();
+        UserIdentity user = stmt.getUserIdentifier();
         Set<Long> roleIdsForUser = manager.getRoleIdsByUser(user);
         Set<Long> roleIds;
 

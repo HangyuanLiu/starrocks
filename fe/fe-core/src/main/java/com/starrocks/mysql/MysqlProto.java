@@ -41,7 +41,6 @@ import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
-import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import org.apache.logging.log4j.LogManager;
@@ -82,14 +81,9 @@ public class MysqlProto {
                 }
                 context.setAuthDataSalt(randomString);
                 context.setCurrentUserIdentity(currentUser);
+                context.setCurrentRoleIds(currentUser);
                 context.setQualifiedUser(user);
-
-                try {
-                    context.setCurrentRoleIds(currentUser);
-                } catch (PrivilegeException e) {
-                    ErrorReport.report(ErrorCode.ERR_ACCESS_DENIED_ERROR, user, usePasswd);
-                    return false;
-                }
+                context.setCurrentRoleIds(currentUser);
             }
             return true;
         }

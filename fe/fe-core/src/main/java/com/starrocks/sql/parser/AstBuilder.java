@@ -269,6 +269,7 @@ import com.starrocks.sql.ast.SetDefaultRoleStmt;
 import com.starrocks.sql.ast.SetNamesVar;
 import com.starrocks.sql.ast.SetPassVar;
 import com.starrocks.sql.ast.SetQualifier;
+import com.starrocks.sql.ast.SetRoleStmt;
 import com.starrocks.sql.ast.SetStmt;
 import com.starrocks.sql.ast.SetTransaction;
 import com.starrocks.sql.ast.SetType;
@@ -3959,7 +3960,6 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         UserDesc userDesc;
         UserIdentifier user = (UserIdentifier) visit(context.user());
 
-
         if (context.ROLE() != null) {
             List<String> roles = new ArrayList<>();
             if (context.roleList() != null) {
@@ -3967,7 +3967,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                         s -> ((Identifier) s).getValue()).collect(toList()));
             }
 
-            SetDefaultRoleStmt setDefaultRoleStmt = new SetDefaultRoleStmt(roles);
+            SetDefaultRoleStmt setDefaultRoleStmt = new SetDefaultRoleStmt(user.getUserIdentity(), roles);
 
             if (context.ALL() != null) {
                 setDefaultRoleStmt.setTypeAll();
@@ -4077,6 +4077,49 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         }
 
         return new RevokeRoleStmt(roleNameList, ((Identifier) visit(context.identifierOrString())).getValue());
+    }
+
+    @Override
+    public ParseNode visitSetRoleStatement(StarRocksParser.SetRoleStatementContext context) {
+        List<String> roles = new ArrayList<>();
+
+        if (context.roleList() != null) {
+            roles.addAll(context.roleList().identifierOrString().stream().map(this::visit).map(
+                    s -> ((Identifier) s).getValue()).collect(toList()));
+        }
+
+        SetRoleStmt setRoleStmt = new SetRoleStmt(roles);
+
+        if (context.ALL() != null) {
+            setRoleStmt.setTypeAll();
+        } else if (context.DEFAULT() != null) {
+            setRoleStmt.setTypeDefault();
+        } else if (context.NONE() != null) {
+            setRoleStmt.setTypeNone();
+        }
+
+        return setRoleStmt;
+    }
+
+    @Override
+    public ParseNode visitSetDefaultRoleStatement(StarRocksParser.SetDefaultRoleStatementContext context) {
+        List<String> roles = new ArrayList<>();
+
+        if (context.roleList() != null) {
+            roles.addAll(context.roleList().identifierOrString().stream().map(this::visit).map(
+                    s -> ((Identifier) s).getValue()).collect(toList()));
+        }
+
+        SetDefaultRoleStmt setDefaultRoleStmt =
+                new SetDefaultRoleStmt(((UserIdentifier) visit(context.user())).getUserIdentity(), roles);
+
+        if (context.ALL() != null) {
+            setDefaultRoleStmt.setTypeAll();
+        } else if (context.NONE() != null) {
+            setDefaultRoleStmt.setTypeNone();
+        }
+
+        return setDefaultRoleStmt;
     }
 
     @Override

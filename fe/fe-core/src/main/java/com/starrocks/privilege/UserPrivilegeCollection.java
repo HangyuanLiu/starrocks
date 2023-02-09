@@ -37,6 +37,10 @@ public class UserPrivilegeCollection extends PrivilegeCollection {
         roleIds.add(roleId);
     }
 
+    public void grantRoles(Set<Long> roleIds) {
+        this.roleIds.addAll(roleIds);
+    }
+
     public void revokeRole(Long roleId) {
         roleIds.remove(roleId);
     }
