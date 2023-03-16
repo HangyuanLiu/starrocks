@@ -44,7 +44,12 @@ public enum PrivilegeType {
     CREATE_MATERIALIZED_VIEW(23),
     CREATE_RESOURCE(24),
     CREATE_RESOURCE_GROUP(25),
-    CREATE_EXTERNAL_CATALOG(26);
+    CREATE_EXTERNAL_CATALOG(26),
+
+    APPLY(27),
+    CREATE_MASKING_POLICY(28),
+    CREATE_ROW_ACCESS_POLICY(29),
+    ;
 
     @SerializedName("i")
     private final int id;

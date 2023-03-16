@@ -214,6 +214,19 @@ statement
     | revokePrivilegeStatement
     | showGrantsStatement
 
+    // Security Policy
+    | createMaskingPolicyStatement
+    | alterMaskingPolicyStatement
+    | dropMaskingPolicyStatement
+    | showMaskingPolicyStatement
+    | describeMaskingPolicyStatement
+
+    | createRowAccessPolicyStatement
+    | alterRowAccessPolicyStatement
+    | dropRowAccessPolicyStatement
+    | showRowAccessPolicyStatement
+    | describeRowAccessPolicyStatement
+
     // Backup Restore Statement
     | backupStatement
     | cancelBackupStatement
@@ -1337,6 +1350,52 @@ privObjectTypePlural
     | GLOBAL FUNCTIONS
     ;
 
+// ---------------------------------------- Security Policy Statement ---------------------------------------------------
+
+createMaskingPolicyStatement
+    : CREATE (OR REPLACE)? MASKING POLICY (IF NOT EXISTS)? policyName=identifier
+        AS '(' identifier type (',' identifier type)* ')' RETURNS type ARROW expression
+    ;
+
+alterMaskingPolicyStatement
+    : ALTER MASKING POLICY (IF EXISTS)? policyName=identifier SET BODY ARROW expression
+    | ALTER MASKING POLICY (IF EXISTS)? policyName=identifier RENAME TO policyName=identifier
+    ;
+
+dropMaskingPolicyStatement
+    : DROP MASKING POLICY policyName=identifier
+    ;
+
+showMaskingPolicyStatement
+    : SHOW MASKING POLICY
+    ;
+
+describeMaskingPolicyStatement
+    : (DESC | DESCRIBE) MASKING POLICY policyName=identifier
+    ;
+
+createRowAccessPolicyStatement
+    : CREATE (OR REPLACE)? ROW ACCESS POLICY (IF NOT EXISTS)? policyName=identifier
+      AS '(' identifier type (',' identifier type)* ')' RETURNS BOOLEAN ARROW expression
+    ;
+
+alterRowAccessPolicyStatement
+    : ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=identifier SET BODY ARROW expression
+    | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=identifier RENAME TO policyName=identifier
+    ;
+
+dropRowAccessPolicyStatement
+    : DROP ROW ACCESS POLICY policyName=identifier
+    ;
+
+showRowAccessPolicyStatement
+    : (DESC | DESCRIBE) ROW ACCESS  POLICY policyName=identifier
+    ;
+
+describeRowAccessPolicyStatement
+    : (DESC | DESCRIBE) ROW ACCESS POLICY policyName=identifier
+    ;
+
 // ---------------------------------------- Backup Restore Statement ---------------------------------------------------
 
 backupStatement
@@ -2197,8 +2256,8 @@ number
     ;
 
 nonReserved
-    : AFTER | AGGREGATE | ASYNC | AUTHORS | AVG | ADMIN | ANTI | AUTHENTICATION | AUTO_INCREMENT
-    | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BOOLEAN | BROKER | BUCKETS | BUILTIN
+    : ACCESS | AFTER | AGGREGATE | ASYNC | AUTHORS | AVG | ADMIN | ANTI | AUTHENTICATION | AUTO_INCREMENT
+    | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BODY | BOOLEAN | BROKER | BUCKETS | BUILTIN
     | CAST | CANCEL | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CLUSTER | CLUSTERS | CURRENT | COLLATION | COLUMNS
     | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT | CONFIG
     | DATA | DATE | DATETIME | DAY | DECOMMISSION | DISTRIBUTION | DUPLICATE | DYNAMIC | DISTRIBUTED
@@ -2209,11 +2268,11 @@ nonReserved
     | IDENTIFIED | IMAGE | IMPERSONATE | INDEXES | INSTALL | INTERMEDIATE | INTERVAL | ISOLATION | INCREMENTAL
     | JOB
     | LABEL | LAST | LESS | LEVEL | LIST | LOCAL | LOCATION | LOGICAL | LOW_PRIORITY | LOCK
-    | MANUAL | MAP | MATERIALIZED | MAX | META | MIN | MINUTE | MODE | MODIFY | MONTH | MERGE | MINUS
+    | MASKING | MANUAL | MAP | MATERIALIZED | MAX | META | MIN | MINUTE | MODE | MODIFY | MONTH | MERGE | MINUS
     | NAME | NAMES | NEGATIVE | NO | NODE | NODES | NONE | NULLS
     | OBSERVER | OF | OFFSET | ONLY | OPTIMIZER | OPEN | OPERATE | OPTION | OVERWRITE
-    | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | PRECEDING | PROC | PROCESSLIST | PRIVILEGES
-    | PROPERTIES | PROPERTY
+    | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | POLICY | PRECEDING | PROC | PROCESSLIST
+    | PRIVILEGES | PROPERTIES | PROPERTY
     | QUARTER | QUERY | QUOTA | QUALIFY
     | REMOVE | RANDOM | RANK | RECOVER | REFRESH | REPAIR | REPEATABLE | REPLACE_IF_NOT_NULL | REPLICA | REPOSITORY | REPOSITORIES
     | RESOURCE | RESOURCES | RESTORE | RESUME | RETURNS | REVERT | ROLE | ROLES | ROLLUP | ROLLBACK | ROUTINE | ROW

@@ -40,6 +40,7 @@ import com.starrocks.catalog.View;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
+import com.starrocks.privilege.PolicyManager;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.MetadataMgr;
@@ -260,12 +261,20 @@ public class QueryAnalyzer {
                 }
 
                 Table table = resolveTable(tableRelation.getName());
+
                 if (table instanceof View) {
                     View view = (View) table;
                     QueryStatement queryStatement = view.getQueryStatement();
                     ViewRelation viewRelation = new ViewRelation(tableName, view, queryStatement);
                     viewRelation.setAlias(tableRelation.getAlias());
-                    return viewRelation;
+
+
+                    QueryStatement policyRewriteQuery = PolicyManager.buildView(viewRelation);
+                    if (policyRewriteQuery == null) {
+                        return viewRelation;
+                    } else {
+                        return new SubqueryRelation(policyRewriteQuery);
+                    }
                 } else {
                     if (tableRelation.getTemporalClause() != null) {
                         if (table.getType() != Table.TableType.MYSQL) {
@@ -277,7 +286,13 @@ public class QueryAnalyzer {
 
                     if (table.isSupported()) {
                         tableRelation.setTable(table);
-                        return tableRelation;
+
+                        QueryStatement policyRewriteQuery = PolicyManager.buildView(tableRelation);
+                        if (policyRewriteQuery == null) {
+                            return tableRelation;
+                        } else {
+                            return new SubqueryRelation(policyRewriteQuery);
+                        }
                     } else {
                         throw unsupportedException("unsupported scan table type: " + table.getType());
                     }

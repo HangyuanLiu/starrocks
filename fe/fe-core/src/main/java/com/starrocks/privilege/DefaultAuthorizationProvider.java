@@ -46,7 +46,9 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
                             PrivilegeType.ALTER,
                             PrivilegeType.CREATE_VIEW,
                             PrivilegeType.CREATE_FUNCTION,
-                            PrivilegeType.CREATE_MATERIALIZED_VIEW))
+                            PrivilegeType.CREATE_MATERIALIZED_VIEW,
+                            PrivilegeType.CREATE_MASKING_POLICY,
+                            PrivilegeType.CREATE_ROW_ACCESS_POLICY))
 
                     .put(ObjectType.SYSTEM, ImmutableList.of(
                             PrivilegeType.GRANT,
@@ -97,6 +99,16 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
                     .put(ObjectType.GLOBAL_FUNCTION, ImmutableList.of(
                             PrivilegeType.USAGE,
                             PrivilegeType.DROP))
+
+                    .put(ObjectType.MASKING_POLICY, ImmutableList.of(
+                            PrivilegeType.APPLY,
+                            PrivilegeType.DROP,
+                            PrivilegeType.ALTER))
+
+                    .put(ObjectType.ROW_ACCESS_POLICY, ImmutableList.of(
+                            PrivilegeType.APPLY,
+                            PrivilegeType.DROP,
+                            PrivilegeType.ALTER))
                     .build();
 
     public static final String UNEXPECTED_TYPE = "unexpected type ";

@@ -30,7 +30,9 @@ public enum ObjectType {
     MATERIALIZED_VIEW(8),
     FUNCTION(9),
     RESOURCE_GROUP(10),
-    GLOBAL_FUNCTION(11);
+    GLOBAL_FUNCTION(11),
+    MASKING_POLICY(12),
+    ROW_ACCESS_POLICY(13);
 
     @SerializedName("id")
     private final int id;

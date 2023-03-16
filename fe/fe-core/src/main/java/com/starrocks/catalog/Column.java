@@ -108,6 +108,9 @@ public class Column implements Writable {
     // In other cases, such as define expr in `MaterializedIndexMeta`, it may not be analyzed after being relayed.
     private Expr defineExpr; // use to define column in materialize view
 
+    @SerializedName(value = "securityPolicy")
+    private String securityPolicy;
+
     public Column() {
         this.name = "";
         this.type = Type.NULL;
@@ -569,6 +572,14 @@ public class Column implements Writable {
         sb.append("COMMENT \"").append(comment).append("\"");
 
         return sb.toString();
+    }
+
+    public boolean hasSecurityPolicy() {
+        return securityPolicy != null && !securityPolicy.isEmpty();
+    }
+
+    public String getSecurityPolicy() {
+        return securityPolicy;
     }
 
     @Override
