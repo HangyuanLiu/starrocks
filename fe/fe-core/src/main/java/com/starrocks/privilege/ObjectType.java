@@ -31,8 +31,7 @@ public enum ObjectType {
     FUNCTION(9),
     RESOURCE_GROUP(10),
     GLOBAL_FUNCTION(11),
-    MASKING_POLICY(12),
-    ROW_ACCESS_POLICY(13);
+    POLICY(12);
 
     @SerializedName("id")
     private final int id;
@@ -55,5 +54,7 @@ public enum ObjectType {
             .put("MATERIALIZED VIEWS", ObjectType.MATERIALIZED_VIEW)
             .put("FUNCTIONS", ObjectType.FUNCTION)
             .put("RESOURCE GROUPS", ObjectType.RESOURCE_GROUP)
-            .put("GLOBAL FUNCTIONS", ObjectType.GLOBAL_FUNCTION).build();
+            .put("GLOBAL FUNCTIONS", ObjectType.GLOBAL_FUNCTION)
+            .put("POLICIES", ObjectType.POLICY)
+            .build();
 }

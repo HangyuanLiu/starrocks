@@ -14,10 +14,10 @@
 
 package com.starrocks.sql.analyzer;
 
-import com.clearspring.analytics.util.Lists;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import com.starrocks.analysis.BinaryPredicate;
 import com.starrocks.analysis.CompoundPredicate;
 import com.starrocks.analysis.Expr;
@@ -40,7 +40,7 @@ import com.starrocks.catalog.View;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
-import com.starrocks.privilege.PolicyManager;
+import com.starrocks.privilege.SecurityPolicyRewriteRule;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.MetadataMgr;
@@ -84,6 +84,9 @@ import static com.starrocks.thrift.PlanNodesConstants.BINLOG_VERSION_COLUMN_NAME
 public class QueryAnalyzer {
     private final ConnectContext session;
     private final MetadataMgr metadataMgr;
+
+    //TODO: policy
+    private boolean hasRewrite = false;
 
     public QueryAnalyzer(ConnectContext session) {
         this.session = session;
@@ -268,11 +271,14 @@ public class QueryAnalyzer {
                     ViewRelation viewRelation = new ViewRelation(tableName, view, queryStatement);
                     viewRelation.setAlias(tableRelation.getAlias());
 
-
-                    QueryStatement policyRewriteQuery = PolicyManager.buildView(viewRelation);
+                    if (hasRewrite) {
+                        return viewRelation;
+                    }
+                    QueryStatement policyRewriteQuery = SecurityPolicyRewriteRule.buildView(viewRelation);
                     if (policyRewriteQuery == null) {
                         return viewRelation;
                     } else {
+                        hasRewrite = true;
                         return new SubqueryRelation(policyRewriteQuery);
                     }
                 } else {
@@ -287,11 +293,17 @@ public class QueryAnalyzer {
                     if (table.isSupported()) {
                         tableRelation.setTable(table);
 
-                        QueryStatement policyRewriteQuery = PolicyManager.buildView(tableRelation);
-                        if (policyRewriteQuery == null) {
+                        if (hasRewrite) {
                             return tableRelation;
                         } else {
-                            return new SubqueryRelation(policyRewriteQuery);
+
+                            QueryStatement policyRewriteQuery = SecurityPolicyRewriteRule.buildView(tableRelation);
+                            if (policyRewriteQuery == null) {
+                                return tableRelation;
+                            } else {
+                                hasRewrite = true;
+                                return new SubqueryRelation(policyRewriteQuery);
+                            }
                         }
                     } else {
                         throw unsupportedException("unsupported scan table type: " + table.getType());

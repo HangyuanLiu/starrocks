@@ -37,7 +37,9 @@ package com.starrocks.alter;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.starrocks.analysis.IntLiteral;
+import com.starrocks.analysis.StringLiteral;
 import com.starrocks.analysis.TableName;
 import com.starrocks.analysis.TableRef;
 import com.starrocks.catalog.ColocateTableIndex;
@@ -45,6 +47,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.DataProperty;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.ExpressionRangePartitionInfo;
+import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.catalog.KeysType;
 import com.starrocks.catalog.MaterializedIndex;
 import com.starrocks.catalog.MaterializedView;
@@ -80,12 +83,15 @@ import com.starrocks.scheduler.TaskBuilder;
 import com.starrocks.scheduler.TaskManager;
 import com.starrocks.scheduler.mv.MVManager;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.SetStmtAnalyzer;
 import com.starrocks.sql.ast.AddPartitionClause;
 import com.starrocks.sql.ast.AlterClause;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
 import com.starrocks.sql.ast.AlterSystemStmt;
 import com.starrocks.sql.ast.AlterTableStmt;
 import com.starrocks.sql.ast.AlterViewStmt;
+import com.starrocks.sql.ast.ApplyMaskingPolicyClause;
+import com.starrocks.sql.ast.ApplyRowAccessPolicyClause;
 import com.starrocks.sql.ast.AsyncRefreshSchemeDesc;
 import com.starrocks.sql.ast.ColumnRenameClause;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
@@ -98,7 +104,10 @@ import com.starrocks.sql.ast.PartitionRenameClause;
 import com.starrocks.sql.ast.RefreshSchemeDesc;
 import com.starrocks.sql.ast.ReplacePartitionClause;
 import com.starrocks.sql.ast.RollupRenameClause;
+import com.starrocks.sql.ast.SetListItem;
+import com.starrocks.sql.ast.SetStmt;
 import com.starrocks.sql.ast.SwapTableClause;
+import com.starrocks.sql.ast.SystemVariable;
 import com.starrocks.sql.ast.TableRenameClause;
 import com.starrocks.sql.ast.TruncatePartitionClause;
 import com.starrocks.sql.ast.TruncateTableStmt;
@@ -302,22 +311,38 @@ public class Alter {
         int partitionTTL = INVALID;
         if (properties.containsKey(PropertyAnalyzer.PROPERTIES_PARTITION_TTL_NUMBER)) {
             partitionTTL = PropertyAnalyzer.analyzePartitionTimeToLive(properties);
+            properties.remove(PropertyAnalyzer.PROPERTIES_PARTITION_TTL_NUMBER);
         }
         int partitionRefreshNumber = INVALID;
         if (properties.containsKey(PropertyAnalyzer.PROPERTIES_PARTITION_REFRESH_NUMBER)) {
             partitionRefreshNumber = PropertyAnalyzer.analyzePartitionRefreshNumber(properties);
+            properties.remove(PropertyAnalyzer.PROPERTIES_PARTITION_REFRESH_NUMBER);
         }
         int autoRefreshPartitionsLimit = INVALID;
         if (properties.containsKey(PropertyAnalyzer.PROPERTIES_AUTO_REFRESH_PARTITIONS_LIMIT)) {
             autoRefreshPartitionsLimit = PropertyAnalyzer.analyzeAutoRefreshPartitionsLimit(properties, materializedView);
+            properties.remove(PropertyAnalyzer.PROPERTIES_AUTO_REFRESH_PARTITIONS_LIMIT);
         }
         List<TableName> excludedTriggerTables = Lists.newArrayList();
         if (properties.containsKey(PropertyAnalyzer.PROPERTIES_EXCLUDED_TRIGGER_TABLES)) {
             excludedTriggerTables = PropertyAnalyzer.analyzeExcludedTriggerTables(properties, materializedView);
+            properties.remove(PropertyAnalyzer.PROPERTIES_EXCLUDED_TRIGGER_TABLES);
         }
 
         if (!properties.isEmpty()) {
-            throw new AnalysisException("Modify failed because unknown properties: " + properties);
+            // analyze properties
+            List<SetListItem> setListItems = Lists.newArrayList();
+            for (Map.Entry<String, String> entry : properties.entrySet()) {
+                if (!entry.getKey().startsWith(PropertyAnalyzer.PROPERTIES_MATERIALIZED_VIEW_SESSION_PREFIX)) {
+                    throw new AnalysisException("Modify failed because unknown properties: " + properties +
+                            ", please add `session.` prefix if you want add session variables for mv(" +
+                            "eg, \"session.query_timeout\"=\"30000000\").");
+                }
+                String varKey = entry.getKey().substring(PropertyAnalyzer.PROPERTIES_MATERIALIZED_VIEW_SESSION_PREFIX.length());
+                SystemVariable variable = new SystemVariable(varKey, new StringLiteral(entry.getValue()));
+                setListItems.add(variable);
+            }
+            SetStmtAnalyzer.analyze(new SetStmt(setListItems), null);
         }
 
         boolean isChanged = false;
@@ -345,12 +370,20 @@ public class Alter {
             isChanged = true;
         }
         DynamicPartitionUtil.registerOrRemovePartitionTTLTable(materializedView.getDbId(), materializedView);
+        if (!properties.isEmpty()) {
+            // set properties if there are no exceptions
+            for (Map.Entry<String, String> entry : properties.entrySet()) {
+                materializedView.getTableProperty().modifyTableProperties(entry.getKey(), entry.getValue());
+            }
+            isChanged = true;
+        }
+
         if (isChanged) {
             ModifyTablePropertyOperationLog log = new ModifyTablePropertyOperationLog(materializedView.getDbId(),
                     materializedView.getId(), propClone);
             GlobalStateMgr.getCurrentState().getEditLog().logAlterMaterializedViewProperties(log);
         }
-        LOG.info("alter materialized view properties {}, id: {}", properties, materializedView.getId());
+        LOG.info("alter materialized view properties {}, id: {}", propClone, materializedView.getId());
     }
 
     private void processChangeRefreshScheme(RefreshSchemeDesc refreshSchemeDesc, MaterializedView materializedView,
@@ -482,7 +515,7 @@ public class Alter {
         try {
             MaterializedView mv = (MaterializedView) db.getTable(tableId);
             TableProperty tableProperty = mv.getTableProperty();
-            if  (tableProperty == null) {
+            if (tableProperty == null) {
                 tableProperty = new TableProperty(properties);
                 mv.setTableProperty(tableProperty.buildProperty(opCode));
             } else {
@@ -495,10 +528,17 @@ public class Alter {
     }
 
     public void processAlterTable(AlterTableStmt stmt) throws UserException {
+
         TableName dbTableName = stmt.getTbl();
+        String catalog = dbTableName.getCatalog();
         String dbName = dbTableName.getDb();
 
-        Database db = GlobalStateMgr.getCurrentState().getDb(dbName);
+        Database db;
+        if (catalog.equals(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
+            db = GlobalStateMgr.getCurrentState().getDb(dbName);
+        } else {
+            db = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(catalog, dbName);
+        }
         if (db == null) {
             ErrorReport.reportDdlException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
         }
@@ -514,7 +554,7 @@ public class Alter {
             db.checkQuota();
         }
 
-        // some operations will take long time to process, need to be done outside the databse lock
+        // some operations will take long time to process, need to be done outside the database lock
         boolean needProcessOutsideDatabaseLock = false;
         String tableName = dbTableName.getTbl();
 
@@ -597,6 +637,12 @@ public class Alter {
                 processSwap(db, olapTable, alterClauses);
             } else if (currentAlterOps.contains(AlterOpType.MODIFY_TABLE_PROPERTY_SYNC)) {
                 needProcessOutsideDatabaseLock = true;
+            } else if (Sets.newHashSet(AlterOpType.APPLY_COLUMN_MASKING_POLICY,
+                    AlterOpType.REVOKE_COLUMN_MASKING_POLICY,
+                    AlterOpType.APPLY_ROW_ACCESS_POLICY,
+                    AlterOpType.REVOKE_ROW_ACCESS_POLICY,
+                    AlterOpType.REVOKE_ALL_ROW_ACCESS_POLICY).retainAll(currentAlterOps.getCurrentOps())) {
+                processPolicy(dbTableName, alterClauses);
             } else {
                 throw new DdlException("Invalid alter operations: " + currentAlterOps);
             }
@@ -865,6 +911,47 @@ public class Alter {
                 break;
             } else {
                 Preconditions.checkState(false);
+            }
+        }
+    }
+
+    private void processPolicy(TableName tableName, List<AlterClause> alterClauses) throws DdlException {
+        for (AlterClause alterClause : alterClauses) {
+            switch (alterClause.getOpType()) {
+                case APPLY_COLUMN_MASKING_POLICY: {
+                    ApplyMaskingPolicyClause applyMaskingPolicyClause = (ApplyMaskingPolicyClause) alterClause;
+                    GlobalStateMgr.getCurrentState().getSecurityPolicyManager().applyMaskingPolicyContext(
+                            tableName,
+                            applyMaskingPolicyClause.getMaskingColumn(),
+                            applyMaskingPolicyClause.getMaskingPolicyContext());
+                    break;
+                }
+                case REVOKE_COLUMN_MASKING_POLICY: {
+                    ApplyMaskingPolicyClause applyMaskingPolicyClause = (ApplyMaskingPolicyClause) alterClause;
+                    GlobalStateMgr.getCurrentState().getSecurityPolicyManager().revokeMaskingPolicyContext(
+                            tableName.getCatalog(), tableName.getDb(), tableName.getTbl(),
+                            applyMaskingPolicyClause.getMaskingColumn());
+                    break;
+                }
+                case APPLY_ROW_ACCESS_POLICY: {
+                    ApplyRowAccessPolicyClause modifyRowAccessPolicyClause = (ApplyRowAccessPolicyClause) alterClause;
+                    GlobalStateMgr.getCurrentState().getSecurityPolicyManager().applyRowAccessPolicyContext(
+                            tableName,
+                            modifyRowAccessPolicyClause.getRowAccessPolicyContext());
+                    break;
+                }
+                case REVOKE_ROW_ACCESS_POLICY: {
+                    ApplyRowAccessPolicyClause applyRowAccessPolicyClause = (ApplyRowAccessPolicyClause) alterClause;
+                    GlobalStateMgr.getCurrentState().getSecurityPolicyManager().revokeRowAccessPolicyContext(
+                            tableName.getCatalog(), tableName.getDb(), tableName.getTbl(),
+                            applyRowAccessPolicyClause.getPolicyName());
+                    break;
+                }
+                case REVOKE_ALL_ROW_ACCESS_POLICY: {
+                    GlobalStateMgr.getCurrentState().getSecurityPolicyManager().revokeALLRowAccessPolicyContext(
+                            tableName.getCatalog(), tableName.getDb(), tableName.getTbl());
+                    break;
+                }
             }
         }
     }

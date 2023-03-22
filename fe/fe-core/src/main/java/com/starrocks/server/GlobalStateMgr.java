@@ -204,8 +204,11 @@ import com.starrocks.persist.TablePropertyInfo;
 import com.starrocks.persist.TruncateTableInfo;
 import com.starrocks.plugin.PluginInfo;
 import com.starrocks.plugin.PluginMgr;
+import com.starrocks.privilege.AuthorizationManager;
 import com.starrocks.privilege.PrivilegeActions;
-import com.starrocks.privilege.PrivilegeManager;
+import com.starrocks.privilege.PrivilegeException;
+import com.starrocks.privilege.SecurityPolicyManager;
+import com.starrocks.privilege.TablePEntryObject;
 import com.starrocks.qe.AuditEventProcessor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.JournalObservable;
@@ -241,6 +244,7 @@ import com.starrocks.sql.ast.DropMaterializedViewStmt;
 import com.starrocks.sql.ast.DropPartitionClause;
 import com.starrocks.sql.ast.DropTableStmt;
 import com.starrocks.sql.ast.InstallPluginStmt;
+import com.starrocks.sql.ast.MaskingPolicyContext;
 import com.starrocks.sql.ast.ModifyFrontendAddressClause;
 import com.starrocks.sql.ast.PartitionRenameClause;
 import com.starrocks.sql.ast.RecoverDbStmt;
@@ -250,6 +254,7 @@ import com.starrocks.sql.ast.RefreshTableStmt;
 import com.starrocks.sql.ast.ReplacePartitionClause;
 import com.starrocks.sql.ast.RestoreStmt;
 import com.starrocks.sql.ast.RollupRenameClause;
+import com.starrocks.sql.ast.RowAccessPolicyContext;
 import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.SystemVariable;
 import com.starrocks.sql.ast.TableRenameClause;
@@ -414,7 +419,8 @@ public class GlobalStateMgr {
     private AtomicBoolean usingNewPrivilege;
 
     private AuthenticationManager authenticationManager;
-    private PrivilegeManager privilegeManager;
+    private AuthorizationManager authorizationManager;
+    private SecurityPolicyManager securityPolicyManager;
 
     private DomainResolver domainResolver;
 
@@ -762,8 +768,12 @@ public class GlobalStateMgr {
         return authenticationManager;
     }
 
-    public PrivilegeManager getPrivilegeManager() {
-        return privilegeManager;
+    public AuthorizationManager getAuthorizationManager() {
+        return authorizationManager;
+    }
+
+    public SecurityPolicyManager getSecurityPolicyManager() {
+        return securityPolicyManager;
     }
 
     public ResourceGroupMgr getResourceGroupMgr() {
@@ -1002,12 +1012,13 @@ public class GlobalStateMgr {
         if (usingNewPrivilege) {
             this.authenticationManager = new AuthenticationManager();
             this.domainResolver = new DomainResolver(authenticationManager);
-            this.privilegeManager = new PrivilegeManager(this, null);
+            this.authorizationManager = new AuthorizationManager(this, null);
+            this.securityPolicyManager = new SecurityPolicyManager();
             LOG.info("using new privilege framework..");
         } else {
             this.domainResolver = new DomainResolver(auth);
             this.authenticationManager = null;
-            this.privilegeManager = null;
+            this.authorizationManager = null;
         }
     }
 
@@ -1021,7 +1032,7 @@ public class GlobalStateMgr {
     }
 
     private boolean needUpgradedToNewPrivilege() {
-        return !privilegeManager.isLoaded() || !authenticationManager.isLoaded();
+        return !authorizationManager.isLoaded() || !authenticationManager.isLoaded();
     }
 
     protected void initJournal() throws JournalException, InterruptedException {
@@ -1139,7 +1150,7 @@ public class GlobalStateMgr {
             if (USING_NEW_PRIVILEGE) {
                 if (needUpgradedToNewPrivilege()) {
                     reInitializeNewPrivilegeOnUpgrade();
-                    AuthUpgrader upgrader = new AuthUpgrader(auth, authenticationManager, privilegeManager, this);
+                    AuthUpgrader upgrader = new AuthUpgrader(auth, authenticationManager, authorizationManager, this);
                     // upgrade metadata in old privilege framework to the new one
                     upgrader.upgradeAsLeader();
                     this.domainResolver.setAuthenticationManager(authenticationManager);
@@ -1527,8 +1538,9 @@ public class GlobalStateMgr {
     public void loadRBACPrivilege(DataInputStream dis) throws IOException, DdlException {
         if (USING_NEW_PRIVILEGE) {
             this.authenticationManager = AuthenticationManager.load(dis);
-            this.privilegeManager = PrivilegeManager.load(dis, this, null);
+            this.authorizationManager = AuthorizationManager.load(dis, this, null);
             this.domainResolver = new DomainResolver(authenticationManager);
+            this.securityPolicyManager = SecurityPolicyManager.load(dis);
         }
     }
 
@@ -1756,7 +1768,7 @@ public class GlobalStateMgr {
     public void saveRBACPrivilege(DataOutputStream dos) throws IOException {
         if (USING_NEW_PRIVILEGE) {
             this.authenticationManager.save(dos);
-            this.privilegeManager.save(dos);
+            this.authorizationManager.save(dos);
         }
     }
 
@@ -2124,8 +2136,8 @@ public class GlobalStateMgr {
         localMetastore.replayRenameDatabase(dbName, newDbName);
     }
 
-    public void createTable(CreateTableStmt stmt) throws DdlException {
-        localMetastore.createTable(stmt);
+    public boolean createTable(CreateTableStmt stmt) throws DdlException {
+        return localMetastore.createTable(stmt);
     }
 
     public void createTableLike(CreateTableLikeStmt stmt) throws DdlException {
@@ -2170,6 +2182,18 @@ public class GlobalStateMgr {
     public static void getDdlStmt(String dbName, Table table, List<String> createTableStmt,
                                   List<String> addPartitionStmt,
                                   List<String> createRollupStmt, boolean separatePartition, boolean hidePassword) {
+
+        SecurityPolicyManager.PolicyContext policyContext = null;
+        SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getServingState().getSecurityPolicyManager();
+        try {
+            policyContext = GlobalStateMgr.getCurrentState().getSecurityPolicyManager()
+                    .getTableAppliedPolicyInfo(TablePEntryObject.generate(
+                            GlobalStateMgr.getCurrentState(),
+                            Lists.newArrayList(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName, table.getName())));
+        } catch (PrivilegeException e) {
+            //FIXME
+        }
+
         // 1. create table
         // 1.1 materialized view
         if (table.isMaterializedView()) {
@@ -2187,6 +2211,22 @@ public class GlobalStateMgr {
             for (Column column : table.getBaseSchema()) {
                 StringBuilder colSb = new StringBuilder();
                 colSb.append(column.getName());
+
+                if (policyContext != null) {
+                    Map<String, MaskingPolicyContext> maskingPolicyApply = policyContext.getMaskingPolicyApply();
+                    if (maskingPolicyApply.containsKey(column.getName())) {
+                        MaskingPolicyContext maskingPolicyContext = maskingPolicyApply.get(column.getName());
+                        colSb.append(" WITH MASKING POLICY ");
+                        colSb.append(securityPolicyManager.getPolicyById(maskingPolicyContext.getPolicyId()));
+
+                        if (!maskingPolicyContext.getUsingColumns().isEmpty()) {
+                            colSb.append(" USING (");
+                            colSb.append(Joiner.on(", ").join(maskingPolicyContext.getUsingColumns()));
+                            colSb.append(")");
+                        }
+                    }
+                }
+
                 if (!Strings.isNullOrEmpty(column.getComment())) {
                     colSb.append(" COMMENT ").append("\"").append(column.getComment()).append("\"");
                 }
@@ -2194,6 +2234,21 @@ public class GlobalStateMgr {
             }
             sb.append(Joiner.on(", ").join(colDef));
             sb.append(")");
+
+            if (policyContext != null) {
+                List<RowAccessPolicyContext> rowAccessPolicyContexts = policyContext.getRowAccessPolicyApply();
+                for (RowAccessPolicyContext rowAccessPolicyContext : rowAccessPolicyContexts) {
+                    sb.append(" WITH ROW ACCESS POLICY ");
+                    sb.append(securityPolicyManager.getPolicyById(rowAccessPolicyContext.getPolicyId()));
+
+                    if (!rowAccessPolicyContext.getOnColumns().isEmpty()) {
+                        sb.append(" ON (");
+                        sb.append(Joiner.on(", ").join(rowAccessPolicyContext.getOnColumns()));
+                        sb.append(")");
+                    }
+                }
+            }
+
             if (!Strings.isNullOrEmpty(view.getComment())) {
                 sb.append(" COMMENT \"").append(view.getComment()).append("\"");
             }
@@ -2228,10 +2283,10 @@ public class GlobalStateMgr {
                 if (olapTable.getKeysType() == KeysType.PRIMARY_KEYS) {
                     sb.append("  ").append(column.toSqlWithoutAggregateTypeName());
                 } else {
-                    sb.append("  ").append(column.toSql());
+                    sb.append("  ").append(column.toSql(policyContext));
                 }
             } else {
-                sb.append("  ").append(column.toSql());
+                sb.append("  ").append(column.toSql(policyContext));
             }
         }
         if (table.isOlapOrLakeTable() || table.getType() == TableType.OLAP_EXTERNAL) {
@@ -2246,7 +2301,7 @@ public class GlobalStateMgr {
 
         sb.append("\n) ENGINE=");
         sb.append(table.getType() == TableType.LAKE ? "OLAP" : table.getType().name()).append(" ");
-        
+
         if (table.isOlapOrLakeTable() || table.getType() == TableType.OLAP_EXTERNAL) {
             OlapTable olapTable = (OlapTable) table;
 
@@ -2259,6 +2314,21 @@ public class GlobalStateMgr {
                 }
             }
             sb.append(Joiner.on(", ").join(keysColumnNames)).append(")");
+
+            if (policyContext != null) {
+                List<RowAccessPolicyContext> rowAccessPolicyContexts = policyContext.getRowAccessPolicyApply();
+                for (RowAccessPolicyContext rowAccessPolicyContext : rowAccessPolicyContexts) {
+                    sb.append(" WITH ROW ACCESS POLICY ");
+                    sb.append(securityPolicyManager.getPolicyById(rowAccessPolicyContext.getPolicyId()));
+
+                    if (!rowAccessPolicyContext.getOnColumns().isEmpty()) {
+                        sb.append(" ON (");
+                        sb.append(Joiner.on(", ").join(rowAccessPolicyContext.getOnColumns()));
+                        sb.append(")");
+                    }
+                }
+            }
+
             if (!Strings.isNullOrEmpty(table.getComment())) {
                 sb.append("\nCOMMENT \"").append(table.getComment()).append("\"");
             }
@@ -2632,7 +2702,7 @@ public class GlobalStateMgr {
         // 2. add partition
         if (separatePartition && (table instanceof OlapTable)
                 && ((OlapTable) table).getPartitionInfo().isRangePartition()
-                && ((OlapTable) table).getPartitions().size() > 1) {
+                && table.getPartitions().size() > 1) {
             OlapTable olapTable = (OlapTable) table;
             RangePartitionInfo partitionInfo = (RangePartitionInfo) olapTable.getPartitionInfo();
             boolean first = true;
@@ -3142,6 +3212,10 @@ public class GlobalStateMgr {
         localMetastore.replayRenameTable(tableInfo);
     }
 
+    public void replayModifyRowAccessPolicy() {
+        //TODO: (policy)
+    }
+
     // the invoker should keep db write lock
     public void modifyTableColocate(Database db, OlapTable table, String colocateGroup, boolean isReplay,
                                     GroupId assignedGroupId)
@@ -3595,9 +3669,9 @@ public class GlobalStateMgr {
             //    privilege operation, then generate old auth journal
             // in both cases, we need a definite upgrade, so we mark the managers of
             // new privilege framework as unloaded to trigger upgrade process.
-            LOG.info("set authenticationManager and privilegeManager as unloaded because of old auth journal");
+            LOG.info("set authenticationManager and authorizationManager as unloaded because of old auth journal");
             authenticationManager.setLoaded(false);
-            privilegeManager.setLoaded(false);
+            authorizationManager.setLoaded(false);
             domainResolver = new DomainResolver(auth);
         }
         switch (code) {
@@ -3659,16 +3733,16 @@ public class GlobalStateMgr {
         // In the case where we upgrade again, i.e. upgrade->rollback->upgrade,
         // we may already load the image from last upgrade, in this case we should
         // discard the privilege data from last upgrade and only use the data from
-        // current image to upgrade, so we initialize a new PrivilegeManager and AuthenticationManger
+        // current image to upgrade, so we initialize a new AuthorizationManager and AuthenticationManger
         // instance here
         LOG.info("reinitialize privilege info before upgrade");
         this.authenticationManager = new AuthenticationManager();
-        this.privilegeManager = new PrivilegeManager(this, null);
+        this.authorizationManager = new AuthorizationManager(this, null);
     }
 
     public void replayAuthUpgrade(AuthUpgradeInfo info) throws AuthUpgrader.AuthUpgradeUnrecoverableException {
         reInitializeNewPrivilegeOnUpgrade();
-        AuthUpgrader upgrader = new AuthUpgrader(auth, authenticationManager, privilegeManager, this);
+        AuthUpgrader upgrader = new AuthUpgrader(auth, authenticationManager, authorizationManager, this);
         upgrader.replayUpgrade(info.getRoleNameToId());
         LOG.info("set usingNewPrivilege to true after auth upgrade log replayed");
         usingNewPrivilege.set(true);

@@ -636,6 +636,32 @@ public abstract class AstVisitor<R, C> {
         return visitStatement(statement, context);
     }
 
+    // ---------------------------------------- Security Policy Statement ---------------------------------------------------
+
+    public R visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt statement, C context) {
+        return visitDDLStatement(statement, context);
+    }
+
+    public R visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt statement, C context) {
+        return visitDDLStatement(statement, context);
+    }
+
+    public R visitAlterPolicyStatement(AlterPolicyStmt statement, C context) {
+        return visitDDLStatement(statement, context);
+    }
+
+    public R visitDropPolicyStatement(DropPolicyStmt statement, C context) {
+        return visitDDLStatement(statement, context);
+    }
+
+    public R visitShowPolicyStatement(ShowPolicyStmt statement, C context) {
+        return visitShowStatement(statement, context);
+    }
+
+    public R visitDescribePolicyStatement(DescribePolicyStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
     // ---------------------------------------- Backup Restore Statement -----------------------------------------------
 
     public R visitBackupStatement(BackupStmt statement, C context) {
@@ -867,6 +893,16 @@ public abstract class AstVisitor<R, C> {
     }
 
     public R visitPartitionRenameClause(PartitionRenameClause clause, C context) {
+        return visitNode(clause, context);
+    }
+
+    //Alter Policy clause
+
+    public R visitApplyMaskingPolicyClause(ApplyMaskingPolicyClause clause, C context) {
+        return visitNode(clause, context);
+    }
+
+    public R visitApplyRowAccessPolicyClause(ApplyRowAccessPolicyClause clause, C context) {
         return visitNode(clause, context);
     }
 

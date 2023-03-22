@@ -37,10 +37,10 @@ import com.starrocks.load.ExportJob;
 import com.starrocks.load.loadv2.LoadJob;
 import com.starrocks.load.loadv2.SparkLoadJob;
 import com.starrocks.load.routineload.RoutineLoadJob;
+import com.starrocks.privilege.AuthorizationManager;
 import com.starrocks.privilege.PrivilegeActions;
 import com.starrocks.privilege.PrivilegeBuiltinConstants;
 import com.starrocks.privilege.PrivilegeException;
-import com.starrocks.privilege.PrivilegeManager;
 import com.starrocks.privilege.PrivilegeType;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.CatalogMgr;
@@ -58,6 +58,7 @@ import com.starrocks.sql.ast.AlterDatabaseQuotaStmt;
 import com.starrocks.sql.ast.AlterDatabaseRenameStatement;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
+import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AlterResourceGroupStmt;
 import com.starrocks.sql.ast.AlterResourceStmt;
 import com.starrocks.sql.ast.AlterRoutineLoadStmt;
@@ -80,18 +81,21 @@ import com.starrocks.sql.ast.CreateCatalogStmt;
 import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
+import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
 import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
+import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
 import com.starrocks.sql.ast.CreateTableAsSelectStmt;
 import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.CreateViewStmt;
 import com.starrocks.sql.ast.DelSqlBlackListStmt;
 import com.starrocks.sql.ast.DeleteStmt;
+import com.starrocks.sql.ast.DescribePolicyStmt;
 import com.starrocks.sql.ast.DescribeStmt;
 import com.starrocks.sql.ast.DropCatalogStmt;
 import com.starrocks.sql.ast.DropDbStmt;
@@ -99,6 +103,7 @@ import com.starrocks.sql.ast.DropFileStmt;
 import com.starrocks.sql.ast.DropFunctionStmt;
 import com.starrocks.sql.ast.DropHistogramStmt;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
+import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.DropRepositoryStmt;
 import com.starrocks.sql.ast.DropResourceGroupStmt;
 import com.starrocks.sql.ast.DropResourceStmt;
@@ -155,6 +160,7 @@ import com.starrocks.sql.ast.ShowLoadStmt;
 import com.starrocks.sql.ast.ShowMaterializedViewsStmt;
 import com.starrocks.sql.ast.ShowPartitionsStmt;
 import com.starrocks.sql.ast.ShowPluginsStmt;
+import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.ShowProcStmt;
 import com.starrocks.sql.ast.ShowProcesslistStmt;
 import com.starrocks.sql.ast.ShowResourceGroupStmt;
@@ -1015,8 +1021,8 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitExecuteAsStatement(ExecuteAsStmt statement, ConnectContext context) {
-            PrivilegeManager privilegeManager = context.getGlobalStateMgr().getPrivilegeManager();
-            if (!privilegeManager.canExecuteAs(context, statement.getToUser())) {
+            AuthorizationManager authorizationManager = context.getGlobalStateMgr().getAuthorizationManager();
+            if (!authorizationManager.canExecuteAs(context, statement.getToUser())) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "IMPERSONATE");
             }
             return null;
@@ -1096,8 +1102,8 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitGrantRevokePrivilegeStatement(BaseGrantRevokePrivilegeStmt stmt, ConnectContext context) {
-            PrivilegeManager privilegeManager = context.getGlobalStateMgr().getPrivilegeManager();
-            if (!privilegeManager.allowGrant(context, stmt.getObjectType(), stmt.getPrivilegeTypes(), stmt.getObjectList())) {
+            AuthorizationManager authorizationManager = context.getGlobalStateMgr().getAuthorizationManager();
+            if (!authorizationManager.allowGrant(context, stmt.getObjectType(), stmt.getPrivilegeTypes(), stmt.getObjectList())) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             }
             return null;
@@ -1110,9 +1116,9 @@ public class PrivilegeCheckerV2 {
                     && !PrivilegeActions.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
             } else if (statement.getRole() != null) {
-                PrivilegeManager privilegeManager = context.getGlobalStateMgr().getPrivilegeManager();
+                AuthorizationManager authorizationManager = context.getGlobalStateMgr().getAuthorizationManager();
                 try {
-                    List<String> roleNames = privilegeManager.getRoleNamesByUser(context.getCurrentUserIdentity());
+                    List<String> roleNames = authorizationManager.getRoleNamesByUser(context.getCurrentUserIdentity());
                     if (!roleNames.contains(statement.getRole())
                             && !PrivilegeActions.checkSystemAction(context, PrivilegeType.GRANT)) {
                         ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
@@ -1140,6 +1146,60 @@ public class PrivilegeCheckerV2 {
             if (user != null && !user.equals(context.getCurrentUserIdentity().getQualifiedUser())
                     && !PrivilegeActions.checkSystemAction(context, PrivilegeType.GRANT)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "GRANT");
+            }
+            return null;
+        }
+
+        // ---------------------------------------- Security Policy Statement ---------------------------------------------------
+
+        @Override
+        public Void visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt statement, ConnectContext context) {
+            if (!PrivilegeActions.checkDbAction(context,
+                    statement.getPolicyName().getCatalog(), statement.getPolicyName().getDbName(),
+                    PrivilegeType.CREATE_POLICY)) {
+                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "CREATE POLICY");
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt statement, ConnectContext context) {
+            if (!PrivilegeActions.checkDbAction(context,
+                    statement.getPolicyName().getCatalog(), statement.getPolicyName().getDbName(),
+                    PrivilegeType.CREATE_POLICY)) {
+                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "CREATE POLICY");
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitAlterPolicyStatement(AlterPolicyStmt statement, ConnectContext context) {
+            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyName().getCatalog(),
+                    statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.ALTER)) {
+                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ALTER");
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitDropPolicyStatement(DropPolicyStmt statement, ConnectContext context) {
+            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyName().getCatalog(),
+                    statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.DROP)) {
+                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "DROP");
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitShowPolicyStatement(ShowPolicyStmt statement, ConnectContext context) {
+            return visitShowStatement(statement, context);
+        }
+
+        @Override
+        public Void visitDescribePolicyStatement(DescribePolicyStmt statement, ConnectContext context) {
+            if (!PrivilegeActions.checkAnyActionOnPolicy(context, statement.getPolicyName().getCatalog(),
+                    statement.getPolicyName().getDbName(), statement.getPolicyName().getName())) {
+                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ANY");
             }
             return null;
         }
@@ -1708,7 +1768,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitShowFunctionsStatement(ShowFunctionsStmt statement, ConnectContext context) {
-            // Don't do any privilege check on show functions
+            // Privilege check is handled in `ShowExecutor#handleShowFunctions()`
             return null;
         }
 
@@ -1717,10 +1777,9 @@ public class PrivilegeCheckerV2 {
             FunctionName functionName = statement.getFunctionName();
             // global function.
             if (functionName.isGlobalFunction()) {
-                FunctionSearchDesc desc = statement.getFunction();
-                Function function = GlobalStateMgr.getCurrentState().getGlobalFunctionMgr().getFunction(desc);
-                if (function != null && !PrivilegeActions.checkGlobalFunctionAction(context, function.signatureString(),
-                        PrivilegeType.DROP)) {
+                FunctionSearchDesc functionSearchDesc = statement.getFunctionSearchDesc();
+                Function function = GlobalStateMgr.getCurrentState().getGlobalFunctionMgr().getFunction(functionSearchDesc);
+                if (function != null && !PrivilegeActions.checkGlobalFunctionAction(context, function, PrivilegeType.DROP)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                             "DROP GLOBAL FUNCTION");
                 }
@@ -1732,9 +1791,8 @@ public class PrivilegeCheckerV2 {
             if (db != null) {
                 try {
                     db.readLock();
-                    Function function = db.getFunction(statement.getFunction());
-                    if (null != function && !PrivilegeActions.checkFunctionAction(context, functionName.getDb(),
-                            function.signatureString(), PrivilegeType.DROP)) {
+                    Function function = db.getFunction(statement.getFunctionSearchDesc());
+                    if (null != function && !PrivilegeActions.checkFunctionAction(context, db, function, PrivilegeType.DROP)) {
                         ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR,
                                 "DROP FUNCTION");
                     }

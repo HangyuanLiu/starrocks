@@ -324,6 +324,7 @@ createTableStatement
           engineDesc?
           charsetDesc?
           keyDesc?
+          withRowAccessPolicy*
           comment?
           partitionDesc?
           distributionDesc?
@@ -334,7 +335,9 @@ createTableStatement
      ;
 
 columnDesc
-    : identifier type charsetName? KEY? aggDesc? (NULL | NOT NULL)? (defaultDesc | AUTO_INCREMENT)? comment?
+    : columnName=identifier type charsetName? KEY? aggDesc? (NULL | NOT NULL)? (defaultDesc | AUTO_INCREMENT)?
+    (withMaskingPolicy)?
+    comment?
     ;
 
 charsetName
@@ -498,6 +501,7 @@ recoverPartitionStatement
 createViewStatement
     : CREATE VIEW (IF NOT EXISTS)? qualifiedName
         ('(' columnNameWithComment (',' columnNameWithComment)* ')')?
+        withRowAccessPolicy*
         comment? AS queryStatement
     ;
 
@@ -505,10 +509,28 @@ alterViewStatement
     : ALTER VIEW qualifiedName
     ('(' columnNameWithComment (',' columnNameWithComment)* ')')?
     AS queryStatement
+
+    | ALTER VIEW qualifiedName MODIFY COLUMN identifier SET MASKING POLICY policyName=identifier (USING identifierList)?
+    | ALTER VIEW qualifiedName MODIFY COLUMN identifier UNSET MASKING POLICY
+    | ALTER VIEW (IF EXISTS) qualifiedName ADD ROW ACCESS POLICY policyName=identifier ON identifierList
+    | ALTER VIEW (IF EXISTS) qualifiedName DROP ROW ACCESS POLICY policyName=identifier
+    | ALTER VIEW (IF EXISTS) qualifiedName DROP ALL ROW ACCESS POLICIES
     ;
 
 dropViewStatement
     : DROP VIEW (IF EXISTS)? qualifiedName
+    ;
+
+columnNameWithComment
+    : columnName=identifier withMaskingPolicy? comment?
+    ;
+
+withMaskingPolicy
+    : WITH MASKING POLICY policyName=qualifiedName (USING identifierList)?
+    ;
+
+withRowAccessPolicy
+    : WITH ROW ACCESS POLICY policyName=qualifiedName ON identifierList
     ;
 
 // ------------------------------------------- Task Statement ----------------------------------------------------------
@@ -544,6 +566,12 @@ dropMaterializedViewStatement
 
 alterMaterializedViewStatement
     : ALTER MATERIALIZED VIEW mvName=qualifiedName (refreshSchemeDesc | tableRenameClause | modifyTablePropertiesClause)
+
+    | ALTER MATERIALIZED VIEW qualifiedName MODIFY COLUMN identifier SET MASKING POLICY policyName=identifier (USING identifierList)?
+    | ALTER MATERIALIZED VIEW qualifiedName MODIFY COLUMN identifier UNSET MASKING POLICY
+    | ALTER MATERIALIZED VIEW (IF EXISTS) qualifiedName ADD ROW ACCESS POLICY policyName=identifier ON identifierList
+    | ALTER MATERIALIZED VIEW (IF EXISTS) qualifiedName DROP ROW ACCESS POLICY policyName=identifier
+    | ALTER MATERIALIZED VIEW (IF EXISTS) qualifiedName DROP ALL ROW ACCESS POLICIES
     ;
 
 refreshMaterializedViewStatement
@@ -691,6 +719,10 @@ alterClause
     | reorderColumnsClause
     | rollupRenameClause
 
+    //Alter Policy clause
+    | applyMaskingPolicyClause
+    | applyRowAccessPolicyClause
+
     //Alter partition clause
     | addPartitionClause
     | dropPartitionClause
@@ -801,6 +833,17 @@ reorderColumnsClause
 
 rollupRenameClause
     : RENAME ROLLUP rollupName=identifier newRollupName=identifier
+    ;
+
+applyMaskingPolicyClause
+    : MODIFY COLUMN columnName=identifier SET MASKING POLICY policyName=qualifiedName (USING identifierList)?
+    | MODIFY COLUMN columnName=identifier UNSET MASKING POLICY
+    ;
+
+applyRowAccessPolicyClause
+    : ADD ROW ACCESS POLICY policyName=qualifiedName ON identifierList
+    | DROP ROW ACCESS POLICY policyName=qualifiedName
+    | DROP ALL ROW ACCESS POLICIES
     ;
 
 // ---------Alter partition clause---------
@@ -1283,24 +1326,27 @@ grantRevokeClause
     ;
 
 grantPrivilegeStatement
-    : GRANT IMPERSONATE ON USER user (',' user)* TO grantRevokeClause (WITH GRANT OPTION)?              #grantImpersonate
-    | GRANT privilegeTypeList ON privObjectNameList TO grantRevokeClause (WITH GRANT OPTION)?           #grantTablePrivBrief
-    | GRANT privilegeTypeList ON privObjectType (privObjectNameList)?
-        TO grantRevokeClause (WITH GRANT OPTION)?                                                       #grantPrivWithType
+    : GRANT IMPERSONATE ON USER user (',' user)* TO grantRevokeClause (WITH GRANT OPTION)?              #grantOnUser
+    | GRANT privilegeTypeList ON privObjectNameList TO grantRevokeClause (WITH GRANT OPTION)?           #grantOnTableBrief
+
     | GRANT privilegeTypeList ON GLOBAL? FUNCTION privFunctionObjectNameList
-        TO grantRevokeClause (WITH GRANT OPTION)?                                                       #grantPrivWithFunc
+        TO grantRevokeClause (WITH GRANT OPTION)?                                                       #grantOnFunc
+    | GRANT privilegeTypeList ON SYSTEM TO grantRevokeClause (WITH GRANT OPTION)?                       #grantOnSystem
+    | GRANT privilegeTypeList ON privObjectType privObjectNameList
+        TO grantRevokeClause (WITH GRANT OPTION)?                                                       #grantOnPrimaryObj
     | GRANT privilegeTypeList ON ALL privObjectTypePlural
         (IN isAll=ALL DATABASES| IN DATABASE identifierOrString)? TO grantRevokeClause
         (WITH GRANT OPTION)?                                                                            #grantOnAll
     ;
 
 revokePrivilegeStatement
-    : REVOKE IMPERSONATE ON USER user (',' user)* FROM grantRevokeClause                                #revokeImpersonate
-    | REVOKE privilegeTypeList ON privObjectNameList FROM grantRevokeClause                             #revokeTablePrivBrief
-    | REVOKE privilegeTypeList ON privObjectType (privObjectNameList)?
-        FROM grantRevokeClause                                                                          #revokePrivWithType
+    : REVOKE IMPERSONATE ON USER user (',' user)* FROM grantRevokeClause                                #revokeOnUser
+    | REVOKE privilegeTypeList ON privObjectNameList FROM grantRevokeClause                             #revokeOnTableBrief
     | REVOKE privilegeTypeList ON GLOBAL? FUNCTION privFunctionObjectNameList
-        FROM grantRevokeClause                                                                          #revokePrivWithFunc
+        FROM grantRevokeClause                                                                          #revokeOnFunc
+    | REVOKE privilegeTypeList ON SYSTEM FROM grantRevokeClause                                         #revokeOnSystem
+    | REVOKE privilegeTypeList ON privObjectType privObjectNameList
+        FROM grantRevokeClause                                                                          #revokeOnPrimaryObj
     | REVOKE privilegeTypeList ON ALL privObjectTypePlural
         (IN isAll=ALL DATABASES| IN DATABASE identifierOrString)? FROM grantRevokeClause                #revokeOnAll
     ;
@@ -1341,8 +1387,7 @@ privilegeType
     ;
 
 privObjectType
-    : TABLE| DATABASE| SYSTEM| USER| RESOURCE| VIEW| CATALOG| MATERIALIZED VIEW| FUNCTION| RESOURCE GROUP
-    | GLOBAL FUNCTION
+    : TABLE| DATABASE| SYSTEM | RESOURCE| VIEW| CATALOG| MATERIALIZED VIEW| RESOURCE GROUP
     ;
 
 privObjectTypePlural
@@ -1353,47 +1398,49 @@ privObjectTypePlural
 // ---------------------------------------- Security Policy Statement ---------------------------------------------------
 
 createMaskingPolicyStatement
-    : CREATE (OR REPLACE)? MASKING POLICY (IF NOT EXISTS)? policyName=identifier
-        AS '(' identifier type (',' identifier type)* ')' RETURNS type ARROW expression
+    : CREATE (OR REPLACE)? MASKING POLICY (IF NOT EXISTS)? policyName=qualifiedName
+        AS '(' arg (',' arg)* ')' RETURNS type ARROW expression
     ;
 
+arg : identifier type;
+
 alterMaskingPolicyStatement
-    : ALTER MASKING POLICY (IF EXISTS)? policyName=identifier SET BODY ARROW expression
-    | ALTER MASKING POLICY (IF EXISTS)? policyName=identifier RENAME TO policyName=identifier
+    : ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName SET BODY ARROW expression
+    | ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName RENAME TO newPolicyName=identifier
     ;
 
 dropMaskingPolicyStatement
-    : DROP MASKING POLICY policyName=identifier
+    : DROP (IF EXISTS)? MASKING POLICY policyName=qualifiedName
     ;
 
 showMaskingPolicyStatement
-    : SHOW MASKING POLICY
+    : SHOW MASKING POLICIES
     ;
 
 describeMaskingPolicyStatement
-    : (DESC | DESCRIBE) MASKING POLICY policyName=identifier
+    : (DESC | DESCRIBE) MASKING POLICY policyName=qualifiedName
     ;
 
 createRowAccessPolicyStatement
-    : CREATE (OR REPLACE)? ROW ACCESS POLICY (IF NOT EXISTS)? policyName=identifier
-      AS '(' identifier type (',' identifier type)* ')' RETURNS BOOLEAN ARROW expression
+    : CREATE (OR REPLACE)? ROW ACCESS POLICY (IF NOT EXISTS)? policyName=qualifiedName
+      AS '(' arg (',' arg)* ')' RETURNS BOOLEAN ARROW expression
     ;
 
 alterRowAccessPolicyStatement
-    : ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=identifier SET BODY ARROW expression
-    | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=identifier RENAME TO policyName=identifier
+    : ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName SET BODY ARROW expression
+    | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName RENAME TO newPolicyName=identifier
     ;
 
 dropRowAccessPolicyStatement
-    : DROP ROW ACCESS POLICY policyName=identifier
+    : DROP (IF EXISTS)? ROW ACCESS POLICY policyName=qualifiedName
     ;
 
 showRowAccessPolicyStatement
-    : (DESC | DESCRIBE) ROW ACCESS  POLICY policyName=identifier
+    : SHOW ROW ACCESS POLICIES
     ;
 
 describeRowAccessPolicyStatement
-    : (DESC | DESCRIBE) ROW ACCESS POLICY policyName=identifier
+    : (DESC | DESCRIBE) ROW ACCESS POLICY policyName=qualifiedName
     ;
 
 // ---------------------------------------- Backup Restore Statement ---------------------------------------------------
@@ -2100,10 +2147,6 @@ comment
     : COMMENT string
     ;
 
-columnNameWithComment
-    : identifier comment?
-    ;
-
 outfile
     : INTO OUTFILE file=string fileFormat? properties?
     ;
@@ -2271,8 +2314,8 @@ nonReserved
     | MASKING | MANUAL | MAP | MATERIALIZED | MAX | META | MIN | MINUTE | MODE | MODIFY | MONTH | MERGE | MINUS
     | NAME | NAMES | NEGATIVE | NO | NODE | NODES | NONE | NULLS
     | OBSERVER | OF | OFFSET | ONLY | OPTIMIZER | OPEN | OPERATE | OPTION | OVERWRITE
-    | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | POLICY | PRECEDING | PROC | PROCESSLIST
-    | PRIVILEGES | PROPERTIES | PROPERTY
+    | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | POLICY | POLICIES | PRECEDING | PROC
+    | PROCESSLIST | PRIVILEGES | PROPERTIES | PROPERTY
     | QUARTER | QUERY | QUOTA | QUALIFY
     | REMOVE | RANDOM | RANK | RECOVER | REFRESH | REPAIR | REPEATABLE | REPLACE_IF_NOT_NULL | REPLICA | REPOSITORY | REPOSITORIES
     | RESOURCE | RESOURCES | RESTORE | RESUME | RETURNS | REVERT | ROLE | ROLES | ROLLUP | ROLLBACK | ROUTINE | ROW
@@ -2280,7 +2323,7 @@ nonReserved
     | STORAGE| STRING | STRUCT | STATS | SUBMIT | SUSPEND | SYNC | SYSTEM_TIME
     | TABLES | TABLET | TASK | TEMPORARY | TIMESTAMP | TIMESTAMPADD | TIMESTAMPDIFF | THAN | TIME | TRANSACTION | TRACE | TRIM_SPACE
     | TRIGGERS | TRUNCATE | TYPE | TYPES
-    | UNBOUNDED | UNCOMMITTED | UNINSTALL | USAGE | USER | USERS | UNLOCK
+    | UNBOUNDED | UNCOMMITTED | UNSET | UNINSTALL | USAGE | USER | USERS | UNLOCK
     | VALUE | VARIABLES | VIEW | VIEWS | VERBOSE
     | WARNINGS | WEEK | WHITELIST | WORK | WRITE  | WAREHOUSE | WAREHOUSES
     | YEAR

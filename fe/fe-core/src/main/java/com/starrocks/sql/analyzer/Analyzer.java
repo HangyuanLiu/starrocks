@@ -55,6 +55,7 @@ import com.starrocks.sql.ast.CreateCatalogStmt;
 import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
+import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
@@ -62,6 +63,7 @@ import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
+import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
 import com.starrocks.sql.ast.CreateTableAsSelectStmt;
 import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
@@ -714,6 +716,18 @@ public class Analyzer {
         @Override
         public Void visitShowGrantsStatement(ShowGrantsStmt stmt, ConnectContext session) {
             PrivilegeStmtAnalyzer.analyze(stmt, session);
+            return null;
+        }
+
+        @Override
+        public Void visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt stmt, ConnectContext context) {
+            SecurityPolicyAnalyzer.analyze(stmt, context);
+            return null;
+        }
+
+        @Override
+        public Void visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt stmt, ConnectContext context) {
+            SecurityPolicyAnalyzer.analyze(stmt, context);
             return null;
         }
 

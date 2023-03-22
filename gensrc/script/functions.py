@@ -394,6 +394,15 @@ vectorized_functions = [
     [50243, 'str2date', 'DATE', ['VARCHAR', 'VARCHAR'], 'TimeFunctions::str2date', 'TimeFunctions::str_to_date_prepare', 'TimeFunctions::str_to_date_close'],
     [50250, 'time_to_sec', 'BIGINT', ['TIME'], 'TimeFunctions::time_to_sec'],
 
+    # unix timestamp extended version to int64
+    # be sure to put before int32 version, so fe will find signature in order.
+    [50284, 'unix_timestamp', 'BIGINT', [], 'TimeFunctions::to_unix_for_now'],
+    [50285, 'unix_timestamp', 'BIGINT', ['DATETIME'], 'TimeFunctions::to_unix_from_datetime'],
+    [50286, 'unix_timestamp', 'BIGINT', ['DATE'], 'TimeFunctions::to_unix_from_date'],
+    [50287, 'unix_timestamp', 'BIGINT', ['VARCHAR', 'VARCHAR'], 'TimeFunctions::to_unix_from_datetime_with_format'],
+    [50288, 'from_unixtime', 'VARCHAR', ['BIGINT'], 'TimeFunctions::from_unix_to_datetime'],
+    [50289, 'from_unixtime', 'VARCHAR', ['BIGINT', 'VARCHAR'], 'TimeFunctions::from_unix_to_datetime_with_format', 'TimeFunctions::from_unix_prepare', 'TimeFunctions::from_unix_close'],
+
     [50300, 'unix_timestamp', 'INT', [], 'TimeFunctions::to_unix_for_now'],
     [50301, 'unix_timestamp', 'INT', ['DATETIME'], 'TimeFunctions::to_unix_from_datetime'],
     [50302, 'unix_timestamp', 'INT', ['DATE'], 'TimeFunctions::to_unix_from_date'],
@@ -537,7 +546,8 @@ vectorized_functions = [
     [90801, 'bitmap_to_base64', 'VARCHAR', ['BITMAP'], 'BitmapFunctions::bitmap_to_base64', False],
     [90900, 'array_to_bitmap', 'BITMAP', ['ARRAY_BIGINT'], 'BitmapFunctions::array_to_bitmap', False],
     [91000, 'sub_bitmap', 'BITMAP', ['BITMAP', 'BIGINT', 'BIGINT'], 'BitmapFunctions::sub_bitmap', False],
-    [91002, 'bitmap_subset_limit', 'BITMAP', ['BITMAP', 'BIGINT', 'BIGINT'], 'BitmapFunctions::bitmap_subset_limit', False],
+    [91001, 'bitmap_subset_limit', 'BITMAP', ['BITMAP', 'BIGINT', 'BIGINT'], 'BitmapFunctions::bitmap_subset_limit', False],
+    [91002, 'bitmap_subset_in_range', 'BITMAP', ['BITMAP', 'BIGINT', 'BIGINT'], 'BitmapFunctions::bitmap_subset_in_range', False],
 
     # hash function
     [100010, 'murmur_hash3_32', 'INT', ['VARCHAR', '...'], 'HashFunctions::murmur_hash3_32'],
@@ -589,6 +599,8 @@ vectorized_functions = [
     [110018, "json_keys", "JSON", ["JSON"], "JsonFunctions::json_keys", False],
     [110019, "json_keys", "JSON", ["JSON", "VARCHAR"], "JsonFunctions::json_keys",
       "JsonFunctions::native_json_path_prepare", "JsonFunctions::native_json_path_close", False],
+    [110100, "to_json", "JSON", ["ANY_MAP"], "JsonFunctions::to_json", False],
+    [110101, "to_json", "JSON", ["ANY_STRUCT"], "JsonFunctions::to_json", False],
 
     # aes and base64 function
     [120100, "aes_encrypt", "VARCHAR", ["VARCHAR", "VARCHAR"], "EncryptionFunctions::aes_encrypt", False],

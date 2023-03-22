@@ -31,11 +31,11 @@ public class ValuesRelation extends QueryRelation {
     */
     private boolean isNullValues;
 
-    public ValuesRelation(List<ArrayList<Expr>> rows, List<String> explicitColumnNames) {
+    public ValuesRelation(List<List<Expr>> rows, List<String> explicitColumnNames) {
         this(rows, explicitColumnNames, NodePosition.ZERO);
     }
 
-    public ValuesRelation(List<ArrayList<Expr>> rows, List<String> explicitColumnNames, NodePosition pos) {
+    public ValuesRelation(List<List<Expr>> rows, List<String> explicitColumnNames, NodePosition pos) {
         super(pos);
         this.rows = new ArrayList<>(rows);
         this.explicitColumnNames = explicitColumnNames;

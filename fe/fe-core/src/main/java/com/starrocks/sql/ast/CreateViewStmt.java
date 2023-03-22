@@ -20,15 +20,14 @@ import com.starrocks.analysis.TableName;
 import com.starrocks.sql.parser.NodePosition;
 
 import java.util.List;
+import java.util.Map;
 
 public class CreateViewStmt extends BaseViewStmt {
     private final boolean ifNotExists;
     private final String comment;
 
-    public CreateViewStmt(boolean ifNotExists, TableName tableName, List<ColWithComment> cols,
-                          String comment, QueryStatement queryStmt) {
-        this(ifNotExists, tableName, cols, comment, queryStmt, NodePosition.ZERO);
-    }
+    private List<RowAccessPolicyContext> rowAccessPolicy;
+    private Map<String, MaskingPolicyContext> maskingPolicy;
 
     public CreateViewStmt(boolean ifNotExists, TableName tableName, List<ColWithComment> cols,
                           String comment, QueryStatement queryStmt, NodePosition pos) {
@@ -43,6 +42,22 @@ public class CreateViewStmt extends BaseViewStmt {
 
     public String getComment() {
         return comment;
+    }
+
+    public Map<String, MaskingPolicyContext> getMaskingPolicy() {
+        return maskingPolicy;
+    }
+
+    public void setMaskingPolicy(Map<String, MaskingPolicyContext> maskingPolicy) {
+        this.maskingPolicy = maskingPolicy;
+    }
+
+    public List<RowAccessPolicyContext> getRowAccessPolicy() {
+        return rowAccessPolicy;
+    }
+
+    public void setRowAccessPolicy(List<RowAccessPolicyContext> rowAccessPolicy) {
+        this.rowAccessPolicy = rowAccessPolicy;
     }
 
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {

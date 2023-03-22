@@ -40,6 +40,7 @@ import com.starrocks.sql.ast.AddColumnsClause;
 import com.starrocks.sql.ast.AddRollupClause;
 import com.starrocks.sql.ast.AlterClause;
 import com.starrocks.sql.ast.AlterTableStmt;
+import com.starrocks.sql.ast.ApplyRowAccessPolicyClause;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.ColumnRenameClause;
 import com.starrocks.sql.ast.CreateIndexClause;
@@ -497,6 +498,11 @@ public class AlterTableStatementAnalyzer {
             } catch (AnalysisException e) {
                 throw new SemanticException(e.getMessage());
             }
+            return null;
+        }
+
+        @Override
+        public Void visitApplyRowAccessPolicyClause(ApplyRowAccessPolicyClause clause, ConnectContext context) {
             return null;
         }
     }

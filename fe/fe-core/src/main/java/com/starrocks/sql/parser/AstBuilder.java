@@ -119,6 +119,7 @@ import com.starrocks.sql.ast.AlterDatabaseRenameStatement;
 import com.starrocks.sql.ast.AlterLoadErrorUrlClause;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
+import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AlterResourceGroupStmt;
 import com.starrocks.sql.ast.AlterResourceStmt;
 import com.starrocks.sql.ast.AlterRoutineLoadStmt;
@@ -130,6 +131,8 @@ import com.starrocks.sql.ast.AlterWarehouseStmt;
 import com.starrocks.sql.ast.AnalyzeBasicDesc;
 import com.starrocks.sql.ast.AnalyzeHistogramDesc;
 import com.starrocks.sql.ast.AnalyzeStmt;
+import com.starrocks.sql.ast.ApplyMaskingPolicyClause;
+import com.starrocks.sql.ast.ApplyRowAccessPolicyClause;
 import com.starrocks.sql.ast.ArrayExpr;
 import com.starrocks.sql.ast.AsyncRefreshSchemeDesc;
 import com.starrocks.sql.ast.BackupStmt;
@@ -151,6 +154,7 @@ import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
 import com.starrocks.sql.ast.CreateImageClause;
 import com.starrocks.sql.ast.CreateIndexClause;
+import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
@@ -158,6 +162,7 @@ import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
+import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
 import com.starrocks.sql.ast.CreateTableAsSelectStmt;
 import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
@@ -169,6 +174,7 @@ import com.starrocks.sql.ast.DecommissionBackendClause;
 import com.starrocks.sql.ast.DefaultValueExpr;
 import com.starrocks.sql.ast.DelSqlBlackListStmt;
 import com.starrocks.sql.ast.DeleteStmt;
+import com.starrocks.sql.ast.DescribePolicyStmt;
 import com.starrocks.sql.ast.DescribeStmt;
 import com.starrocks.sql.ast.DistributionDesc;
 import com.starrocks.sql.ast.DropAnalyzeJobStmt;
@@ -185,6 +191,7 @@ import com.starrocks.sql.ast.DropIndexClause;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
 import com.starrocks.sql.ast.DropObserverClause;
 import com.starrocks.sql.ast.DropPartitionClause;
+import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.DropRepositoryStmt;
 import com.starrocks.sql.ast.DropResourceGroupStmt;
 import com.starrocks.sql.ast.DropResourceStmt;
@@ -224,6 +231,7 @@ import com.starrocks.sql.ast.ListPartitionDesc;
 import com.starrocks.sql.ast.LoadStmt;
 import com.starrocks.sql.ast.ManualRefreshSchemeDesc;
 import com.starrocks.sql.ast.MapExpr;
+import com.starrocks.sql.ast.MaskingPolicyContext;
 import com.starrocks.sql.ast.ModifyBackendAddressClause;
 import com.starrocks.sql.ast.ModifyBrokerClause;
 import com.starrocks.sql.ast.ModifyColumnClause;
@@ -239,6 +247,8 @@ import com.starrocks.sql.ast.PartitionRangeDesc;
 import com.starrocks.sql.ast.PartitionRenameClause;
 import com.starrocks.sql.ast.PartitionValue;
 import com.starrocks.sql.ast.PauseRoutineLoadStmt;
+import com.starrocks.sql.ast.PolicyName;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.Property;
 import com.starrocks.sql.ast.PropertySet;
 import com.starrocks.sql.ast.QualifiedName;
@@ -261,6 +271,7 @@ import com.starrocks.sql.ast.ResumeWarehouseStmt;
 import com.starrocks.sql.ast.RevokePrivilegeStmt;
 import com.starrocks.sql.ast.RevokeRoleStmt;
 import com.starrocks.sql.ast.RollupRenameClause;
+import com.starrocks.sql.ast.RowAccessPolicyContext;
 import com.starrocks.sql.ast.RowDelimiter;
 import com.starrocks.sql.ast.SelectList;
 import com.starrocks.sql.ast.SelectListItem;
@@ -315,6 +326,7 @@ import com.starrocks.sql.ast.ShowMaterializedViewsStmt;
 import com.starrocks.sql.ast.ShowOpenTableStmt;
 import com.starrocks.sql.ast.ShowPartitionsStmt;
 import com.starrocks.sql.ast.ShowPluginsStmt;
+import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.ShowProcStmt;
 import com.starrocks.sql.ast.ShowProcedureStmt;
 import com.starrocks.sql.ast.ShowProcesslistStmt;
@@ -701,7 +713,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         // For materialized views currently columnDefs == null
         if (columnDefs != null && "hour".equalsIgnoreCase(fmt)) {
             ColumnDef partitionDef = findPartitionDefByName(columnDefs, partitionColumnName);
-            if (partitionDef == null)  {
+            if (partitionDef == null) {
                 throw new ParsingException(PARSER_ERROR_MSG.unsupportedExprWithInfo(expr.toSql(), "PARTITION BY"), pos);
             }
             if (partitionDef.getType() != Type.DATETIME) {
@@ -781,7 +793,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     private ColumnDef getColumnDef(StarRocksParser.ColumnDescContext context) {
-        Identifier colIdentifier = (Identifier) visit(context.identifier());
+        Identifier colIdentifier = (Identifier) visit(context.columnName);
         String columnName = colIdentifier.getValue();
         TypeDef typeDef = new TypeDef(getType(context.type()), createPos(context.type()));
         String charsetName = context.charsetName() != null ?
@@ -837,6 +849,16 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             }
         }
 
+        PartitionDesc partitionDesc = null;
+        if (context.partitionDesc() != null) {
+            partitionDesc = (PartitionDesc) visit(context.partitionDesc());
+        }
+
+        if (partitionDesc instanceof ExpressionPartitionDesc) {
+            throw new ParsingException(PARSER_ERROR_MSG.unsupportedExprWithInfo("Expression partition",
+                    "CREATE TABLE AS SELECT"), partitionDesc.getPos());
+        }
+
         CreateTableStmt createTableStmt = new CreateTableStmt(
                 context.IF() != null,
                 false,
@@ -844,7 +866,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 null,
                 EngineType.defaultEngine().name(),
                 context.keyDesc() == null ? null : getKeysDesc(context.keyDesc()),
-                context.partitionDesc() == null ? null : (PartitionDesc) visit(context.partitionDesc()),
+                partitionDesc,
                 context.distributionDesc() == null ? null : (DistributionDesc) visit(context.distributionDesc()),
                 properties,
                 null,
@@ -1095,12 +1117,18 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         if (context.columnNameWithComment().size() > 0) {
             colWithComments = visit(context.columnNameWithComment(), ColWithComment.class);
         }
-        return new CreateViewStmt(
+        CreateViewStmt createViewStmt = new CreateViewStmt(
                 context.IF() != null,
                 targetTableName,
                 colWithComments,
                 context.comment() == null ? null : ((StringLiteral) visit(context.comment())).getStringValue(),
                 (QueryStatement) visit(context.queryStatement()), createPos(context));
+
+        List<RowAccessPolicyContext> rowAccessPolicyContexts =
+                visit(context.withRowAccessPolicy(), RowAccessPolicyContext.class);
+        createViewStmt.setRowAccessPolicy(rowAccessPolicyContexts);
+
+        return createViewStmt;
     }
 
     @Override
@@ -1123,6 +1151,34 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
         TableName targetTableName = qualifiedNameToTableName(qualifiedName);
         return new DropTableStmt(ifExists, targetTableName, true, false, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitWithMaskingPolicy(StarRocksParser.WithMaskingPolicyContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+
+        List<String> usingColumns = new ArrayList<>();
+        if (context.identifierList() != null) {
+            final List<Identifier> identifierList = visit(context.identifierList().identifier(), Identifier.class);
+            usingColumns.addAll(identifierList.stream().map(Identifier::getValue).collect(toList()));
+        }
+
+        return new MaskingPolicyContext(policyName, usingColumns, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitWithRowAccessPolicy(StarRocksParser.WithRowAccessPolicyContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+
+        List<String> onColumns = new ArrayList<>();
+        if (context.identifierList() != null) {
+            final List<Identifier> identifierList = visit(context.identifierList().identifier(), Identifier.class);
+            onColumns.addAll(identifierList.stream().map(Identifier::getValue).collect(toList()));
+        }
+
+        return new RowAccessPolicyContext(policyName, onColumns, createPos(context));
     }
 
     // ------------------------------------------- Partition Statement ------------------------------------------------------
@@ -1604,7 +1660,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         QueryStatement queryStatement;
         if (context.VALUES() != null) {
             List<ValueList> rowValues = visit(context.expressionsWithDefault(), ValueList.class);
-            List<ArrayList<Expr>> rows = rowValues.stream().map(ValueList::getRow).collect(toList());
+            List<List<Expr>> rows = rowValues.stream().map(ValueList::getRow).collect(toList());
 
             List<String> colNames = new ArrayList<>();
             for (int i = 0; i < rows.get(0).size(); ++i) {
@@ -1638,7 +1694,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             List<String> columnNames = new ArrayList<>();
             row.add(NullLiteral.create(Type.NULL));
             columnNames.add("");
-            List<ArrayList<Expr>> rows = new ArrayList<>();
+            List<List<Expr>> rows = new ArrayList<>();
             rows.add(row);
             ValuesRelation valuesRelation = new ValuesRelation(rows, columnNames, createPos(context.fromClause()));
             valuesRelation.setNullValues(true);
@@ -3298,6 +3354,56 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         return new RollupRenameClause(rollupName, newRollupName, createPos(context));
     }
 
+    // ---------Alter Policy clause---------
+
+    @Override
+    public ParseNode visitApplyMaskingPolicyClause(StarRocksParser.ApplyMaskingPolicyClauseContext context) {
+        String columName = ((Identifier) visit(context.identifier())).getValue();
+        if (context.SET() != null) {
+            List<String> usingColumns = new ArrayList<>();
+            if (context.identifierList() != null) {
+                final List<Identifier> identifierList = visit(context.identifierList().identifier(), Identifier.class);
+                usingColumns.addAll(identifierList.stream().map(Identifier::getValue).collect(toList()));
+            }
+
+            QualifiedName qualifiedName = getQualifiedName(context.policyName);
+            PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+
+            MaskingPolicyContext maskingPolicyContext = new MaskingPolicyContext(policyName, usingColumns, createPos(context));
+
+            return new ApplyMaskingPolicyClause(policyName, columName, maskingPolicyContext, createPos(context));
+        } else {
+            return new ApplyMaskingPolicyClause(columName, createPos(context));
+        }
+    }
+
+    @Override
+    public ParseNode visitApplyRowAccessPolicyClause(StarRocksParser.ApplyRowAccessPolicyClauseContext context) {
+        if (context.ADD() != null) {
+            List<String> onColumns = new ArrayList<>();
+
+            if (context.identifierList() != null) {
+                final List<Identifier> identifierList = visit(context.identifierList().identifier(), Identifier.class);
+                onColumns.addAll(identifierList.stream().map(Identifier::getValue).collect(toList()));
+            }
+
+            QualifiedName qualifiedName = getQualifiedName(context.policyName);
+            PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+
+            RowAccessPolicyContext rowAccessPolicyContext = new RowAccessPolicyContext(policyName, onColumns, createPos(context));
+
+            return new ApplyRowAccessPolicyClause(policyName, rowAccessPolicyContext, createPos(context));
+        } else {
+            if (context.ALL() != null) {
+                QualifiedName qualifiedName = getQualifiedName(context.policyName);
+                PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+                return new ApplyRowAccessPolicyClause(policyName, createPos(context));
+            } else {
+                return new ApplyRowAccessPolicyClause(createPos(context));
+            }
+        }
+    }
+
     // ---------Alter partition clause---------
 
     @Override
@@ -3527,7 +3633,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             List<String> columnNames = new ArrayList<>();
             row.add(NullLiteral.create(Type.NULL));
             columnNames.add("");
-            List<ArrayList<Expr>> rows = new ArrayList<>();
+            List<List<Expr>> rows = new ArrayList<>();
             rows.add(row);
             ValuesRelation valuesRelation = new ValuesRelation(rows, columnNames, NodePosition.ZERO);
             valuesRelation.setNullValues(true);
@@ -3888,7 +3994,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     @Override
     public ParseNode visitInlineTable(StarRocksParser.InlineTableContext context) {
         List<ValueList> rowValues = visit(context.rowConstructor(), ValueList.class);
-        List<ArrayList<Expr>> rows = rowValues.stream().map(ValueList::getRow).collect(toList());
+        List<List<Expr>> rows = rowValues.stream().map(ValueList::getRow).collect(toList());
 
         List<String> colNames = getColumnNames(context.columnAliases());
         if (colNames == null) {
@@ -4337,7 +4443,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitGrantImpersonate(StarRocksParser.GrantImpersonateContext context) {
+    public ParseNode visitGrantOnUser(StarRocksParser.GrantOnUserContext context) {
         List<String> privList = Collections.singletonList("IMPERSONATE");
         GrantRevokeClause clause = (GrantRevokeClause) visit(context.grantRevokeClause());
         List<UserIdentity> users = context.user().stream()
@@ -4349,7 +4455,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitRevokeImpersonate(StarRocksParser.RevokeImpersonateContext context) {
+    public ParseNode visitRevokeOnUser(StarRocksParser.RevokeOnUserContext context) {
         List<String> privList = Collections.singletonList("IMPERSONATE");
         GrantRevokeClause clause = (GrantRevokeClause) visit(context.grantRevokeClause());
         List<UserIdentity> users = context.user().stream()
@@ -4360,7 +4466,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitGrantTablePrivBrief(StarRocksParser.GrantTablePrivBriefContext context) {
+    public ParseNode visitGrantOnTableBrief(StarRocksParser.GrantOnTableBriefContext context) {
         List<String> privilegeList = context.privilegeTypeList().privilegeType().stream().map(
                 c -> ((Identifier) visit(c)).getValue().toUpperCase()).collect(toList());
 
@@ -4372,7 +4478,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitRevokeTablePrivBrief(StarRocksParser.RevokeTablePrivBriefContext context) {
+    public ParseNode visitRevokeOnTableBrief(StarRocksParser.RevokeOnTableBriefContext context) {
         List<String> privilegeList = context.privilegeTypeList().privilegeType().stream().map(
                 c -> ((Identifier) visit(c)).getValue().toUpperCase()).collect(toList());
 
@@ -4383,7 +4489,26 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitGrantPrivWithType(StarRocksParser.GrantPrivWithTypeContext context) {
+    public ParseNode visitGrantOnSystem(StarRocksParser.GrantOnSystemContext context) {
+        List<String> privilegeList = context.privilegeTypeList().privilegeType().stream().map(
+                c -> ((Identifier) visit(c)).getValue().toUpperCase()).collect(toList());
+
+        return new GrantPrivilegeStmt(privilegeList, "SYSTEM",
+                (GrantRevokeClause) visit(context.grantRevokeClause()), null, context.WITH() != null,
+                createPos(context));
+    }
+
+    @Override
+    public ParseNode visitRevokeOnSystem(StarRocksParser.RevokeOnSystemContext context) {
+        List<String> privilegeList = context.privilegeTypeList().privilegeType().stream().map(
+                c -> ((Identifier) visit(c)).getValue().toUpperCase()).collect(toList());
+
+        return new RevokePrivilegeStmt(privilegeList, "SYSTEM",
+                (GrantRevokeClause) visit(context.grantRevokeClause()), null, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitGrantOnPrimaryObj(StarRocksParser.GrantOnPrimaryObjContext context) {
         List<String> privilegeList = context.privilegeTypeList().privilegeType().stream().map(
                 c -> ((Identifier) visit(c)).getValue().toUpperCase()).collect(toList());
         String objectTypeUnResolved = ((Identifier) visit(context.privObjectType())).getValue().toUpperCase();
@@ -4396,7 +4521,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitRevokePrivWithType(StarRocksParser.RevokePrivWithTypeContext context) {
+    public ParseNode visitRevokeOnPrimaryObj(StarRocksParser.RevokeOnPrimaryObjContext context) {
         List<String> privilegeList = context.privilegeTypeList().privilegeType().stream().map(
                 c -> ((Identifier) visit(c)).getValue().toUpperCase()).collect(toList());
         String objectTypeUnResolved = ((Identifier) visit(context.privObjectType())).getValue().toUpperCase();
@@ -4408,7 +4533,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitGrantPrivWithFunc(StarRocksParser.GrantPrivWithFuncContext context) {
+    public ParseNode visitGrantOnFunc(StarRocksParser.GrantOnFuncContext context) {
         List<String> privilegeList = context.privilegeTypeList().privilegeType().stream().map(
                 c -> ((Identifier) visit(c)).getValue().toUpperCase()).collect(toList());
         GrantRevokePrivilegeObjects objects = buildGrantRevokePrivWithFunction(context.privFunctionObjectNameList(),
@@ -4419,7 +4544,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitRevokePrivWithFunc(StarRocksParser.RevokePrivWithFuncContext context) {
+    public ParseNode visitRevokeOnFunc(StarRocksParser.RevokeOnFuncContext context) {
         List<String> privilegeList = context.privilegeTypeList().privilegeType().stream().map(
                 c -> ((Identifier) visit(c)).getValue().toUpperCase()).collect(toList());
         GrantRevokePrivilegeObjects objects = buildGrantRevokePrivWithFunction(context.privFunctionObjectNameList(),
@@ -4476,18 +4601,22 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         String objectTypeUnResolved = ((Identifier) visit(context.privObjectTypePlural())).getValue().toUpperCase();
 
         GrantRevokePrivilegeObjects objects = new GrantRevokePrivilegeObjects();
+        ArrayList<String> tokenList;
         if (context.isAll != null) {
-            objects.setAllPrivilegeObject(true, null);
+            tokenList = Lists.newArrayList("*", "*");
         } else if (context.IN() != null) {
             String dbName = ((Identifier) visit(context.identifierOrString())).getValue();
-            objects.setAllPrivilegeObject(false, dbName);
+            tokenList = Lists.newArrayList(dbName, "*");
         } else {
-            objects.setAllPrivilegeObject(false, null);
+            tokenList = Lists.newArrayList("*");
         }
+        objects.setPrivilegeObjectNameTokensList(Collections.singletonList(tokenList));
 
-        return new GrantPrivilegeStmt(privilegeList, objectTypeUnResolved,
+        GrantPrivilegeStmt grantPrivilegeStmt = new GrantPrivilegeStmt(privilegeList, objectTypeUnResolved,
                 (GrantRevokeClause) visit(context.grantRevokeClause()),
                 objects, context.WITH() != null, createPos(context));
+        grantPrivilegeStmt.setGrantOnAll();
+        return grantPrivilegeStmt;
     }
 
     @Override
@@ -4497,17 +4626,21 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         String objectTypeUnResolved = ((Identifier) visit(context.privObjectTypePlural())).getValue().toUpperCase();
 
         GrantRevokePrivilegeObjects objects = new GrantRevokePrivilegeObjects();
+        ArrayList<String> tokenList;
         if (context.isAll != null) {
-            objects.setAllPrivilegeObject(true, null);
+            tokenList = Lists.newArrayList("*", "*");
         } else if (context.IN() != null) {
             String dbName = ((Identifier) visit(context.identifierOrString())).getValue();
-            objects.setAllPrivilegeObject(false, dbName);
+            tokenList = Lists.newArrayList(dbName, "*");
         } else {
-            objects.setAllPrivilegeObject(false, null);
+            tokenList = Lists.newArrayList("*");
         }
+        objects.setPrivilegeObjectNameTokensList(Collections.singletonList(tokenList));
 
-        return new RevokePrivilegeStmt(privilegeList, objectTypeUnResolved,
+        RevokePrivilegeStmt revokePrivilegeStmt = new RevokePrivilegeStmt(privilegeList, objectTypeUnResolved,
                 (GrantRevokeClause) visit(context.grantRevokeClause()), objects, createPos(context));
+        revokePrivilegeStmt.setGrantOnAll();
+        return revokePrivilegeStmt;
     }
 
     @Override
@@ -4554,6 +4687,127 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         }
         grantRevokePrivilegeObjects.setPrivilegeObjectNameTokensList(objectNameList);
         return grantRevokePrivilegeObjects;
+    }
+
+    // ---------------------------------------- Security Policy Statement ---------------------------------------------------
+
+    @Override
+    public ParseNode visitCreateMaskingPolicyStatement(StarRocksParser.CreateMaskingPolicyStatementContext context) {
+        List<String> argNames = new ArrayList<>();
+        List<TypeDef> argTypes = new ArrayList<>();
+        for (StarRocksParser.ArgContext arg : context.arg()) {
+            argNames.add(((Identifier) visit(arg.identifier())).getValue());
+            argTypes.add(new TypeDef(getType(arg.type())));
+        }
+
+        QualifiedName qualifiedName = getQualifiedName(context.policyName);
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+
+        return new CreateMaskingPolicyStmt(policyName,
+                context.IF() != null,
+                argNames, argTypes, new TypeDef(getType(context.type())),
+                (Expr) visit(context.expression()), createPos(context));
+    }
+
+    @Override
+    public ParseNode visitAlterMaskingPolicyStatement(StarRocksParser.AlterMaskingPolicyStatementContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.policyName);
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+
+        if (context.SET() != null) {
+            return new AlterPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null,
+                    new AlterPolicyStmt.PolicySetBody((Expr) visit(context.expression())), createPos(context));
+        } else {
+            String newPolicyName = ((Identifier) visit(context.newPolicyName)).getValue();
+            return new AlterPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null,
+                    new AlterPolicyStmt.PolicyRenameObject(newPolicyName), createPos(context));
+        }
+    }
+
+    @Override
+    public ParseNode visitDropMaskingPolicyStatement(StarRocksParser.DropMaskingPolicyStatementContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+        return new DropPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitShowMaskingPolicyStatement(StarRocksParser.ShowMaskingPolicyStatementContext context) {
+        return new ShowPolicyStmt(PolicyType.COLUMN_MASKING, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitDescribeMaskingPolicyStatement(StarRocksParser.DescribeMaskingPolicyStatementContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+        return new DescribePolicyStmt(PolicyType.COLUMN_MASKING, policyName, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitCreateRowAccessPolicyStatement(StarRocksParser.CreateRowAccessPolicyStatementContext context) {
+        List<String> argNames = new ArrayList<>();
+        List<TypeDef> argTypes = new ArrayList<>();
+        for (StarRocksParser.ArgContext arg : context.arg()) {
+            argNames.add(((Identifier) visit(arg.identifier())).getValue());
+            argTypes.add(new TypeDef(getType(arg.type())));
+        }
+
+        QualifiedName qualifiedName = getQualifiedName(context.policyName);
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+
+        return new CreateRowAccessPolicyStmt(policyName,
+                context.IF() != null,
+                argNames, argTypes, new TypeDef(Type.BOOLEAN),
+                (Expr) visit(context.expression()), createPos(context));
+    }
+
+    @Override
+    public ParseNode visitAlterRowAccessPolicyStatement(StarRocksParser.AlterRowAccessPolicyStatementContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.policyName);
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+
+        if (context.SET() != null) {
+            return new AlterPolicyStmt(PolicyType.ROW_ACCESS, policyName, context.IF() != null,
+                    new AlterPolicyStmt.PolicySetBody((Expr) visit(context.expression())), createPos(context));
+        } else {
+            String newPolicyName = ((Identifier) visit(context.newPolicyName)).getValue();
+            return new AlterPolicyStmt(PolicyType.ROW_ACCESS, policyName, context.IF() != null,
+                    new AlterPolicyStmt.PolicyRenameObject(newPolicyName), createPos(context));
+        }
+    }
+
+    @Override
+    public ParseNode visitDropRowAccessPolicyStatement(StarRocksParser.DropRowAccessPolicyStatementContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+        return new DropPolicyStmt(PolicyType.ROW_ACCESS, policyName, context.IF() != null, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitShowRowAccessPolicyStatement(StarRocksParser.ShowRowAccessPolicyStatementContext context) {
+        return new ShowPolicyStmt(PolicyType.ROW_ACCESS, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitDescribeRowAccessPolicyStatement(StarRocksParser.DescribeRowAccessPolicyStatementContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+        return new DescribePolicyStmt(PolicyType.ROW_ACCESS, policyName, createPos(context));
+    }
+
+    private PolicyName qualifiedNameToPolicyName(QualifiedName qualifiedName) {
+        // Hierarchy: catalog.database.policy_name
+        List<String> parts = qualifiedName.getParts();
+        if (parts.size() == 3) {
+            return new PolicyName(parts.get(0), parts.get(1), parts.get(2), qualifiedName.getPos());
+        } else if (parts.size() == 2) {
+            return new PolicyName(null, qualifiedName.getParts().get(0), qualifiedName.getParts().get(1),
+                    qualifiedName.getPos());
+        } else if (parts.size() == 1) {
+            return new PolicyName(null, null, qualifiedName.getParts().get(0), qualifiedName.getPos());
+        } else {
+            throw new ParsingException(PARSER_ERROR_MSG.invalidTableFormat(qualifiedName.toString()));
+        }
     }
 
     // ------------------------------------------- Expression ----------------------------------------------------------
@@ -5435,7 +5689,19 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
     @Override
     public ParseNode visitPartitionDesc(StarRocksParser.PartitionDescContext context) {
-        List<Identifier> identifierList = visit(context.identifierList().identifier(), Identifier.class);
+        List<PartitionDesc> partitionDescList = new ArrayList<>();
+        StarRocksParser.IdentifierListContext identifierListContext = context.identifierList();
+        if (context.functionCall() != null) {
+            for (StarRocksParser.RangePartitionDescContext rangePartitionDescContext : context.rangePartitionDesc()) {
+                final PartitionDesc rangePartitionDesc = (PartitionDesc) visit(rangePartitionDescContext);
+                partitionDescList.add(rangePartitionDesc);
+            }
+            FunctionCallExpr functionCallExpr = (FunctionCallExpr) visit(context.functionCall());
+            List<String> columnList = checkAndExtractPartitionCol(functionCallExpr, null);
+            RangePartitionDesc rangePartitionDesc = new RangePartitionDesc(columnList, partitionDescList);
+            return new ExpressionPartitionDesc(rangePartitionDesc, functionCallExpr);
+        }
+        List<Identifier> identifierList = visit(identifierListContext.identifier(), Identifier.class);
         List<PartitionDesc> partitionDesc = visit(context.rangePartitionDesc(), PartitionDesc.class);
         return new RangePartitionDesc(
                 identifierList.stream().map(Identifier::getValue).collect(toList()),
@@ -5666,8 +5932,13 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             comment = ((StringLiteral) visit(context.comment())).getStringValue();
         }
 
-        return new ColWithComment(((Identifier) visit(context.identifier())).getValue(), comment,
-                createPos(context));
+        MaskingPolicyContext maskingPolicyContext = null;
+        if (context.withMaskingPolicy() != null) {
+            maskingPolicyContext = (MaskingPolicyContext) visit(context.withMaskingPolicy());
+        }
+
+        return new ColWithComment(((Identifier) visit(context.columnName)).getValue(),
+                maskingPolicyContext, comment, createPos(context));
     }
 
     @Override

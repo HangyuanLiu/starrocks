@@ -300,7 +300,7 @@ public class AstBuilder extends AstVisitor<ParseNode, ParseTreeContext> {
             List<String> columnNames = new ArrayList<>();
             row.add(NullLiteral.create(Type.NULL));
             columnNames.add("");
-            List<ArrayList<Expr>> rows = new ArrayList<>();
+            List<List<Expr>> rows = new ArrayList<>();
             rows.add(row);
             ValuesRelation valuesRelation = new ValuesRelation(rows, columnNames);
             valuesRelation.setNullValues(true);

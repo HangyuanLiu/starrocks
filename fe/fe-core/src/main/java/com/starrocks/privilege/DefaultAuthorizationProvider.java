@@ -47,8 +47,7 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
                             PrivilegeType.CREATE_VIEW,
                             PrivilegeType.CREATE_FUNCTION,
                             PrivilegeType.CREATE_MATERIALIZED_VIEW,
-                            PrivilegeType.CREATE_MASKING_POLICY,
-                            PrivilegeType.CREATE_ROW_ACCESS_POLICY))
+                            PrivilegeType.CREATE_POLICY))
 
                     .put(ObjectType.SYSTEM, ImmutableList.of(
                             PrivilegeType.GRANT,
@@ -100,15 +99,11 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
                             PrivilegeType.USAGE,
                             PrivilegeType.DROP))
 
-                    .put(ObjectType.MASKING_POLICY, ImmutableList.of(
+                    .put(ObjectType.POLICY, ImmutableList.of(
                             PrivilegeType.APPLY,
                             PrivilegeType.DROP,
                             PrivilegeType.ALTER))
 
-                    .put(ObjectType.ROW_ACCESS_POLICY, ImmutableList.of(
-                            PrivilegeType.APPLY,
-                            PrivilegeType.DROP,
-                            PrivilegeType.ALTER))
                     .build();
 
     public static final String UNEXPECTED_TYPE = "unexpected type ";
@@ -141,7 +136,6 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
         return TYPE_TO_ACTION_LIST.get(objectType).contains(privilegeType);
     }
 
-
     @Override
     public PEntryObject generateObject(ObjectType objectType, List<String> objectTokens, GlobalStateMgr mgr)
             throws PrivilegeException {
@@ -164,14 +158,11 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
             case CATALOG:
                 return CatalogPEntryObject.generate(mgr, objectTokens);
 
-            case FUNCTION:
-                return FunctionPEntryObject.generate(mgr, objectTokens);
-
             case RESOURCE_GROUP:
                 return ResourceGroupPEntryObject.generate(mgr, objectTokens);
 
-            case GLOBAL_FUNCTION:
-                return GlobalFunctionPEntryObject.generate(mgr, objectTokens);
+            case POLICY:
+                return PolicyPEntryObject.generate(objectType, mgr, objectTokens);
 
             default:
                 throw new PrivilegeException(UNEXPECTED_TYPE + objectType.name());
@@ -183,6 +174,15 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
             ObjectType objectType, UserIdentity user, GlobalStateMgr globalStateMgr) throws PrivilegeException {
         if (objectType.equals(ObjectType.USER)) {
             return UserPEntryObject.generate(globalStateMgr, user);
+        }
+        throw new PrivilegeException(UNEXPECTED_TYPE + objectType.name());
+    }
+
+    @Override
+    public PEntryObject generateFunctionObject(ObjectType objectType, Long databaseId, Long functionId,
+                                               GlobalStateMgr globalStateMgr) throws PrivilegeException {
+        if (objectType.equals(ObjectType.FUNCTION) || objectType.equals(ObjectType.GLOBAL_FUNCTION)) {
+            return FunctionPEntryObject.generate(globalStateMgr, databaseId, functionId);
         }
         throw new PrivilegeException(UNEXPECTED_TYPE + objectType.name());
     }

@@ -34,6 +34,7 @@
 
 package com.starrocks.catalog;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.gson.annotations.SerializedName;
@@ -51,8 +52,10 @@ import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.persist.gson.GsonUtils;
+import com.starrocks.privilege.SecurityPolicyManager;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.MaskingPolicyContext;
 import com.starrocks.thrift.TColumn;
 
 import java.io.DataInput;
@@ -62,6 +65,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import static com.starrocks.common.util.DateUtils.DATE_TIME_FORMATTER;
@@ -107,9 +111,6 @@ public class Column implements Writable {
     // Currently, analyzed define expr is only used when creating materialized views, so the define expr in RollupJob must be analyzed.
     // In other cases, such as define expr in `MaterializedIndexMeta`, it may not be analyzed after being relayed.
     private Expr defineExpr; // use to define column in materialize view
-
-    @SerializedName(value = "securityPolicy")
-    private String securityPolicy;
 
     public Column() {
         this.name = "";
@@ -449,7 +450,7 @@ public class Column implements Writable {
         }
     }
 
-    public String toSql() {
+    public String toSql(SecurityPolicyManager.PolicyContext policyContext) {
         StringBuilder sb = new StringBuilder();
         sb.append("`").append(name).append("` ");
         String typeStr = type.toSql();
@@ -475,6 +476,24 @@ public class Column implements Writable {
                 getPrimitiveType() != PrimitiveType.BITMAP) {
             sb.append("DEFAULT \"").append(defaultValue).append("\" ");
         }
+
+
+        if (policyContext != null) {
+            Map<String, MaskingPolicyContext> maskingPolicyApply = policyContext.getMaskingPolicyApply();
+            if (maskingPolicyApply.containsKey(name)) {
+                MaskingPolicyContext maskingPolicyContext = maskingPolicyApply.get(name);
+                sb.append(" WITH MASKING POLICY ");
+                sb.append(GlobalStateMgr.getCurrentState().getSecurityPolicyManager()
+                        .getPolicyById(maskingPolicyContext.getPolicyId()));
+
+                if (!maskingPolicyContext.getUsingColumns().isEmpty()) {
+                    sb.append(" USING (");
+                    sb.append(Joiner.on(", ").join(maskingPolicyContext.getUsingColumns()));
+                    sb.append(")");
+                }
+            }
+        }
+
         sb.append("COMMENT \"").append(comment).append("\"");
 
         return sb.toString();
@@ -574,17 +593,9 @@ public class Column implements Writable {
         return sb.toString();
     }
 
-    public boolean hasSecurityPolicy() {
-        return securityPolicy != null && !securityPolicy.isEmpty();
-    }
-
-    public String getSecurityPolicy() {
-        return securityPolicy;
-    }
-
     @Override
     public String toString() {
-        return toSql();
+        return toSql(null);
     }
 
     @Override

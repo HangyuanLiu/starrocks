@@ -12,7 +12,7 @@
     + [Deploy StarRocks in Linux](./quick_start/Deploy.md)
     + [Deploy StarRocks in Docker](./quick_start/deploy_in_docker.md)
   + [Create a table](./quick_start/Create_table.md)
-  + [Import and query](./quick_start/Import_and_query.md)
+  + [Load and query data](./quick_start/Import_and_query.md)
 + Table Design
   + [Understand StarRocks table design](./table_design/StarRocks_table_design.md)
   + [Data models](./table_design/Data_model.md)
@@ -53,14 +53,14 @@
   + [Local Cache](./data_source/Block_cache.md)
 + Query Acceleration
   + [Gather CBO statistics](./using_starrocks/Cost_based_optimizer.md)
-  + [Materialized view](./using_starrocks/Materialized_view.md)
-  + [Single-table materialized view](./using_starrocks/Materialized_view-single_table.md)
+  + [Synchronous materialized view](./using_starrocks/Materialized_view-single_table.md)
+  + [Asynchronous materialized view](./using_starrocks/Materialized_view.md)
   + [Colocate Join](./using_starrocks/Colocate_join.md)
   + [Lateral Join](./using_starrocks/Lateral_join.md)
   + [Query Cache](./using_starrocks/query_cache.md)
   + Index
     + [Bitmap indexing](./using_starrocks/Bitmap_index.md)
-    + [Bloomfilter indexing](./using_starrocks/Bloomfilter_index.md)
+    + [Bloom filter indexing](./using_starrocks/Bloomfilter_index.md)
   + Computing the Number of Distinct Values
     + [Use Bitmap for exact count distinct](./using_starrocks/Using_bitmap.md)
     + [Use HLL for approximate count distinct](./using_starrocks/Using_HLL.md)
@@ -72,7 +72,7 @@
     + [Deploy StarRocks with StarGo](./administration/stargo.md)
     + [Deploy StarRocks in Docker](./administration/deploy_with_docker.md)
     + [Compile StarRocks](./administration/Build_in_docker.md)
-    + [Deploy and manage CN on Kubernetes with StarRocks Operator](./administration/k8s_operator_cn.md)
+    + [Deploy and manage CN on Kubernetes with StarRocks Operator](./administration/sr_operator.md)
     + [Deploy CN](./administration/deploy_cn.md)
     + [Deploy FE cluster with high availability](./administration/Deployment.md)
   + Management

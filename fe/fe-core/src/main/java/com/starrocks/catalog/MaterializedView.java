@@ -424,7 +424,7 @@ public class MaterializedView extends OlapTable implements GsonPostProcessable {
     }
 
     public static SlotRef getPartitionSlotRef(MaterializedView materializedView) {
-        List<SlotRef> slotRefs = com.clearspring.analytics.util.Lists.newArrayList();
+        List<SlotRef> slotRefs = Lists.newArrayList();
         Expr partitionExpr = getPartitionExpr(materializedView);
         partitionExpr.collect(SlotRef.class, slotRefs);
         // if partitionExpr is FunctionCallExpr, get first SlotRef
@@ -914,6 +914,12 @@ public class MaterializedView extends OlapTable implements GsonPostProcessable {
         Expr partitionExpr = getPartitionRefTableExprs().get(0);
         Pair<Table, Column> partitionInfo = getPartitionTableAndColumn();
         // if non-partition-by table has changed, should refresh all mv partitions
+        if (partitionInfo == null) {
+            // mark it inactive
+            setActive(false);
+            LOG.warn("mark mv:{} inactive for get partition info failed", name);
+            throw new RuntimeException(String.format("getting partition info failed for mv: %s", name));
+        }
         Table partitionTable = partitionInfo.first;
         boolean forceExternalTableQueryRewrite = isForceExternalTableQueryRewrite();
         for (BaseTableInfo tableInfo : baseTableInfos) {
@@ -1009,7 +1015,10 @@ public class MaterializedView extends OlapTable implements GsonPostProcessable {
                 return Pair.create(table, table.getColumn(partitionSlotRef.getColumnName()));
             }
         }
-        return null;
+        String baseTableNames = baseTableInfos.stream()
+                .map(tableInfo -> tableInfo.getTable().getName()).collect(Collectors.joining(","));
+        throw new RuntimeException(
+                String.format("can not find partition info for mv:%s on base tables:%s", name, baseTableNames));
     }
 
     public ExecPlan getMaintenancePlan() {
@@ -1026,5 +1035,21 @@ public class MaterializedView extends OlapTable implements GsonPostProcessable {
 
     public void setPlanContext(MvRewriteContext mvRewriteContext) {
         this.mvRewriteContext = mvRewriteContext;
+    }
+
+    @Override
+    public Map<String, String> getProperties() {
+        Map<String, String> properties = super.getProperties();
+        // For materialized view, add into session variables into properties.
+        if (super.getTableProperty() != null && super.getTableProperty().getProperties() != null) {
+            for (Map.Entry<String, String> entry : super.getTableProperty().getProperties().entrySet()) {
+                if (entry.getKey().startsWith(PropertyAnalyzer.PROPERTIES_MATERIALIZED_VIEW_SESSION_PREFIX)) {
+                    String varKey = entry.getKey().substring(
+                            PropertyAnalyzer.PROPERTIES_MATERIALIZED_VIEW_SESSION_PREFIX.length());
+                    properties.put(varKey, entry.getValue());
+                }
+            }
+        }
+        return properties;
     }
 }

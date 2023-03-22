@@ -16,6 +16,8 @@ package com.starrocks.privilege;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
+import com.starrocks.catalog.Database;
+import com.starrocks.catalog.Function;
 import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.catalog.Table;
 import com.starrocks.qe.ConnectContext;
@@ -36,7 +38,7 @@ public class PrivilegeActions {
     private static boolean checkObjectTypeAction(UserIdentity userIdentity, Set<Long> roleIds,
                                                  PrivilegeType privilegeType,
                                                  ObjectType objectType, List<String> objectTokens) {
-        PrivilegeManager manager = GlobalStateMgr.getCurrentState().getPrivilegeManager();
+        AuthorizationManager manager = GlobalStateMgr.getCurrentState().getAuthorizationManager();
         try {
             PrivilegeCollection collection = manager.mergePrivilegeCollection(userIdentity, roleIds);
             return manager.checkAction(collection, objectType, privilegeType, objectTokens);
@@ -112,29 +114,23 @@ public class PrivilegeActions {
                 privilegeType, ObjectType.MATERIALIZED_VIEW, Arrays.asList(db, materializedView));
     }
 
-    public static boolean checkFunctionAction(ConnectContext connectContext, String db, String functionSig,
-                                              PrivilegeType privilegeType) {
-        return checkObjectTypeAction(connectContext.getCurrentUserIdentity(), connectContext.getCurrentRoleIds(),
-                privilegeType, ObjectType.FUNCTION, Arrays.asList(db, functionSig));
-    }
-
     public static boolean checkResourceGroupAction(ConnectContext connectContext, String name,
                                                    PrivilegeType privilegeType) {
         return checkObjectTypeAction(connectContext.getCurrentUserIdentity(), connectContext.getCurrentRoleIds(),
                 privilegeType, ObjectType.RESOURCE_GROUP, Collections.singletonList(name));
     }
 
-    public static boolean checkGlobalFunctionAction(ConnectContext connectContext, String name,
-                                                    PrivilegeType privilegeType) {
+    public static boolean checkPolicyAction(ConnectContext connectContext, String catalogName, String db, String policy,
+                                            PrivilegeType privilegeType) {
         return checkObjectTypeAction(connectContext.getCurrentUserIdentity(), connectContext.getCurrentRoleIds(),
-                privilegeType, ObjectType.GLOBAL_FUNCTION, Collections.singletonList(name));
+                privilegeType, ObjectType.POLICY, Arrays.asList(catalogName, db, policy));
     }
 
     /**
      * Check whether current user has specified privilege action on any object(table/view/mv) in the db.
      */
     public static boolean checkActionInDb(ConnectContext context, String db, PrivilegeType privilegeType) {
-        PrivilegeManager manager = GlobalStateMgr.getCurrentState().getPrivilegeManager();
+        AuthorizationManager manager = GlobalStateMgr.getCurrentState().getAuthorizationManager();
         try {
             PrivilegeCollection collection = manager.mergePrivilegeCollection(context.getCurrentUserIdentity(),
                     context.getCurrentRoleIds());
@@ -185,7 +181,7 @@ public class PrivilegeActions {
 
     private static boolean checkAnyActionOnObject(UserIdentity currentUser, Set<Long> roleIds, ObjectType objectType,
                                                   List<String> objectTokens) {
-        PrivilegeManager manager = GlobalStateMgr.getCurrentState().getPrivilegeManager();
+        AuthorizationManager manager = GlobalStateMgr.getCurrentState().getAuthorizationManager();
         try {
             PrivilegeCollection collection = manager.mergePrivilegeCollection(currentUser, roleIds);
             PEntryObject pEntryObject = manager.provider.generateObject(
@@ -225,18 +221,9 @@ public class PrivilegeActions {
     /**
      * show databases; use database
      */
-    public static boolean checkAnyActionOnDb(ConnectContext context, String db) {
-        return checkAnyActionOnObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(),
-                ObjectType.DATABASE, Collections.singletonList(db));
-    }
-
     public static boolean checkAnyActionOnDb(ConnectContext context, String catalogName, String db) {
         return checkAnyActionOnObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(),
                 ObjectType.DATABASE, Arrays.asList(catalogName, db));
-    }
-
-    public static boolean checkAnyActionOnDb(UserIdentity currentUser, Set<Long> roleIds, String db) {
-        return checkAnyActionOnObject(currentUser, roleIds, ObjectType.DATABASE, Collections.singletonList(db));
     }
 
     public static boolean checkAnyActionOnDb(UserIdentity currentUser, Set<Long> roleIds,
@@ -247,6 +234,11 @@ public class PrivilegeActions {
     public static boolean checkAnyActionOnResource(ConnectContext context, String name) {
         return checkAnyActionOnObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(),
                 ObjectType.RESOURCE, Collections.singletonList(name));
+    }
+
+    public static boolean checkAnyActionOnView(ConnectContext context, String db, String view) {
+        return checkAnyActionOnObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(), ObjectType.VIEW,
+                Lists.newArrayList(db, view));
     }
 
     public static boolean checkAnyActionOnView(UserIdentity currentUser, Set<Long> roleIds, String db, String view) {
@@ -276,7 +268,9 @@ public class PrivilegeActions {
                 || (CatalogMgr.isInternalCatalog(catalogName) &&
                 (checkAnyActionOnView(userIdentity, roleIds, "*", "*")
                         || checkAnyActionOnMaterializedView(userIdentity, roleIds, "*", "*")
-                        || checkAnyActionOnFunction(userIdentity, roleIds, "*", "*")));
+                        || checkAnyActionOnFunction(userIdentity, roleIds,
+                        PrivilegeBuiltinConstants.ALL_DATABASE_ID,
+                        PrivilegeBuiltinConstants.ALL_FUNCTIONS_ID)));
     }
 
     public static boolean checkAnyActionOnMaterializedView(ConnectContext context, String db, String materializedView) {
@@ -288,21 +282,6 @@ public class PrivilegeActions {
                                                            String materializedView) {
         return checkAnyActionOnObject(currentUser, roleIds, ObjectType.MATERIALIZED_VIEW,
                 Arrays.asList(db, materializedView));
-    }
-
-    public static boolean checkAnyActionOnFunction(ConnectContext context, String db, String functionSig) {
-        return checkAnyActionOnObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(),
-                ObjectType.FUNCTION, Arrays.asList(db, functionSig));
-    }
-
-    public static boolean checkAnyActionOnFunction(UserIdentity currentUser, Set<Long> roleIds, String db,
-                                                   String functionSig) {
-        return checkAnyActionOnObject(currentUser, roleIds, ObjectType.FUNCTION, Arrays.asList(db, functionSig));
-    }
-
-    public static boolean checkAnyActionOnGlobalFunction(ConnectContext context, String functionSig) {
-        return checkAnyActionOnObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(),
-                ObjectType.GLOBAL_FUNCTION, Collections.singletonList(functionSig));
     }
 
     public static boolean checkAnyActionOnTableLikeObject(UserIdentity currentUser, Set<Long> roleIds,
@@ -320,6 +299,11 @@ public class PrivilegeActions {
             default:
                 return false;
         }
+    }
+
+    public static boolean checkAnyActionOnPolicy(ConnectContext context, String catalogName, String db, String policy) {
+        return checkAnyActionOnObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(), ObjectType.POLICY,
+                Lists.newArrayList(catalogName, db, policy));
     }
 
     /**
@@ -341,12 +325,87 @@ public class PrivilegeActions {
 
     public static boolean checkAnyActionOnOrInDb(UserIdentity userIdentity, Set<Long> roleIds,
                                                  String catalogName, String db) {
+
+        Database database = GlobalStateMgr.getCurrentState().getDb(db);
+        if (database == null) {
+            return true;
+        }
+
         // check for any action on db or table/view/mv/function
         return checkAnyActionOnDb(userIdentity, roleIds, catalogName, db)
                 || checkAnyActionOnTable(userIdentity, roleIds, catalogName, db, "*")
                 || (CatalogMgr.isInternalCatalog(catalogName) &&
                 (checkAnyActionOnView(userIdentity, roleIds, db, "*")
                         || checkAnyActionOnMaterializedView(userIdentity, roleIds, db, "*")
-                        || checkAnyActionOnFunction(userIdentity, roleIds, db, "*")));
+                        || checkAnyActionOnFunction(userIdentity, roleIds, database.getId(),
+                        PrivilegeBuiltinConstants.ALL_FUNCTIONS_ID)));
+    }
+
+    /**
+     * Check whether current user has any privilege action on Function
+     */
+
+    private static boolean checkFunctionAction(ConnectContext connectContext, ObjectType objectType,
+                                               long databaseId, Function function, PrivilegeType privilegeType) {
+        AuthorizationManager manager = GlobalStateMgr.getCurrentState().getAuthorizationManager();
+        try {
+            PrivilegeCollection collection = manager.mergePrivilegeCollection(connectContext.getCurrentUserIdentity(),
+                    connectContext.getCurrentRoleIds());
+            PEntryObject object = manager.provider.generateFunctionObject(objectType, databaseId, function.getFunctionId(),
+                    GlobalStateMgr.getCurrentState());
+            return manager.provider.check(objectType, privilegeType, object, collection);
+        } catch (PrivObjNotFoundException e) {
+            LOG.info("Object not found when checking action[{}] on {} {}, message: {}",
+                    privilegeType, objectType.name().replace("_", " "),
+                    function.getSignature(), e.getMessage());
+            return true;
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking action[{}] on {} {}",
+                    privilegeType, objectType.name().replace("_", " "),
+                    function.getSignature(), e);
+            return false;
+        }
+    }
+
+    public static boolean checkFunctionAction(ConnectContext connectContext, Database database, Function function,
+                                              PrivilegeType privilegeType) {
+        return checkFunctionAction(connectContext, ObjectType.FUNCTION, database.getId(), function, privilegeType);
+    }
+
+    public static boolean checkGlobalFunctionAction(ConnectContext connectContext, Function function,
+                                                    PrivilegeType privilegeType) {
+        return checkFunctionAction(connectContext, ObjectType.GLOBAL_FUNCTION,
+                PrivilegeBuiltinConstants.GLOBAL_FUNCTION_DEFAULT_DATABASE_ID, function, privilegeType);
+    }
+
+    private static boolean checkAnyActionOnFunctionObject(UserIdentity currentUser, Set<Long> roleIds,
+                                                          ObjectType objectType,
+                                                          long databaseId, long functionId) {
+        AuthorizationManager manager = GlobalStateMgr.getCurrentState().getAuthorizationManager();
+        try {
+            PrivilegeCollection collection = manager.mergePrivilegeCollection(currentUser, roleIds);
+            PEntryObject pEntryObject = manager.provider.generateFunctionObject(
+                    objectType, databaseId, functionId, GlobalStateMgr.getCurrentState());
+            return manager.provider.searchAnyActionOnObject(objectType, pEntryObject, collection);
+        } catch (PrivObjNotFoundException e) {
+            LOG.info("Object not found when checking any action on {} {}, message: {}",
+                    objectType.name(), functionId, e.getMessage());
+            return true;
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking any action on {} {}",
+                    objectType.name(), functionId, e);
+            return false;
+        }
+    }
+
+    public static boolean checkAnyActionOnFunction(UserIdentity currentUser, Set<Long> roleIds,
+                                                   long databaseId, long functionSig) {
+        return checkAnyActionOnFunctionObject(currentUser, roleIds, ObjectType.FUNCTION, databaseId, functionSig);
+    }
+
+    public static boolean checkAnyActionOnGlobalFunction(ConnectContext context, Long functionId) {
+        return checkAnyActionOnFunctionObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(),
+                ObjectType.GLOBAL_FUNCTION,
+                PrivilegeBuiltinConstants.GLOBAL_FUNCTION_DEFAULT_DATABASE_ID, functionId);
     }
 }

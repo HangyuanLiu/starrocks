@@ -51,9 +51,17 @@ public enum AlterOpType {
     // table property
     MODIFY_TABLE_PROPERTY,
     MODIFY_TABLE_PROPERTY_SYNC, // Some operations are performed synchronously, so we distinguish them by suffix _SYNC
+
     // others operation, such as add/drop backend. currently we do not care about them
     ALTER_OTHER,
     SWAP,
+
+    // Security Policy
+    APPLY_COLUMN_MASKING_POLICY,
+    REVOKE_COLUMN_MASKING_POLICY,
+    APPLY_ROW_ACCESS_POLICY,
+    REVOKE_ROW_ACCESS_POLICY,
+    REVOKE_ALL_ROW_ACCESS_POLICY,
 
     INVALID_OP; // INVALID_OP must be the last one
 

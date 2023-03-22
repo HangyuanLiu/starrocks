@@ -35,6 +35,7 @@ import com.starrocks.sql.ast.AlterDatabaseQuotaStmt;
 import com.starrocks.sql.ast.AlterDatabaseRenameStatement;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
+import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AlterResourceGroupStmt;
 import com.starrocks.sql.ast.AlterResourceStmt;
 import com.starrocks.sql.ast.AlterRoutineLoadStmt;
@@ -58,6 +59,7 @@ import com.starrocks.sql.ast.CreateCatalogStmt;
 import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
+import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
@@ -65,6 +67,7 @@ import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
+import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
 import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.CreateUserStmt;
@@ -76,6 +79,7 @@ import com.starrocks.sql.ast.DropDbStmt;
 import com.starrocks.sql.ast.DropFileStmt;
 import com.starrocks.sql.ast.DropFunctionStmt;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
+import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.DropRepositoryStmt;
 import com.starrocks.sql.ast.DropResourceGroupStmt;
 import com.starrocks.sql.ast.DropResourceStmt;
@@ -210,13 +214,13 @@ public class DDLStmtExecutor {
             ErrorReport.wrapWithRuntimeException(() -> {
                 FunctionName name = stmt.getFunctionName();
                 if (name.isGlobalFunction()) {
-                    context.getGlobalStateMgr().getGlobalFunctionMgr().userDropFunction(stmt.getFunction());
+                    context.getGlobalStateMgr().getGlobalFunctionMgr().userDropFunction(stmt.getFunctionSearchDesc());
                 } else {
                     Database db = context.getGlobalStateMgr().getDb(name.getDb());
                     if (db == null) {
                         ErrorReport.reportDdlException(ErrorCode.ERR_BAD_DB_ERROR, name.getDb());
                     }
-                    db.dropFunction(stmt.getFunction());
+                    db.dropFunction(stmt.getFunctionSearchDesc());
                 }
             });
             return null;
@@ -442,9 +446,9 @@ public class DDLStmtExecutor {
             ErrorReport.wrapWithRuntimeException(() -> {
                 if (context.getGlobalStateMgr().isUsingNewPrivilege()) {
                     if (stmt instanceof GrantRoleStmt) {
-                        context.getGlobalStateMgr().getPrivilegeManager().grantRole((GrantRoleStmt) stmt);
+                        context.getGlobalStateMgr().getAuthorizationManager().grantRole((GrantRoleStmt) stmt);
                     } else {
-                        context.getGlobalStateMgr().getPrivilegeManager().revokeRole((RevokeRoleStmt) stmt);
+                        context.getGlobalStateMgr().getAuthorizationManager().revokeRole((RevokeRoleStmt) stmt);
                     }
                 } else {
                     if (stmt instanceof GrantRoleStmt) {
@@ -463,13 +467,13 @@ public class DDLStmtExecutor {
             ErrorReport.wrapWithRuntimeException(() -> {
                 if (stmt instanceof GrantPrivilegeStmt) {
                     if (context.getGlobalStateMgr().isUsingNewPrivilege()) {
-                        context.getGlobalStateMgr().getPrivilegeManager().grant((GrantPrivilegeStmt) stmt);
+                        context.getGlobalStateMgr().getAuthorizationManager().grant((GrantPrivilegeStmt) stmt);
                     } else {
                         context.getGlobalStateMgr().getAuth().grant((GrantPrivilegeStmt) stmt);
                     }
                 } else {
                     if (context.getGlobalStateMgr().isUsingNewPrivilege()) {
-                        context.getGlobalStateMgr().getPrivilegeManager().revoke((RevokePrivilegeStmt) stmt);
+                        context.getGlobalStateMgr().getAuthorizationManager().revoke((RevokePrivilegeStmt) stmt);
                     } else {
                         context.getGlobalStateMgr().getAuth().revoke((RevokePrivilegeStmt) stmt);
                     }
@@ -482,7 +486,7 @@ public class DDLStmtExecutor {
         public ShowResultSet visitCreateRoleStatement(CreateRoleStmt stmt, ConnectContext context) {
             ErrorReport.wrapWithRuntimeException(() -> {
                 if (context.getGlobalStateMgr().isUsingNewPrivilege()) {
-                    context.getGlobalStateMgr().getPrivilegeManager().createRole(stmt);
+                    context.getGlobalStateMgr().getAuthorizationManager().createRole(stmt);
                 } else {
                     context.getGlobalStateMgr().getAuth().createRole(stmt);
                 }
@@ -494,7 +498,7 @@ public class DDLStmtExecutor {
         public ShowResultSet visitDropRoleStatement(DropRoleStmt stmt, ConnectContext context) {
             ErrorReport.wrapWithRuntimeException(() -> {
                 if (context.getGlobalStateMgr().isUsingNewPrivilege()) {
-                    context.getGlobalStateMgr().getPrivilegeManager().dropRole(stmt);
+                    context.getGlobalStateMgr().getAuthorizationManager().dropRole(stmt);
                 } else {
                     context.getGlobalStateMgr().getAuth().dropRole(stmt);
                 }
@@ -511,6 +515,38 @@ public class DDLStmtExecutor {
                 } else {
                     context.getGlobalStateMgr().getAuth().updateUserProperty(stmt);
                 }
+            });
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt stmt, ConnectContext context) {
+            ErrorReport.wrapWithRuntimeException(() -> {
+                context.getGlobalStateMgr().getSecurityPolicyManager().createMaskingPolicy(stmt);
+            });
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitAlterPolicyStatement(AlterPolicyStmt stmt, ConnectContext context) {
+            ErrorReport.wrapWithRuntimeException(() -> {
+                context.getGlobalStateMgr().getSecurityPolicyManager().alterPolicy(stmt);
+            });
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitDropPolicyStatement(DropPolicyStmt stmt, ConnectContext context) {
+            ErrorReport.wrapWithRuntimeException(() -> {
+                context.getGlobalStateMgr().getSecurityPolicyManager().dropPolicy(stmt);
+            });
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt stmt, ConnectContext context) {
+            ErrorReport.wrapWithRuntimeException(() -> {
+                context.getGlobalStateMgr().getSecurityPolicyManager().createRowAccessPolicy(stmt);
             });
             return null;
         }

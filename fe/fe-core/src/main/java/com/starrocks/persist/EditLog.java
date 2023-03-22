@@ -77,8 +77,8 @@ import com.starrocks.load.routineload.RoutineLoadJob;
 import com.starrocks.load.streamload.StreamLoadTask;
 import com.starrocks.meta.MetaContext;
 import com.starrocks.metric.MetricRepo;
-import com.starrocks.persist.AutoIncrementInfo;
 import com.starrocks.plugin.PluginInfo;
+import com.starrocks.privilege.Policy;
 import com.starrocks.privilege.RolePrivilegeCollection;
 import com.starrocks.privilege.UserPrivilegeCollection;
 import com.starrocks.qe.SessionVariable;
@@ -94,6 +94,7 @@ import com.starrocks.scheduler.persist.TaskRunStatusChange;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.LocalMetastore;
 import com.starrocks.server.WarehouseManager;
+import com.starrocks.sql.ast.PolicyName;
 import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.staros.StarMgrJournal;
 import com.starrocks.staros.StarMgrServer;
@@ -972,7 +973,7 @@ public class EditLog {
                 }
                 case OperationType.OP_UPDATE_USER_PRIVILEGE_V2: {
                     UserPrivilegeCollectionInfo info = (UserPrivilegeCollectionInfo) journal.getData();
-                    globalStateMgr.getPrivilegeManager().replayUpdateUserPrivilegeCollection(
+                    globalStateMgr.getAuthorizationManager().replayUpdateUserPrivilegeCollection(
                             info.getUserIdentity(),
                             info.getPrivilegeCollection(),
                             info.getPluginId(),
@@ -997,18 +998,38 @@ public class EditLog {
                 }
                 case OperationType.OP_UPDATE_ROLE_PRIVILEGE_V2: {
                     RolePrivilegeCollectionInfo info = (RolePrivilegeCollectionInfo) journal.getData();
-                    globalStateMgr.getPrivilegeManager().replayUpdateRolePrivilegeCollection(info);
+                    globalStateMgr.getAuthorizationManager().replayUpdateRolePrivilegeCollection(info);
                     break;
                 }
                 case OperationType.OP_DROP_ROLE_V2: {
                     RolePrivilegeCollectionInfo info = (RolePrivilegeCollectionInfo) journal.getData();
-                    globalStateMgr.getPrivilegeManager().replayDropRole(info);
+                    globalStateMgr.getAuthorizationManager().replayDropRole(info);
                     break;
                 }
                 case OperationType.OP_AUTH_UPGRADE_V2: {
                     AuthUpgradeInfo info = (AuthUpgradeInfo) journal.getData();
                     globalStateMgr.replayAuthUpgrade(info);
                     break;
+                }
+                case OperationType.OP_CREATE_MASKING_POLICY: {
+                    Policy policy = (Policy) journal.getData();
+                    globalStateMgr.getSecurityPolicyManager().replayCreatePolicy(policy);
+                }
+                case OperationType.OP_CREATE_ROW_ACCESS_POLICY: {
+                    Policy policy = (Policy) journal.getData();
+                    globalStateMgr.getSecurityPolicyManager().replayCreatePolicy(policy);
+                }
+                case OperationType.OP_DROP_POLICY: {
+                    Policy policy = (Policy) journal.getData();
+                    globalStateMgr.getSecurityPolicyManager().replayDropPolicy(policy);
+                }
+                case OperationType.OP_ALTER_POLICY_RENAME: {
+                    AlterPolicyInfo alterPolicyInfo = (AlterPolicyInfo) journal.getData();
+                    globalStateMgr.getSecurityPolicyManager().replayAlterPolicy(alterPolicyInfo);
+                }
+                case OperationType.OP_ALTER_POLICY_SET_BODY: {
+                    AlterPolicyInfo alterPolicyInfo = (AlterPolicyInfo) journal.getData();
+                    globalStateMgr.getSecurityPolicyManager().replayAlterPolicy(alterPolicyInfo);
                 }
                 case OperationType.OP_MV_JOB_STATE: {
                     MVMaintenanceJob job = (MVMaintenanceJob) journal.getData();
@@ -1150,6 +1171,7 @@ public class EditLog {
     public void logDropWarehouse(OpWarehouseLog log) {
         logEdit(OperationType.OP_DROP_WH, log);
     }
+
     public void logSaveAutoIncrementId(AutoIncrementInfo info) {
         logEdit(OperationType.OP_SAVE_AUTO_INCREMENT_ID, info);
     }
@@ -1764,6 +1786,28 @@ public class EditLog {
 
     public void logAuthUpgrade(Map<String, Long> roleNameToId) {
         logEdit(OperationType.OP_AUTH_UPGRADE_V2, new AuthUpgradeInfo(roleNameToId));
+    }
+
+    public void logCreateMaskingPolicy(Policy policy) {
+        logEdit(OperationType.OP_CREATE_MASKING_POLICY, policy);
+    }
+
+    public void logCreateRowAccessPolicy(Policy policy) {
+        logEdit(OperationType.OP_CREATE_ROW_ACCESS_POLICY, policy);
+    }
+
+    public void logDropPolicy(Policy policy) {
+        logEdit(OperationType.OP_DROP_POLICY, policy);
+    }
+
+    public void logAlterPolicyRename(PolicyName policyName, String newPolicyName) {
+        AlterPolicyInfo alterPolicyInfo = new AlterPolicyInfo(policyName, new AlterPolicyInfo.PolicyRenameObject(newPolicyName));
+        logEdit(OperationType.OP_ALTER_POLICY_RENAME, alterPolicyInfo);
+    }
+
+    public void logAlterPolicySetBody(PolicyName policyName, String policyBody) {
+        AlterPolicyInfo alterPolicyInfo = new AlterPolicyInfo(policyName, new AlterPolicyInfo.PolicySetBodyObject(policyBody));
+        logEdit(OperationType.OP_ALTER_POLICY_SET_BODY, alterPolicyInfo);
     }
 
     public void logModifyBinlogConfig(ModifyTablePropertyOperationLog log) {

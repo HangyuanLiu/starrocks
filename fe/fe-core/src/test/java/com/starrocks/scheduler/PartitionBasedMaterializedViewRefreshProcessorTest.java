@@ -233,7 +233,7 @@ public class PartitionBasedMaterializedViewRefreshProcessorTest {
     }
 
     @Test
-    public void test() {
+    public void testWithPartition() {
         new MockUp<StmtExecutor>() {
             @Mock
             public void handleDMLStmt(ExecPlan execPlan, DmlStmt stmt) throws Exception {
@@ -459,6 +459,61 @@ public class PartitionBasedMaterializedViewRefreshProcessorTest {
         Assert.assertEquals(2, materializedView.getPartition("p202204_202205").getVisibleVersion());
     }
 
+    public void testAutoRefreshPartitionLimitWithHiveTable() throws Exception {
+        starRocksAssert.useDatabase("test").withMaterializedView("CREATE MATERIALIZED VIEW `hive_parttbl_mv1`\n" +
+                "COMMENT \"MATERIALIZED_VIEW\"\n" +
+                "PARTITION BY (`l_shipdate`)\n" +
+                "DISTRIBUTED BY HASH(`l_orderkey`) BUCKETS 10\n" +
+                "REFRESH manual\n" +
+                "PROPERTIES (\n" +
+                "\"replication_num\" = \"1\",\n" +
+                "\"storage_medium\" = \"HDD\"\n" +
+                ")\n" +
+                "AS SELECT `l_orderkey`, `l_suppkey`, `l_shipdate`  FROM `hive0`.`partitioned_db`.`lineitem_par` as a;");
+        Database testDb = GlobalStateMgr.getCurrentState().getDb("test");
+        MaterializedView materializedView = ((MaterializedView) testDb.getTable("hive_parttbl_mv1"));
+        materializedView.getTableProperty().setAutoRefreshPartitionsLimit(2);
+
+        Task task = TaskBuilder.buildMvTask(materializedView, testDb.getFullName());
+        task.setType(Constants.TaskType.PERIODICAL);
+        TaskRun taskRun = TaskRunBuilder.newBuilder(task).build();
+        taskRun.initStatus(UUIDUtil.genUUID().toString(), System.currentTimeMillis());
+        taskRun.executeTaskRun();
+
+        Collection<Partition> partitions = materializedView.getPartitions();
+        Assert.assertEquals(5, partitions.size());
+        Assert.assertEquals(1, materializedView.getPartition("p19980101").getVisibleVersion());
+        Assert.assertEquals(1, materializedView.getPartition("p19980102").getVisibleVersion());
+        Assert.assertEquals(1, materializedView.getPartition("p19980103").getVisibleVersion());
+        Assert.assertEquals(2, materializedView.getPartition("p19980104").getVisibleVersion());
+        Assert.assertEquals(2, materializedView.getPartition("p19980105").getVisibleVersion());
+
+        MockedHiveMetadata mockedHiveMetadata = (MockedHiveMetadata) connectContext.getGlobalStateMgr().getMetadataMgr().
+                getOptionalMetadata(MockedHiveMetadata.MOCKED_HIVE_CATALOG_NAME).get();
+        mockedHiveMetadata.updatePartitions("partitioned_db", "lineitem_par",
+                ImmutableList.of("l_shipdate=1998-01-02", "l_shipdate=1998-01-03"));
+        taskRun.executeTaskRun();
+        Assert.assertEquals(1, materializedView.getPartition("p19980101").getVisibleVersion());
+        Assert.assertEquals(1, materializedView.getPartition("p19980102").getVisibleVersion());
+        Assert.assertEquals(1, materializedView.getPartition("p19980103").getVisibleVersion());
+        Assert.assertEquals(2, materializedView.getPartition("p19980104").getVisibleVersion());
+        Assert.assertEquals(2, materializedView.getPartition("p19980105").getVisibleVersion());
+
+        task.setType(Constants.TaskType.MANUAL);
+        taskRun = TaskRunBuilder.newBuilder(task).build();
+        taskRun.initStatus(UUIDUtil.genUUID().toString(), System.currentTimeMillis());
+        taskRun.executeTaskRun();
+
+        Assert.assertEquals(5, partitions.size());
+        Assert.assertEquals(2, materializedView.getPartition("p19980101").getVisibleVersion());
+        Assert.assertEquals(2, materializedView.getPartition("p19980102").getVisibleVersion());
+        Assert.assertEquals(2, materializedView.getPartition("p19980103").getVisibleVersion());
+        Assert.assertEquals(2, materializedView.getPartition("p19980104").getVisibleVersion());
+        Assert.assertEquals(2, materializedView.getPartition("p19980105").getVisibleVersion());
+
+        starRocksAssert.useDatabase("test").dropMaterializedView("hive_parttbl_mv1");
+    }
+
     @Test
     public void testRefreshWithHiveTableJoin() throws Exception {
         new MockUp<StmtExecutor>() {
@@ -522,6 +577,7 @@ public class PartitionBasedMaterializedViewRefreshProcessorTest {
         testPartitionRefreshWithUpperCaseDb();
         testPartitionRefreshWithLowerCase();
 
+        testAutoRefreshPartitionLimitWithHiveTable();
     }
 
     @Test
@@ -1491,7 +1547,6 @@ public class PartitionBasedMaterializedViewRefreshProcessorTest {
 
     @Test
     public void testFilterPartitionByRefreshNumber() throws Exception {
-        PartitionBasedMaterializedViewRefreshProcessor processor = new PartitionBasedMaterializedViewRefreshProcessor();
         Database testDb = GlobalStateMgr.getCurrentState().getDb("test");
         MaterializedView materializedView = ((MaterializedView) testDb.getTable("mv_with_test_refresh"));
         Task task = TaskBuilder.buildMvTask(materializedView, testDb.getFullName());
@@ -1499,6 +1554,7 @@ public class PartitionBasedMaterializedViewRefreshProcessorTest {
         taskRun.initStatus(UUIDUtil.genUUID().toString(), System.currentTimeMillis());
         taskRun.executeTaskRun();
         materializedView.getTableProperty().setPartitionRefreshNumber(3);
+        PartitionBasedMaterializedViewRefreshProcessor processor = new PartitionBasedMaterializedViewRefreshProcessor();
 
         MvTaskRunContext mvContext = new MvTaskRunContext(new TaskRunContext());
 
@@ -1515,5 +1571,105 @@ public class PartitionBasedMaterializedViewRefreshProcessorTest {
         mvContext = processor.getMvContext();
         Assert.assertNull(mvContext.getNextPartitionStart());
         Assert.assertNull(mvContext.getNextPartitionEnd());
+    }
+
+    @Test
+    public void testSyncPartitionWithSsdStorage() throws Exception {
+        new MockUp<StmtExecutor>() {
+            @Mock
+            public void handleDMLStmt(ExecPlan execPlan, DmlStmt stmt) throws Exception {
+                if (stmt instanceof InsertStmt) {
+                    InsertStmt insertStmt = (InsertStmt) stmt;
+                    TableName tableName = insertStmt.getTableName();
+                    Database testDb = GlobalStateMgr.getCurrentState().getDb("test");
+                    if (tableName.getTbl().equals("tbl1")) {
+                        OlapTable tbl1 = ((OlapTable) testDb.getTable("tbl1"));
+                        for (Partition partition : tbl1.getPartitions()) {
+                            if (insertStmt.getTargetPartitionIds().contains(partition.getId())) {
+                                setPartitionVersion(partition, partition.getVisibleVersion() + 1);
+                            }
+                        }
+                    } else if (tableName.getTbl().equals("tbl2")) {
+                        OlapTable tbl1 = ((OlapTable) testDb.getTable("tbl2"));
+                        for (Partition partition : tbl1.getPartitions()) {
+                            if (insertStmt.getTargetPartitionIds().contains(partition.getId())) {
+                                setPartitionVersion(partition, partition.getVisibleVersion() + 1);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        starRocksAssert.useDatabase("test").withMaterializedView("create materialized view test.mv_with_ssd\n" +
+                "partition by date_trunc('month',k1) \n" +
+                "distributed by hash(k2) buckets 10\n" +
+                "refresh manual\n" +
+                "properties('replication_num' = '1',\n" +
+                "'storage_medium' = 'SSD')\n" +
+                "as select tbl1.k1, tbl2.k2 from tbl1 join tbl2 on tbl1.k2 = tbl2.k2;");
+        Database testDb = GlobalStateMgr.getCurrentState().getDb("test");
+        MaterializedView materializedView = ((MaterializedView) testDb.getTable("mv_with_ssd"));
+
+        Task task = TaskBuilder.buildMvTask(materializedView, testDb.getFullName());
+        TaskRun taskRun = TaskRunBuilder.newBuilder(task).build();
+        taskRun.initStatus(UUIDUtil.genUUID().toString(), System.currentTimeMillis());
+        taskRun.executeTaskRun();
+
+        try {
+            taskRun.executeTaskRun();
+        } catch (Exception e) {
+            e.printStackTrace();
+            Assert.fail("refresh failed");
+        }
+    }
+
+    @Test
+    public void testSyncPartitionWithSsdStorageAndCooldownTime() throws Exception {
+        new MockUp<StmtExecutor>() {
+            @Mock
+            public void handleDMLStmt(ExecPlan execPlan, DmlStmt stmt) throws Exception {
+                if (stmt instanceof InsertStmt) {
+                    InsertStmt insertStmt = (InsertStmt) stmt;
+                    TableName tableName = insertStmt.getTableName();
+                    Database testDb = GlobalStateMgr.getCurrentState().getDb("test");
+                    if (tableName.getTbl().equals("tbl1")) {
+                        OlapTable tbl1 = ((OlapTable) testDb.getTable("tbl1"));
+                        for (Partition partition : tbl1.getPartitions()) {
+                            if (insertStmt.getTargetPartitionIds().contains(partition.getId())) {
+                                setPartitionVersion(partition, partition.getVisibleVersion() + 1);
+                            }
+                        }
+                    } else if (tableName.getTbl().equals("tbl2")) {
+                        OlapTable tbl1 = ((OlapTable) testDb.getTable("tbl2"));
+                        for (Partition partition : tbl1.getPartitions()) {
+                            if (insertStmt.getTargetPartitionIds().contains(partition.getId())) {
+                                setPartitionVersion(partition, partition.getVisibleVersion() + 1);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        starRocksAssert.useDatabase("test").withMaterializedView("create materialized view test.mv_use_ssd_and_cooldown\n" +
+                "partition by date_trunc('month',k1) \n" +
+                "distributed by hash(k2) buckets 10\n" +
+                "refresh manual\n" +
+                "properties('replication_num' = '1',\n" +
+                "'storage_medium' = 'SSD',\n" +
+                "'storage_cooldown_time' = '2222-04-21 20:45:11')\n" +
+                "as select tbl1.k1, tbl2.k2 from tbl1 join tbl2 on tbl1.k2 = tbl2.k2;");
+        Database testDb = GlobalStateMgr.getCurrentState().getDb("test");
+        MaterializedView materializedView = ((MaterializedView) testDb.getTable("mv_use_ssd_and_cooldown"));
+        // build task
+        Task task = TaskBuilder.buildMvTask(materializedView, testDb.getFullName());
+        TaskRun taskRun = TaskRunBuilder.newBuilder(task).build();
+        taskRun.initStatus(UUIDUtil.genUUID().toString(), System.currentTimeMillis());
+
+        try {
+            taskRun.executeTaskRun();
+        } catch (Exception e) {
+            e.printStackTrace();
+            Assert.fail("refresh failed");
+        }
     }
 }

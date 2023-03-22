@@ -295,6 +295,12 @@ public class OperationType {
     public static final short OP_AUTH_UPGRADE_V2 = 10267;
     public static final short OP_UPDATE_USER_PROP_V2 = 10268;
 
+    public static final short OP_CREATE_MASKING_POLICY = 10301;
+    public static final short OP_CREATE_ROW_ACCESS_POLICY = 10302;
+    public static final short OP_DROP_POLICY = 10303;
+    public static final short OP_ALTER_POLICY_RENAME = 10304;
+    public static final short OP_ALTER_POLICY_SET_BODY = 10305;
+
     // integrate with starmgr
     public static final short OP_STARMGR = 11000;
 

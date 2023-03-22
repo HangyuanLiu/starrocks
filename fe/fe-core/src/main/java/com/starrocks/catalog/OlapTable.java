@@ -78,7 +78,6 @@ import com.starrocks.qe.OriginStatement;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
 import com.starrocks.sql.analyzer.SemanticException;
-import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.task.AgentBatchTask;
 import com.starrocks.task.AgentTask;
@@ -1234,11 +1233,6 @@ public class OlapTable extends Table {
         return rowCount;
     }
 
-    @Override
-    public CreateTableStmt toCreateTableStmt(String dbName) {
-        throw new RuntimeException("Don't support anymore");
-    }
-
     public int getSignature(int signatureVersion, List<String> partNames) {
         Adler32 adler32 = new Adler32();
         adler32.update(signatureVersion);
@@ -1800,6 +1794,12 @@ public class OlapTable extends Table {
             }
         }
         return keysNum;
+    }
+
+    public boolean isKeySet(Set<String> keyColumns) {
+        Set<String> tableKeyColumns = getKeyColumns().stream()
+                .map(column -> column.getName().toLowerCase()).collect(Collectors.toSet());
+        return tableKeyColumns.equals(keyColumns);
     }
 
     public void setReplicationNum(Short replicationNum) {

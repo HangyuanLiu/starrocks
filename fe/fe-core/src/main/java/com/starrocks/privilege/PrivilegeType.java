@@ -47,9 +47,7 @@ public enum PrivilegeType {
     CREATE_EXTERNAL_CATALOG(26),
 
     APPLY(27),
-    CREATE_MASKING_POLICY(28),
-    CREATE_ROW_ACCESS_POLICY(29),
-    ;
+    CREATE_POLICY(28);
 
     @SerializedName("i")
     private final int id;
