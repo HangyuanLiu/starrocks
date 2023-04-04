@@ -162,7 +162,7 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
                 return ResourceGroupPEntryObject.generate(mgr, objectTokens);
 
             case POLICY:
-                return PolicyPEntryObject.generate(objectType, mgr, objectTokens);
+                return PolicyPEntryObject.generate(mgr, objectTokens);
 
             default:
                 throw new PrivilegeException(UNEXPECTED_TYPE + objectType.name());

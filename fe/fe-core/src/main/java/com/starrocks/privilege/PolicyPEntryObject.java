@@ -42,7 +42,7 @@ public class PolicyPEntryObject implements PEntryObject {
         this.policyId = policyId;
     }
 
-    public static PolicyPEntryObject generate(ObjectType objectType, GlobalStateMgr mgr, List<String> tokens)
+    public static PolicyPEntryObject generate(GlobalStateMgr mgr, List<String> tokens)
             throws PrivilegeException {
         String catalogName = null;
         long catalogId;

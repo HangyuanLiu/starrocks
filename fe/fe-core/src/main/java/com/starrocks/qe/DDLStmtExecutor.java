@@ -14,6 +14,7 @@
 
 package com.starrocks.qe;
 
+import com.google.common.collect.Lists;
 import com.starrocks.analysis.FunctionName;
 import com.starrocks.analysis.ParseNode;
 import com.starrocks.catalog.Database;
@@ -119,6 +120,8 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.List;
 
 public class DDLStmtExecutor {
 
@@ -287,12 +290,15 @@ public class DDLStmtExecutor {
         @Override
         public ShowResultSet visitRefreshMaterializedViewStatement(RefreshMaterializedViewStatement stmt,
                                                                    ConnectContext context) {
+            List<String> info = Lists.newArrayList();
             ErrorReport.wrapWithRuntimeException(() -> {
                 // The priority of manual refresh is higher than that of general refresh
-                context.getGlobalStateMgr().getLocalMetastore()
+                String taskId = context.getGlobalStateMgr().getLocalMetastore()
                         .refreshMaterializedView(stmt, Constants.TaskRunPriority.HIGH.value());
+                info.add(taskId);
             });
-            return null;
+
+            return new ShowResultSet(RefreshMaterializedViewStatement.META_DATA, Arrays.asList(info));
         }
 
         @Override
@@ -804,6 +810,7 @@ public class DDLStmtExecutor {
                         context.getSessionVariable().getStatisticCollectParallelism());
 
                 Thread thread = new Thread(() -> {
+                    statsConnectCtx.setThreadLocalInfo();
                     StatisticExecutor statisticExecutor = new StatisticExecutor();
                     analyzeJob.run(statsConnectCtx, statisticExecutor);
                 });

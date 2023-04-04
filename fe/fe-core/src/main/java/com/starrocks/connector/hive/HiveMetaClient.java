@@ -43,7 +43,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import static com.starrocks.connector.hive.HiveConnector.DUMMY_THRIFT_URI;
 import static com.starrocks.connector.hive.HiveConnector.HIVE_METASTORE_TYPE;
 import static com.starrocks.connector.hive.HiveConnector.HIVE_METASTORE_URIS;
 
@@ -72,12 +71,9 @@ public class HiveMetaClient {
     public static HiveMetaClient createHiveMetaClient(Map<String, String> properties) {
         HiveConf conf = new HiveConf();
         properties.forEach(conf::set);
-        if (!properties.containsKey(HIVE_METASTORE_URIS)) {
-            // set value for compatible with the rollback
-            properties.put(HIVE_METASTORE_URIS, DUMMY_THRIFT_URI);
+        if (properties.containsKey(HIVE_METASTORE_URIS)) {
+            conf.set(MetastoreConf.ConfVars.THRIFT_URIS.getHiveName(), properties.get(HIVE_METASTORE_URIS));
         }
-
-        conf.set(MetastoreConf.ConfVars.THRIFT_URIS.getHiveName(), properties.get(HIVE_METASTORE_URIS));
         conf.set(MetastoreConf.ConfVars.CLIENT_SOCKET_TIMEOUT.getHiveName(),
                 String.valueOf(Config.hive_meta_store_timeout_s));
         return new HiveMetaClient(conf);
@@ -146,13 +142,17 @@ public class HiveMetaClient {
     }
 
     public <T> T callRPC(String methodName, String messageIfError, Object... args) {
+        return callRPC(methodName, messageIfError, null, args);
+    }
+
+    public <T> T callRPC(String methodName, String messageIfError, Class<?>[] argClasses, Object... args) {
         RecyclableClient client = null;
         StarRocksConnectorException connectionException = null;
 
         try {
             client = getClient();
-            Class<?>[] paramClasses = ClassUtils.getCompatibleParamClasses(args);
-            Method method = client.hiveClient.getClass().getDeclaredMethod(methodName, paramClasses);
+            argClasses = argClasses == null ? ClassUtils.getCompatibleParamClasses(args) : argClasses;
+            Method method = client.hiveClient.getClass().getDeclaredMethod(methodName, argClasses);
             return (T) method.invoke(client.hiveClient, args);
         } catch (Exception e) {
             LOG.error(messageIfError, e);
@@ -338,8 +338,9 @@ public class HiveMetaClient {
                                                          IMetaStoreClient.NotificationFilter filter)
             throws MetastoreNotificationFetchException {
         try {
+            Class<?>[] argClasses = {long.class, int.class, IMetaStoreClient.NotificationFilter.class};
             return callRPC("getNextNotification", "Failed to get next notification based on last event id: " + lastEventId,
-                    lastEventId, maxEvents, filter);
+                    argClasses, lastEventId, maxEvents, filter);
         } catch (Exception e) {
             throw new MetastoreNotificationFetchException(e.getMessage());
         }
