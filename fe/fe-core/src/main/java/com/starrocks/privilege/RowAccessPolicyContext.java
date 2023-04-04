@@ -13,13 +13,27 @@
 // limitations under the License.
 package com.starrocks.privilege;
 
-import com.starrocks.catalog.Type;
+import com.google.gson.annotations.SerializedName;
 
 import java.util.List;
 
-public class RowAccessPolicy extends Policy {
-    public RowAccessPolicy(Long policyId, List<String> argNames, List<Type> argTypes, Type retType,
-                           String policyExpressionSQL) {
-        super(policyId, argNames, argTypes, retType, policyExpressionSQL);
+public class RowAccessPolicyContext {
+    @SerializedName(value = "policyId")
+    Long policyId;
+
+    @SerializedName(value = "onColumns")
+    List<String> onColumns;
+
+    public RowAccessPolicyContext(Long policyId, List<String> onColumns) {
+        this.policyId = policyId;
+        this.onColumns = onColumns;
+    }
+
+    public Long getPolicyId() {
+        return policyId;
+    }
+
+    public List<String> getOnColumns() {
+        return onColumns;
     }
 }

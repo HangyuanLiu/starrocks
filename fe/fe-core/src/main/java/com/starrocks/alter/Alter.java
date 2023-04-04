@@ -103,6 +103,8 @@ import com.starrocks.sql.ast.ModifyTablePropertiesClause;
 import com.starrocks.sql.ast.PartitionRenameClause;
 import com.starrocks.sql.ast.RefreshSchemeDesc;
 import com.starrocks.sql.ast.ReplacePartitionClause;
+import com.starrocks.sql.ast.RevokeMaskingPolicyClause;
+import com.starrocks.sql.ast.RevokeRowAccessPolicyClause;
 import com.starrocks.sql.ast.RollupRenameClause;
 import com.starrocks.sql.ast.SetListItem;
 import com.starrocks.sql.ast.SetStmt;
@@ -928,24 +930,23 @@ public class Alter {
                     break;
                 }
                 case REVOKE_COLUMN_MASKING_POLICY: {
-                    ApplyMaskingPolicyClause applyMaskingPolicyClause = (ApplyMaskingPolicyClause) alterClause;
+                    RevokeMaskingPolicyClause revokeMaskingPolicyClause = (RevokeMaskingPolicyClause) alterClause;
                     GlobalStateMgr.getCurrentState().getSecurityPolicyManager().revokeMaskingPolicyContext(
                             tableName.getCatalog(), tableName.getDb(), tableName.getTbl(),
-                            applyMaskingPolicyClause.getMaskingColumn());
+                            revokeMaskingPolicyClause.getMaskingColumn());
                     break;
                 }
                 case APPLY_ROW_ACCESS_POLICY: {
                     ApplyRowAccessPolicyClause modifyRowAccessPolicyClause = (ApplyRowAccessPolicyClause) alterClause;
                     GlobalStateMgr.getCurrentState().getSecurityPolicyManager().applyRowAccessPolicyContext(
-                            tableName,
-                            modifyRowAccessPolicyClause.getRowAccessPolicyContext());
+                            tableName, modifyRowAccessPolicyClause.getRowAccessPolicyContext());
                     break;
                 }
                 case REVOKE_ROW_ACCESS_POLICY: {
-                    ApplyRowAccessPolicyClause applyRowAccessPolicyClause = (ApplyRowAccessPolicyClause) alterClause;
+                    RevokeRowAccessPolicyClause revokeRowAccessPolicyClause = (RevokeRowAccessPolicyClause) alterClause;
                     GlobalStateMgr.getCurrentState().getSecurityPolicyManager().revokeRowAccessPolicyContext(
                             tableName.getCatalog(), tableName.getDb(), tableName.getTbl(),
-                            applyRowAccessPolicyClause.getPolicyName());
+                            revokeRowAccessPolicyClause.getPolicyName());
                     break;
                 }
                 case REVOKE_ALL_ROW_ACCESS_POLICY: {

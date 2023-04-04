@@ -32,6 +32,7 @@ import com.starrocks.sql.ast.AlterDatabaseQuotaStmt;
 import com.starrocks.sql.ast.AlterDatabaseRenameStatement;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
+import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AlterResourceGroupStmt;
 import com.starrocks.sql.ast.AlterResourceStmt;
 import com.starrocks.sql.ast.AlterRoutineLoadStmt;
@@ -69,12 +70,14 @@ import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.CreateWarehouseStmt;
 import com.starrocks.sql.ast.DeleteStmt;
+import com.starrocks.sql.ast.DescribePolicyStmt;
 import com.starrocks.sql.ast.DropCatalogStmt;
 import com.starrocks.sql.ast.DropDbStmt;
 import com.starrocks.sql.ast.DropFileStmt;
 import com.starrocks.sql.ast.DropFunctionStmt;
 import com.starrocks.sql.ast.DropHistogramStmt;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
+import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.DropRepositoryStmt;
 import com.starrocks.sql.ast.DropResourceStmt;
 import com.starrocks.sql.ast.DropRoleStmt;
@@ -115,6 +118,8 @@ import com.starrocks.sql.ast.ShowDynamicPartitionStmt;
 import com.starrocks.sql.ast.ShowExportStmt;
 import com.starrocks.sql.ast.ShowGrantsStmt;
 import com.starrocks.sql.ast.ShowHistogramStatsMetaStmt;
+import com.starrocks.sql.ast.ShowPolicyApplyStmt;
+import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.ShowResourcesStmt;
 import com.starrocks.sql.ast.ShowRestoreStmt;
 import com.starrocks.sql.ast.ShowSmallFilesStmt;
@@ -722,6 +727,8 @@ public class Analyzer {
             return null;
         }
 
+        // ---------------------------------------- Security Policy Statement ---------------------------------------------------
+
         @Override
         public Void visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt stmt, ConnectContext context) {
             SecurityPolicyAnalyzer.analyze(stmt, context);
@@ -730,6 +737,31 @@ public class Analyzer {
 
         @Override
         public Void visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt stmt, ConnectContext context) {
+            SecurityPolicyAnalyzer.analyze(stmt, context);
+            return null;
+        }
+
+        public Void visitAlterPolicyStatement(AlterPolicyStmt stmt, ConnectContext context) {
+            SecurityPolicyAnalyzer.analyze(stmt, context);
+            return null;
+        }
+
+        public Void visitDropPolicyStatement(DropPolicyStmt stmt, ConnectContext context) {
+            SecurityPolicyAnalyzer.analyze(stmt, context);
+            return null;
+        }
+
+        public Void visitShowPolicyStatement(ShowPolicyStmt stmt, ConnectContext context) {
+            SecurityPolicyAnalyzer.analyze(stmt, context);
+            return null;
+        }
+
+        public Void visitDescribePolicyStatement(DescribePolicyStmt stmt, ConnectContext context) {
+            SecurityPolicyAnalyzer.analyze(stmt, context);
+            return null;
+        }
+
+        public Void visitShowPolicyApplyStatement(ShowPolicyApplyStmt stmt, ConnectContext context) {
             SecurityPolicyAnalyzer.analyze(stmt, context);
             return null;
         }

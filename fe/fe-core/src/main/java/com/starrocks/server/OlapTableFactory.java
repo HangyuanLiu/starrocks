@@ -215,7 +215,7 @@ public class OlapTableFactory implements AbstractTableFactory {
                 table = new OlapTable(tableId, tableName, baseSchema, keysType, partitionInfo, distributionInfo, indexes);
             }
 
-            if (table.isCloudNativeTable() && !runMode.isAllowCreateLakeTable())  {
+            if (table.isCloudNativeTable() && !runMode.isAllowCreateLakeTable()) {
                 throw new DdlException("Cannot create table with persistent volume in current run mode \"" + runMode + "\"");
             }
             if (table.isOlapTable() && !runMode.isAllowCreateOlapTable()) {
@@ -554,7 +554,8 @@ public class OlapTableFactory implements AbstractTableFactory {
                 if (metastore.getDb(db.getId()) == null) {
                     throw new DdlException("database has been dropped when creating table");
                 }
-                createTblSuccess = db.createTableWithLock(table, false);
+                createTblSuccess = db.createTableWithLock(table,
+                        stmt.getMaskingPolicyContextMap(), stmt.getRowAccessPolicyContexts(), false);
                 if (!createTblSuccess) {
                     if (db.isInfoSchemaDb()) {
                         ErrorReport.reportDdlException(ErrorCode.ERR_CANT_CREATE_TABLE, tableName, "create denied");

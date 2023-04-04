@@ -14,7 +14,16 @@
 
 package com.starrocks.sql.ast;
 
+import com.google.gson.annotations.SerializedName;
+
 public enum PolicyType {
-    COLUMN_MASKING,
-    ROW_ACCESS
+    COLUMN_MASKING(1),
+    ROW_ACCESS(2);
+
+    @SerializedName("id")
+    private final int id;
+
+    PolicyType(int id) {
+        this.id = id;
+    }
 }

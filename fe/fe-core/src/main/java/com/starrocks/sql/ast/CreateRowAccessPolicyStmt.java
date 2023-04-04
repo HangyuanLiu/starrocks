@@ -26,10 +26,11 @@ public class CreateRowAccessPolicyStmt extends DdlStmt {
     private final List<TypeDef> argTypeDefs;
     private final TypeDef returnType;
     private final Expr expression;
+    private final String comment;
 
     public CreateRowAccessPolicyStmt(PolicyName policyName, boolean ifNotExists,
                                    List<String> argNames, List<TypeDef> argTypeDefs, TypeDef returnType,
-                                   Expr expression, NodePosition pos) {
+                                   Expr expression, String comment, NodePosition pos) {
         super(pos);
         this.policyName = policyName;
         this.ifNotExists = ifNotExists;
@@ -37,6 +38,7 @@ public class CreateRowAccessPolicyStmt extends DdlStmt {
         this.argTypeDefs = argTypeDefs;
         this.returnType = returnType;
         this.expression = expression;
+        this.comment = comment;
     }
 
     public boolean isIfNotExists() {
@@ -61,6 +63,10 @@ public class CreateRowAccessPolicyStmt extends DdlStmt {
 
     public Expr getExpression() {
         return expression;
+    }
+
+    public String getComment() {
+        return comment;
     }
 
     @Override

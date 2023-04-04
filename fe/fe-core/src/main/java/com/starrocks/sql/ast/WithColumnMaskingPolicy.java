@@ -11,51 +11,35 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package com.starrocks.sql.ast;
 
 import com.starrocks.analysis.ParseNode;
 import com.starrocks.sql.parser.NodePosition;
 
-public class PolicyName implements ParseNode {
-    private String catalog;
-    private String dbName;
-    private final String name;
+import java.util.List;
 
+public class WithColumnMaskingPolicy implements ParseNode {
+    private final PolicyName policyName;
+    private final List<String> usingColumns;
     private final NodePosition pos;
 
-    public PolicyName(String catalog, String dbName, String name, NodePosition pos) {
-        this.catalog = catalog;
-        this.dbName = dbName;
-        this.name = name;
+    public WithColumnMaskingPolicy(PolicyName policyName, List<String> usingColumns, NodePosition pos) {
+        this.policyName = policyName;
+        this.usingColumns = usingColumns;
         this.pos = pos;
     }
 
-    public String getCatalog() {
-        return catalog;
+    public PolicyName getPolicyName() {
+        return policyName;
     }
 
-    public void setCatalog(String catalog) {
-        this.catalog = catalog;
-    }
-
-    public String getDbName() {
-        return dbName;
-    }
-
-    public void setDbName(String dbName) {
-        this.dbName = dbName;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public NodePosition getPos() {
-        return pos;
+    public List<String> getUsingColumns() {
+        return usingColumns;
     }
 
     @Override
-    public String toString() {
-        return name;
+    public NodePosition getPos() {
+        return pos;
     }
 }

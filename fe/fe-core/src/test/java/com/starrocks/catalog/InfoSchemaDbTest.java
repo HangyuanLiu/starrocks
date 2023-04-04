@@ -34,6 +34,7 @@
 
 package com.starrocks.catalog;
 
+import com.starrocks.common.DdlException;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -41,11 +42,11 @@ import java.io.IOException;
 
 public class InfoSchemaDbTest {
     @Test
-    public void testNormal() throws IOException {
+    public void testNormal() throws IOException, DdlException {
         Database db = new InfoSchemaDb();
 
         Assert.assertFalse(db.createTable(null));
-        Assert.assertFalse(db.createTableWithLock(null, false));
+        Assert.assertFalse(db.createTableWithLock(null, null, null, false));
         db.dropTable("authors");
         db.dropTableWithLock("authors");
         db.write(null);

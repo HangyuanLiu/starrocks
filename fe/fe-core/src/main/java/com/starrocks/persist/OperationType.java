@@ -243,6 +243,7 @@ public class OperationType {
 
     // drop catalog
     public static final short OP_DROP_CATALOG = 10061;
+
     // grant & revoke impersonate
     public static final short OP_GRANT_IMPERSONATE = 10062;
     public static final short OP_REVOKE_IMPERSONATE = 10063;
@@ -285,6 +286,8 @@ public class OperationType {
     // only used in lake table currently
     public static final short OP_ADD_PARTITIONS_V2 = 10242;
 
+    public static final short OP_CREATE_TABLE_V2 = 10243;
+
     // new privilege, all ends with V2
     public static final short OP_CREATE_USER_V2 = 10261;
     public static final short OP_UPDATE_USER_PRIVILEGE_V2 = 10262;
@@ -298,8 +301,9 @@ public class OperationType {
     public static final short OP_CREATE_MASKING_POLICY = 10301;
     public static final short OP_CREATE_ROW_ACCESS_POLICY = 10302;
     public static final short OP_DROP_POLICY = 10303;
-    public static final short OP_ALTER_POLICY_RENAME = 10304;
-    public static final short OP_ALTER_POLICY_SET_BODY = 10305;
+    public static final short OP_ALTER_POLICY_SET_BODY = 10304;
+    public static final short OP_ALTER_POLICY_SET_COMMENT = 10305;
+    public static final short OP_ALTER_POLICY_RENAME = 10306;
 
     // integrate with starmgr
     public static final short OP_STARMGR = 11000;

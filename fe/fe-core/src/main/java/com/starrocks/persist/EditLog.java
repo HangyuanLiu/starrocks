@@ -78,6 +78,7 @@ import com.starrocks.load.streamload.StreamLoadTask;
 import com.starrocks.meta.MetaContext;
 import com.starrocks.metric.MetricRepo;
 import com.starrocks.plugin.PluginInfo;
+import com.starrocks.privilege.DbPEntryObject;
 import com.starrocks.privilege.Policy;
 import com.starrocks.privilege.RolePrivilegeCollection;
 import com.starrocks.privilege.UserPrivilegeCollection;
@@ -253,7 +254,15 @@ public class EditLog {
                     CreateTableInfo info = (CreateTableInfo) journal.getData();
                     LOG.info("Begin to unprotect create table. db = "
                             + info.getDbName() + " table = " + info.getTable().getId());
-                    globalStateMgr.replayCreateTable(info.getDbName(), info.getTable());
+                    globalStateMgr.replayCreateTable(info.getDbName(), info.getTable(), null, null);
+                    break;
+                }
+                case OperationType.OP_CREATE_TABLE_V2: {
+                    CreateTableInfoV2 info = (CreateTableInfoV2) journal.getData();
+                    LOG.info("Begin to unprotect create table. db = "
+                            + info.getDbName() + " table = " + info.getTable().getId());
+                    globalStateMgr.replayCreateTable(info.getDbName(), info.getTable(), info.getMaskingPolicyContextMap(),
+                            info.getRowAccessPolicyContextList());
                     break;
                 }
                 case OperationType.OP_DROP_TABLE: {
@@ -1011,25 +1020,24 @@ public class EditLog {
                     globalStateMgr.replayAuthUpgrade(info);
                     break;
                 }
-                case OperationType.OP_CREATE_MASKING_POLICY: {
-                    Policy policy = (Policy) journal.getData();
-                    globalStateMgr.getSecurityPolicyManager().replayCreatePolicy(policy);
-                }
+                case OperationType.OP_CREATE_MASKING_POLICY:
                 case OperationType.OP_CREATE_ROW_ACCESS_POLICY: {
-                    Policy policy = (Policy) journal.getData();
+                    CreatePolicyInfo policy = (CreatePolicyInfo) journal.getData();
                     globalStateMgr.getSecurityPolicyManager().replayCreatePolicy(policy);
+                    break;
                 }
                 case OperationType.OP_DROP_POLICY: {
-                    Policy policy = (Policy) journal.getData();
+                    DropPolicyInfo policy = (DropPolicyInfo) journal.getData();
                     globalStateMgr.getSecurityPolicyManager().replayDropPolicy(policy);
+                    break;
                 }
+
+                case OperationType.OP_ALTER_POLICY_SET_BODY:
+                case OperationType.OP_ALTER_POLICY_SET_COMMENT:
                 case OperationType.OP_ALTER_POLICY_RENAME: {
                     AlterPolicyInfo alterPolicyInfo = (AlterPolicyInfo) journal.getData();
                     globalStateMgr.getSecurityPolicyManager().replayAlterPolicy(alterPolicyInfo);
-                }
-                case OperationType.OP_ALTER_POLICY_SET_BODY: {
-                    AlterPolicyInfo alterPolicyInfo = (AlterPolicyInfo) journal.getData();
-                    globalStateMgr.getSecurityPolicyManager().replayAlterPolicy(alterPolicyInfo);
+                    break;
                 }
                 case OperationType.OP_MV_JOB_STATE: {
                     MVMaintenanceJob job = (MVMaintenanceJob) journal.getData();
@@ -1202,6 +1210,10 @@ public class EditLog {
 
     public void logCreateTable(CreateTableInfo info) {
         logEdit(OperationType.OP_CREATE_TABLE, info);
+    }
+
+    public void logCreateTableV2(CreateTableInfoV2 info) {
+        logEdit(OperationType.OP_CREATE_TABLE_V2, info);
     }
 
     public void logCreateMaterializedView(CreateTableInfo info) {
@@ -1789,25 +1801,37 @@ public class EditLog {
     }
 
     public void logCreateMaskingPolicy(Policy policy) {
-        logEdit(OperationType.OP_CREATE_MASKING_POLICY, policy);
+        CreatePolicyInfo createPolicyInfo = new CreatePolicyInfo(policy);
+        logEdit(OperationType.OP_CREATE_MASKING_POLICY, createPolicyInfo);
     }
 
     public void logCreateRowAccessPolicy(Policy policy) {
-        logEdit(OperationType.OP_CREATE_ROW_ACCESS_POLICY, policy);
+        CreatePolicyInfo createPolicyInfo = new CreatePolicyInfo(policy);
+        logEdit(OperationType.OP_CREATE_ROW_ACCESS_POLICY, createPolicyInfo);
     }
 
-    public void logDropPolicy(Policy policy) {
-        logEdit(OperationType.OP_DROP_POLICY, policy);
+    public void logDropPolicy(PolicyName policyName, DbPEntryObject db, Policy policy) {
+        DropPolicyInfo dropPolicyInfo =
+                new DropPolicyInfo(policy.getPolicyType(), policy.getPolicyId(), db, policyName.getName());
+        logEdit(OperationType.OP_DROP_POLICY, dropPolicyInfo);
     }
 
-    public void logAlterPolicyRename(PolicyName policyName, String newPolicyName) {
-        AlterPolicyInfo alterPolicyInfo = new AlterPolicyInfo(policyName, new AlterPolicyInfo.PolicyRenameObject(newPolicyName));
-        logEdit(OperationType.OP_ALTER_POLICY_RENAME, alterPolicyInfo);
-    }
-
-    public void logAlterPolicySetBody(PolicyName policyName, String policyBody) {
-        AlterPolicyInfo alterPolicyInfo = new AlterPolicyInfo(policyName, new AlterPolicyInfo.PolicySetBodyObject(policyBody));
+    public void logAlterPolicySetBody(PolicyName policyName, DbPEntryObject db, String policyBody) {
+        AlterPolicyInfo alterPolicyInfo = new AlterPolicyInfo(policyName.getName(), db,
+                new AlterPolicyInfo.PolicySetBodyInfo(policyBody));
         logEdit(OperationType.OP_ALTER_POLICY_SET_BODY, alterPolicyInfo);
+    }
+
+    public void logAlterPolicySetComment(PolicyName policyName, DbPEntryObject db, String comment) {
+        AlterPolicyInfo alterPolicyInfo = new AlterPolicyInfo(policyName.getName(), db,
+                new AlterPolicyInfo.PolicySetCommentInfo(comment));
+        logEdit(OperationType.OP_ALTER_POLICY_SET_COMMENT, alterPolicyInfo);
+    }
+
+    public void logAlterPolicyRename(PolicyName policyName, DbPEntryObject db, String newPolicyName) {
+        AlterPolicyInfo alterPolicyInfo = new AlterPolicyInfo(policyName.getName(), db,
+                new AlterPolicyInfo.PolicyRenameInfo(newPolicyName));
+        logEdit(OperationType.OP_ALTER_POLICY_RENAME, alterPolicyInfo);
     }
 
     public void logModifyBinlogConfig(ModifyTablePropertyOperationLog log) {

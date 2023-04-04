@@ -661,6 +661,10 @@ public abstract class AstVisitor<R, C> {
         return visitStatement(statement, context);
     }
 
+    public R visitShowPolicyApplyStatement(ShowPolicyApplyStmt statement, C context) {
+        return visitShowStatement(statement, context);
+    }
+
     // ---------------------------------------- Backup Restore Statement -----------------------------------------------
 
     public R visitBackupStatement(BackupStmt statement, C context) {
@@ -905,7 +909,15 @@ public abstract class AstVisitor<R, C> {
         return visitNode(clause, context);
     }
 
+    public R visitRevokeMaskingPolicyClause(RevokeMaskingPolicyClause clause, C context) {
+        return visitNode(clause, context);
+    }
+
     public R visitApplyRowAccessPolicyClause(ApplyRowAccessPolicyClause clause, C context) {
+        return visitNode(clause, context);
+    }
+
+    public R visitRevokeRowAccessPolicyClause(RevokeRowAccessPolicyClause clause, C context) {
         return visitNode(clause, context);
     }
 

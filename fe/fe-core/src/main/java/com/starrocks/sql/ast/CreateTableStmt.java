@@ -49,8 +49,9 @@ public class CreateTableStmt extends DdlStmt {
     // set in analyze
     private final List<Column> columns = Lists.newArrayList();
     private List<String> sortKeys = Lists.newArrayList();
-
     private final List<Index> indexes = Lists.newArrayList();
+    private Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap;
+    private List<WithRowAccessPolicy> withRowAccessPolicies;
 
     public CreateTableStmt(boolean ifNotExists,
                            boolean isExternal,
@@ -64,7 +65,7 @@ public class CreateTableStmt extends DdlStmt {
                            Map<String, String> extProperties,
                            String comment) {
         this(ifNotExists, isExternal, tableName, columnDefinitions, null, engineName, null, keysDesc, partitionDesc,
-                distributionDesc, properties, extProperties, comment, null, null, NodePosition.ZERO);
+                distributionDesc, properties, extProperties, null, comment, null, null, NodePosition.ZERO);
     }
 
     public CreateTableStmt(boolean ifNotExists,
@@ -79,6 +80,7 @@ public class CreateTableStmt extends DdlStmt {
                            DistributionDesc distributionDesc,
                            Map<String, String> properties,
                            Map<String, String> extProperties,
+                           List<WithRowAccessPolicy> withRowAccessPolicies,
                            String comment, List<AlterClause> rollupAlterClauseList, List<String> sortKeys,
                            NodePosition pos) {
         super(pos);
@@ -98,6 +100,7 @@ public class CreateTableStmt extends DdlStmt {
         this.extProperties = extProperties;
         this.isExternal = isExternal;
         this.ifNotExists = ifNotExists;
+        this.withRowAccessPolicies = withRowAccessPolicies;
         this.comment = Strings.nullToEmpty(comment);
 
         this.rollupAlterClauseList = rollupAlterClauseList == null ? new ArrayList<>() : rollupAlterClauseList;
@@ -214,6 +217,18 @@ public class CreateTableStmt extends DdlStmt {
 
     public void setDistributionDesc(DistributionDesc distributionDesc) {
         this.distributionDesc = distributionDesc;
+    }
+
+    public void setMaskingPolicyContextMap(Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap) {
+        this.maskingPolicyContextMap = maskingPolicyContextMap;
+    }
+
+    public Map<String, WithColumnMaskingPolicy> getMaskingPolicyContextMap() {
+        return maskingPolicyContextMap;
+    }
+
+    public List<WithRowAccessPolicy> getRowAccessPolicyContexts() {
+        return withRowAccessPolicies;
     }
 
     public static CreateTableStmt read(DataInput in) throws IOException {

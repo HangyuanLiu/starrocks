@@ -229,7 +229,7 @@ public class PolicyPEntryObject implements PEntryObject {
                 sb.append("ALL POLICIES IN DATABASE ").append(dbName);
             } else {
                 Policy policy = GlobalStateMgr.getCurrentState().getSecurityPolicyManager().getPolicyById(policyId);
-                sb.append(dbName).append(".").append(policy.getPolicyName());
+                sb.append(dbName).append(".").append(policy.getName());
             }
         }
         return sb.toString();

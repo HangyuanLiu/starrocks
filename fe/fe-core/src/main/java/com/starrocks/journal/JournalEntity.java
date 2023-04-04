@@ -66,6 +66,7 @@ import com.starrocks.load.streamload.StreamLoadTask;
 import com.starrocks.persist.AddPartitionsInfo;
 import com.starrocks.persist.AddPartitionsInfoV2;
 import com.starrocks.persist.AlterLoadJobOperationLog;
+import com.starrocks.persist.AlterPolicyInfo;
 import com.starrocks.persist.AlterRoutineLoadJobOperationLog;
 import com.starrocks.persist.AlterUserInfo;
 import com.starrocks.persist.AlterViewInfo;
@@ -81,7 +82,9 @@ import com.starrocks.persist.ChangeMaterializedViewRefreshSchemeLog;
 import com.starrocks.persist.ColocatePersistInfo;
 import com.starrocks.persist.ConsistencyCheckInfo;
 import com.starrocks.persist.CreateInsertOverwriteJobLog;
+import com.starrocks.persist.CreatePolicyInfo;
 import com.starrocks.persist.CreateTableInfo;
+import com.starrocks.persist.CreateTableInfoV2;
 import com.starrocks.persist.CreateUserInfo;
 import com.starrocks.persist.DatabaseInfo;
 import com.starrocks.persist.DropCatalogLog;
@@ -89,6 +92,7 @@ import com.starrocks.persist.DropComputeNodeLog;
 import com.starrocks.persist.DropDbInfo;
 import com.starrocks.persist.DropInfo;
 import com.starrocks.persist.DropPartitionInfo;
+import com.starrocks.persist.DropPolicyInfo;
 import com.starrocks.persist.DropResourceOperationLog;
 import com.starrocks.persist.GlobalVarPersistInfo;
 import com.starrocks.persist.HbPackage;
@@ -254,6 +258,11 @@ public class JournalEntity implements Writable {
             case OperationType.OP_CREATE_TABLE: {
                 data = new CreateTableInfo();
                 ((CreateTableInfo) data).readFields(in);
+                isRead = true;
+                break;
+            }
+            case OperationType.OP_CREATE_TABLE_V2: {
+                data = CreateTableInfoV2.read(in);
                 isRead = true;
                 break;
             }
@@ -832,6 +841,21 @@ public class JournalEntity implements Writable {
                 data = MVEpoch.read(in);
                 isRead = true;
                 break;
+            case OperationType.OP_CREATE_MASKING_POLICY:
+            case OperationType.OP_CREATE_ROW_ACCESS_POLICY:
+                data = CreatePolicyInfo.read(in);
+                isRead = true;
+                break;
+            case OperationType.OP_DROP_POLICY:
+                data = DropPolicyInfo.read(in);
+                isRead = true;
+                break;
+            case OperationType.OP_ALTER_POLICY_RENAME:
+            case OperationType.OP_ALTER_POLICY_SET_BODY:
+                data = AlterPolicyInfo.read(in);
+                isRead = true;
+                break;
+
             default: {
                 if (Config.ignore_unknown_log_id) {
                     LOG.warn("UNKNOWN Operation Type {}", opCode);

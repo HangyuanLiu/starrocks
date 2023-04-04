@@ -132,31 +132,33 @@ public class ColumnDef implements ParseNode {
     // Add a new variable name isAllowNullImplicit to indicate the message. If isAllowNullImplicit=true, it indicates the null constraint is obeyed implicitly.
     private boolean isAllowNullImplicit = false;
     private Boolean isAllowNull;
-    private Boolean isAutoIncrement;
+    private final Boolean isAutoIncrement;
     private DefaultValueDef defaultValueDef;
+    private final WithColumnMaskingPolicy withColumnMaskingPolicy;
     private final String comment;
 
     private final NodePosition pos;
 
     public ColumnDef(String name, TypeDef typeDef) {
         this(name, typeDef, null, false, null, false, DefaultValueDef.NOT_SET,
-                null, "", NodePosition.ZERO);
+                null, null, "", NodePosition.ZERO);
     }
 
     public ColumnDef(String name, TypeDef typeDef, boolean isKey, AggregateType aggregateType,
                      Boolean isAllowNull, DefaultValueDef defaultValueDef, String comment) {
         this(name, typeDef, null, isKey, aggregateType, isAllowNull, defaultValueDef,
-                null, comment, NodePosition.ZERO);
+                null, null, comment, NodePosition.ZERO);
     }
 
     public ColumnDef(String name, TypeDef typeDef, String charsetName, boolean isKey, AggregateType aggregateType,
                      Boolean isAllowNull, DefaultValueDef defaultValueDef, Boolean isAutoIncrement, String comment) {
         this(name, typeDef, charsetName, isKey, aggregateType, isAllowNull, defaultValueDef, isAutoIncrement,
-                comment, NodePosition.ZERO);
+                null, comment, NodePosition.ZERO);
     }
 
     public ColumnDef(String name, TypeDef typeDef, String charsetName, boolean isKey, AggregateType aggregateType,
-                     Boolean isAllowNull, DefaultValueDef defaultValueDef, Boolean isAutoIncrement, String comment,
+                     Boolean isAllowNull, DefaultValueDef defaultValueDef, Boolean isAutoIncrement,
+                     WithColumnMaskingPolicy withColumnMaskingPolicy, String comment,
                      NodePosition pos) {
         this.pos = pos;
         this.name = name;
@@ -181,6 +183,8 @@ public class ColumnDef implements ParseNode {
         } else {
             this.isAutoIncrement = true;
         }
+
+        this.withColumnMaskingPolicy = withColumnMaskingPolicy;
         this.comment = comment;
     }
 
@@ -492,6 +496,10 @@ public class ColumnDef implements ParseNode {
 
     public boolean defaultValueIsNull() {
         return defaultValueDef.expr instanceof NullLiteral;
+    }
+
+    public WithColumnMaskingPolicy getMaskingPolicyContext() {
+        return withColumnMaskingPolicy;
     }
 
     @Override

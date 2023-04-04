@@ -107,7 +107,7 @@ public class GetDdlStmtAction extends RestBaseAction {
                 throw new DdlException("Table[" + tableName + "] does not exist");
             }
 
-            GlobalStateMgr.getDdlStmt(table, createTableStmt, addPartitionStmt, createRollupStmt, true,
+            GlobalStateMgr.getDdlStmt(db.getFullName(), table, createTableStmt, addPartitionStmt, createRollupStmt, true,
                     false /* show password */);
 
         } finally {

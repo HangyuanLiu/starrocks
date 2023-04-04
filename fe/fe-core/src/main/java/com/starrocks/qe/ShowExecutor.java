@@ -113,14 +113,18 @@ import com.starrocks.mysql.privilege.PrivPredicate;
 import com.starrocks.privilege.ActionSet;
 import com.starrocks.privilege.AuthorizationManager;
 import com.starrocks.privilege.CatalogPEntryObject;
+import com.starrocks.privilege.ColumnMaskingPolicyContext;
 import com.starrocks.privilege.DbPEntryObject;
 import com.starrocks.privilege.ObjectType;
 import com.starrocks.privilege.Policy;
+import com.starrocks.privilege.PolicyContext;
 import com.starrocks.privilege.PrivilegeActions;
 import com.starrocks.privilege.PrivilegeBuiltinConstants;
 import com.starrocks.privilege.PrivilegeCollection;
 import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.privilege.PrivilegeType;
+import com.starrocks.privilege.RowAccessPolicyContext;
+import com.starrocks.privilege.SecurityPolicyManager;
 import com.starrocks.privilege.TablePEntryObject;
 import com.starrocks.scheduler.TaskBuilder;
 import com.starrocks.scheduler.TaskManager;
@@ -143,7 +147,7 @@ import com.starrocks.sql.ast.GrantPrivilegeStmt;
 import com.starrocks.sql.ast.GrantRevokeClause;
 import com.starrocks.sql.ast.HelpStmt;
 import com.starrocks.sql.ast.PartitionNames;
-import com.starrocks.sql.ast.PolicyName;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.ShowAlterStmt;
 import com.starrocks.sql.ast.ShowAnalyzeJobStmt;
 import com.starrocks.sql.ast.ShowAnalyzeStatusStmt;
@@ -177,6 +181,7 @@ import com.starrocks.sql.ast.ShowLoadStmt;
 import com.starrocks.sql.ast.ShowMaterializedViewsStmt;
 import com.starrocks.sql.ast.ShowPartitionsStmt;
 import com.starrocks.sql.ast.ShowPluginsStmt;
+import com.starrocks.sql.ast.ShowPolicyApplyStmt;
 import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.ShowProcStmt;
 import com.starrocks.sql.ast.ShowProcesslistStmt;
@@ -226,6 +231,7 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -368,15 +374,25 @@ public class ShowExecutor {
         } else if (stmt instanceof ShowCharsetStmt) {
             handleShowCharset();
         } else if (stmt instanceof ShowPolicyStmt) {
-            Map<PolicyName, Policy> policies = GlobalStateMgr.getCurrentState().getSecurityPolicyManager().getNameToPolicy();
+            ShowPolicyStmt showPolicyStmt = (ShowPolicyStmt) stmt;
+            Map<String, Policy> policies = GlobalStateMgr.getCurrentState().getSecurityPolicyManager().getNameToPolicy(
+                    showPolicyStmt.getCatalog(), showPolicyStmt.getDbName(), showPolicyStmt.getPolicyType());
             List<List<String>> rows = new ArrayList<>();
-
-            for (Map.Entry<PolicyName, Policy> policyEntry : policies.entrySet()) {
-                List<String> row = new ArrayList<>();
-                row.add(policyEntry.getKey().getName());
-                row.add(policyEntry.getKey().getCatalog());
-                row.add(policyEntry.getKey().getDbName());
-                rows.add(row);
+            if (policies != null) {
+                for (Map.Entry<String, Policy> policyEntry : policies.entrySet()) {
+                    List<String> row = new ArrayList<>();
+                    row.add(policyEntry.getKey());
+                    Policy policy = policyEntry.getValue();
+                    if (policy.getPolicyType().equals(PolicyType.ROW_ACCESS)) {
+                        row.add("ROW ACCESS");
+                    } else {
+                        row.add("MASKING");
+                    }
+                    row.add(showPolicyStmt.getCatalog());
+                    row.add(showPolicyStmt.getDbName());
+                    
+                    rows.add(row);
+                }
             }
             resultSet = new ShowResultSet(stmt.getMetaData(), rows);
         } else if (stmt instanceof DescribePolicyStmt) {
@@ -385,7 +401,7 @@ public class ShowExecutor {
                     .getPolicyByName(describePolicyStmt.getPolicyName());
 
             List<String> row = new ArrayList<>();
-            row.add(policy.getPolicyName().getName());
+            row.add(policy.getName());
 
             List<String> signature = new ArrayList<>();
             for (int i = 0; i < policy.getArgNames().size(); ++i) {
@@ -394,9 +410,62 @@ public class ShowExecutor {
             row.add("(" + Joiner.on(", ").join(signature) + ")");
 
             row.add(policy.getRetType().toSql());
-            row.add(policy.getPolicyExpressionSQL());
+            row.add(AstToSQLBuilder.toSQL(policy.getPolicyExpression()));
 
             resultSet = new ShowResultSet(stmt.getMetaData(), Collections.singletonList(row));
+        } else if (stmt instanceof ShowPolicyApplyStmt) {
+            ShowPolicyApplyStmt showPolicyApplyStmt = (ShowPolicyApplyStmt) stmt;
+            SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getCurrentState().getSecurityPolicyManager();
+            ConcurrentMap<TablePEntryObject, PolicyContext> policyContextConcurrentMap =
+                    securityPolicyManager.getPolicyContextMap();
+
+            List<List<String>> rows = new ArrayList<>();
+            for (Map.Entry<TablePEntryObject, PolicyContext> entry
+                    : policyContextConcurrentMap.entrySet()) {
+
+
+                PolicyContext policyContext = entry.getValue();
+                for (Map.Entry<String, ColumnMaskingPolicyContext> maskingPolicyContextEntry
+                        : policyContext.getMaskingPolicyApply().entrySet()) {
+                    List<String> row = new ArrayList<>();
+
+                    TablePEntryObject tablePEntryObject = entry.getKey();
+                    row.add(String.valueOf(tablePEntryObject.getCatalogId()));
+                    row.add(tablePEntryObject.getDatabaseUUID());
+                    row.add(tablePEntryObject.getTableUUID());
+                    row.add(maskingPolicyContextEntry.getKey());
+
+                    ColumnMaskingPolicyContext withColumnMaskingPolicy = maskingPolicyContextEntry.getValue();
+                    Policy policy = securityPolicyManager.getPolicyById(withColumnMaskingPolicy.getPolicyId());
+                    row.add(String.valueOf(policy.getDbPEntryObject().getCatalogId()));
+                    row.add(policy.getDbPEntryObject().getUUID());
+                    row.add(policy.getName());
+                    row.add("Masking Policy");
+
+                    rows.add(row);
+                }
+
+                for (RowAccessPolicyContext withRowAccessPolicy : policyContext.getRowAccessPolicyApply()) {
+                    List<String> row = new ArrayList<>();
+
+                    TablePEntryObject tablePEntryObject = entry.getKey();
+                    row.add(String.valueOf(tablePEntryObject.getCatalogId()));
+                    row.add(tablePEntryObject.getDatabaseUUID());
+                    row.add(tablePEntryObject.getTableUUID());
+                    row.add("");
+
+                    Policy policy = securityPolicyManager.getPolicyById(withRowAccessPolicy.getPolicyId());
+                    row.add(String.valueOf(policy.getDbPEntryObject().getCatalogId()));
+                    row.add(policy.getDbPEntryObject().getUUID());
+                    row.add(policy.getName());
+                    row.add("Row Access Policy");
+
+                    rows.add(row);
+                }
+            }
+
+            resultSet = new ShowResultSet(stmt.getMetaData(), rows);
+
         } else {
             handleEmpty();
         }
@@ -1101,7 +1170,7 @@ public class ShowExecutor {
             }
 
             List<String> createTableStmt = Lists.newArrayList();
-            GlobalStateMgr.getDdlStmt(table, createTableStmt, null, null, false, true /* hide password */);
+            GlobalStateMgr.getDdlStmt(db.getFullName(), table, createTableStmt, null, null, false, true /* hide password */);
             if (createTableStmt.isEmpty()) {
                 resultSet = new ShowResultSet(showStmt.getMetaData(), rows);
                 return;

@@ -229,6 +229,8 @@ statement
     | showRowAccessPolicyStatement
     | describeRowAccessPolicyStatement
 
+    | showPolicyReferences
+
     // Backup Restore Statement
     | backupStatement
     | cancelBackupStatement
@@ -730,7 +732,7 @@ alterClause
     | reorderColumnsClause
     | rollupRenameClause
 
-    //Alter Policy clause
+    //Apply Policy clause
     | applyMaskingPolicyClause
     | applyRowAccessPolicyClause
 
@@ -1411,13 +1413,14 @@ privObjectTypePlural
 
 createMaskingPolicyStatement
     : CREATE (OR REPLACE)? MASKING POLICY (IF NOT EXISTS)? policyName=qualifiedName
-        AS '(' arg (',' arg)* ')' RETURNS type ARROW expression
+        AS '(' arg (',' arg)* ')' RETURNS type ARROW expression comment?
     ;
 
 arg : identifier type;
 
 alterMaskingPolicyStatement
     : ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName SET BODY ARROW expression
+    | ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName SET COMMENT string
     | ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName RENAME TO newPolicyName=identifier
     ;
 
@@ -1426,7 +1429,7 @@ dropMaskingPolicyStatement
     ;
 
 showMaskingPolicyStatement
-    : SHOW MASKING POLICIES
+    : SHOW MASKING POLICIES ((FROM | IN) db=qualifiedName)?
     ;
 
 describeMaskingPolicyStatement
@@ -1435,11 +1438,12 @@ describeMaskingPolicyStatement
 
 createRowAccessPolicyStatement
     : CREATE (OR REPLACE)? ROW ACCESS POLICY (IF NOT EXISTS)? policyName=qualifiedName
-      AS '(' arg (',' arg)* ')' RETURNS BOOLEAN ARROW expression
+      AS '(' arg (',' arg)* ')' RETURNS BOOLEAN ARROW expression comment?
     ;
 
 alterRowAccessPolicyStatement
     : ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName SET BODY ARROW expression
+    | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName SET COMMENT string
     | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName RENAME TO newPolicyName=identifier
     ;
 
@@ -1448,11 +1452,15 @@ dropRowAccessPolicyStatement
     ;
 
 showRowAccessPolicyStatement
-    : SHOW ROW ACCESS POLICIES
+    : SHOW ROW ACCESS POLICIES ((FROM | IN) db=qualifiedName)?
     ;
 
 describeRowAccessPolicyStatement
     : (DESC | DESCRIBE) ROW ACCESS POLICY policyName=qualifiedName
+    ;
+
+showPolicyReferences
+    : SHOW POLICY APPLY
     ;
 
 // ---------------------------------------- Backup Restore Statement ---------------------------------------------------
@@ -2332,7 +2340,7 @@ nonReserved
     | JOB
     | LABEL | LAST | LESS | LEVEL | LIST | LOCAL | LOCATION | LOGICAL | LOW_PRIORITY | LOCK
     | MASKING | MANUAL | MAP | MATERIALIZED | MAX | META | MIN | MINUTE | MODE | MODIFY | MONTH | MERGE | MINUS
-    | NAME | NAMES | NEGATIVE | NO | NODE | NODES | NONE | NULLS
+    | NAME | NAMES | NEGATIVE | NO | NODE | NODES | NONE | NULLS | NUMBER | NUMERIC
     | OBSERVER | OF | OFFSET | ONLY | OPTIMIZER | OPEN | OPERATE | OPTION | OVERWRITE
     | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | POLICY | POLICIES | PRECEDING | PROC
     | PROCESSLIST | PRIVILEGES | PROPERTIES | PROPERTY

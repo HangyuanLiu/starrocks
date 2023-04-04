@@ -11,43 +11,30 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 package com.starrocks.sql.ast;
 
-import com.google.gson.annotations.SerializedName;
 import com.starrocks.analysis.ParseNode;
 import com.starrocks.sql.parser.NodePosition;
 
 import java.util.List;
 
-public class MaskingPolicyContext implements ParseNode {
-    @SerializedName(value = "policyId")
-    Long policyId;
+public class WithRowAccessPolicy implements ParseNode {
+    private final PolicyName policyName;
+    private final List<String> onColumns;
+    private final NodePosition pos;
 
-    @SerializedName(value = "usingColumns")
-    List<String> usingColumns;
-
-    PolicyName policyName;
-    NodePosition pos;
-
-    public MaskingPolicyContext(PolicyName policyName, List<String> usingColumns, NodePosition pos) {
+    public WithRowAccessPolicy(PolicyName policyName, List<String> onColumns, NodePosition pos) {
         this.policyName = policyName;
-        this.usingColumns = usingColumns;
+        this.onColumns = onColumns;
         this.pos = pos;
     }
 
-    public MaskingPolicyContext(Long policyId, List<String> usingColumns, NodePosition pos) {
-        this.policyId = policyId;
-        this.usingColumns = usingColumns;
-        this.pos = pos;
+    public PolicyName getPolicyName() {
+        return policyName;
     }
 
-    public Long getPolicyId() {
-        return policyId;
-    }
-
-    public List<String> getUsingColumns() {
-        return usingColumns;
+    public List<String> getOnColumns() {
+        return onColumns;
     }
 
     @Override

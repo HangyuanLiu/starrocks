@@ -35,10 +35,14 @@
 package com.starrocks.catalog;
 
 import com.starrocks.common.SystemId;
+import com.starrocks.sql.ast.WithColumnMaskingPolicy;
+import com.starrocks.sql.ast.WithRowAccessPolicy;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 
 // Information schema used for MySQL compatible.
 public class InfoSchemaDb extends Database {
@@ -50,7 +54,10 @@ public class InfoSchemaDb extends Database {
     }
 
     @Override
-    public boolean createTableWithLock(Table table, boolean isReplay) {
+    public boolean createTableWithLock(Table table,
+                                       Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap,
+                                       List<WithRowAccessPolicy> withRowAccessPolicyList,
+                                       boolean isReplay) {
         return false;
     }
 

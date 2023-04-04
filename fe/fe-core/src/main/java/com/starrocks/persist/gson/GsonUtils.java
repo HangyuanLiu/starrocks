@@ -99,6 +99,7 @@ import com.starrocks.lake.LakeTablet;
 import com.starrocks.lake.backup.LakeTableSnapshotInfo;
 import com.starrocks.load.loadv2.LoadJob.LoadJobStateUpdateInfo;
 import com.starrocks.load.loadv2.SparkLoadJob.SparkLoadJobStateUpdateInfo;
+import com.starrocks.persist.AlterPolicyInfo;
 import com.starrocks.persist.ListPartitionPersistInfo;
 import com.starrocks.persist.PartitionPersistInfoV2;
 import com.starrocks.persist.RangePartitionPersistInfo;
@@ -109,6 +110,7 @@ import com.starrocks.privilege.FunctionPEntryObject;
 import com.starrocks.privilege.GlobalFunctionPEntryObject;
 import com.starrocks.privilege.MaterializedViewPEntryObject;
 import com.starrocks.privilege.PEntryObject;
+import com.starrocks.privilege.PolicyPEntryObject;
 import com.starrocks.privilege.ResourceGroupPEntryObject;
 import com.starrocks.privilege.ResourcePEntryObject;
 import com.starrocks.privilege.TablePEntryObject;
@@ -245,14 +247,21 @@ public class GsonUtils {
                     .registerSubtype(UserPEntryObject.class, UserPEntryObject.class.getSimpleName())
                     .registerSubtype(ResourcePEntryObject.class, ResourcePEntryObject.class.getSimpleName())
                     .registerSubtype(ViewPEntryObject.class, ViewPEntryObject.class.getSimpleName())
-                    .registerSubtype(MaterializedViewPEntryObject.class,
-                            MaterializedViewPEntryObject.class.getSimpleName())
-                    .registerSubtype(GlobalFunctionPEntryObject.class,
-                            GlobalFunctionPEntryObject.class.getSimpleName())
+                    .registerSubtype(MaterializedViewPEntryObject.class, MaterializedViewPEntryObject.class.getSimpleName())
+                    .registerSubtype(GlobalFunctionPEntryObject.class, GlobalFunctionPEntryObject.class.getSimpleName())
                     .registerSubtype(FunctionPEntryObject.class, FunctionPEntryObject.class.getSimpleName())
                     .registerSubtype(CatalogPEntryObject.class, CatalogPEntryObject.class.getSimpleName())
-                    .registerSubtype(ResourceGroupPEntryObject.class,
-                            ResourceGroupPEntryObject.class.getSimpleName());
+                    .registerSubtype(ResourceGroupPEntryObject.class, ResourceGroupPEntryObject.class.getSimpleName())
+                    .registerSubtype(PolicyPEntryObject.class, PolicyPEntryObject.class.getSimpleName());
+
+    private static final RuntimeTypeAdapterFactory<AlterPolicyInfo.AlterPolicyClauseInfo> ALTER_POLICY_ADAPTER_FACTORY =
+            RuntimeTypeAdapterFactory.of(AlterPolicyInfo.AlterPolicyClauseInfo.class, "clazz")
+                    .registerSubtype(AlterPolicyInfo.PolicySetBodyInfo.class,
+                            AlterPolicyInfo.PolicySetBodyInfo.class.getSimpleName())
+                    .registerSubtype(AlterPolicyInfo.PolicySetCommentInfo.class,
+                            AlterPolicyInfo.PolicySetCommentInfo.class.getSimpleName())
+                    .registerSubtype(AlterPolicyInfo.PolicyRenameInfo.class,
+                            AlterPolicyInfo.PolicyRenameInfo.class.getSimpleName());
 
     private static final JsonSerializer<LocalDateTime> LOCAL_DATE_TIME_TYPE_SERIALIZER =
             (dateTime, type, jsonSerializationContext) -> new JsonPrimitive(dateTime.toEpochSecond(ZoneOffset.UTC));
@@ -309,6 +318,7 @@ public class GsonUtils {
             .registerTypeAdapterFactory(TABLE_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(SNAPSHOT_INFO_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(P_ENTRY_OBJECT_RUNTIME_TYPE_ADAPTER_FACTORY)
+            .registerTypeAdapterFactory(ALTER_POLICY_ADAPTER_FACTORY)
             .registerTypeAdapter(LocalDateTime.class, LOCAL_DATE_TIME_TYPE_SERIALIZER)
             .registerTypeAdapter(LocalDateTime.class, LOCAL_DATE_TIME_TYPE_DESERIALIZER)
             .registerTypeAdapter(QueryDumpInfo.class, DUMP_INFO_SERIALIZER)

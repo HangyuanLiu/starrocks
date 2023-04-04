@@ -22,27 +22,15 @@ public class AlterPolicyStmt extends DdlStmt {
     private final PolicyType policyType;
     private final boolean ifExists;
     private final PolicyName policyName;
-    private final PolicyRenameObject policyRenameObject;
-    private final PolicySetBody policySetBodyObject;
+    private final AlterPolicyClause alterPolicyClause;
 
-    public AlterPolicyStmt(PolicyType policyType, PolicyName policyName, boolean ifExists, PolicyRenameObject policyRenameObject,
+    public AlterPolicyStmt(PolicyType policyType, PolicyName policyName, boolean ifExists, AlterPolicyClause alterPolicyClause,
                            NodePosition pos) {
         super(pos);
         this.policyType = policyType;
         this.policyName = policyName;
         this.ifExists = ifExists;
-        this.policyRenameObject = policyRenameObject;
-        this.policySetBodyObject = null;
-    }
-
-    public AlterPolicyStmt(PolicyType policyType, PolicyName policyName, boolean ifExists, PolicySetBody policySetBodyObject,
-                           NodePosition pos) {
-        super(pos);
-        this.policyType = policyType;
-        this.policyName = policyName;
-        this.ifExists = ifExists;
-        this.policySetBodyObject = policySetBodyObject;
-        this.policyRenameObject = null;
+        this.alterPolicyClause = alterPolicyClause;
     }
 
     public PolicyType getPolicyType() {
@@ -57,15 +45,14 @@ public class AlterPolicyStmt extends DdlStmt {
         return policyName;
     }
 
-    public PolicyRenameObject getPolicyRenameObject() {
-        return policyRenameObject;
+    public AlterPolicyClause getAlterPolicyClause() {
+        return alterPolicyClause;
     }
 
-    public PolicySetBody getPolicySetBodyObject() {
-        return policySetBodyObject;
+    public abstract static class AlterPolicyClause {
     }
 
-    public static class PolicySetBody {
+    public static class PolicySetBody extends AlterPolicyClause {
         private final Expr policyBody;
 
         public PolicySetBody(Expr policyBody) {
@@ -77,15 +64,27 @@ public class AlterPolicyStmt extends DdlStmt {
         }
     }
 
-    public static class PolicyRenameObject {
+    public static class PolicyRename extends AlterPolicyClause {
         private final String newPolicyName;
 
-        public PolicyRenameObject(String newPolicyName) {
+        public PolicyRename(String newPolicyName) {
             this.newPolicyName = newPolicyName;
         }
 
         public String getNewPolicyName() {
             return newPolicyName;
+        }
+    }
+
+    public static class PolicySetComment extends AlterPolicyClause {
+        private final String comment;
+
+        public PolicySetComment(String comment) {
+            this.comment = comment;
+        }
+
+        public String getComment() {
+            return comment;
         }
     }
 

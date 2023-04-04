@@ -38,6 +38,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.starrocks.analysis.TableName;
 import com.starrocks.catalog.Table.TableType;
 import com.starrocks.cluster.ClusterNamespace;
 import com.starrocks.common.Config;
@@ -57,6 +58,8 @@ import com.starrocks.persist.CreateTableInfo;
 import com.starrocks.persist.DropInfo;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.WithColumnMaskingPolicy;
+import com.starrocks.sql.ast.WithRowAccessPolicy;
 import com.starrocks.system.SystemInfoService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -437,7 +440,10 @@ public class Database extends MetaObject implements Writable {
     }
 
     // return false if table already exists
-    public boolean createTableWithLock(Table table, boolean isReplay) {
+    public boolean createTableWithLock(Table table,
+                                       Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap,
+                                       List<WithRowAccessPolicy> withRowAccessPolicyList,
+                                       boolean isReplay) throws DdlException {
         writeLock();
         try {
             String tableName = table.getName();
@@ -447,9 +453,28 @@ public class Database extends MetaObject implements Writable {
                 idToTable.put(table.getId(), table);
                 nameToTable.put(table.getName(), table);
 
+                if (maskingPolicyContextMap != null) {
+                    for (Map.Entry<String, WithColumnMaskingPolicy> maskingPolicyContextEntry :
+                            maskingPolicyContextMap.entrySet()) {
+                        GlobalStateMgr.getCurrentState().getSecurityPolicyManager().applyMaskingPolicyContext(
+                                new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, fullQualifiedName, table.getName()),
+                                maskingPolicyContextEntry.getKey(), maskingPolicyContextEntry.getValue());
+                    }
+                }
+
+                if (withRowAccessPolicyList != null) {
+                    for (WithRowAccessPolicy withRowAccessPolicy : withRowAccessPolicyList) {
+                        GlobalStateMgr.getCurrentState().getSecurityPolicyManager().applyRowAccessPolicyContext(
+                                new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, fullQualifiedName, table.getName()),
+                                withRowAccessPolicy);
+                    }
+                }
+
                 table.onCreate();
                 if (!isReplay) {
                     // Write edit log
+                    //CreateTableInfoV2 info = new CreateTableInfoV2(fullQualifiedName, table,
+                    //        maskingPolicyContextMap, rowAccessPolicyContextList);
                     CreateTableInfo info = new CreateTableInfo(fullQualifiedName, table);
                     GlobalStateMgr.getCurrentState().getEditLog().logCreateTable(info);
                 }

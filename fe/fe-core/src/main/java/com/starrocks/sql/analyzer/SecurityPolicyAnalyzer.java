@@ -13,6 +13,7 @@
 // limitations under the License.
 package com.starrocks.sql.analyzer;
 
+import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.NullLiteral;
@@ -25,11 +26,14 @@ import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
 import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
+import com.starrocks.sql.ast.DescribePolicyStmt;
 import com.starrocks.sql.ast.DropPolicyStmt;
+import com.starrocks.sql.ast.PolicyName;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectList;
 import com.starrocks.sql.ast.SelectListItem;
 import com.starrocks.sql.ast.SelectRelation;
+import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.ValuesRelation;
 
@@ -48,11 +52,32 @@ public class SecurityPolicyAnalyzer {
             visit(statement, session);
         }
 
+        public static void normalizationTableName(ConnectContext connectContext, PolicyName policyName) {
+            if (Strings.isNullOrEmpty(policyName.getCatalog())) {
+                if (Strings.isNullOrEmpty(connectContext.getCurrentCatalog())) {
+                    throw new SemanticException("No catalog selected");
+                }
+                policyName.setCatalog(connectContext.getCurrentCatalog());
+            }
+            if (Strings.isNullOrEmpty(policyName.getDbName())) {
+                if (Strings.isNullOrEmpty(connectContext.getDatabase())) {
+                    throw new SemanticException("No database selected");
+                }
+                policyName.setDbName(connectContext.getDatabase());
+            }
+
+            if (Strings.isNullOrEmpty(policyName.getName())) {
+                throw new SemanticException("Table name is null");
+            }
+        }
+
         @Override
         public Void visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt statement, ConnectContext session) {
             //create masking policy policy_1 as (var int) returns int -> var + 1
             //select var + 1 from values(cast(null as int)) as (var)
 
+            PolicyName policyName = statement.getPolicyName();
+            normalizationTableName(session, policyName);
 
             SelectList selectList = new SelectList(Lists.newArrayList(
                     new SelectListItem(statement.getExpression(), null)), false);
@@ -78,22 +103,70 @@ public class SecurityPolicyAnalyzer {
 
         @Override
         public Void visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt statement, ConnectContext session) {
+            PolicyName policyName = statement.getPolicyName();
+            normalizationTableName(session, policyName);
+
+            SelectList selectList = new SelectList(Lists.newArrayList(
+                    new SelectListItem(null)), false);
+
+            List<Expr> row = Lists.newArrayList();
+            for (TypeDef typeDef : statement.getArgTypeDefs()) {
+                row.add(NullLiteral.create(typeDef.getType()));
+                //row.add(new CastExpr(typeDef, new NullLiteral()));
+            }
+            List<List<Expr>> rows = Collections.singletonList(row);
+            ValuesRelation valuesRelation = new ValuesRelation(rows, statement.getArgNames());
+
+            Expr predicate = statement.getExpression();
+
+            SelectRelation selectRelation = new SelectRelation(selectList, valuesRelation, predicate, null, null);
+            QueryStatement queryStatement = new QueryStatement(selectRelation);
+            Analyzer.analyze(queryStatement, session);
+
             return null;
         }
 
         @Override
         public Void visitAlterPolicyStatement(AlterPolicyStmt stmt, ConnectContext session) {
+            PolicyName policyName = stmt.getPolicyName();
+            normalizationTableName(session, policyName);
             return null;
         }
 
         @Override
         public Void visitDropPolicyStatement(DropPolicyStmt stmt, ConnectContext session) {
-            Policy policy = securityPolicyManager.getPolicyByName(stmt.getPolicyName());
+            PolicyName policyName = stmt.getPolicyName();
+            normalizationTableName(session, policyName);
+
+            Policy policy = securityPolicyManager.getPolicyByName(policyName);
             if (policy != null) {
                 stmt.setPolicyId(policy.getPolicyId());
             } else if (!stmt.isIfExists()) {
                 throw new SemanticException("");
             }
+            return null;
+        }
+
+        public Void visitShowPolicyStatement(ShowPolicyStmt statement, ConnectContext context) {
+            if (Strings.isNullOrEmpty(statement.getCatalog())) {
+                if (Strings.isNullOrEmpty(context.getCurrentCatalog())) {
+                    throw new SemanticException("No catalog selected");
+                }
+                statement.setCatalog(context.getCurrentCatalog());
+            }
+            if (Strings.isNullOrEmpty(statement.getDbName())) {
+                if (Strings.isNullOrEmpty(context.getDatabase())) {
+                    throw new SemanticException("No database selected");
+                }
+                statement.setDbName(context.getDatabase());
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitDescribePolicyStatement(DescribePolicyStmt stmt, ConnectContext session) {
+            PolicyName policyName = stmt.getPolicyName();
+            normalizationTableName(session, policyName);
             return null;
         }
     }

@@ -51,11 +51,11 @@ import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.persist.gson.GsonUtils;
-import com.starrocks.privilege.SecurityPolicyManager;
+import com.starrocks.privilege.ColumnMaskingPolicyContext;
+import com.starrocks.privilege.PolicyContext;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.ColumnDef;
-import com.starrocks.sql.ast.MaskingPolicyContext;
 import com.starrocks.thrift.TColumn;
 
 import java.io.DataInput;
@@ -450,7 +450,7 @@ public class Column implements Writable {
         }
     }
 
-    public String toSql(SecurityPolicyManager.PolicyContext policyContext) {
+    public String toSql(PolicyContext policyContext) {
         StringBuilder sb = new StringBuilder();
         sb.append("`").append(name).append("` ");
         String typeStr = type.toSql();
@@ -479,16 +479,16 @@ public class Column implements Writable {
 
 
         if (policyContext != null) {
-            Map<String, MaskingPolicyContext> maskingPolicyApply = policyContext.getMaskingPolicyApply();
+            Map<String, ColumnMaskingPolicyContext> maskingPolicyApply = policyContext.getMaskingPolicyApply();
             if (maskingPolicyApply.containsKey(name)) {
-                MaskingPolicyContext maskingPolicyContext = maskingPolicyApply.get(name);
+                ColumnMaskingPolicyContext withColumnMaskingPolicy = maskingPolicyApply.get(name);
                 sb.append(" WITH MASKING POLICY ");
                 sb.append(GlobalStateMgr.getCurrentState().getSecurityPolicyManager()
-                        .getPolicyById(maskingPolicyContext.getPolicyId()));
+                        .getPolicyById(withColumnMaskingPolicy.getPolicyId()));
 
-                if (!maskingPolicyContext.getUsingColumns().isEmpty()) {
+                if (!withColumnMaskingPolicy.getUsingColumns().isEmpty()) {
                     sb.append(" USING (");
-                    sb.append(Joiner.on(", ").join(maskingPolicyContext.getUsingColumns()));
+                    sb.append(Joiner.on(", ").join(withColumnMaskingPolicy.getUsingColumns()));
                     sb.append(")");
                 }
             }

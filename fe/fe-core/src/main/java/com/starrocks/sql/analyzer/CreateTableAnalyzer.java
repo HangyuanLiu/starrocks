@@ -41,6 +41,7 @@ import com.starrocks.sql.ast.DistributionDesc;
 import com.starrocks.sql.ast.ExpressionPartitionDesc;
 import com.starrocks.sql.ast.HashDistributionDesc;
 import com.starrocks.sql.ast.PartitionDesc;
+import com.starrocks.sql.ast.WithColumnMaskingPolicy;
 import com.starrocks.sql.common.EngineType;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.parser.NodePosition;
@@ -48,6 +49,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -328,6 +330,7 @@ public class CreateTableAnalyzer {
         }
         List<Column> columns = statement.getColumns();
         List<Index> indexes = statement.getIndexes();
+        Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap = new HashMap<>();
         for (ColumnDef columnDef : columnDefs) {
             Column col = columnDef.toColumn();
             if (keysDesc != null && (keysDesc.getKeysType() == KeysType.UNIQUE_KEYS
@@ -339,6 +342,20 @@ public class CreateTableAnalyzer {
             }
             columns.add(col);
         }
+
+        for (ColumnDef columnDef : columnDefs) {
+            if (columnDef.getMaskingPolicyContext() != null) {
+                WithColumnMaskingPolicy withColumnMaskingPolicy = columnDef.getMaskingPolicyContext();
+                for (String usingColumn : withColumnMaskingPolicy.getUsingColumns()) {
+                    if (!columnSet.contains(usingColumn)) {
+                        throw new SemanticException("");
+                    }
+                }
+                maskingPolicyContextMap.put(columnDef.getName(), withColumnMaskingPolicy);
+            }
+        }
+        statement.setMaskingPolicyContextMap(maskingPolicyContextMap);
+
         List<IndexDef> indexDefs = statement.getIndexDefs();
         if (CollectionUtils.isNotEmpty(indexDefs)) {
             Set<String> distinct = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -376,5 +393,6 @@ public class CreateTableAnalyzer {
                         indexDefs.get(0).getPos());
             }
         }
+
     }
 }

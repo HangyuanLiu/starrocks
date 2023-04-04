@@ -17,34 +17,15 @@ import com.starrocks.alter.AlterOpType;
 import com.starrocks.sql.parser.NodePosition;
 
 public class ApplyRowAccessPolicyClause extends AlterTableClause {
-    private final PolicyName policyName;
-    private final RowAccessPolicyContext rowAccessPolicyContext;
+    private final WithRowAccessPolicy withRowAccessPolicy;
 
-    public ApplyRowAccessPolicyClause(PolicyName policyName, RowAccessPolicyContext rowAccessPolicyContext,
-                                      NodePosition nodePosition) {
+    public ApplyRowAccessPolicyClause(WithRowAccessPolicy withRowAccessPolicy, NodePosition nodePosition) {
         super(AlterOpType.APPLY_ROW_ACCESS_POLICY, nodePosition);
-        this.policyName = policyName;
-        this.rowAccessPolicyContext = rowAccessPolicyContext;
+        this.withRowAccessPolicy = withRowAccessPolicy;
     }
 
-    public ApplyRowAccessPolicyClause(PolicyName policyName, NodePosition pos) {
-        super(AlterOpType.REVOKE_ROW_ACCESS_POLICY, pos);
-        this.policyName = policyName;
-        this.rowAccessPolicyContext = null;
-    }
-
-    public ApplyRowAccessPolicyClause(NodePosition pos) {
-        super(AlterOpType.REVOKE_ALL_ROW_ACCESS_POLICY, pos);
-        this.policyName = null;
-        this.rowAccessPolicyContext = null;
-    }
-
-    public PolicyName getPolicyName() {
-        return policyName;
-    }
-
-    public RowAccessPolicyContext getRowAccessPolicyContext() {
-        return rowAccessPolicyContext;
+    public WithRowAccessPolicy getRowAccessPolicyContext() {
+        return withRowAccessPolicy;
     }
 
     @Override

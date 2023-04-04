@@ -176,7 +176,6 @@ import com.starrocks.sql.ast.DistributionDesc;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
 import com.starrocks.sql.ast.DropPartitionClause;
 import com.starrocks.sql.ast.DropTableStmt;
-import com.starrocks.sql.ast.MaskingPolicyContext;
 import com.starrocks.sql.ast.MultiItemListPartitionDesc;
 import com.starrocks.sql.ast.MultiRangePartitionDesc;
 import com.starrocks.sql.ast.PartitionConvertContext;
@@ -191,7 +190,6 @@ import com.starrocks.sql.ast.RefreshMaterializedViewStatement;
 import com.starrocks.sql.ast.RefreshSchemeDesc;
 import com.starrocks.sql.ast.ReplacePartitionClause;
 import com.starrocks.sql.ast.RollupRenameClause;
-import com.starrocks.sql.ast.RowAccessPolicyContext;
 import com.starrocks.sql.ast.SelectRelation;
 import com.starrocks.sql.ast.SetListItem;
 import com.starrocks.sql.ast.SetStmt;
@@ -201,6 +199,8 @@ import com.starrocks.sql.ast.SingleRangePartitionDesc;
 import com.starrocks.sql.ast.SystemVariable;
 import com.starrocks.sql.ast.TableRenameClause;
 import com.starrocks.sql.ast.TruncateTableStmt;
+import com.starrocks.sql.ast.WithColumnMaskingPolicy;
+import com.starrocks.sql.ast.WithRowAccessPolicy;
 import com.starrocks.sql.common.SyncPartitionUtils;
 import com.starrocks.sql.optimizer.Utils;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
@@ -797,6 +797,21 @@ public class LocalMetastore implements ConnectorMetadata {
             ErrorReport.reportDdlException(ErrorCode.ERR_UNKNOWN_STORAGE_ENGINE, engineName);
         }
         Table table = tableFactory.createTable(this, db, stmt);
+
+        Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap = stmt.getMaskingPolicyContextMap();
+        SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getServingState().getSecurityPolicyManager();
+        for (Map.Entry<String, WithColumnMaskingPolicy> entry : maskingPolicyContextMap.entrySet()) {
+            securityPolicyManager.applyMaskingPolicyContext(
+                    new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, db.getFullName(), table.getName()),
+                    entry.getKey(), entry.getValue());
+        }
+
+        for (WithRowAccessPolicy withRowAccessPolicy : stmt.getRowAccessPolicyContexts()) {
+            securityPolicyManager.applyRowAccessPolicyContext(
+                    new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, db.getFullName(), table.getName()),
+                    withRowAccessPolicy);
+        }
+
         if (!(table instanceof OlapTable)) { // Special case: OlapTable has been added into the metastore before return.
             registerTable(db, table, stmt);
         }
@@ -1977,7 +1992,7 @@ public class LocalMetastore implements ConnectorMetadata {
             if (getDb(db.getFullName()) == null) {
                 throw new DdlException("Database has been dropped when creating table");
             }
-            if (!db.createTableWithLock(table, false)) {
+            if (!db.createTableWithLock(table, stmt.getMaskingPolicyContextMap(), stmt.getRowAccessPolicyContexts(), false)) {
                 if (!stmt.isSetIfNotExists()) {
                     ErrorReport.reportDdlException(ErrorCode.ERR_CANT_CREATE_TABLE, table.getName(),
                             "table already exists");
@@ -1990,9 +2005,11 @@ public class LocalMetastore implements ConnectorMetadata {
         }
     }
 
-    public void replayCreateTable(String dbName, Table table) {
+    public void replayCreateTable(String dbName, Table table,
+                                  Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap,
+                                  List<WithRowAccessPolicy> withRowAccessPolicyList) throws DdlException {
         Database db = this.fullNameToDb.get(dbName);
-        db.createTableWithLock(table, true);
+        db.createTableWithLock(table, maskingPolicyContextMap, withRowAccessPolicyList, true);
 
         if (!isCheckpointThread()) {
             // add to inverted index
@@ -3734,20 +3751,24 @@ public class LocalMetastore implements ConnectorMetadata {
             }
 
             SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getCurrentState().getSecurityPolicyManager();
-            List<RowAccessPolicyContext> rowAccessPolicyContexts = stmt.getRowAccessPolicy();
-            for (RowAccessPolicyContext rowAccessPolicyContext : rowAccessPolicyContexts) {
-                securityPolicyManager.applyRowAccessPolicyContext(
-                        new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName, tableName), rowAccessPolicyContext);
+            List<WithRowAccessPolicy> withRowAccessPolicies = stmt.getRowAccessPolicy();
+            if (withRowAccessPolicies != null) {
+                for (WithRowAccessPolicy withRowAccessPolicy : withRowAccessPolicies) {
+                    securityPolicyManager.applyRowAccessPolicyContext(
+                            new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName, tableName), withRowAccessPolicy);
+                }
             }
 
-            Map<String, MaskingPolicyContext> maskingPolicyContext = stmt.getMaskingPolicy();
-            for (Map.Entry<String, MaskingPolicyContext> maskingPolicyContextEntry : maskingPolicyContext.entrySet()) {
-                securityPolicyManager.applyMaskingPolicyContext(
-                        new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName, tableName),
-                        maskingPolicyContextEntry.getKey(), maskingPolicyContextEntry.getValue());
+            Map<String, WithColumnMaskingPolicy> maskingPolicyContext = stmt.getMaskingPolicy();
+            if (maskingPolicyContext != null) {
+                for (Map.Entry<String, WithColumnMaskingPolicy> maskingPolicyContextEntry : maskingPolicyContext.entrySet()) {
+                    securityPolicyManager.applyMaskingPolicyContext(
+                            new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName, tableName),
+                            maskingPolicyContextEntry.getKey(), maskingPolicyContextEntry.getValue());
+                }
             }
 
-            if (!db.createTableWithLock(newView, false)) {
+            if (!db.createTableWithLock(newView, stmt.getMaskingPolicy(), stmt.getRowAccessPolicy(), false)) {
                 if (!stmt.isSetIfNotExists()) {
                     ErrorReport.reportDdlException(ErrorCode.ERR_CANT_CREATE_TABLE, tableName, "table already exists");
                 } else {

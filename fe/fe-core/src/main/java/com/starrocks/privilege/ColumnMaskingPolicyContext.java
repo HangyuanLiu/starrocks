@@ -14,13 +14,27 @@
 
 package com.starrocks.privilege;
 
-import com.starrocks.catalog.Type;
+import com.google.gson.annotations.SerializedName;
 
 import java.util.List;
 
-public class MaskingPolicy extends Policy {
-    public MaskingPolicy(Long policyId, List<String> argNames, List<Type> argTypes, Type retType,
-                         String policyExpressionSQL) {
-        super(policyId, argNames, argTypes, retType, policyExpressionSQL);
+public class ColumnMaskingPolicyContext {
+    @SerializedName(value = "policyId")
+    Long policyId;
+
+    @SerializedName(value = "usingColumns")
+    List<String> usingColumns;
+
+    public ColumnMaskingPolicyContext(Long policyId, List<String> usingColumns) {
+        this.policyId = policyId;
+        this.usingColumns = usingColumns;
+    }
+
+    public Long getPolicyId() {
+        return policyId;
+    }
+
+    public List<String> getUsingColumns() {
+        return usingColumns;
     }
 }

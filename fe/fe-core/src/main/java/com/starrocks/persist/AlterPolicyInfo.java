@@ -17,42 +17,38 @@ import com.google.gson.annotations.SerializedName;
 import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
 import com.starrocks.persist.gson.GsonUtils;
-import com.starrocks.sql.ast.PolicyName;
+import com.starrocks.privilege.DbPEntryObject;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
 public class AlterPolicyInfo implements Writable {
-    @SerializedName(value = "policyName")
-    private final PolicyName policyName;
+    @SerializedName(value = "name")
+    private String policyName;
 
-    @SerializedName(value = "policyRenameObject")
-    private PolicyRenameObject policyRenameObject;
+    @SerializedName(value = "db")
+    private DbPEntryObject dbPEntryObject;
 
-    @SerializedName(value = "policySetBodyObject")
-    private PolicySetBodyObject policySetBodyObject;
+    @SerializedName(value = "alterPolicyClauseInfo")
+    private AlterPolicyClauseInfo alterPolicyClauseInfo;
 
-    public AlterPolicyInfo(PolicyName policyName, PolicyRenameObject policyRenameObject) {
+    public AlterPolicyInfo(String policyName, DbPEntryObject dbPEntryObject, AlterPolicyClauseInfo alterPolicyClauseInfo) {
         this.policyName = policyName;
-        this.policyRenameObject = policyRenameObject;
+        this.dbPEntryObject = dbPEntryObject;
+        this.alterPolicyClauseInfo = alterPolicyClauseInfo;
     }
 
-    public AlterPolicyInfo(PolicyName policyName, PolicySetBodyObject policySetBodyObject) {
-        this.policyName = policyName;
-        this.policySetBodyObject = policySetBodyObject;
-    }
-
-    public PolicyName getPolicyName() {
+    public String getPolicyName() {
         return policyName;
     }
 
-    public PolicyRenameObject getPolicyRenameObject() {
-        return policyRenameObject;
+    public DbPEntryObject getDbPEntryObject() {
+        return dbPEntryObject;
     }
 
-    public PolicySetBodyObject getPolicySetBodyObject() {
-        return policySetBodyObject;
+    public AlterPolicyClauseInfo getAlterPolicyClauseInfo() {
+        return alterPolicyClauseInfo;
     }
 
     @Override
@@ -60,16 +56,19 @@ public class AlterPolicyInfo implements Writable {
         Text.writeString(out, GsonUtils.GSON.toJson(this));
     }
 
-    public static RolePrivilegeCollectionInfo read(DataInput in) throws IOException {
+    public static AlterPolicyInfo read(DataInput in) throws IOException {
         String json = Text.readString(in);
-        return GsonUtils.GSON.fromJson(json, RolePrivilegeCollectionInfo.class);
+        return GsonUtils.GSON.fromJson(json, AlterPolicyInfo.class);
     }
 
-    public static class PolicyRenameObject {
+    public abstract static class AlterPolicyClauseInfo {
+    }
+
+    public static class PolicyRenameInfo extends AlterPolicyClauseInfo {
         @SerializedName(value = "newPolicyName")
         private final String newPolicyName;
 
-        public PolicyRenameObject(String newPolicyName) {
+        public PolicyRenameInfo(String newPolicyName) {
             this.newPolicyName = newPolicyName;
         }
 
@@ -78,16 +77,29 @@ public class AlterPolicyInfo implements Writable {
         }
     }
 
-    public static class PolicySetBodyObject {
+    public static class PolicySetBodyInfo extends AlterPolicyClauseInfo {
         @SerializedName(value = "policyBody")
         private final String policyBody;
 
-        public PolicySetBodyObject(String policyBody) {
+        public PolicySetBodyInfo(String policyBody) {
             this.policyBody = policyBody;
         }
 
         public String getPolicyBody() {
             return policyBody;
+        }
+    }
+
+    public static class PolicySetCommentInfo extends AlterPolicyClauseInfo {
+        @SerializedName(value = "comment")
+        private final String comment;
+
+        public PolicySetCommentInfo(String comment) {
+            this.comment = comment;
+        }
+
+        public String getComment() {
+            return comment;
         }
     }
 }

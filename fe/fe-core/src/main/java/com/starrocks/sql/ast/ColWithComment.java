@@ -21,14 +21,14 @@ import com.starrocks.sql.parser.NodePosition;
 public class ColWithComment implements ParseNode {
     private final String colName;
     private final String comment;
-    private final MaskingPolicyContext maskingPolicyContext;
+    private final WithColumnMaskingPolicy withColumnMaskingPolicy;
 
     private final NodePosition pos;
 
-    public ColWithComment(String colName, MaskingPolicyContext maskingPolicyContext, String comment, NodePosition pos) {
+    public ColWithComment(String colName, WithColumnMaskingPolicy withColumnMaskingPolicy, String comment, NodePosition pos) {
         this.pos = pos;
         this.colName = colName;
-        this.maskingPolicyContext = maskingPolicyContext;
+        this.withColumnMaskingPolicy = withColumnMaskingPolicy;
         this.comment = Strings.nullToEmpty(comment);
     }
 
@@ -40,8 +40,8 @@ public class ColWithComment implements ParseNode {
         return comment;
     }
 
-    public MaskingPolicyContext getMaskingPolicyContext() {
-        return maskingPolicyContext;
+    public WithColumnMaskingPolicy getMaskingPolicyContext() {
+        return withColumnMaskingPolicy;
     }
 
     @Override

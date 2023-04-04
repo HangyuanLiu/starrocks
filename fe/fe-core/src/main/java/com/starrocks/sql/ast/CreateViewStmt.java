@@ -26,8 +26,8 @@ public class CreateViewStmt extends BaseViewStmt {
     private final boolean ifNotExists;
     private final String comment;
 
-    private List<RowAccessPolicyContext> rowAccessPolicy;
-    private Map<String, MaskingPolicyContext> maskingPolicy;
+    private List<WithRowAccessPolicy> rowAccessPolicy;
+    private Map<String, WithColumnMaskingPolicy> maskingPolicy;
 
     public CreateViewStmt(boolean ifNotExists, TableName tableName, List<ColWithComment> cols,
                           String comment, QueryStatement queryStmt, NodePosition pos) {
@@ -44,19 +44,19 @@ public class CreateViewStmt extends BaseViewStmt {
         return comment;
     }
 
-    public Map<String, MaskingPolicyContext> getMaskingPolicy() {
+    public Map<String, WithColumnMaskingPolicy> getMaskingPolicy() {
         return maskingPolicy;
     }
 
-    public void setMaskingPolicy(Map<String, MaskingPolicyContext> maskingPolicy) {
+    public void setMaskingPolicy(Map<String, WithColumnMaskingPolicy> maskingPolicy) {
         this.maskingPolicy = maskingPolicy;
     }
 
-    public List<RowAccessPolicyContext> getRowAccessPolicy() {
+    public List<WithRowAccessPolicy> getRowAccessPolicy() {
         return rowAccessPolicy;
     }
 
-    public void setRowAccessPolicy(List<RowAccessPolicyContext> rowAccessPolicy) {
+    public void setRowAccessPolicy(List<WithRowAccessPolicy> rowAccessPolicy) {
         this.rowAccessPolicy = rowAccessPolicy;
     }
 

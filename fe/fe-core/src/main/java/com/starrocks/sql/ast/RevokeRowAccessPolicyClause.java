@@ -13,38 +13,28 @@
 // limitations under the License.
 package com.starrocks.sql.ast;
 
-import com.google.gson.annotations.SerializedName;
-import com.starrocks.analysis.ParseNode;
+import com.starrocks.alter.AlterOpType;
 import com.starrocks.sql.parser.NodePosition;
 
-import java.util.List;
+public class RevokeRowAccessPolicyClause extends AlterTableClause {
+    private final PolicyName policyName;
 
-public class RowAccessPolicyContext implements ParseNode {
-    @SerializedName(value = "policyId")
-    Long policyId;
-
-    @SerializedName(value = "onColumns")
-    List<String> onColumns;
-
-    PolicyName policyName;
-    NodePosition pos;
-
-    public RowAccessPolicyContext(PolicyName policyName, List<String> onColumns, NodePosition pos) {
+    public RevokeRowAccessPolicyClause(PolicyName policyName, NodePosition nodePosition) {
+        super(AlterOpType.REVOKE_ROW_ACCESS_POLICY, nodePosition);
         this.policyName = policyName;
-        this.onColumns = onColumns;
-        this.pos = pos;
     }
 
-    public Long getPolicyId() {
-        return policyId;
+    public RevokeRowAccessPolicyClause(NodePosition nodePosition) {
+        super(AlterOpType.REVOKE_ALL_ROW_ACCESS_POLICY, nodePosition);
+        this.policyName = null;
     }
 
-    public List<String> getOnColumns() {
-        return onColumns;
+    public PolicyName getPolicyName() {
+        return policyName;
     }
 
     @Override
-    public NodePosition getPos() {
-        return pos;
+    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+        return visitor.visitRevokeRowAccessPolicyClause(this, context);
     }
 }

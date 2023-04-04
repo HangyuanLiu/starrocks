@@ -23,10 +23,8 @@ import com.starrocks.catalog.Table;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AstVisitor;
-import com.starrocks.sql.ast.MaskingPolicyContext;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
-import com.starrocks.sql.ast.RowAccessPolicyContext;
 import com.starrocks.sql.ast.SelectList;
 import com.starrocks.sql.ast.SelectListItem;
 import com.starrocks.sql.ast.SelectRelation;
@@ -74,7 +72,7 @@ public class SecurityPolicyRewriteRule {
         Expr rewriteExpr = null;
 
         if (policyManager.hasTableAppliedPolicy(tablePEntryObject)) {
-            SecurityPolicyManager.PolicyContext tableAppliedPolicyInfo =
+            PolicyContext tableAppliedPolicyInfo =
                     policyManager.getTableAppliedPolicyInfo(tablePEntryObject);
 
             if (!tableAppliedPolicyInfo.getRowAccessPolicyApply().isEmpty()) {
@@ -92,10 +90,10 @@ public class SecurityPolicyRewriteRule {
 
                         RewriteAliasVisitor r = new RewriteAliasVisitor(onColumnsMap);
                         if (rewriteExpr == null) {
-                            rewriteExpr = r.visit(rowAccessPolicy.getPolicyExpression());
+                            rewriteExpr = r.visit(rowAccessPolicy.getPolicyExpression().clone());
                         } else {
-                            rewriteExpr = Expr.compoundAnd(Lists.newArrayList(r.visit(rowAccessPolicy.getPolicyExpression()),
-                                    rewriteExpr));
+                            rewriteExpr = Expr.compoundAnd(Lists.newArrayList(
+                                    r.visit(rowAccessPolicy.getPolicyExpression().clone()), rewriteExpr));
                         }
                     } else {
                         rewriteExpr = rowAccessPolicy.getPolicyExpression();
@@ -103,10 +101,9 @@ public class SecurityPolicyRewriteRule {
                 }
             }
 
-
-            Map<String, MaskingPolicyContext> maskingPolicyApply = tableAppliedPolicyInfo.getMaskingPolicyApply();
+            Map<String, ColumnMaskingPolicyContext> maskingPolicyApply = tableAppliedPolicyInfo.getMaskingPolicyApply();
             for (Column column : columns) {
-                MaskingPolicyContext maskingPolicyInfo = maskingPolicyApply.get(column.getName());
+                ColumnMaskingPolicyContext maskingPolicyInfo = maskingPolicyApply.get(column.getName());
                 if (maskingPolicyInfo != null) {
 
                     Policy maskingPolicy = policyManager.getPolicyById(maskingPolicyInfo.getPolicyId());
@@ -121,7 +118,7 @@ public class SecurityPolicyRewriteRule {
                         }
 
                         RewriteAliasVisitor r = new RewriteAliasVisitor(onColumnsMap);
-                        Expr project = r.visit(maskingPolicy.getPolicyExpression());
+                        Expr project = r.visit(maskingPolicy.getPolicyExpression().clone());
                         selectListItemList.add(new SelectListItem(project, column.getName(), NodePosition.ZERO));
                     }
                 } else {

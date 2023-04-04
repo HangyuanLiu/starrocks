@@ -205,8 +205,11 @@ import com.starrocks.persist.TruncateTableInfo;
 import com.starrocks.plugin.PluginInfo;
 import com.starrocks.plugin.PluginMgr;
 import com.starrocks.privilege.AuthorizationManager;
+import com.starrocks.privilege.ColumnMaskingPolicyContext;
+import com.starrocks.privilege.PolicyContext;
 import com.starrocks.privilege.PrivilegeActions;
 import com.starrocks.privilege.PrivilegeException;
+import com.starrocks.privilege.RowAccessPolicyContext;
 import com.starrocks.privilege.SecurityPolicyManager;
 import com.starrocks.privilege.TablePEntryObject;
 import com.starrocks.qe.AuditEventProcessor;
@@ -244,7 +247,6 @@ import com.starrocks.sql.ast.DropMaterializedViewStmt;
 import com.starrocks.sql.ast.DropPartitionClause;
 import com.starrocks.sql.ast.DropTableStmt;
 import com.starrocks.sql.ast.InstallPluginStmt;
-import com.starrocks.sql.ast.MaskingPolicyContext;
 import com.starrocks.sql.ast.ModifyFrontendAddressClause;
 import com.starrocks.sql.ast.PartitionRenameClause;
 import com.starrocks.sql.ast.RecoverDbStmt;
@@ -254,13 +256,14 @@ import com.starrocks.sql.ast.RefreshTableStmt;
 import com.starrocks.sql.ast.ReplacePartitionClause;
 import com.starrocks.sql.ast.RestoreStmt;
 import com.starrocks.sql.ast.RollupRenameClause;
-import com.starrocks.sql.ast.RowAccessPolicyContext;
 import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.SystemVariable;
 import com.starrocks.sql.ast.TableRenameClause;
 import com.starrocks.sql.ast.TruncateTableStmt;
 import com.starrocks.sql.ast.UninstallPluginStmt;
 import com.starrocks.sql.ast.UserIdentity;
+import com.starrocks.sql.ast.WithColumnMaskingPolicy;
+import com.starrocks.sql.ast.WithRowAccessPolicy;
 import com.starrocks.sql.optimizer.statistics.CachedStatisticStorage;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
 import com.starrocks.statistic.AnalyzeManager;
@@ -1398,6 +1401,8 @@ public class GlobalStateMgr {
             remoteChecksum = dis.readLong();
             checksum = localMetastore.loadAutoIncrementId(dis, checksum);
             remoteChecksum = dis.readLong();
+            this.securityPolicyManager = SecurityPolicyManager.load(dis);
+            remoteChecksum = dis.readLong();
             // ** NOTICE **: always add new code at the end
         } catch (EOFException exception) {
             LOG.warn("load image eof.", exception);
@@ -1540,7 +1545,6 @@ public class GlobalStateMgr {
             this.authenticationManager = AuthenticationManager.load(dis);
             this.authorizationManager = AuthorizationManager.load(dis, this, null);
             this.domainResolver = new DomainResolver(authenticationManager);
-            this.securityPolicyManager = SecurityPolicyManager.load(dis);
         }
     }
 
@@ -1726,6 +1730,7 @@ public class GlobalStateMgr {
             dos.writeLong(checksum);
             checksum = localMetastore.saveAutoIncrementId(dos, checksum);
             dos.writeLong(checksum);
+            securityPolicyManager.save(dos);
             // ** NOTICE **: always add new code at the end
         }
 
@@ -2183,7 +2188,7 @@ public class GlobalStateMgr {
                                   List<String> addPartitionStmt,
                                   List<String> createRollupStmt, boolean separatePartition, boolean hidePassword) {
 
-        SecurityPolicyManager.PolicyContext policyContext = null;
+        PolicyContext policyContext = null;
         SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getServingState().getSecurityPolicyManager();
         try {
             policyContext = GlobalStateMgr.getCurrentState().getSecurityPolicyManager()
@@ -2213,15 +2218,15 @@ public class GlobalStateMgr {
                 colSb.append(column.getName());
 
                 if (policyContext != null) {
-                    Map<String, MaskingPolicyContext> maskingPolicyApply = policyContext.getMaskingPolicyApply();
+                    Map<String, ColumnMaskingPolicyContext> maskingPolicyApply = policyContext.getMaskingPolicyApply();
                     if (maskingPolicyApply.containsKey(column.getName())) {
-                        MaskingPolicyContext maskingPolicyContext = maskingPolicyApply.get(column.getName());
+                        ColumnMaskingPolicyContext withColumnMaskingPolicy = maskingPolicyApply.get(column.getName());
                         colSb.append(" WITH MASKING POLICY ");
-                        colSb.append(securityPolicyManager.getPolicyById(maskingPolicyContext.getPolicyId()));
+                        colSb.append(securityPolicyManager.getPolicyById(withColumnMaskingPolicy.getPolicyId()));
 
-                        if (!maskingPolicyContext.getUsingColumns().isEmpty()) {
+                        if (!withColumnMaskingPolicy.getUsingColumns().isEmpty()) {
                             colSb.append(" USING (");
-                            colSb.append(Joiner.on(", ").join(maskingPolicyContext.getUsingColumns()));
+                            colSb.append(Joiner.on(", ").join(withColumnMaskingPolicy.getUsingColumns()));
                             colSb.append(")");
                         }
                     }
@@ -2236,14 +2241,14 @@ public class GlobalStateMgr {
             sb.append(")");
 
             if (policyContext != null) {
-                List<RowAccessPolicyContext> rowAccessPolicyContexts = policyContext.getRowAccessPolicyApply();
-                for (RowAccessPolicyContext rowAccessPolicyContext : rowAccessPolicyContexts) {
+                List<RowAccessPolicyContext> withRowAccessPolicies = policyContext.getRowAccessPolicyApply();
+                for (RowAccessPolicyContext withRowAccessPolicy : withRowAccessPolicies) {
                     sb.append(" WITH ROW ACCESS POLICY ");
-                    sb.append(securityPolicyManager.getPolicyById(rowAccessPolicyContext.getPolicyId()));
+                    sb.append(securityPolicyManager.getPolicyById(withRowAccessPolicy.getPolicyId()));
 
-                    if (!rowAccessPolicyContext.getOnColumns().isEmpty()) {
+                    if (!withRowAccessPolicy.getOnColumns().isEmpty()) {
                         sb.append(" ON (");
-                        sb.append(Joiner.on(", ").join(rowAccessPolicyContext.getOnColumns()));
+                        sb.append(Joiner.on(", ").join(withRowAccessPolicy.getOnColumns()));
                         sb.append(")");
                     }
                 }
@@ -2316,14 +2321,14 @@ public class GlobalStateMgr {
             sb.append(Joiner.on(", ").join(keysColumnNames)).append(")");
 
             if (policyContext != null) {
-                List<RowAccessPolicyContext> rowAccessPolicyContexts = policyContext.getRowAccessPolicyApply();
-                for (RowAccessPolicyContext rowAccessPolicyContext : rowAccessPolicyContexts) {
+                List<RowAccessPolicyContext> withRowAccessPolicies = policyContext.getRowAccessPolicyApply();
+                for (RowAccessPolicyContext withRowAccessPolicy : withRowAccessPolicies) {
                     sb.append(" WITH ROW ACCESS POLICY ");
-                    sb.append(securityPolicyManager.getPolicyById(rowAccessPolicyContext.getPolicyId()));
+                    sb.append(securityPolicyManager.getPolicyById(withRowAccessPolicy.getPolicyId()));
 
-                    if (!rowAccessPolicyContext.getOnColumns().isEmpty()) {
+                    if (!withRowAccessPolicy.getOnColumns().isEmpty()) {
                         sb.append(" ON (");
-                        sb.append(Joiner.on(", ").join(rowAccessPolicyContext.getOnColumns()));
+                        sb.append(Joiner.on(", ").join(withRowAccessPolicy.getOnColumns()));
                         sb.append(")");
                     }
                 }
@@ -2751,8 +2756,14 @@ public class GlobalStateMgr {
         }
     }
 
-    public void replayCreateTable(String dbName, Table table) {
-        localMetastore.replayCreateTable(dbName, table);
+    public void replayCreateTable(String dbName, Table table,
+                                  Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap,
+                                  List<WithRowAccessPolicy> withRowAccessPolicyList) throws DdlException {
+        localMetastore.replayCreateTable(dbName, table, maskingPolicyContextMap, withRowAccessPolicyList);
+    }
+
+    public void replayCreateTableV2(String dbName, Table table) {
+
     }
 
     public void replayCreateMaterializedView(String dbName, MaterializedView materializedView) {

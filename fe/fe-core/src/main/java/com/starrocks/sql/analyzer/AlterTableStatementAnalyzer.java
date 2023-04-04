@@ -39,6 +39,7 @@ import com.starrocks.sql.ast.AddColumnsClause;
 import com.starrocks.sql.ast.AddRollupClause;
 import com.starrocks.sql.ast.AlterClause;
 import com.starrocks.sql.ast.AlterTableStmt;
+import com.starrocks.sql.ast.ApplyMaskingPolicyClause;
 import com.starrocks.sql.ast.ApplyRowAccessPolicyClause;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.ColumnDef;
@@ -50,8 +51,11 @@ import com.starrocks.sql.ast.ModifyColumnClause;
 import com.starrocks.sql.ast.ModifyPartitionClause;
 import com.starrocks.sql.ast.ModifyTablePropertiesClause;
 import com.starrocks.sql.ast.PartitionRenameClause;
+import com.starrocks.sql.ast.PolicyName;
 import com.starrocks.sql.ast.ReorderColumnsClause;
 import com.starrocks.sql.ast.ReplacePartitionClause;
+import com.starrocks.sql.ast.RevokeMaskingPolicyClause;
+import com.starrocks.sql.ast.RevokeRowAccessPolicyClause;
 import com.starrocks.sql.ast.RollupRenameClause;
 import com.starrocks.sql.ast.TableRenameClause;
 import com.starrocks.sql.common.MetaUtils;
@@ -501,8 +505,46 @@ public class AlterTableStatementAnalyzer {
             return null;
         }
 
+        public static void normalizationTableName(ConnectContext connectContext, PolicyName policyName) {
+            if (Strings.isNullOrEmpty(policyName.getCatalog())) {
+                if (Strings.isNullOrEmpty(connectContext.getCurrentCatalog())) {
+                    throw new SemanticException("No catalog selected");
+                }
+                policyName.setCatalog(connectContext.getCurrentCatalog());
+            }
+            if (Strings.isNullOrEmpty(policyName.getDbName())) {
+                if (Strings.isNullOrEmpty(connectContext.getDatabase())) {
+                    throw new SemanticException("No database selected");
+                }
+                policyName.setDbName(connectContext.getDatabase());
+            }
+
+            if (Strings.isNullOrEmpty(policyName.getName())) {
+                throw new SemanticException("Table name is null");
+            }
+        }
+
+        @Override
+        public Void visitApplyMaskingPolicyClause(ApplyMaskingPolicyClause clause, ConnectContext context) {
+            PolicyName policyName = clause.getMaskingPolicyContext().getPolicyName();
+            normalizationTableName(context, policyName);
+            return null;
+        }
+
+        @Override
+        public Void visitRevokeMaskingPolicyClause(RevokeMaskingPolicyClause clause, ConnectContext context) {
+            return null;
+        }
+
         @Override
         public Void visitApplyRowAccessPolicyClause(ApplyRowAccessPolicyClause clause, ConnectContext context) {
+            PolicyName policyName = clause.getRowAccessPolicyContext().getPolicyName();
+            normalizationTableName(context, policyName);
+            return null;
+        }
+
+        @Override
+        public Void visitRevokeRowAccessPolicyClause(RevokeRowAccessPolicyClause clause, ConnectContext context) {
             return null;
         }
     }

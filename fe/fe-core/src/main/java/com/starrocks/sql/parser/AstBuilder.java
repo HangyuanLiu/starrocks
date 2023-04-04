@@ -233,7 +233,6 @@ import com.starrocks.sql.ast.ListPartitionDesc;
 import com.starrocks.sql.ast.LoadStmt;
 import com.starrocks.sql.ast.ManualRefreshSchemeDesc;
 import com.starrocks.sql.ast.MapExpr;
-import com.starrocks.sql.ast.MaskingPolicyContext;
 import com.starrocks.sql.ast.ModifyBackendAddressClause;
 import com.starrocks.sql.ast.ModifyBrokerClause;
 import com.starrocks.sql.ast.ModifyColumnClause;
@@ -271,10 +270,11 @@ import com.starrocks.sql.ast.ResourceDesc;
 import com.starrocks.sql.ast.RestoreStmt;
 import com.starrocks.sql.ast.ResumeRoutineLoadStmt;
 import com.starrocks.sql.ast.ResumeWarehouseStmt;
+import com.starrocks.sql.ast.RevokeMaskingPolicyClause;
 import com.starrocks.sql.ast.RevokePrivilegeStmt;
 import com.starrocks.sql.ast.RevokeRoleStmt;
+import com.starrocks.sql.ast.RevokeRowAccessPolicyClause;
 import com.starrocks.sql.ast.RollupRenameClause;
-import com.starrocks.sql.ast.RowAccessPolicyContext;
 import com.starrocks.sql.ast.RowDelimiter;
 import com.starrocks.sql.ast.SelectList;
 import com.starrocks.sql.ast.SelectListItem;
@@ -329,6 +329,7 @@ import com.starrocks.sql.ast.ShowMaterializedViewsStmt;
 import com.starrocks.sql.ast.ShowOpenTableStmt;
 import com.starrocks.sql.ast.ShowPartitionsStmt;
 import com.starrocks.sql.ast.ShowPluginsStmt;
+import com.starrocks.sql.ast.ShowPolicyApplyStmt;
 import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.ShowProcStmt;
 import com.starrocks.sql.ast.ShowProcedureStmt;
@@ -385,6 +386,8 @@ import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.sql.ast.UserVariable;
 import com.starrocks.sql.ast.ValueList;
 import com.starrocks.sql.ast.ValuesRelation;
+import com.starrocks.sql.ast.WithColumnMaskingPolicy;
+import com.starrocks.sql.ast.WithRowAccessPolicy;
 import com.starrocks.sql.common.EngineType;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.RuleContext;
@@ -582,6 +585,9 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             columnDefs = getColumnDefs(context.columnDesc());
         }
 
+        List<WithRowAccessPolicy> withRowAccessPolicies =
+                visit(context.withRowAccessPolicy(), WithRowAccessPolicy.class);
+
         return new CreateTableStmt(
                 context.IF() != null,
                 context.EXTERNAL() != null,
@@ -597,6 +603,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 context.distributionDesc() == null ? null : (DistributionDesc) visit(context.distributionDesc()),
                 properties,
                 extProperties,
+                withRowAccessPolicies,
                 context.comment() == null ? null : ((StringLiteral) visit(context.comment().string())).getStringValue(),
                 context.rollupDesc() == null ?
                         null : context.rollupDesc().rollupItem().stream().map(this::getRollup).collect(toList()),
@@ -869,10 +876,16 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                         new FunctionCallExpr(functionName, new ArrayList<>()));
             }
         }
+
+        WithColumnMaskingPolicy withColumnMaskingPolicy = null;
+        if (context.withMaskingPolicy() != null) {
+            withColumnMaskingPolicy = (WithColumnMaskingPolicy) visit(context.withMaskingPolicy());
+        }
+
         String comment = context.comment() == null ? "" :
                 ((StringLiteral) visit(context.comment().string())).getStringValue();
         return new ColumnDef(columnName, typeDef, charsetName, isKey, aggregateType, isAllowNull, defaultValueDef,
-                isAutoIncrement, comment, createPos(context));
+                isAutoIncrement, withColumnMaskingPolicy, comment, createPos(context));
     }
 
     @Override
@@ -1186,9 +1199,9 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 context.comment() == null ? null : ((StringLiteral) visit(context.comment())).getStringValue(),
                 (QueryStatement) visit(context.queryStatement()), createPos(context));
 
-        List<RowAccessPolicyContext> rowAccessPolicyContexts =
-                visit(context.withRowAccessPolicy(), RowAccessPolicyContext.class);
-        createViewStmt.setRowAccessPolicy(rowAccessPolicyContexts);
+        List<WithRowAccessPolicy> withRowAccessPolicies =
+                visit(context.withRowAccessPolicy(), WithRowAccessPolicy.class);
+        createViewStmt.setRowAccessPolicy(withRowAccessPolicies);
 
         return createViewStmt;
     }
@@ -1226,7 +1239,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             usingColumns.addAll(identifierList.stream().map(Identifier::getValue).collect(toList()));
         }
 
-        return new MaskingPolicyContext(policyName, usingColumns, createPos(context));
+        return new WithColumnMaskingPolicy(policyName, usingColumns, createPos(context));
     }
 
     @Override
@@ -1240,7 +1253,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             onColumns.addAll(identifierList.stream().map(Identifier::getValue).collect(toList()));
         }
 
-        return new RowAccessPolicyContext(policyName, onColumns, createPos(context));
+        return new WithRowAccessPolicy(policyName, onColumns, createPos(context));
     }
 
     // ------------------------------------------- Partition Statement ------------------------------------------------------
@@ -3459,11 +3472,12 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             QualifiedName qualifiedName = getQualifiedName(context.policyName);
             PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
 
-            MaskingPolicyContext maskingPolicyContext = new MaskingPolicyContext(policyName, usingColumns, createPos(context));
+            WithColumnMaskingPolicy withColumnMaskingPolicy =
+                    new WithColumnMaskingPolicy(policyName, usingColumns, createPos(context));
 
-            return new ApplyMaskingPolicyClause(policyName, columName, maskingPolicyContext, createPos(context));
+            return new ApplyMaskingPolicyClause(columName, withColumnMaskingPolicy, createPos(context));
         } else {
-            return new ApplyMaskingPolicyClause(columName, createPos(context));
+            return new RevokeMaskingPolicyClause(columName, createPos(context));
         }
     }
 
@@ -3480,16 +3494,16 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             QualifiedName qualifiedName = getQualifiedName(context.policyName);
             PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
 
-            RowAccessPolicyContext rowAccessPolicyContext = new RowAccessPolicyContext(policyName, onColumns, createPos(context));
+            WithRowAccessPolicy withRowAccessPolicy = new WithRowAccessPolicy(policyName, onColumns, createPos(context));
 
-            return new ApplyRowAccessPolicyClause(policyName, rowAccessPolicyContext, createPos(context));
+            return new ApplyRowAccessPolicyClause(withRowAccessPolicy, createPos(context));
         } else {
             if (context.ALL() != null) {
                 QualifiedName qualifiedName = getQualifiedName(context.policyName);
                 PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
-                return new ApplyRowAccessPolicyClause(policyName, createPos(context));
+                return new RevokeRowAccessPolicyClause(policyName, createPos(context));
             } else {
-                return new ApplyRowAccessPolicyClause(createPos(context));
+                return new RevokeRowAccessPolicyClause(createPos(context));
             }
         }
     }
@@ -4808,10 +4822,12 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         QualifiedName qualifiedName = getQualifiedName(context.policyName);
         PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
 
+        String comment = context.comment() == null ? "" : ((StringLiteral) visit(context.comment())).getStringValue();
+
         return new CreateMaskingPolicyStmt(policyName,
                 context.IF() != null,
                 argNames, argTypes, new TypeDef(getType(context.type())),
-                (Expr) visit(context.expression()), createPos(context));
+                (Expr) visit(context.expression()), comment, createPos(context));
     }
 
     @Override
@@ -4819,13 +4835,17 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         QualifiedName qualifiedName = getQualifiedName(context.policyName);
         PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
 
-        if (context.SET() != null) {
+        if (context.BODY() != null) {
             return new AlterPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null,
                     new AlterPolicyStmt.PolicySetBody((Expr) visit(context.expression())), createPos(context));
+        } else if (context.COMMENT() != null) {
+            StringLiteral stringLiteral = (StringLiteral) visit(context.string());
+            return new AlterPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null,
+                    new AlterPolicyStmt.PolicySetComment(stringLiteral.getValue()), createPos(context));
         } else {
             String newPolicyName = ((Identifier) visit(context.newPolicyName)).getValue();
             return new AlterPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null,
-                    new AlterPolicyStmt.PolicyRenameObject(newPolicyName), createPos(context));
+                    new AlterPolicyStmt.PolicyRename(newPolicyName), createPos(context));
         }
     }
 
@@ -4838,7 +4858,21 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
     @Override
     public ParseNode visitShowMaskingPolicyStatement(StarRocksParser.ShowMaskingPolicyStatementContext context) {
-        return new ShowPolicyStmt(PolicyType.COLUMN_MASKING, createPos(context));
+        String database = null;
+        String catalog = null;
+        // catalog.db
+        if (context.qualifiedName() != null) {
+            QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+            List<String> parts = qualifiedName.getParts();
+            if (parts.size() == 2) {
+                catalog = qualifiedName.getParts().get(0);
+                database = qualifiedName.getParts().get(1);
+            } else if (parts.size() == 1) {
+                database = qualifiedName.getParts().get(0);
+            }
+        }
+
+        return new ShowPolicyStmt(catalog, database, PolicyType.COLUMN_MASKING, createPos(context));
     }
 
     @Override
@@ -4860,10 +4894,12 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         QualifiedName qualifiedName = getQualifiedName(context.policyName);
         PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
 
+        String comment = context.comment() == null ? "" : ((StringLiteral) visit(context.comment())).getStringValue();
+
         return new CreateRowAccessPolicyStmt(policyName,
                 context.IF() != null,
                 argNames, argTypes, new TypeDef(Type.BOOLEAN),
-                (Expr) visit(context.expression()), createPos(context));
+                (Expr) visit(context.expression()), comment, createPos(context));
     }
 
     @Override
@@ -4874,10 +4910,14 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         if (context.SET() != null) {
             return new AlterPolicyStmt(PolicyType.ROW_ACCESS, policyName, context.IF() != null,
                     new AlterPolicyStmt.PolicySetBody((Expr) visit(context.expression())), createPos(context));
+        } else if (context.COMMENT() != null) {
+            StringLiteral stringLiteral = (StringLiteral) visit(context.string());
+            return new AlterPolicyStmt(PolicyType.ROW_ACCESS, policyName, context.IF() != null,
+                    new AlterPolicyStmt.PolicySetComment(stringLiteral.getValue()), createPos(context));
         } else {
             String newPolicyName = ((Identifier) visit(context.newPolicyName)).getValue();
             return new AlterPolicyStmt(PolicyType.ROW_ACCESS, policyName, context.IF() != null,
-                    new AlterPolicyStmt.PolicyRenameObject(newPolicyName), createPos(context));
+                    new AlterPolicyStmt.PolicyRename(newPolicyName), createPos(context));
         }
     }
 
@@ -4890,7 +4930,21 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
     @Override
     public ParseNode visitShowRowAccessPolicyStatement(StarRocksParser.ShowRowAccessPolicyStatementContext context) {
-        return new ShowPolicyStmt(PolicyType.ROW_ACCESS, createPos(context));
+        String database = null;
+        String catalog = null;
+        // catalog.db
+        if (context.qualifiedName() != null) {
+            QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+            List<String> parts = qualifiedName.getParts();
+            if (parts.size() == 2) {
+                catalog = qualifiedName.getParts().get(0);
+                database = qualifiedName.getParts().get(1);
+            } else if (parts.size() == 1) {
+                database = qualifiedName.getParts().get(0);
+            }
+        }
+
+        return new ShowPolicyStmt(catalog, database, PolicyType.ROW_ACCESS, createPos(context));
     }
 
     @Override
@@ -4898,6 +4952,11 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
         PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
         return new DescribePolicyStmt(PolicyType.ROW_ACCESS, policyName, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitShowPolicyReferences(StarRocksParser.ShowPolicyReferencesContext context) {
+        return new ShowPolicyApplyStmt(createPos(context));
     }
 
     private PolicyName qualifiedNameToPolicyName(QualifiedName qualifiedName) {
@@ -6048,13 +6107,13 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             comment = ((StringLiteral) visit(context.comment())).getStringValue();
         }
 
-        MaskingPolicyContext maskingPolicyContext = null;
+        WithColumnMaskingPolicy withColumnMaskingPolicy = null;
         if (context.withMaskingPolicy() != null) {
-            maskingPolicyContext = (MaskingPolicyContext) visit(context.withMaskingPolicy());
+            withColumnMaskingPolicy = (WithColumnMaskingPolicy) visit(context.withMaskingPolicy());
         }
 
         return new ColWithComment(((Identifier) visit(context.columnName)).getValue(),
-                maskingPolicyContext, comment, createPos(context));
+                withColumnMaskingPolicy, comment, createPos(context));
     }
 
     @Override

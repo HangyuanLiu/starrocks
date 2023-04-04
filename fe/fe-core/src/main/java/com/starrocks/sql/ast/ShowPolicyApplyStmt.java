@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 package com.starrocks.sql.ast;
 
 import com.starrocks.catalog.Column;
@@ -19,46 +18,26 @@ import com.starrocks.catalog.ScalarType;
 import com.starrocks.qe.ShowResultSetMetaData;
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowPolicyStmt extends ShowStmt {
+public class ShowPolicyApplyStmt extends ShowStmt {
     private static final ShowResultSetMetaData META_DATA;
-    private String catalog;
-    private String dbName;
-    private final PolicyType policyType;
 
     static {
         ShowResultSetMetaData.Builder builder = ShowResultSetMetaData.builder();
-        builder.addColumn(new Column("name", ScalarType.createVarchar(100)));
-        builder.addColumn(new Column("type", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("apply_catalog", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("apply_database", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("apply_table", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("apply_column", ScalarType.createVarchar(100)));
+
         builder.addColumn(new Column("catalog", ScalarType.createVarchar(100)));
         builder.addColumn(new Column("database", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("name", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("type", ScalarType.createVarchar(100)));
+
         META_DATA = builder.build();
     }
 
-    public ShowPolicyStmt(String catalog, String dbName, PolicyType policyType, NodePosition pos) {
+    public ShowPolicyApplyStmt(NodePosition pos) {
         super(pos);
-        this.catalog = catalog;
-        this.dbName = dbName;
-        this.policyType = policyType;
-    }
-
-    public String getCatalog() {
-        return catalog;
-    }
-
-    public void setCatalog(String catalog) {
-        this.catalog = catalog;
-    }
-
-    public String getDbName() {
-        return dbName;
-    }
-
-    public void setDbName(String dbName) {
-        this.dbName = dbName;
-    }
-
-    public PolicyType getPolicyType() {
-        return policyType;
     }
 
     @Override
@@ -68,6 +47,6 @@ public class ShowPolicyStmt extends ShowStmt {
 
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return visitor.visitShowPolicyStatement(this, context);
+        return visitor.visitShowPolicyApplyStatement(this, context);
     }
 }
