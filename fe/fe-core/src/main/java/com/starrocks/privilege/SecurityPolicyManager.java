@@ -32,8 +32,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AlterPolicyStmt;
-import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
-import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
+import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.PolicyName;
 import com.starrocks.sql.ast.PolicyType;
@@ -130,7 +129,7 @@ public class SecurityPolicyManager {
         }
     }
 
-    public void createMaskingPolicy(CreateMaskingPolicyStmt stmt) {
+    public void createMaskingPolicy(CreatePolicyStmt stmt) throws DdlException {
         long policyId = GlobalStateMgr.getCurrentState().getNextId();
 
         policyWriteLock();
@@ -138,67 +137,38 @@ public class SecurityPolicyManager {
             DbPEntryObject dbPEntryObject = DbPEntryObject.generate(GlobalStateMgr.getCurrentState(),
                     Lists.newArrayList(stmt.getPolicyName().getCatalog(), stmt.getPolicyName().getDbName()));
 
-            Policy maskingPolicy = new Policy(
-                    PolicyType.COLUMN_MASKING,
-                    policyId,
-                    stmt.getPolicyName().getName(),
+            Policy policy = new Policy(stmt.getPolicyType(),
+                    policyId, stmt.getPolicyName().getName(),
                     dbPEntryObject,
                     stmt.getArgNames(),
                     stmt.getArgTypeDefs().stream().map(TypeDef::getType).collect(Collectors.toList()),
                     stmt.getReturnType().getType(),
-                    stmt.getExpression(), stmt.getComment());
+                    stmt.getExpression(),
+                    stmt.getComment());
 
-            idToPolicy.put(policyId, maskingPolicy);
-
-            if (nameToPolicy.containsKey(dbPEntryObject)) {
-                Map<String, Policy> polices = nameToPolicy.get(dbPEntryObject);
-                polices.put(stmt.getPolicyName().getName(), maskingPolicy);
-            } else {
-                Map<String, Policy> polices = new HashMap<>();
-                polices.put(stmt.getPolicyName().getName(), maskingPolicy);
-                nameToPolicy.put(dbPEntryObject, polices);
-            }
-
-            GlobalStateMgr.getCurrentState().getEditLog().logCreateMaskingPolicy(maskingPolicy);
-        } catch (PrivilegeException e) {
-            throw new SemanticException("");
-        } finally {
-            policyWriteUnLock();
-        }
-    }
-
-    public void createRowAccessPolicy(CreateRowAccessPolicyStmt stmt) {
-        long policyId = GlobalStateMgr.getCurrentState().getNextId();
-
-        policyWriteLock();
-        try {
-            DbPEntryObject dbPEntryObject = DbPEntryObject.generate(GlobalStateMgr.getCurrentState(),
-                    Lists.newArrayList(stmt.getPolicyName().getCatalog(), stmt.getPolicyName().getDbName()));
-
-            Policy rowAccessPolicy = new Policy(
-                    PolicyType.ROW_ACCESS,
-                    policyId,
-                    stmt.getPolicyName().getName(),
-                    dbPEntryObject,
-                    stmt.getArgNames(),
-                    stmt.getArgTypeDefs().stream().map(TypeDef::getType).collect(Collectors.toList()),
-                    stmt.getReturnType().getType(),
-                    stmt.getExpression(), stmt.getComment());
-
-            idToPolicy.put(policyId, rowAccessPolicy);
+            idToPolicy.put(policyId, policy);
 
             if (nameToPolicy.containsKey(dbPEntryObject)) {
                 Map<String, Policy> polices = nameToPolicy.get(dbPEntryObject);
-                polices.put(stmt.getPolicyName().getName(), rowAccessPolicy);
+
+                if (polices.containsKey(stmt.getPolicyName().getName())) {
+                    if (stmt.isReplaceIfExists()) {
+                        return;
+                    } else if (!stmt.isIfNotExists()) {
+                        throw new DdlException("");
+                    }
+                }
+
+                polices.put(stmt.getPolicyName().getName(), policy);
             } else {
                 Map<String, Policy> polices = new HashMap<>();
-                polices.put(stmt.getPolicyName().getName(), rowAccessPolicy);
+                polices.put(stmt.getPolicyName().getName(), policy);
                 nameToPolicy.put(dbPEntryObject, polices);
             }
 
-            GlobalStateMgr.getCurrentState().getEditLog().logCreateRowAccessPolicy(rowAccessPolicy);
+            GlobalStateMgr.getCurrentState().getEditLog().logCreateMaskingPolicy(policy);
         } catch (PrivilegeException e) {
-            throw new SemanticException("");
+            throw new DdlException(e.getMessage());
         } finally {
             policyWriteUnLock();
         }
@@ -207,7 +177,7 @@ public class SecurityPolicyManager {
     public void replayCreatePolicy(CreatePolicyInfo createPolicyInfo) {
         policyWriteLock();
         try {
-            Expr expression = SqlParser.parseSqlToExpr(createPolicyInfo.getPolicyExpressionSQL(), SqlModeHelper.MODE_DEFAULT);
+            DbPEntryObject dbPEntryObject = createPolicyInfo.getDbPEntryObject();
 
             Policy policy = new Policy(
                     createPolicyInfo.getPolicyType(),
@@ -217,10 +187,11 @@ public class SecurityPolicyManager {
                     createPolicyInfo.getArgNames(),
                     createPolicyInfo.getArgTypes(),
                     createPolicyInfo.getRetType(),
-                    expression, createPolicyInfo.getComment());
+                    createPolicyInfo.getPolicyExpression(),
+                    createPolicyInfo.getComment());
+
             idToPolicy.put(policy.getPolicyId(), policy);
 
-            DbPEntryObject dbPEntryObject = createPolicyInfo.getDbPEntryObject();
             if (nameToPolicy.containsKey(dbPEntryObject)) {
                 Map<String, Policy> polices = nameToPolicy.get(dbPEntryObject);
                 polices.put(createPolicyInfo.getName(), policy);
@@ -426,12 +397,11 @@ public class SecurityPolicyManager {
             for (int i = 0; i < policySize; ++i) {
                 Long policyId = (Long) reader.readJson(Long.class);
                 CreatePolicyInfo createPolicyInfo = (CreatePolicyInfo) reader.readJson(CreatePolicyInfo.class);
-                Expr expression = SqlParser.parseSqlToExpr(createPolicyInfo.getPolicyExpressionSQL(), SqlModeHelper.MODE_DEFAULT);
 
                 Policy policy = new Policy(createPolicyInfo.getPolicyType(), createPolicyInfo.getPolicyId(),
                         createPolicyInfo.getName(), createPolicyInfo.getDbPEntryObject(),
                         createPolicyInfo.getArgNames(), createPolicyInfo.getArgTypes(),
-                        createPolicyInfo.getRetType(), expression, createPolicyInfo.getComment());
+                        createPolicyInfo.getRetType(), createPolicyInfo.getPolicyExpression(), createPolicyInfo.getComment());
                 securityPolicyManager.idToPolicy.put(policyId, policy);
             }
 

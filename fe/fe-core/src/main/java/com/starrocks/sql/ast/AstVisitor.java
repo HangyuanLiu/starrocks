@@ -637,11 +637,7 @@ public abstract class AstVisitor<R, C> {
 
     // ---------------------------------------- Security Policy Statement ---------------------------------------------------
 
-    public R visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt statement, C context) {
-        return visitDDLStatement(statement, context);
-    }
-
-    public R visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt statement, C context) {
+    public R visitCreatePolicyStatement(CreatePolicyStmt statement, C context) {
         return visitDDLStatement(statement, context);
     }
 

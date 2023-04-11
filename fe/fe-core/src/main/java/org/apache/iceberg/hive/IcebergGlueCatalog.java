@@ -13,7 +13,7 @@
 // limitations under the License.
 
 
-package com.starrocks.connector.iceberg.glue;
+package org.apache.iceberg.hive;
 
 import com.google.common.base.Preconditions;
 import com.starrocks.catalog.Database;
@@ -22,7 +22,7 @@ import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.connector.iceberg.IcebergCatalog;
 import com.starrocks.connector.iceberg.IcebergCatalogType;
 import com.starrocks.connector.iceberg.cost.IcebergMetricsReporter;
-import com.starrocks.connector.iceberg.hive.HiveTableOperations;
+import com.starrocks.connector.iceberg.glue.CachedGlueClientPool;
 import com.starrocks.connector.iceberg.io.IcebergCachingFileIO;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
@@ -49,7 +49,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static com.starrocks.connector.hive.HiveMetastoreApiConverter.CONNECTOR_ID_GENERATOR;
+import static com.starrocks.connector.ConnectorTableId.CONNECTOR_ID_GENERATOR;
 
 public class IcebergGlueCatalog extends BaseMetastoreCatalog implements IcebergCatalog, Configurable<Configuration> {
     private static final Logger LOG = LogManager.getLogger(IcebergGlueCatalog.class);

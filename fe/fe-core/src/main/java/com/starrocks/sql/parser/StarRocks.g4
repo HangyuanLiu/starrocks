@@ -1158,7 +1158,7 @@ resourceDesc
     ;
 
 showLoadStatement
-    : SHOW LOAD (FROM identifier)? (WHERE expression)? (ORDER BY sortItem (',' sortItem)*)? limitElement?
+    : SHOW LOAD (ALL)? (FROM identifier)? (WHERE expression)? (ORDER BY sortItem (',' sortItem)*)? limitElement?
     ;
 
 showLoadWarningsStatement
@@ -1418,14 +1418,14 @@ createMaskingPolicyStatement
 
 arg : identifier type;
 
+dropMaskingPolicyStatement
+    : DROP (IF EXISTS)? MASKING POLICY policyName=qualifiedName FORCE?
+    ;
+
 alterMaskingPolicyStatement
     : ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName SET BODY ARROW expression
     | ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName SET COMMENT string
     | ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName RENAME TO newPolicyName=identifier
-    ;
-
-dropMaskingPolicyStatement
-    : DROP (IF EXISTS)? MASKING POLICY policyName=qualifiedName
     ;
 
 showMaskingPolicyStatement
@@ -1441,14 +1441,14 @@ createRowAccessPolicyStatement
       AS '(' arg (',' arg)* ')' RETURNS BOOLEAN ARROW expression comment?
     ;
 
+dropRowAccessPolicyStatement
+    : DROP (IF EXISTS)? ROW ACCESS POLICY policyName=qualifiedName FORCE?
+    ;
+
 alterRowAccessPolicyStatement
     : ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName SET BODY ARROW expression
     | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName SET COMMENT string
     | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName RENAME TO newPolicyName=identifier
-    ;
-
-dropRowAccessPolicyStatement
-    : DROP (IF EXISTS)? ROW ACCESS POLICY policyName=qualifiedName
     ;
 
 showRowAccessPolicyStatement

@@ -19,13 +19,13 @@ import com.starrocks.catalog.Database;
 import com.starrocks.catalog.Table;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.connector.iceberg.cost.IcebergMetricsReporter;
-import com.starrocks.connector.iceberg.hive.HiveTableOperations;
-import com.starrocks.connector.iceberg.hive.IcebergHiveCatalog;
 import mockit.Expectations;
 import mockit.Mocked;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.hive.HiveTableOperations;
+import org.apache.iceberg.hive.IcebergHiveCatalog;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -103,7 +103,7 @@ public class IcebergMetadataTest {
         };
 
         IcebergMetadata metadata = new IcebergMetadata(CATALOG_NAME, icebergHiveCatalog);
-        Table expectResult = new Table(0, "tbl", ICEBERG, new ArrayList<>());
+        Table expectResult = new Table(100000000, "tbl", ICEBERG, new ArrayList<>());
         Assert.assertEquals(expectResult, metadata.getTable("db", "tbl"));
     }
 

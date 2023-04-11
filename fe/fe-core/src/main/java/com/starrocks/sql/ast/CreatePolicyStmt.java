@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package com.starrocks.sql.ast;
 
 import com.starrocks.analysis.Expr;
@@ -19,8 +20,10 @@ import com.starrocks.sql.parser.NodePosition;
 
 import java.util.List;
 
-public class CreateRowAccessPolicyStmt extends DdlStmt {
+public class CreatePolicyStmt extends DdlStmt {
+    private final boolean replaceIfExists;
     private final boolean ifNotExists;
+    private final PolicyType policyType;
     private final PolicyName policyName;
     private final List<String> argNames;
     private final List<TypeDef> argTypeDefs;
@@ -28,12 +31,14 @@ public class CreateRowAccessPolicyStmt extends DdlStmt {
     private final Expr expression;
     private final String comment;
 
-    public CreateRowAccessPolicyStmt(PolicyName policyName, boolean ifNotExists,
-                                   List<String> argNames, List<TypeDef> argTypeDefs, TypeDef returnType,
-                                   Expr expression, String comment, NodePosition pos) {
+    public CreatePolicyStmt(boolean replaceIfExists, boolean ifNotExists, PolicyType policyType, PolicyName policyName,
+                            List<String> argNames, List<TypeDef> argTypeDefs, TypeDef returnType,
+                            Expr expression, String comment, NodePosition pos) {
         super(pos);
-        this.policyName = policyName;
+        this.replaceIfExists = replaceIfExists;
         this.ifNotExists = ifNotExists;
+        this.policyType = policyType;
+        this.policyName = policyName;
         this.argNames = argNames;
         this.argTypeDefs = argTypeDefs;
         this.returnType = returnType;
@@ -41,8 +46,16 @@ public class CreateRowAccessPolicyStmt extends DdlStmt {
         this.comment = comment;
     }
 
+    public boolean isReplaceIfExists() {
+        return replaceIfExists;
+    }
+
     public boolean isIfNotExists() {
         return ifNotExists;
+    }
+
+    public PolicyType getPolicyType() {
+        return policyType;
     }
 
     public PolicyName getPolicyName() {
@@ -71,6 +84,6 @@ public class CreateRowAccessPolicyStmt extends DdlStmt {
 
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return visitor.visitCreateRowAccessPolicyStatement(this, context);
+        return visitor.visitCreatePolicyStatement(this, context);
     }
 }

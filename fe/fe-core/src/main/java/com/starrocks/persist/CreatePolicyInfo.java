@@ -15,6 +15,7 @@
 package com.starrocks.persist;
 
 import com.google.gson.annotations.SerializedName;
+import com.starrocks.analysis.Expr;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
@@ -23,6 +24,7 @@ import com.starrocks.privilege.DbPEntryObject;
 import com.starrocks.privilege.Policy;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.ast.PolicyType;
+import com.starrocks.sql.parser.SqlParser;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -51,8 +53,11 @@ public class CreatePolicyInfo implements Writable {
     @SerializedName(value = "retType")
     private Type retType;
 
-    @SerializedName(value = "p")
+    @SerializedName(value = "expr")
     private String policyExpressionSQL;
+
+    @SerializedName(value = "sqlMode")
+    private long sqlMode = 0L;
 
     @SerializedName(value = "comment")
     private String comment;
@@ -97,8 +102,8 @@ public class CreatePolicyInfo implements Writable {
         return retType;
     }
 
-    public String getPolicyExpressionSQL() {
-        return policyExpressionSQL;
+    public Expr getPolicyExpression() {
+        return SqlParser.parseSqlToExpr(policyExpressionSQL, sqlMode);
     }
 
     public String getComment() {

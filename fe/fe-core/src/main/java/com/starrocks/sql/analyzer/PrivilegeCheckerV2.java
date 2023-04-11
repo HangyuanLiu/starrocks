@@ -81,14 +81,13 @@ import com.starrocks.sql.ast.CreateCatalogStmt;
 import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
-import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
+import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
 import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
-import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
 import com.starrocks.sql.ast.CreateTableAsSelectStmt;
 import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
@@ -1160,30 +1159,11 @@ public class PrivilegeCheckerV2 {
         // ---------------------------------------- Security Policy Statement ---------------------------------------------------
 
         @Override
-        public Void visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt statement, ConnectContext context) {
+        public Void visitCreatePolicyStatement(CreatePolicyStmt statement, ConnectContext context) {
             if (!PrivilegeActions.checkDbAction(context,
                     statement.getPolicyName().getCatalog(), statement.getPolicyName().getDbName(),
                     PrivilegeType.CREATE_POLICY)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "CREATE POLICY");
-            }
-            return null;
-        }
-
-        @Override
-        public Void visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkDbAction(context,
-                    statement.getPolicyName().getCatalog(), statement.getPolicyName().getDbName(),
-                    PrivilegeType.CREATE_POLICY)) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "CREATE POLICY");
-            }
-            return null;
-        }
-
-        @Override
-        public Void visitAlterPolicyStatement(AlterPolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyName().getCatalog(),
-                    statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.ALTER)) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ALTER");
             }
             return null;
         }
@@ -1193,6 +1173,15 @@ public class PrivilegeCheckerV2 {
             if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyName().getCatalog(),
                     statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.DROP)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "DROP");
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitAlterPolicyStatement(AlterPolicyStmt statement, ConnectContext context) {
+            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyName().getCatalog(),
+                    statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.ALTER)) {
+                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ALTER");
             }
             return null;
         }

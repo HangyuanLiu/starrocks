@@ -60,15 +60,14 @@ import com.starrocks.sql.ast.CreateCatalogStmt;
 import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
-import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
+import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
 import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
-import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
 import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.CreateUserStmt;
@@ -526,17 +525,9 @@ public class DDLStmtExecutor {
         }
 
         @Override
-        public ShowResultSet visitCreateMaskingPolicyStatement(CreateMaskingPolicyStmt stmt, ConnectContext context) {
+        public ShowResultSet visitCreatePolicyStatement(CreatePolicyStmt stmt, ConnectContext context) {
             ErrorReport.wrapWithRuntimeException(() -> {
                 context.getGlobalStateMgr().getSecurityPolicyManager().createMaskingPolicy(stmt);
-            });
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitAlterPolicyStatement(AlterPolicyStmt stmt, ConnectContext context) {
-            ErrorReport.wrapWithRuntimeException(() -> {
-                context.getGlobalStateMgr().getSecurityPolicyManager().alterPolicy(stmt);
             });
             return null;
         }
@@ -550,9 +541,9 @@ public class DDLStmtExecutor {
         }
 
         @Override
-        public ShowResultSet visitCreateRowAccessPolicyStatement(CreateRowAccessPolicyStmt stmt, ConnectContext context) {
+        public ShowResultSet visitAlterPolicyStatement(AlterPolicyStmt stmt, ConnectContext context) {
             ErrorReport.wrapWithRuntimeException(() -> {
-                context.getGlobalStateMgr().getSecurityPolicyManager().createRowAccessPolicy(stmt);
+                context.getGlobalStateMgr().getSecurityPolicyManager().alterPolicy(stmt);
             });
             return null;
         }

@@ -20,14 +20,18 @@ public class DropPolicyStmt extends DdlStmt {
     private final PolicyType policyType;
     private final PolicyName policyName;
     private final boolean ifExists;
+    private final boolean force;
 
+    //Resolved by analyzer
     private Long policyId;
 
-    public DropPolicyStmt(PolicyType policyType, PolicyName policyName, boolean ifExists, NodePosition nodePosition) {
+    public DropPolicyStmt(PolicyType policyType, PolicyName policyName, boolean ifExists, boolean force,
+                          NodePosition nodePosition) {
         super(nodePosition);
         this.policyType = policyType;
         this.policyName = policyName;
         this.ifExists = ifExists;
+        this.force = force;
     }
 
     public PolicyType getPolicyType() {
@@ -48,6 +52,10 @@ public class DropPolicyStmt extends DdlStmt {
 
     public void setPolicyId(Long policyId) {
         this.policyId = policyId;
+    }
+
+    public boolean isForce() {
+        return force;
     }
 
     @Override

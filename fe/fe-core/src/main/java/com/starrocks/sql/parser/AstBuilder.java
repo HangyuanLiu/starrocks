@@ -155,15 +155,14 @@ import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
 import com.starrocks.sql.ast.CreateImageClause;
 import com.starrocks.sql.ast.CreateIndexClause;
-import com.starrocks.sql.ast.CreateMaskingPolicyStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
+import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
 import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
-import com.starrocks.sql.ast.CreateRowAccessPolicyStmt;
 import com.starrocks.sql.ast.CreateTableAsSelectStmt;
 import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
@@ -2541,7 +2540,10 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         if (context.limitElement() != null) {
             limitElement = (LimitElement) visit(context.limitElement());
         }
-        return new ShowLoadStmt(db, labelExpr, orderByElements, limitElement, createPos(context));
+        boolean all = context.ALL() != null;
+        ShowLoadStmt res = new ShowLoadStmt(db, labelExpr, orderByElements, limitElement, createPos(context));
+        res.setAll(all);
+        return res;
     }
 
     @Override
@@ -4824,10 +4826,17 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
         String comment = context.comment() == null ? "" : ((StringLiteral) visit(context.comment())).getStringValue();
 
-        return new CreateMaskingPolicyStmt(policyName,
-                context.IF() != null,
-                argNames, argTypes, new TypeDef(getType(context.type())),
+        return new CreatePolicyStmt(context.OR() != null, context.IF() != null,
+                PolicyType.COLUMN_MASKING, policyName, argNames, argTypes, new TypeDef(getType(context.type())),
                 (Expr) visit(context.expression()), comment, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitDropMaskingPolicyStatement(StarRocksParser.DropMaskingPolicyStatementContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
+        return new DropPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null, context.FORCE() != null,
+                createPos(context));
     }
 
     @Override
@@ -4847,13 +4856,6 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             return new AlterPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null,
                     new AlterPolicyStmt.PolicyRename(newPolicyName), createPos(context));
         }
-    }
-
-    @Override
-    public ParseNode visitDropMaskingPolicyStatement(StarRocksParser.DropMaskingPolicyStatementContext context) {
-        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
-        PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
-        return new DropPolicyStmt(PolicyType.COLUMN_MASKING, policyName, context.IF() != null, createPos(context));
     }
 
     @Override
@@ -4896,9 +4898,8 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
         String comment = context.comment() == null ? "" : ((StringLiteral) visit(context.comment())).getStringValue();
 
-        return new CreateRowAccessPolicyStmt(policyName,
-                context.IF() != null,
-                argNames, argTypes, new TypeDef(Type.BOOLEAN),
+        return new CreatePolicyStmt(context.OR() != null, context.IF() != null,
+                PolicyType.ROW_ACCESS, policyName, argNames, argTypes, new TypeDef(Type.BOOLEAN),
                 (Expr) visit(context.expression()), comment, createPos(context));
     }
 
@@ -4925,7 +4926,8 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     public ParseNode visitDropRowAccessPolicyStatement(StarRocksParser.DropRowAccessPolicyStatementContext context) {
         QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
         PolicyName policyName = qualifiedNameToPolicyName(qualifiedName);
-        return new DropPolicyStmt(PolicyType.ROW_ACCESS, policyName, context.IF() != null, createPos(context));
+        return new DropPolicyStmt(PolicyType.ROW_ACCESS, policyName, context.IF() != null, context.FORCE() != null,
+                createPos(context));
     }
 
     @Override
