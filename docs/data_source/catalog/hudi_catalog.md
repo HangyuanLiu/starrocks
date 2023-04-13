@@ -11,8 +11,7 @@ To ensure successful SQL workloads on your Hudi cluster, your StarRocks cluster 
 
 ## Usage notes
 
-- The file format of Hudi that StarRocks supports is Parquet. Parquet files support the following compression formats: SNAPPY, LZ4, ZSTD, GZIP, and NO_COMPRESSION.
-- The data types of Delta Lake that StarRocks does not support are MAP and STRUCT.
+The file format of Hudi that StarRocks supports is Parquet. Parquet files support the following compression formats: SNAPPY, LZ4, ZSTD, GZIP, and NO_COMPRESSION.
 
 ## Integration preparations
 
@@ -204,8 +203,8 @@ For information about how to choose a credential method for accessing AWS S3 and
 If you choose an AWS S3-compatible storage system, such as MinIO, as storage for your Hive cluster, configure `StorageCredentialParams` as follows to ensure a successful integration:
 
 ```SQL
-"aws.s3.enable_ssl" = "<true>",
-"aws.s3.enable_path_style_access" = "<true>",
+"aws.s3.enable_ssl" = "<true | false>",
+"aws.s3.enable_path_style_access" = "<true | false>",
 "aws.s3.endpoint" = "<s3_endpoint>",
 "aws.s3.access_key" = "<iam_user_access_key>",
 "aws.s3.secret_key" = "<iam_user_secret_key>"

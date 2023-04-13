@@ -296,11 +296,11 @@ alterDbQuotaStatement
     ;
 
 createDbStatement
-    : CREATE (DATABASE | SCHEMA) (IF NOT EXISTS)? identifier charsetDesc? collateDesc?
+    : CREATE (DATABASE | SCHEMA) (IF NOT EXISTS)? (catalog=identifier '.')? database=identifier charsetDesc? collateDesc? properties?
     ;
 
 dropDbStatement
-    : DROP (DATABASE | SCHEMA) (IF EXISTS)? identifier FORCE?
+    : DROP (DATABASE | SCHEMA) (IF EXISTS)? (catalog=identifier '.')? database=identifier FORCE?
     ;
 
 showCreateDbStatement
@@ -731,6 +731,7 @@ alterClause
     | columnRenameClause
     | reorderColumnsClause
     | rollupRenameClause
+    | modifyCommentClause
 
     //Apply Policy clause
     | applyMaskingPolicyClause
@@ -818,6 +819,10 @@ swapTableClause
 
 modifyTablePropertiesClause
     : SET propertyList
+    ;
+
+modifyCommentClause
+    : COMMENT '=' string
     ;
 
 addColumnClause
@@ -1433,7 +1438,7 @@ showMaskingPolicyStatement
     ;
 
 describeMaskingPolicyStatement
-    : (DESC | DESCRIBE) MASKING POLICY policyName=qualifiedName
+    : SHOW CREATE MASKING POLICY policyName=qualifiedName
     ;
 
 createRowAccessPolicyStatement
@@ -1456,7 +1461,7 @@ showRowAccessPolicyStatement
     ;
 
 describeRowAccessPolicyStatement
-    : (DESC | DESCRIBE) ROW ACCESS POLICY policyName=qualifiedName
+    : SHOW CREATE ROW ACCESS POLICY policyName=qualifiedName
     ;
 
 showPolicyReferences
@@ -1630,7 +1635,7 @@ setWarehouseStatement
     ;
 
 executeScriptStatement
-    : ADMIN EXECUTE ON INTEGER_VALUE string
+    : ADMIN EXECUTE ON (FRONTEND | INTEGER_VALUE) string
     ;
 
 unsupportedStatement
@@ -1948,12 +1953,12 @@ functionCall
     ;
 
 aggregationFunction
-    : AVG '(' DISTINCT? expression ')'
+    : AVG '(' setQuantifier? expression ')'
     | COUNT '(' ASTERISK_SYMBOL? ')'
-    | COUNT '(' (DISTINCT bracketHint?)? (expression (',' expression)*)? ')'
-    | MAX '(' DISTINCT? expression ')'
-    | MIN '(' DISTINCT? expression ')'
-    | SUM '(' DISTINCT? expression ')'
+    | COUNT '(' (setQuantifier bracketHint?)? (expression (',' expression)*)? ')'
+    | MAX '(' setQuantifier? expression ')'
+    | MIN '(' setQuantifier? expression ')'
+    | SUM '(' setQuantifier? expression ')'
     | ARRAY_AGG '(' expression (ORDER BY sortItem (',' sortItem)*)? ')'
     ;
 
@@ -2017,10 +2022,10 @@ windowFunction
     | name = RANK '(' ')'
     | name = DENSE_RANK '(' ')'
     | name = NTILE  '(' expression? ')'
-    | name = LEAD  '(' (expression ignoreNulls? (',' expression)*)? ')'
-    | name = LAG '(' (expression ignoreNulls? (',' expression)*)? ')'
-    | name = FIRST_VALUE '(' (expression ignoreNulls? (',' expression)*)? ')'
-    | name = LAST_VALUE '(' (expression ignoreNulls? (',' expression)*)? ')'
+    | name = LEAD  '(' (expression ignoreNulls? (',' expression)*)? ')' ignoreNulls?
+    | name = LAG '(' (expression ignoreNulls? (',' expression)*)? ')' ignoreNulls?
+    | name = FIRST_VALUE '(' (expression ignoreNulls? (',' expression)*)? ')' ignoreNulls?
+    | name = LAST_VALUE '(' (expression ignoreNulls? (',' expression)*)? ')' ignoreNulls?
     ;
 
 whenClause
@@ -2074,6 +2079,7 @@ optimizerTrace
 partitionDesc
     : PARTITION BY RANGE identifierList '(' (rangePartitionDesc (',' rangePartitionDesc)*)? ')'
     | PARTITION BY LIST identifierList '(' (listPartitionDesc (',' listPartitionDesc)*)? ')'
+    | PARTITION BY identifierList
     | PARTITION BY functionCall '(' (rangePartitionDesc (',' rangePartitionDesc)*)? ')'
     | PARTITION BY functionCall
     ;
@@ -2269,6 +2275,7 @@ baseType
     | PERCENTILE
     | JSON
     | VARBINARY typeParameter?
+    | BINARY typeParameter?
     ;
 
 decimalType
@@ -2328,7 +2335,7 @@ number
 
 nonReserved
     : ACCESS | AFTER | AGGREGATE | APPLY | ASYNC | AUTHORS | AVG | ADMIN | ANTI | AUTHENTICATION | AUTO_INCREMENT
-    | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BODY | BOOLEAN | BROKER | BUCKETS | BUILTIN
+    | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BINARY | BODY | BOOLEAN | BROKER | BUCKETS | BUILTIN
     | CAST | CANCEL | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CLUSTER | CLUSTERS | CURRENT | COLLATION | COLUMNS
     | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT | CONFIG
     | DATA | DATE | DATETIME | DAY | DECOMMISSION | DISTRIBUTION | DUPLICATE | DYNAMIC | DISTRIBUTED
@@ -2352,7 +2359,7 @@ nonReserved
     | TABLES | TABLET | TASK | TEMPORARY | TIMESTAMP | TIMESTAMPADD | TIMESTAMPDIFF | THAN | TIME | TRANSACTION | TRACE | TRIM_SPACE
     | TRIGGERS | TRUNCATE | TYPE | TYPES
     | UNBOUNDED | UNCOMMITTED | UNSET | UNINSTALL | USAGE | USER | USERS | UNLOCK
-    | VALUE | VARIABLES | VIEW | VIEWS | VERBOSE
+    | VALUE | VARBINARY | VARIABLES | VIEW | VIEWS | VERBOSE
     | WARNINGS | WEEK | WHITELIST | WORK | WRITE  | WAREHOUSE | WAREHOUSES
     | YEAR
     | DOTDOTDOT

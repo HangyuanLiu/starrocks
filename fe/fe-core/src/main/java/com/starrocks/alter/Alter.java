@@ -88,6 +88,7 @@ import com.starrocks.sql.ast.AddPartitionClause;
 import com.starrocks.sql.ast.AlterClause;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
 import com.starrocks.sql.ast.AlterSystemStmt;
+import com.starrocks.sql.ast.AlterTableCommentClause;
 import com.starrocks.sql.ast.AlterTableStmt;
 import com.starrocks.sql.ast.AlterViewStmt;
 import com.starrocks.sql.ast.ApplyMaskingPolicyClause;
@@ -638,6 +639,8 @@ public class Alter {
                 processRename(db, olapTable, alterClauses);
             } else if (currentAlterOps.hasSwapOp()) {
                 processSwap(db, olapTable, alterClauses);
+            } else if (currentAlterOps.hasAlterCommentOp()) {
+                processAlterComment(db, olapTable, alterClauses);
             } else if (currentAlterOps.contains(AlterOpType.MODIFY_TABLE_PROPERTY_SYNC)) {
                 needProcessOutsideDatabaseLock = true;
             } else if (Sets.newHashSet(AlterOpType.APPLY_COLUMN_MASKING_POLICY,
@@ -891,6 +894,17 @@ public class Alter {
 
     public ShowResultSet processAlterCluster(AlterSystemStmt stmt) throws UserException {
         return clusterHandler.process(Arrays.asList(stmt.getAlterClause()), null, null);
+    }
+
+    private void processAlterComment(Database db, OlapTable table, List<AlterClause> alterClauses) throws DdlException {
+        for (AlterClause alterClause : alterClauses) {
+            if (alterClause instanceof AlterTableCommentClause) {
+                GlobalStateMgr.getCurrentState().alterTableComment(db, table, (AlterTableCommentClause) alterClause);
+                break;
+            } else {
+                throw new DdlException("Unsupported alter table clause " + alterClause);
+            }
+        }
     }
 
     private void processRename(Database db, OlapTable table, List<AlterClause> alterClauses) throws DdlException {

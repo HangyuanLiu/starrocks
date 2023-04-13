@@ -144,6 +144,11 @@ public class ColumnDef implements ParseNode {
                 null, null, "", NodePosition.ZERO);
     }
 
+    public ColumnDef(String name, TypeDef typeDef, Boolean isAllowNull) {
+        this(name, typeDef, null, false, null, isAllowNull, DefaultValueDef.NOT_SET,
+                null, null, "", NodePosition.ZERO);
+    }
+
     public ColumnDef(String name, TypeDef typeDef, boolean isKey, AggregateType aggregateType,
                      Boolean isAllowNull, DefaultValueDef defaultValueDef, String comment) {
         this(name, typeDef, null, isKey, aggregateType, isAllowNull, defaultValueDef,
@@ -216,6 +221,10 @@ public class ColumnDef implements ParseNode {
             return null;
         }
         return null;
+    }
+
+    public DefaultValueDef getDefaultValueDef() {
+        return defaultValueDef;
     }
 
     public String getName() {

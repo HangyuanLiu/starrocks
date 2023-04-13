@@ -34,7 +34,6 @@
 
 package com.starrocks.qe;
 
-import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
@@ -46,6 +45,7 @@ import com.starrocks.analysis.SlotRef;
 import com.starrocks.analysis.StringLiteral;
 import com.starrocks.analysis.TableName;
 import com.starrocks.analysis.TableRef;
+import com.starrocks.analysis.TypeDef;
 import com.starrocks.authentication.AuthenticationManager;
 import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.backup.AbstractJob;
@@ -141,12 +141,14 @@ import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AdminShowConfigStmt;
 import com.starrocks.sql.ast.AdminShowReplicaDistributionStmt;
 import com.starrocks.sql.ast.AdminShowReplicaStatusStmt;
+import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.DescribePolicyStmt;
 import com.starrocks.sql.ast.DescribeStmt;
 import com.starrocks.sql.ast.GrantPrivilegeStmt;
 import com.starrocks.sql.ast.GrantRevokeClause;
 import com.starrocks.sql.ast.HelpStmt;
 import com.starrocks.sql.ast.PartitionNames;
+import com.starrocks.sql.ast.PolicyName;
 import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.ShowAlterStmt;
 import com.starrocks.sql.ast.ShowAnalyzeJobStmt;
@@ -207,6 +209,7 @@ import com.starrocks.sql.ast.ShowVariablesStmt;
 import com.starrocks.sql.ast.ShowWarehousesStmt;
 import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.sql.common.MetaUtils;
+import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.statistic.AnalyzeJob;
 import com.starrocks.statistic.AnalyzeStatus;
 import com.starrocks.statistic.BasicStatsMeta;
@@ -390,7 +393,7 @@ public class ShowExecutor {
                     }
                     row.add(showPolicyStmt.getCatalog());
                     row.add(showPolicyStmt.getDbName());
-                    
+
                     rows.add(row);
                 }
             }
@@ -398,19 +401,17 @@ public class ShowExecutor {
         } else if (stmt instanceof DescribePolicyStmt) {
             DescribePolicyStmt describePolicyStmt = (DescribePolicyStmt) stmt;
             Policy policy = GlobalStateMgr.getCurrentState().getSecurityPolicyManager()
-                    .getPolicyByName(describePolicyStmt.getPolicyName());
+                    .getPolicyByName(describePolicyStmt.getPolicyType(), describePolicyStmt.getPolicyName());
 
             List<String> row = new ArrayList<>();
             row.add(policy.getName());
 
-            List<String> signature = new ArrayList<>();
-            for (int i = 0; i < policy.getArgNames().size(); ++i) {
-                signature.add(policy.getArgNames().get(i) + " " + policy.getArgTypes().get(i).toSql());
-            }
-            row.add("(" + Joiner.on(", ").join(signature) + ")");
-
-            row.add(policy.getRetType().toSql());
-            row.add(AstToSQLBuilder.toSQL(policy.getPolicyExpression()));
+            row.add(AstToSQLBuilder.toSQL(new CreatePolicyStmt(false, false, policy.getPolicyType(),
+                    new PolicyName("", "", policy.getName(), NodePosition.ZERO),
+                    policy.getArgNames(),
+                    policy.getArgTypes().stream().map(TypeDef::new).collect(Collectors.toList()),
+                    new TypeDef(policy.getRetType()),
+                    policy.getPolicyExpression(), policy.getComment(), NodePosition.ZERO)));
 
             resultSet = new ShowResultSet(stmt.getMetaData(), Collections.singletonList(row));
         } else if (stmt instanceof ShowPolicyApplyStmt) {

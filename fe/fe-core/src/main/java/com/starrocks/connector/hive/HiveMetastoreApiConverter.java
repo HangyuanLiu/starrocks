@@ -26,10 +26,10 @@ import com.starrocks.catalog.HiveTable;
 import com.starrocks.catalog.HudiTable;
 import com.starrocks.catalog.Type;
 import com.starrocks.connector.ColumnTypeConverter;
+import com.starrocks.connector.Connector;
 import com.starrocks.connector.ConnectorTableId;
 import com.starrocks.connector.HdfsEnvironment;
 import com.starrocks.connector.exception.StarRocksConnectorException;
-import com.starrocks.connector.hudi.HudiConnector;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.server.GlobalStateMgr;
 import org.apache.avro.Schema;
@@ -94,6 +94,16 @@ public class HiveMetastoreApiConverter {
         return new Database(ConnectorTableId.CONNECTOR_ID_GENERATOR.getNextId().asInt(), database.getName());
     }
 
+    public static org.apache.hadoop.hive.metastore.api.Database toMetastoreApiDatabase(Database database) {
+        org.apache.hadoop.hive.metastore.api.Database result = new org.apache.hadoop.hive.metastore.api.Database();
+        result.setName(database.getFullName());
+        if (!Strings.isNullOrEmpty(database.getLocation())) {
+            result.setLocationUri(database.getLocation());
+        }
+
+        return result;
+    }
+
     public static HiveTable toHiveTable(Table table, String catalogName) {
         validateHiveTableType(table.getTableType());
 
@@ -118,11 +128,10 @@ public class HiveMetastoreApiConverter {
 
     public static HudiTable toHudiTable(Table table, String catalogName) {
         String hudiBasePath = table.getSd().getLocation();
-        // Trick
+        // using hadoop properties from catalog definition
         Configuration configuration = new Configuration();
         if (catalogName != null) {
-            HudiConnector connector = (HudiConnector) GlobalStateMgr.getCurrentState().getConnectorMgr().
-                    getConnector(catalogName);
+            Connector connector = GlobalStateMgr.getCurrentState().getConnectorMgr().getConnector(catalogName);
             CloudConfiguration cloudConfiguration = connector.getCloudConfiguration();
             HdfsEnvironment hdfsEnvironment = new HdfsEnvironment(cloudConfiguration);
             configuration = hdfsEnvironment.getConfiguration();

@@ -226,7 +226,6 @@ public class AuthorizationManager {
         List<PEntryObject> objects = new ArrayList<>();
         switch (objectType) {
             case TABLE:
-            case POLICY:
                 objects.add(provider.generateObject(objectType,
                         Lists.newArrayList("*", "*", "*"), globalStateMgr));
                 collection.grant(objectType, actionList, objects, false);
@@ -273,6 +272,11 @@ public class AuthorizationManager {
             case SYSTEM:
                 collection.grant(objectType, actionList, Arrays.asList(new PEntryObject[] {null}), false);
                 break;
+
+            case POLICY:
+                objects.add(provider.generatePolicyObject(objectType, null,
+                        Lists.newArrayList("*", "*", "*"), globalStateMgr));
+                collection.grant(objectType, actionList, objects, false);
 
             default:
                 throw new PrivilegeException("unsupported type " + objectType);

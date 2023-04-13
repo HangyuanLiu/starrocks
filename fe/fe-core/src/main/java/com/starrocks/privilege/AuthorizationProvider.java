@@ -15,6 +15,7 @@
 package com.starrocks.privilege;
 
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.UserIdentity;
 
 import java.util.List;
@@ -44,6 +45,9 @@ public interface AuthorizationProvider {
 
     PEntryObject generateFunctionObject(ObjectType objectType, Long databaseId, Long functionId, GlobalStateMgr globalStateMgr)
             throws PrivilegeException;
+
+    PEntryObject generatePolicyObject(ObjectType objectType, PolicyType policyType, List<String> objectTokens,
+                                      GlobalStateMgr mgr) throws PrivilegeException;
 
     /**
      * validate if grant is allowed

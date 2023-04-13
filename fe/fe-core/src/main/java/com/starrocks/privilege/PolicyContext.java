@@ -15,6 +15,7 @@
 package com.starrocks.privilege;
 
 import com.google.gson.annotations.SerializedName;
+import com.starrocks.sql.ast.PolicyType;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,11 +39,11 @@ public class PolicyContext {
         contextLock = new ReentrantReadWriteLock();
     }
 
-    public void addMaskingPolicy(String maskingColumn, ColumnMaskingPolicyContext columnMaskingPolicyContext) {
+    public void applyMaskingPolicy(String maskingColumn, ColumnMaskingPolicyContext columnMaskingPolicyContext) {
         maskingPolicyApply.put(maskingColumn, columnMaskingPolicyContext);
     }
 
-    public void dropMaskingPolicy(String maskingColumn) {
+    public void revokeMaskingPolicy(String maskingColumn) {
         maskingPolicyApply.remove(maskingColumn);
     }
 
@@ -58,7 +59,7 @@ public class PolicyContext {
         return rowAccessPolicyApply;
     }
 
-    public void dropMaskingPolicyContext(Long policyId) {
+    public void revokeMaskingPolicy(Long policyId) {
         contextLock.writeLock().lock();
 
         try {
@@ -76,7 +77,7 @@ public class PolicyContext {
         }
     }
 
-    public void dropRowAccessPolicyContext(Long policyId) {
+    public void revokeRowAccessPolicy(Long policyId) {
         contextLock.writeLock().lock();
 
         try {
@@ -94,5 +95,15 @@ public class PolicyContext {
 
     public void clearRowAccessPolicy() {
         rowAccessPolicyApply.clear();
+    }
+
+    public boolean hasApplyPolicy(PolicyType policyType, Long policyId) {
+        if (policyType.equals(PolicyType.COLUMN_MASKING)) {
+            return maskingPolicyApply.values().stream().anyMatch(
+                    columnMaskingPolicyContext -> columnMaskingPolicyContext.policyId.equals(policyId));
+        } else {
+            return rowAccessPolicyApply.stream().anyMatch(
+                    rowAccessPolicyContext -> rowAccessPolicyContext.policyId.equals(policyId));
+        }
     }
 }

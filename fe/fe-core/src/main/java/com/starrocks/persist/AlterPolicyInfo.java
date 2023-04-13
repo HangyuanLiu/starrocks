@@ -18,6 +18,7 @@ import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.privilege.DbPEntryObject;
+import com.starrocks.sql.ast.PolicyType;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -26,6 +27,9 @@ import java.io.IOException;
 public class AlterPolicyInfo implements Writable {
     @SerializedName(value = "name")
     private String policyName;
+
+    @SerializedName(value = "type")
+    private PolicyType policyType;
 
     @SerializedName(value = "db")
     private DbPEntryObject dbPEntryObject;
@@ -41,6 +45,10 @@ public class AlterPolicyInfo implements Writable {
 
     public String getPolicyName() {
         return policyName;
+    }
+
+    public PolicyType getPolicyType() {
+        return policyType;
     }
 
     public DbPEntryObject getDbPEntryObject() {

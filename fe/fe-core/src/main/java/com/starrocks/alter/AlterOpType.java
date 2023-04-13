@@ -56,6 +56,9 @@ public enum AlterOpType {
     ALTER_OTHER,
     SWAP,
 
+    // comment
+    ALTER_COMMENT,
+
     // Security Policy
     APPLY_COLUMN_MASKING_POLICY,
     REVOKE_COLUMN_MASKING_POLICY,

@@ -1170,7 +1170,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitDropPolicyStatement(DropPolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyName().getCatalog(),
+            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyType(), statement.getPolicyName().getCatalog(),
                     statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.DROP)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "DROP");
             }
@@ -1179,7 +1179,7 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitAlterPolicyStatement(AlterPolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyName().getCatalog(),
+            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyType(), statement.getPolicyName().getCatalog(),
                     statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.ALTER)) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ALTER");
             }
@@ -1193,8 +1193,9 @@ public class PrivilegeCheckerV2 {
 
         @Override
         public Void visitDescribePolicyStatement(DescribePolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkAnyActionOnPolicy(context, statement.getPolicyName().getCatalog(),
-                    statement.getPolicyName().getDbName(), statement.getPolicyName().getName())) {
+            if (!PrivilegeActions.checkAnyActionOnPolicy(context, statement.getPolicyType(),
+                    statement.getPolicyName().getCatalog(), statement.getPolicyName().getDbName(),
+                    statement.getPolicyName().getName())) {
                 ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ANY");
             }
             return null;

@@ -16,25 +16,37 @@ package org.apache.iceberg.hive;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.IcebergTable;
+import com.starrocks.common.MetaNotFoundException;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.connector.hive.HiveMetastoreApiConverter;
 import com.starrocks.connector.iceberg.IcebergCatalog;
 import com.starrocks.connector.iceberg.IcebergCatalogType;
 import com.starrocks.connector.iceberg.cost.IcebergMetricsReporter;
 import com.starrocks.connector.iceberg.io.IcebergCachingFileIO;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
+import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.iceberg.BaseMetastoreCatalog;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.CatalogUtil;
 import org.apache.iceberg.ClientPool;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableOperations;
+import org.apache.iceberg.Transaction;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.hadoop.Configurable;
 import org.apache.iceberg.hadoop.HadoopFileIO;
 import org.apache.iceberg.io.FileIO;
@@ -43,15 +55,21 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.thrift.TException;
 
+import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.starrocks.connector.ConnectorTableId.CONNECTOR_ID_GENERATOR;
+import static org.apache.iceberg.TableMetadata.newTableMetadata;
+import static org.apache.iceberg.Transactions.createTableTransaction;
 
 public class IcebergHiveCatalog extends BaseMetastoreCatalog implements IcebergCatalog, Configurable<Configuration> {
+    public static final String LOCATION_PROPERTY = "location";
     private static final Logger LOG = LogManager.getLogger(IcebergHiveCatalog.class);
 
     private String name;
@@ -166,12 +184,96 @@ public class IcebergHiveCatalog extends BaseMetastoreCatalog implements IcebergC
     }
 
     @Override
+    public void dropDb(String dbName) throws MetaNotFoundException {
+        Database database;
+        try {
+            database = getDB(dbName);
+        } catch (Exception e) {
+            LOG.error("Failed to access database {}", dbName, e);
+            throw new MetaNotFoundException("Failed to access database " + dbName);
+        }
+
+        if (database == null) {
+            throw new MetaNotFoundException("Not found database " + dbName);
+        }
+
+        String dbLocation = database.getLocation();
+        if (Strings.isNullOrEmpty(dbLocation)) {
+            throw new MetaNotFoundException("Database location is empty");
+        }
+
+        dropDatabaseInHiveMetastore(dbName);
+    }
+
+    public void dropDatabaseInHiveMetastore(String dbName) {
+        try {
+            clients.run(
+                    client -> {
+                        client.dropDatabase(dbName, true, false);
+                        return null;
+                    });
+        } catch (TException e) {
+            LOG.error("Failed to drop database {}", dbName, e);
+            throw new StarRocksConnectorException("Failed to drop database " + dbName);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new StarRocksConnectorException("Interrupted in call to dropDatabase(name) " +
+                    dbName + " in Hive Metastore. msg: %s", e.getMessage());
+        }
+    }
+
+    @Override
     public Database getDB(String dbName) throws InterruptedException, TException {
         org.apache.hadoop.hive.metastore.api.Database db = clients.run(client -> client.getDatabase(dbName));
         if (db == null || db.getName() == null) {
             throw new TException("Hive db " + dbName + " doesn't exist");
         }
-        return new Database(CONNECTOR_ID_GENERATOR.getNextId().asInt(), dbName);
+        return new Database(CONNECTOR_ID_GENERATOR.getNextId().asInt(), dbName, db.getLocationUri());
+    }
+
+    @Override
+    public void createDb(String dbName, Map<String, String> properties) {
+        Database database = new Database(CONNECTOR_ID_GENERATOR.getNextId().asInt(), dbName);
+        properties = properties == null ? new HashMap<>() : properties;
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            if (key.equalsIgnoreCase(LOCATION_PROPERTY)) {
+                try {
+                    URI uri = new Path(value).toUri();
+                    FileSystem fileSystem = FileSystem.get(uri, new Configuration());
+                    fileSystem.exists(new Path(value));
+                } catch (Exception e) {
+                    LOG.error("Invalid location URI: {}", value, e);
+                    throw new StarRocksConnectorException("Invalid location URI: %s. msg: %s", value, e.getMessage());
+                }
+                database.setLocation(value);
+            } else {
+                throw new IllegalArgumentException("Unrecognized property: " + key);
+            }
+        }
+
+        org.apache.hadoop.hive.metastore.api.Database hiveDb = HiveMetastoreApiConverter.toMetastoreApiDatabase(database);
+        createHiveDatabase(hiveDb);
+    }
+
+    public void createHiveDatabase(org.apache.hadoop.hive.metastore.api.Database hiveDb) {
+        try {
+            clients.run(
+                    client -> {
+                        client.createDatabase(hiveDb);
+                        return null;
+                    });
+
+            LOG.info("Created database: {}", hiveDb.getName());
+        } catch (TException e) {
+            LOG.error("Failed to create database {}", hiveDb.getName(), e);
+            throw new StarRocksConnectorException("Failed to create database " + hiveDb.getName());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new StarRocksConnectorException("Interrupted in call to createDatabase(name) " +
+                    hiveDb + " in Hive Metastore. msg: %s", e.getMessage());
+        }
     }
 
     @Override
@@ -186,8 +288,89 @@ public class IcebergHiveCatalog extends BaseMetastoreCatalog implements IcebergC
     }
 
     @Override
-    public boolean dropTable(TableIdentifier tableIdentifier, boolean b) {
-        throw new UnsupportedOperationException("Not implemented");
+    public Transaction newCreateTableTransaction(
+            String dbName,
+            String tableName,
+            Schema schema,
+            PartitionSpec partitionSpec,
+            String location,
+            Map<String, String> properties) {
+        TableMetadata metadata = newTableMetadata(schema, partitionSpec, location, properties);
+        TableOperations ops = newTableOps(TableIdentifier.of(Namespace.of(dbName), tableName));
+        return createTableTransaction(tableName, ops, metadata);
+    }
+
+    @Override
+    public boolean dropTable(TableIdentifier identifier, boolean purge) {
+        if (!isValidIdentifier(identifier)) {
+            return false;
+        }
+
+        String database = identifier.namespace().level(0);
+
+        TableOperations ops = newTableOps(identifier);
+        TableMetadata lastMetadata = null;
+        if (purge) {
+            try {
+                lastMetadata = ops.current();
+            } catch (NotFoundException e) {
+                LOG.warn("Failed to load table metadata for table: {}, continuing drop without purge", identifier, e);
+            }
+        }
+
+        try {
+            clients.run(
+                    client -> {
+                        client.dropTable(
+                                database,
+                                identifier.name(),
+                                false /* do not delete data */,
+                                false /* throw NoSuchObjectException if the table doesn't exist */);
+                        return null;
+                    });
+
+            if (purge && lastMetadata != null) {
+                CatalogUtil.dropTableData(ops.io(), lastMetadata);
+            }
+
+            deleteTableDirectory(ops.current().location());
+            LOG.info("Dropped table: {}", identifier);
+            return true;
+        } catch (NoSuchTableException | NoSuchObjectException e) {
+            LOG.info("Skipping drop, table does not exist: {}", identifier, e);
+            return false;
+        } catch (TException e) {
+            throw new StarRocksConnectorException("Failed to drop " + identifier, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new StarRocksConnectorException("Interrupted in call to dropTable", e);
+        }
+    }
+
+    private void deleteTableDirectory(String tableLocation) {
+        Path path = new Path(tableLocation);
+        URI uri = path.toUri();
+        try {
+            FileSystem fileSystem = FileSystem.get(uri, new Configuration());
+            fileSystem.delete(path, true);
+        } catch (IOException e) {
+            LOG.error("Failed to delete directory {}", tableLocation, e);
+            throw new StarRocksConnectorException("Failed to delete directory %s. msg: %s", tableLocation, e.getMessage());
+        }
+    }
+
+    @Override
+    public String defaultTableLocation(String dbName, String tblName) {
+        try {
+            String location = clients.run(client -> client.getDatabase(dbName)).getLocationUri();
+            if (Strings.isNullOrEmpty(location)) {
+                throw new StarRocksConnectorException("Database %s location is not set", dbName);
+            }
+            location = location.endsWith("/") ? location : location + "/";
+            return location + tblName;
+        } catch (TException | InterruptedException e) {
+            throw new StarRocksConnectorException("Failed to get default table location on %s.%s", dbName, tblName);
+        }
     }
 
     @Override
@@ -200,7 +383,6 @@ public class IcebergHiveCatalog extends BaseMetastoreCatalog implements IcebergC
         this.conf = conf;
     }
 
-    @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
                 .add("name", name)

@@ -63,6 +63,7 @@ import com.starrocks.sql.ast.BaseCreateAlterUserStmt;
 import com.starrocks.sql.ast.BaseGrantRevokePrivilegeStmt;
 import com.starrocks.sql.ast.BaseGrantRevokeRoleStmt;
 import com.starrocks.sql.ast.CTERelation;
+import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
 import com.starrocks.sql.ast.CreateUserStmt;
@@ -80,6 +81,7 @@ import com.starrocks.sql.ast.LambdaFunctionExpr;
 import com.starrocks.sql.ast.LoadStmt;
 import com.starrocks.sql.ast.MapExpr;
 import com.starrocks.sql.ast.NormalizedTableFunctionRelation;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
@@ -257,6 +259,32 @@ public class AstToStringBuilder {
             }
 
             return sqlBuilder.toString();
+        }
+
+        @Override
+        public String visitCreatePolicyStatement(CreatePolicyStmt stmt, Void context) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("CREATE");
+            if (stmt.getPolicyType().equals(PolicyType.COLUMN_MASKING)) {
+                sb.append(" MASKING POLICY ");
+            } else {
+                sb.append(" ROW ACCESS POLICY ");
+            }
+
+            sb.append(stmt.getPolicyName());
+            sb.append(" AS ");
+
+            sb.append("(");
+            List<String> arg = new ArrayList<>();
+            for (int i = 0; i < stmt.getArgNames().size(); ++i) {
+                arg.add(stmt.getArgNames().get(i) + " " + stmt.getArgTypeDefs().get(i).toSql());
+            }
+            sb.append(Joiner.on(",").join(arg));
+            sb.append(")");
+            sb.append(" RETURNS ").append(stmt.getReturnType().toSql());
+            sb.append(" -> ");
+            sb.append(visit(stmt.getExpression()));
+            return sb.toString();
         }
 
         // --------------------------------------------Set Statement -------------------------------------------------------

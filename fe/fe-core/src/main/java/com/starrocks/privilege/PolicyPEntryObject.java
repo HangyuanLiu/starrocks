@@ -22,6 +22,7 @@ import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.PolicyName;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.common.MetaNotFoundException;
 import com.starrocks.sql.parser.NodePosition;
 
@@ -42,7 +43,7 @@ public class PolicyPEntryObject implements PEntryObject {
         this.policyId = policyId;
     }
 
-    public static PolicyPEntryObject generate(GlobalStateMgr mgr, List<String> tokens)
+    public static PolicyPEntryObject generate(GlobalStateMgr mgr, PolicyType policyType, List<String> tokens)
             throws PrivilegeException {
         String catalogName = null;
         long catalogId;
@@ -98,7 +99,7 @@ public class PolicyPEntryObject implements PEntryObject {
             if (tokens.get(1).equals("*")) {
                 policyId = PrivilegeBuiltinConstants.ALL_POLICY_ID;
             } else {
-                Policy policy = mgr.getSecurityPolicyManager().getPolicyByName(
+                Policy policy = mgr.getSecurityPolicyManager().getPolicyByName(policyType,
                         new PolicyName(catalogName, database.getFullName(), tokens.get(1), NodePosition.ZERO));
                 policyId = policy.getPolicyId();
             }

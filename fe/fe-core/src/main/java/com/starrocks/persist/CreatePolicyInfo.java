@@ -53,7 +53,7 @@ public class CreatePolicyInfo implements Writable {
     @SerializedName(value = "retType")
     private Type retType;
 
-    @SerializedName(value = "expr")
+    @SerializedName(value = "p")
     private String policyExpressionSQL;
 
     @SerializedName(value = "sqlMode")

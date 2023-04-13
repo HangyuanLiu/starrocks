@@ -97,7 +97,7 @@ public class SecurityPolicyAnalyzer {
             PolicyName policyName = stmt.getPolicyName();
             normalizationTableName(session, policyName);
 
-            Policy policy = securityPolicyManager.getPolicyByName(policyName);
+            Policy policy = securityPolicyManager.getPolicyByName(stmt.getPolicyType(), policyName);
             if (policy != null) {
                 stmt.setPolicyId(policy.getPolicyId());
             } else if (!stmt.isIfExists()) {

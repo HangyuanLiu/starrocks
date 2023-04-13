@@ -23,6 +23,7 @@ import com.starrocks.catalog.Table;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.UserIdentity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -118,12 +119,6 @@ public class PrivilegeActions {
                                                    PrivilegeType privilegeType) {
         return checkObjectTypeAction(connectContext.getCurrentUserIdentity(), connectContext.getCurrentRoleIds(),
                 privilegeType, ObjectType.RESOURCE_GROUP, Collections.singletonList(name));
-    }
-
-    public static boolean checkPolicyAction(ConnectContext connectContext, String catalogName, String db, String policy,
-                                            PrivilegeType privilegeType) {
-        return checkObjectTypeAction(connectContext.getCurrentUserIdentity(), connectContext.getCurrentRoleIds(),
-                privilegeType, ObjectType.POLICY, Arrays.asList(catalogName, db, policy));
     }
 
     /**
@@ -301,11 +296,6 @@ public class PrivilegeActions {
         }
     }
 
-    public static boolean checkAnyActionOnPolicy(ConnectContext context, String catalogName, String db, String policy) {
-        return checkAnyActionOnObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(), ObjectType.POLICY,
-                Lists.newArrayList(catalogName, db, policy));
-    }
-
     /**
      * Check whether current user has any privilege action on the db or objects(table/view/mv) in the db.
      * Currently, it's used by `show databases` or `use database`.
@@ -410,5 +400,54 @@ public class PrivilegeActions {
         return checkAnyActionOnFunctionObject(context.getCurrentUserIdentity(), context.getCurrentRoleIds(),
                 ObjectType.GLOBAL_FUNCTION,
                 PrivilegeBuiltinConstants.GLOBAL_FUNCTION_DEFAULT_DATABASE_ID, functionId);
+    }
+
+    public static boolean checkPolicyAction(ConnectContext context, PolicyType policyType,
+                                            String catalogName, String db, String policy, PrivilegeType privilegeType) {
+        UserIdentity userIdentity = context.getCurrentUserIdentity();
+        Set<Long> roleIds = context.getCurrentRoleIds();
+        List<String> objectTokens = Lists.newArrayList(catalogName, db, policy);
+
+        AuthorizationManager manager = GlobalStateMgr.getCurrentState().getAuthorizationManager();
+        try {
+
+            PrivilegeCollection collection = manager.mergePrivilegeCollection(userIdentity, roleIds);
+            PEntryObject object = manager.provider.generatePolicyObject(ObjectType.POLICY, policyType, objectTokens,
+                    GlobalStateMgr.getCurrentState());
+            return manager.provider.check(ObjectType.POLICY, privilegeType, object, collection);
+        } catch (PrivObjNotFoundException e) {
+            LOG.info("Object not found when checking action[{}] on {} {}, message: {}",
+                    privilegeType, ObjectType.POLICY.name().replace("_", " "),
+                    Joiner.on(".").join(objectTokens), e.getMessage());
+            return true;
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking action[{}] on {} {}",
+                    privilegeType, ObjectType.POLICY.name().replace("_", " "),
+                    Joiner.on(".").join(objectTokens), e);
+            return false;
+        }
+    }
+
+    public static boolean checkAnyActionOnPolicy(ConnectContext context, PolicyType policyType,
+                                                 String catalogName, String db, String policy) {
+        UserIdentity currentUser = context.getCurrentUserIdentity();
+        Set<Long> roleIds = context.getCurrentRoleIds();
+        List<String> objectTokens = Lists.newArrayList(catalogName, db, policy);
+
+        AuthorizationManager manager = GlobalStateMgr.getCurrentState().getAuthorizationManager();
+        try {
+            PrivilegeCollection collection = manager.mergePrivilegeCollection(currentUser, roleIds);
+            PEntryObject pEntryObject = manager.provider.generatePolicyObject(
+                    ObjectType.POLICY, policyType, objectTokens, GlobalStateMgr.getCurrentState());
+            return manager.provider.searchAnyActionOnObject(ObjectType.POLICY, pEntryObject, collection);
+        } catch (PrivObjNotFoundException e) {
+            LOG.info("Object not found when checking any action on {} {}, message: {}",
+                    ObjectType.POLICY.name(), Joiner.on(".").join(objectTokens), e.getMessage());
+            return true;
+        } catch (PrivilegeException e) {
+            LOG.warn("caught exception when checking any action on {} {}",
+                    ObjectType.POLICY.name(), Joiner.on(".").join(objectTokens), e);
+            return false;
+        }
     }
 }

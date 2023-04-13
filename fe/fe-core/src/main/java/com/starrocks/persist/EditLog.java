@@ -81,6 +81,7 @@ import com.starrocks.plugin.PluginInfo;
 import com.starrocks.privilege.DbPEntryObject;
 import com.starrocks.privilege.Policy;
 import com.starrocks.privilege.RolePrivilegeCollection;
+import com.starrocks.privilege.SecurityPolicyManager;
 import com.starrocks.privilege.UserPrivilegeCollection;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.scheduler.Task;
@@ -224,6 +225,10 @@ public class EditLog {
                     DropDbInfo dropDbInfo = (DropDbInfo) journal.getData();
                     LocalMetastore metastore = (LocalMetastore) globalStateMgr.getMetadata();
                     metastore.replayDropDb(dropDbInfo.getDbName(), dropDbInfo.isForceDrop());
+                    SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getCurrentState().getSecurityPolicyManager();
+                    for (DropPolicyInfo dropPolicyInfo : dropDbInfo.getDropPolicyInfo()) {
+                        securityPolicyManager.replayDropPolicy(dropPolicyInfo);
+                    }
                     break;
                 }
                 case OperationType.OP_ALTER_DB: {

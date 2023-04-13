@@ -17,6 +17,7 @@ package com.starrocks.privilege;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.UserIdentity;
 
 import java.util.ArrayList;
@@ -161,9 +162,6 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
             case RESOURCE_GROUP:
                 return ResourceGroupPEntryObject.generate(mgr, objectTokens);
 
-            case POLICY:
-                return PolicyPEntryObject.generate(mgr, objectTokens);
-
             default:
                 throw new PrivilegeException(UNEXPECTED_TYPE + objectType.name());
         }
@@ -185,6 +183,12 @@ public class DefaultAuthorizationProvider implements AuthorizationProvider {
             return FunctionPEntryObject.generate(globalStateMgr, databaseId, functionId);
         }
         throw new PrivilegeException(UNEXPECTED_TYPE + objectType.name());
+    }
+
+    @Override
+    public PEntryObject generatePolicyObject(ObjectType objectType, PolicyType policyType, List<String> objectTokens,
+                                             GlobalStateMgr mgr) throws PrivilegeException {
+        return PolicyPEntryObject.generate(mgr, policyType, objectTokens);
     }
 
     private static final List<PrivilegeType> BAD_SYSTEM_ACTIONS = Arrays.asList(PrivilegeType.GRANT, PrivilegeType.NODE);

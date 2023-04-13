@@ -46,6 +46,7 @@ import com.starrocks.server.GlobalStateMgr;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.util.List;
 
 public class DropDbInfo implements Writable {
     @SerializedName(value = "dbName")
@@ -53,17 +54,21 @@ public class DropDbInfo implements Writable {
     @SerializedName(value = "forceDrop")
     private boolean forceDrop = false;
 
+    @SerializedName(value = "dropPolicyInfo")
+    private List<DropPolicyInfo> dropPolicyInfo;
+
     public DropDbInfo() {
-        this("", false);
+        this("", false, null);
     }
 
-    public DropDbInfo(String dbName, boolean forceDrop) {
+    public DropDbInfo(String dbName, boolean forceDrop, List<DropPolicyInfo> dropPolicyInfos) {
         // compatible with old version
         this.dbName = ClusterNamespace.getFullName(dbName);
         if (this.dbName == null) {
             this.dbName = "";
         }
         this.forceDrop = forceDrop;
+        this.dropPolicyInfo = dropPolicyInfos;
     }
 
     public String getDbName() {
@@ -72,6 +77,10 @@ public class DropDbInfo implements Writable {
 
     public boolean isForceDrop() {
         return forceDrop;
+    }
+
+    public List<DropPolicyInfo> getDropPolicyInfo() {
+        return dropPolicyInfo;
     }
 
     private void readFields(DataInput in) throws IOException {
