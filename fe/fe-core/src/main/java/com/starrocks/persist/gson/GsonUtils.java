@@ -66,6 +66,8 @@ import com.starrocks.alter.LakeTableSchemaChangeJob;
 import com.starrocks.alter.RollupJobV2;
 import com.starrocks.alter.SchemaChangeJobV2;
 import com.starrocks.analysis.Expr;
+import com.starrocks.authentication.LDAPSecurityIntegration;
+import com.starrocks.authentication.SecurityIntegration;
 import com.starrocks.backup.SnapshotInfo;
 import com.starrocks.catalog.AnyArrayType;
 import com.starrocks.catalog.AnyElementType;
@@ -263,6 +265,10 @@ public class GsonUtils {
                     .registerSubtype(AlterPolicyInfo.PolicyRenameInfo.class,
                             AlterPolicyInfo.PolicyRenameInfo.class.getSimpleName());
 
+    private static final RuntimeTypeAdapterFactory<SecurityIntegration> SEC_INTEGRATION_RUNTIME_TYPE_ADAPTER_FACTORY =
+            RuntimeTypeAdapterFactory.of(SecurityIntegration.class, "clazz")
+                    .registerSubtype(LDAPSecurityIntegration.class, LDAPSecurityIntegration.class.getSimpleName());
+
     private static final JsonSerializer<LocalDateTime> LOCAL_DATE_TIME_TYPE_SERIALIZER =
             (dateTime, type, jsonSerializationContext) -> new JsonPrimitive(dateTime.toEpochSecond(ZoneOffset.UTC));
 
@@ -300,9 +306,9 @@ public class GsonUtils {
             .registerTypeHierarchyAdapter(Table.class, new GuavaTableAdapter())
             .registerTypeHierarchyAdapter(Multimap.class, new GuavaMultimapAdapter())
             .registerTypeAdapterFactory(new ProcessHookTypeAdapterFactory())
-            // specified childcalss DeSerializer must be ahead of fatherclass,
-            // because when GsonBuilder::create() will reverse it,
-            // and gson::getDelegateAdapter will skip the factory ahead of father TypeAdapterFactory factory.
+            // specified subclass deserializer must be ahead of superclass,
+            // because when doing GsonBuilder::create(), the order will be reversed,
+            // and gson::getDelegateAdapter will skip the factory ahead of super TypeAdapterFactory factory.
             .registerTypeAdapter(MapType.class, MAP_TYPE_JSON_DESERIALIZER)
             .registerTypeAdapter(StructType.class, STRUCT_TYPE_JSON_DESERIALIZER)
             .registerTypeAdapterFactory(COLUMN_TYPE_ADAPTER_FACTORY)
@@ -318,6 +324,7 @@ public class GsonUtils {
             .registerTypeAdapterFactory(TABLE_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(SNAPSHOT_INFO_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(P_ENTRY_OBJECT_RUNTIME_TYPE_ADAPTER_FACTORY)
+            .registerTypeAdapterFactory(SEC_INTEGRATION_RUNTIME_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(ALTER_POLICY_ADAPTER_FACTORY)
             .registerTypeAdapter(LocalDateTime.class, LOCAL_DATE_TIME_TYPE_SERIALIZER)
             .registerTypeAdapter(LocalDateTime.class, LOCAL_DATE_TIME_TYPE_DESERIALIZER)

@@ -198,7 +198,7 @@ statement
     | showWarningStatement
     | helpStatement
 
-    // Privilege Statement
+    // authz Statement
     | createUserStatement
     | dropUserStatement
     | alterUserStatement
@@ -215,19 +215,20 @@ statement
     | grantPrivilegeStatement
     | revokePrivilegeStatement
     | showGrantsStatement
+    | createSecurityIntegrationStatement
 
     // Security Policy
     | createMaskingPolicyStatement
     | alterMaskingPolicyStatement
     | dropMaskingPolicyStatement
     | showMaskingPolicyStatement
-    | describeMaskingPolicyStatement
+    | showCreateMaskingPolicyStatement
 
     | createRowAccessPolicyStatement
     | alterRowAccessPolicyStatement
     | dropRowAccessPolicyStatement
     | showRowAccessPolicyStatement
-    | describeRowAccessPolicyStatement
+    | showCreateRowAccessPolicyStatement
 
     | showPolicyReferences
 
@@ -419,7 +420,7 @@ createTableAsSelectStatement
         distributionDesc?
         properties?
         AS queryStatement
-        ;
+    ;
 
 dropTableStatement
     : DROP TEMPORARY? TABLE (IF EXISTS)? qualifiedName FORCE?
@@ -518,13 +519,10 @@ createViewStatement
     ;
 
 alterViewStatement
-    : ALTER VIEW qualifiedName
-    ('(' columnNameWithComment (',' columnNameWithComment)* ')')?
-    AS queryStatement
-
+    : ALTER VIEW qualifiedName ('(' columnNameWithComment (',' columnNameWithComment)* ')')? AS queryStatement
     | ALTER VIEW qualifiedName MODIFY COLUMN identifier SET MASKING POLICY policyName=identifier (USING identifierList)?
     | ALTER VIEW qualifiedName MODIFY COLUMN identifier UNSET MASKING POLICY
-    | ALTER VIEW (IF EXISTS) qualifiedName ADD ROW ACCESS POLICY policyName=identifier ON identifierList
+    | ALTER VIEW (IF EXISTS) qualifiedName ADD ROW ACCESS POLICY policyName=identifier (ON identifierList)?
     | ALTER VIEW (IF EXISTS) qualifiedName DROP ROW ACCESS POLICY policyName=identifier
     | ALTER VIEW (IF EXISTS) qualifiedName DROP ALL ROW ACCESS POLICIES
     ;
@@ -542,7 +540,7 @@ withMaskingPolicy
     ;
 
 withRowAccessPolicy
-    : WITH ROW ACCESS POLICY policyName=qualifiedName ON identifierList
+    : WITH ROW ACCESS POLICY policyName=qualifiedName (ON identifierList)?
     ;
 
 // ------------------------------------------- Task Statement ----------------------------------------------------------
@@ -556,6 +554,7 @@ submitTaskStatement
 
 createMaterializedViewStatement
     : CREATE MATERIALIZED VIEW (IF NOT EXISTS)? mvName=qualifiedName
+    withRowAccessPolicy*
     comment?
     materializedViewDesc*
     AS queryStatement
@@ -579,10 +578,9 @@ dropMaterializedViewStatement
 
 alterMaterializedViewStatement
     : ALTER MATERIALIZED VIEW mvName=qualifiedName (refreshSchemeDesc | tableRenameClause | modifyTablePropertiesClause)
-
     | ALTER MATERIALIZED VIEW qualifiedName MODIFY COLUMN identifier SET MASKING POLICY policyName=identifier (USING identifierList)?
     | ALTER MATERIALIZED VIEW qualifiedName MODIFY COLUMN identifier UNSET MASKING POLICY
-    | ALTER MATERIALIZED VIEW (IF EXISTS) qualifiedName ADD ROW ACCESS POLICY policyName=identifier ON identifierList
+    | ALTER MATERIALIZED VIEW (IF EXISTS) qualifiedName ADD ROW ACCESS POLICY policyName=identifier (ON identifierList)?
     | ALTER MATERIALIZED VIEW (IF EXISTS) qualifiedName DROP ROW ACCESS POLICY policyName=identifier
     | ALTER MATERIALIZED VIEW (IF EXISTS) qualifiedName DROP ALL ROW ACCESS POLICIES
     ;
@@ -731,6 +729,7 @@ alterClause
     | columnRenameClause
     | reorderColumnsClause
     | rollupRenameClause
+    | compactionClause
     | modifyCommentClause
 
     //Apply Policy clause
@@ -853,13 +852,17 @@ rollupRenameClause
     : RENAME ROLLUP rollupName=identifier newRollupName=identifier
     ;
 
+compactionClause
+    : (BASE | CUMULATIVE)? COMPACT (identifier | identifierList)?
+    ;
+
 applyMaskingPolicyClause
     : MODIFY COLUMN columnName=identifier SET MASKING POLICY policyName=qualifiedName (USING identifierList)?
     | MODIFY COLUMN columnName=identifier UNSET MASKING POLICY
     ;
 
 applyRowAccessPolicyClause
-    : ADD ROW ACCESS POLICY policyName=qualifiedName ON identifierList
+    : ADD ROW ACCESS POLICY policyName=qualifiedName (ON identifierList)?
     | DROP ROW ACCESS POLICY policyName=qualifiedName
     | DROP ALL ROW ACCESS POLICIES
     ;
@@ -1279,7 +1282,7 @@ helpStatement
     : HELP identifierOrString
     ;
 
-// ------------------------------------------- Privilege Statement -----------------------------------------------------
+// ------------------------------------------- Authz Statement -----------------------------------------------------
 
 createUserStatement
     : CREATE USER (IF NOT EXISTS)? user authOption? (DEFAULT ROLE roleList)?
@@ -1437,7 +1440,7 @@ showMaskingPolicyStatement
     : SHOW MASKING POLICIES ((FROM | IN) db=qualifiedName)?
     ;
 
-describeMaskingPolicyStatement
+showCreateMaskingPolicyStatement
     : SHOW CREATE MASKING POLICY policyName=qualifiedName
     ;
 
@@ -1460,12 +1463,16 @@ showRowAccessPolicyStatement
     : SHOW ROW ACCESS POLICIES ((FROM | IN) db=qualifiedName)?
     ;
 
-describeRowAccessPolicyStatement
+showCreateRowAccessPolicyStatement
     : SHOW CREATE ROW ACCESS POLICY policyName=qualifiedName
     ;
 
 showPolicyReferences
     : SHOW POLICY APPLY
+    ;
+
+createSecurityIntegrationStatement
+    : CREATE SECURITY INTEGRATION identifier properties
     ;
 
 // ---------------------------------------- Backup Restore Statement ---------------------------------------------------
@@ -1845,6 +1852,14 @@ expressionOrDefault
     : expression | DEFAULT
     ;
 
+mapExpressionList
+    : mapExpression (',' mapExpression)*
+    ;
+
+mapExpression
+    : key=expression ':' value=expression
+    ;
+
 expressionSingleton
     : expression EOF
     ;
@@ -1922,6 +1937,7 @@ primaryExpression
     | CASE caseExpr=expression whenClause+ (ELSE elseExpression=expression)? END          #simpleCase
     | CASE whenClause+ (ELSE elseExpression=expression)? END                              #searchedCase
     | arrayType? '[' (expressionList)? ']'                                                #arrayConstructor
+    | mapType? '{' (mapExpressionList)? '}'                                               #mapConstructor
     | value=primaryExpression '[' index=valueExpression ']'                               #collectionSubscript
     | primaryExpression '[' start=INTEGER_VALUE? ':' end=INTEGER_VALUE? ']'               #arraySlice
     | primaryExpression ARROW string                                                      #arrowExpression
@@ -2335,28 +2351,33 @@ number
 
 nonReserved
     : ACCESS | AFTER | AGGREGATE | APPLY | ASYNC | AUTHORS | AVG | ADMIN | ANTI | AUTHENTICATION | AUTO_INCREMENT
-    | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BINARY | BODY | BOOLEAN | BROKER | BUCKETS | BUILTIN
-    | CAST | CANCEL | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CLUSTER | CLUSTERS | CURRENT | COLLATION | COLUMNS
-    | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT | CONFIG
+    | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BINARY | BODY | BOOLEAN | BROKER | BUCKETS | BUILTIN | BASE
+    | CAST | CANCEL | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CLUSTER | CLUSTERS | CURRENT | COLLATION | COLUMNS | CUMULATIVE
+    | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT | CONFIG | COMPACT
     | DATA | DATE | DATETIME | DAY | DECOMMISSION | DISTRIBUTION | DUPLICATE | DYNAMIC | DISTRIBUTED
     | END | ENGINE | ENGINES | ERRORS | EVENTS | EXECUTE | EXTERNAL | EXTRACT | EVERY | ENCLOSE | ESCAPE | EXPORT
-    | FIELDS | FILE | FILTER | FIRST | FLOOR | FOLLOWING | FORMAT | FN | FRONTEND | FRONTENDS | FOLLOWER | FREE | FUNCTIONS
+    | FIELDS | FILE | FILTER | FIRST | FLOOR | FOLLOWING | FORMAT | FN | FRONTEND | FRONTENDS | FOLLOWER | FREE
+    | FUNCTIONS
     | GLOBAL | GRANTS
     | HASH | HISTOGRAM | HELP | HLL_UNION | HOST | HOUR | HUB
-    | IDENTIFIED | IMAGE | IMPERSONATE | INDEXES | INSTALL | INTERMEDIATE | INTERVAL | ISOLATION | INCREMENTAL
+    | IDENTIFIED | IMAGE | IMPERSONATE | INCREMENTAL | INDEXES | INSTALL | INTEGRATION | INTERMEDIATE
+    | INTERVAL | ISOLATION
     | JOB
     | LABEL | LAST | LESS | LEVEL | LIST | LOCAL | LOCATION | LOGICAL | LOW_PRIORITY | LOCK
     | MASKING | MANUAL | MAP | MATERIALIZED | MAX | META | MIN | MINUTE | MODE | MODIFY | MONTH | MERGE | MINUS
     | NAME | NAMES | NEGATIVE | NO | NODE | NODES | NONE | NULLS | NUMBER | NUMERIC
     | OBSERVER | OF | OFFSET | ONLY | OPTIMIZER | OPEN | OPERATE | OPTION | OVERWRITE
-    | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | POLICY | POLICIES | PRECEDING | PROC
-    | PROCESSLIST | PRIVILEGES | PROPERTIES | PROPERTY
+    | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | POLICY | POLICIES | PRECEDING | PROC | PROCESSLIST
+    | PRIVILEGES PROPERTIES | PROPERTY
     | QUARTER | QUERY | QUOTA | QUALIFY
-    | REMOVE | RANDOM | RANK | RECOVER | REFRESH | REPAIR | REPEATABLE | REPLACE_IF_NOT_NULL | REPLICA | REPOSITORY | REPOSITORIES
+    | REMOVE | RANDOM | RANK | RECOVER | REFRESH | REPAIR | REPEATABLE | REPLACE_IF_NOT_NULL | REPLICA | REPOSITORY
+    | REPOSITORIES
     | RESOURCE | RESOURCES | RESTORE | RESUME | RETURNS | REVERT | ROLE | ROLES | ROLLUP | ROLLBACK | ROUTINE | ROW
-    | SAMPLE | SECOND | SERIALIZABLE |SEMI | SESSION | SETS | SIGNED | SNAPSHOT | SQLBLACKLIST | START | STREAM | SUM | STATUS | STOP | SKIP_HEADER | SWAP
+    | SAMPLE | SECOND | SECURITY | SERIALIZABLE |SEMI | SESSION | SETS | SIGNED | SNAPSHOT | SQLBLACKLIST | START
+    | STREAM | SUM | STATUS | STOP | SKIP_HEADER | SWAP
     | STORAGE| STRING | STRUCT | STATS | SUBMIT | SUSPEND | SYNC | SYSTEM_TIME
-    | TABLES | TABLET | TASK | TEMPORARY | TIMESTAMP | TIMESTAMPADD | TIMESTAMPDIFF | THAN | TIME | TRANSACTION | TRACE | TRIM_SPACE
+    | TABLES | TABLET | TASK | TEMPORARY | TIMESTAMP | TIMESTAMPADD | TIMESTAMPDIFF | THAN | TIME | TRANSACTION | TRACE
+    | TRIM_SPACE
     | TRIGGERS | TRUNCATE | TYPE | TYPES
     | UNBOUNDED | UNCOMMITTED | UNSET | UNINSTALL | USAGE | USER | USERS | UNLOCK
     | VALUE | VARBINARY | VARIABLES | VIEW | VIEWS | VERBOSE
