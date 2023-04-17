@@ -16,6 +16,7 @@
 package com.starrocks.analysis;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.ShowStreamLoadStmt;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.utframe.UtFrameUtils;
@@ -42,7 +43,7 @@ public class ShowStreamLoadStmtTest {
 
         ShowStreamLoadStmt stmt = new ShowStreamLoadStmt(new LabelName("testDb", "label"), false);
 
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("label", stmt.getName());
         Assert.assertEquals("testDb", stmt.getDbFullName());
         Assert.assertFalse(stmt.isIncludeHistory());
@@ -57,14 +58,14 @@ public class ShowStreamLoadStmtTest {
 
         ShowStreamLoadStmt stmt = new ShowStreamLoadStmt(new LabelName("testDb", null), false);
 
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("testDb", stmt.getDbFullName());
     }
 
     @Test
     public void testBackquote() throws SecurityException, IllegalArgumentException {
         String sql = "SHOW STREAM LOAD FOR `rl_test` FROM `db_test` WHERE state = 'RUNNING' ORDER BY `CreateTime` desc";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, ctx.getSessionVariable());
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, ctx.getSessionVariable());
 
         ShowStreamLoadStmt stmt = (ShowStreamLoadStmt) stmts.get(0);
         Assert.assertEquals("db_test", stmt.getDbFullName());
@@ -74,7 +75,7 @@ public class ShowStreamLoadStmtTest {
     @Test
     public void testWithoutLabel() {
         String sql = "show stream load";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, ctx.getSessionVariable());
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, ctx.getSessionVariable());
         ShowStreamLoadStmt stmt = (ShowStreamLoadStmt) stmts.get(0);
         Assert.assertNull(stmt.getName());
         Assert.assertNull(stmt.getDbFullName());

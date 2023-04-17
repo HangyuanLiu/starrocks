@@ -17,7 +17,6 @@ package com.starrocks.sql.parser;
 
 import com.google.common.collect.Lists;
 import com.starrocks.common.Config;
-import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.sql.ast.StatementBase;
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
@@ -113,7 +112,7 @@ public class ParserBench {
         }
         parser.getInterpreter().setPredictionMode(mode.equals("SLL") ? PredictionMode.SLL : PredictionMode.LL);
         StarRocksParser.SqlStatementsContext sqlStatements = parser.sqlStatements();
-        return (StatementBase) new AstBuilder(SqlModeHelper.MODE_DEFAULT)
+        return (StatementBase) new AstBuilder()
                 .visitSingleStatement(sqlStatements.singleStatement(0));
     }
 

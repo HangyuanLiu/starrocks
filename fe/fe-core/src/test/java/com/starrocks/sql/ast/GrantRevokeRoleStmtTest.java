@@ -80,23 +80,23 @@ public class GrantRevokeRoleStmtTest {
 
         // grant
         // user without host
-        GrantRoleStmt stmt = (GrantRoleStmt) com.starrocks.sql.parser.SqlParser.parse(
+        GrantRoleStmt stmt = (GrantRoleStmt) GlobalStateMgr.getSqlParser().parse(
                 "grant test_role to test_user", 1).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("GRANT 'test_role' TO 'test_user'@'%'", AstToSQLBuilder.toSQL(stmt));
 
         // grant 2
         // user with host
-        stmt = (GrantRoleStmt) com.starrocks.sql.parser.SqlParser.parse(
+        stmt = (GrantRoleStmt) GlobalStateMgr.getSqlParser().parse(
                 "grant 'test_role' to 'test_user'@'localhost'", 1).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("GRANT 'test_role' TO 'test_user'@'localhost'", AstToSQLBuilder.toSQL(stmt));
 
         // revoke
         // user with domain
-        RevokeRoleStmt stmt2 = (RevokeRoleStmt) com.starrocks.sql.parser.SqlParser.parse(
+        RevokeRoleStmt stmt2 = (RevokeRoleStmt) GlobalStateMgr.getSqlParser().parse(
                 "revoke 'test_role' from 'test_user'@['starrocks.com']", 1).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt2, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt2, ctx);
         Assert.assertEquals("REVOKE 'test_role' " +
                 "FROM 'test_user'@['starrocks.com']", AstToSQLBuilder.toSQL(stmt2));
     }
@@ -118,7 +118,7 @@ public class GrantRevokeRoleStmtTest {
         };
         GrantRoleStmt stmt = new GrantRoleStmt(Collections.singletonList("test_role"),
                 new UserIdentity("test_user", "localhost"));
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No exception throws.");
     }
 
@@ -139,7 +139,7 @@ public class GrantRevokeRoleStmtTest {
         };
         GrantRoleStmt stmt = new GrantRoleStmt(Collections.singletonList("test_role"),
                 new UserIdentity("test_user", "localhost"));
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No exception throws.");
     }
 }

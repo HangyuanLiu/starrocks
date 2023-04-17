@@ -209,8 +209,7 @@ public class TableQueryPlanAction extends RestBaseAction {
              * currently only used in Spark/Flink Connector
              */
             context.getSessionVariable().setSingleNodeExecPlan(true);
-            statementBase =
-                    com.starrocks.sql.parser.SqlParser.parse(sql, context.getSessionVariable()).get(0);
+            statementBase = GlobalStateMgr.getSqlParser().parse(sql, context.getSessionVariable()).get(0);
             execPlan = new StatementPlanner().plan(statementBase, context);
             context.getSessionVariable().setSingleNodeExecPlan(false);
         } catch (Exception e) {

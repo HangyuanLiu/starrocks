@@ -51,9 +51,9 @@ public class CreateTableLikeAnalyzer {
             ErrorReport.reportSemanticException(ErrorCode.ERROR_CREATE_TABLE_LIKE_EMPTY, "CREATE");
         }
 
-        StatementBase statementBase = com.starrocks.sql.parser.SqlParser.parseFirstStatement(createTableStmt.get(0),
+        StatementBase statementBase = GlobalStateMgr.getSqlParser().parseFirstStatement(createTableStmt.get(0),
                 context.getSessionVariable().getSqlMode());
-        com.starrocks.sql.analyzer.Analyzer.analyze(statementBase, context);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, context);
         if (statementBase instanceof CreateTableStmt) {
             CreateTableStmt parsedCreateTableStmt = (CreateTableStmt) statementBase;
             parsedCreateTableStmt.setTableName(stmt.getTableName());

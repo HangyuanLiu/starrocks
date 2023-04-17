@@ -35,6 +35,7 @@
 package com.starrocks.analysis;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.AstToStringBuilder;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.QueryStatement;
@@ -60,20 +61,20 @@ public class ShowTableStmtTest {
 
         ShowTableStmt stmt = new ShowTableStmt("", false, null);
 
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("testDb", stmt.getDb());
         Assert.assertFalse(stmt.isVerbose());
         Assert.assertEquals(1, stmt.getMetaData().getColumnCount());
         Assert.assertEquals("Tables_in_testDb", stmt.getMetaData().getColumn(0).getName());
 
         stmt = new ShowTableStmt("abc", true, null);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals(2, stmt.getMetaData().getColumnCount());
         Assert.assertEquals("Tables_in_abc", stmt.getMetaData().getColumn(0).getName());
         Assert.assertEquals("Table_type", stmt.getMetaData().getColumn(1).getName());
 
         stmt = new ShowTableStmt("abc", true, "bcd");
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("bcd", stmt.getPattern());
         Assert.assertEquals(2, stmt.getMetaData().getColumnCount());
         Assert.assertEquals("Tables_in_abc", stmt.getMetaData().getColumn(0).getName());
@@ -95,7 +96,7 @@ public class ShowTableStmtTest {
     public void testNoDb() throws Exception {
         ctx = UtFrameUtils.createDefaultCtx();
         ShowTableStmt stmt = new ShowTableStmt("", false, null);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No exception throws");
     }
 }

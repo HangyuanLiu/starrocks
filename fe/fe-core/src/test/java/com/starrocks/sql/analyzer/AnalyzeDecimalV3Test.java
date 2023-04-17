@@ -24,6 +24,7 @@ import com.starrocks.catalog.ScalarType;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.Config;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectRelation;
@@ -91,9 +92,9 @@ public class AnalyzeDecimalV3Test {
     }
 
     public static QueryRelation analyzeSuccess(String originStmt) throws Exception {
-        StatementBase statementBase = com.starrocks.sql.parser.SqlParser
+        StatementBase statementBase = GlobalStateMgr.getSqlParser()
                 .parse(originStmt, ctx.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statementBase, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, ctx);
         return ((QueryStatement) statementBase).getQueryRelation();
     }
 

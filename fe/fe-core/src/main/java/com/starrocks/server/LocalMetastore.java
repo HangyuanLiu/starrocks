@@ -66,7 +66,6 @@ import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.HashDistributionInfo;
 import com.starrocks.catalog.HiveTable;
 import com.starrocks.catalog.InfoSchemaDb;
-import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.catalog.KeysType;
 import com.starrocks.catalog.ListPartitionInfo;
 import com.starrocks.catalog.LocalTablet;
@@ -125,7 +124,6 @@ import com.starrocks.persist.ColocatePersistInfo;
 import com.starrocks.persist.DatabaseInfo;
 import com.starrocks.persist.DropDbInfo;
 import com.starrocks.persist.DropPartitionInfo;
-import com.starrocks.persist.DropPolicyInfo;
 import com.starrocks.persist.EditLog;
 import com.starrocks.persist.ListPartitionPersistInfo;
 import com.starrocks.persist.ModifyPartitionInfo;
@@ -142,10 +140,8 @@ import com.starrocks.persist.ReplicaPersistInfo;
 import com.starrocks.persist.SetReplicaStatusOperationLog;
 import com.starrocks.persist.TableInfo;
 import com.starrocks.persist.TruncateTableInfo;
-import com.starrocks.privilege.Policy;
 import com.starrocks.privilege.PrivilegeActions;
 import com.starrocks.privilege.PrivilegeType;
-import com.starrocks.privilege.SecurityPolicyManager;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.VariableMgr;
@@ -185,7 +181,6 @@ import com.starrocks.sql.ast.PartitionConvertContext;
 import com.starrocks.sql.ast.PartitionDesc;
 import com.starrocks.sql.ast.PartitionRangeDesc;
 import com.starrocks.sql.ast.PartitionRenameClause;
-import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.RangePartitionDesc;
 import com.starrocks.sql.ast.RecoverDbStmt;
@@ -222,6 +217,7 @@ import com.starrocks.thrift.TStorageType;
 import com.starrocks.thrift.TTabletMetaType;
 import com.starrocks.thrift.TTabletType;
 import com.starrocks.thrift.TTaskType;
+import ee.starrocks.persist.DropPolicyInfo;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.util.ThreadUtil;
@@ -437,6 +433,7 @@ public class LocalMetastore implements ConnectorMetadata {
                 throw new MetaNotFoundException("Database not found");
             }
 
+            /*
             SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getCurrentState().getSecurityPolicyManager();
             Map<String, Policy> allMaskingPolicy = securityPolicyManager
                     .getNameToPolicy(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName, PolicyType.COLUMN_MASKING);
@@ -453,6 +450,7 @@ public class LocalMetastore implements ConnectorMetadata {
                     throw new DdlException("");
                 }
             }
+             */
 
             // 2. drop tables in db
             Database db = this.fullNameToDb.get(dbName);
@@ -491,6 +489,7 @@ public class LocalMetastore implements ConnectorMetadata {
                     .stream().map(Task::getId).collect(Collectors.toList());
             taskManager.dropTasks(dropTaskIdList, false);
 
+            /*
             // 5. drop policy
             List<DropPolicyInfo> dropPolicyInfos = new ArrayList<>();
             for (Policy policy : allMaskingPolicy.values()) {
@@ -500,6 +499,8 @@ public class LocalMetastore implements ConnectorMetadata {
                 securityPolicyManager.replayDropPolicy(dropPolicyInfo);
             }
 
+             */
+            List<DropPolicyInfo> dropPolicyInfos = new ArrayList<>();
             DropDbInfo info = new DropDbInfo(db.getFullName(), isForceDrop, dropPolicyInfos);
             editLog.logDropDb(info);
 
@@ -830,6 +831,7 @@ public class LocalMetastore implements ConnectorMetadata {
         }
         Table table = tableFactory.createTable(this, db, stmt);
 
+        /*
         Map<String, WithColumnMaskingPolicy> maskingPolicyContextMap = stmt.getMaskingPolicyContextMap();
         SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getServingState().getSecurityPolicyManager();
         for (Map.Entry<String, WithColumnMaskingPolicy> entry : maskingPolicyContextMap.entrySet()) {
@@ -843,6 +845,8 @@ public class LocalMetastore implements ConnectorMetadata {
                     new TableName(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, db.getFullName(), table.getName()),
                     withRowAccessPolicy);
         }
+
+         */
 
         if (!(table instanceof OlapTable)) { // Special case: OlapTable has been added into the metastore before return.
             registerTable(db, table, stmt);
@@ -3811,6 +3815,7 @@ public class LocalMetastore implements ConnectorMetadata {
                 throw new DdlException("database has been dropped when creating view");
             }
 
+            /*
             SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getCurrentState().getSecurityPolicyManager();
             List<WithRowAccessPolicy> withRowAccessPolicies = stmt.getRowAccessPolicy();
             if (withRowAccessPolicies != null) {
@@ -3828,6 +3833,8 @@ public class LocalMetastore implements ConnectorMetadata {
                             maskingPolicyContextEntry.getKey(), maskingPolicyContextEntry.getValue());
                 }
             }
+
+             */
 
             if (!db.createTableWithLock(newView, stmt.getMaskingPolicy(), stmt.getRowAccessPolicy(), false)) {
                 if (!stmt.isSetIfNotExists()) {

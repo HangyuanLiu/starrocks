@@ -49,12 +49,10 @@ import com.starrocks.common.MetaNotFoundException;
 import com.starrocks.common.util.PropertyAnalyzer;
 import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.ShowExecutor;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.qe.StmtExecutor;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.ast.AlterTableStmt;
 import com.starrocks.sql.ast.CreateCatalogStmt;
 import com.starrocks.sql.ast.CreateDbStmt;
@@ -277,7 +275,7 @@ public class StarRocksAssert {
         checkAlterJob();
         return this;
     }
-    
+
     // Add rollup
     public StarRocksAssert withRollup(String sql) throws Exception {
         AlterTableStmt alterTableStmt = (AlterTableStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
@@ -303,21 +301,21 @@ public class StarRocksAssert {
     public void executeResourceGroupDdlSql(String sql) throws Exception {
         ConnectContext ctx = UtFrameUtils.createDefaultCtx();
         BackendCoreStat.setNumOfHardwareCoresOfBe(1, 32);
-        StatementBase statement = com.starrocks.sql.parser.SqlParser.parse(sql, ctx.getSessionVariable()).get(0);
-        Analyzer.analyze(statement, ctx);
+        StatementBase statement = GlobalStateMgr.getSqlParser().parse(sql, ctx.getSessionVariable()).get(0);
+        GlobalStateMgr.getAnalyzer().analyze(statement, ctx);
 
         Assert.assertTrue(statement.getClass().getSimpleName().contains("ResourceGroupStmt"));
         ConnectContext connectCtx = new ConnectContext();
         connectCtx.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
-        DDLStmtExecutor.execute((DdlStmt) statement, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute((DdlStmt) statement, connectCtx);
     }
 
     public List<List<String>> executeResourceGroupShowSql(String sql) throws Exception {
         ConnectContext ctx = UtFrameUtils.createDefaultCtx();
         BackendCoreStat.setNumOfHardwareCoresOfBe(1, 32);
 
-        StatementBase statement = com.starrocks.sql.parser.SqlParser.parse(sql, ctx.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statement, ctx);
+        StatementBase statement = GlobalStateMgr.getSqlParser().parse(sql, ctx.getSessionVariable().getSqlMode()).get(0);
+        GlobalStateMgr.getAnalyzer().analyze(statement, ctx);
 
         Assert.assertTrue(statement instanceof ShowResourceGroupStmt);
         return GlobalStateMgr.getCurrentState().getResourceGroupMgr().showResourceGroup((ShowResourceGroupStmt) statement);

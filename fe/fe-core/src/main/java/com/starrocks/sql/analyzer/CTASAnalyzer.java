@@ -52,7 +52,7 @@ public class CTASAnalyzer {
             throw new SemanticException("CTAS does not support create external table");
         }
 
-        Analyzer.analyze(queryStatement, session);
+        GlobalStateMgr.getAnalyzer().analyze(queryStatement, session);
 
         // Pair<TableName, Pair<ColumnName, ColumnAlias>>
         Map<Pair<String, Pair<String, String>>, Table> columnNameToTable = Maps.newHashMap();
@@ -161,7 +161,7 @@ public class CTASAnalyzer {
 
         }
 
-        Analyzer.analyze(createTableStmt, session);
+        GlobalStateMgr.getAnalyzer().analyze(createTableStmt, session);
 
         InsertStmt insertStmt = createTableAsSelectStmt.getInsertStmt();
         insertStmt.setQueryStatement(queryStatement);

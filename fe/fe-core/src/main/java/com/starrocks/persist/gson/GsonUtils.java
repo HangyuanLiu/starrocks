@@ -101,7 +101,6 @@ import com.starrocks.lake.LakeTablet;
 import com.starrocks.lake.backup.LakeTableSnapshotInfo;
 import com.starrocks.load.loadv2.LoadJob.LoadJobStateUpdateInfo;
 import com.starrocks.load.loadv2.SparkLoadJob.SparkLoadJobStateUpdateInfo;
-import com.starrocks.persist.AlterPolicyInfo;
 import com.starrocks.persist.ListPartitionPersistInfo;
 import com.starrocks.persist.PartitionPersistInfoV2;
 import com.starrocks.persist.RangePartitionPersistInfo;
@@ -119,15 +118,16 @@ import com.starrocks.privilege.TablePEntryObject;
 import com.starrocks.privilege.UserPEntryObject;
 import com.starrocks.privilege.ViewPEntryObject;
 import com.starrocks.qe.SqlModeHelper;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.optimizer.dump.HiveTableDumpInfo;
 import com.starrocks.sql.optimizer.dump.QueryDumpDeserializer;
 import com.starrocks.sql.optimizer.dump.QueryDumpInfo;
 import com.starrocks.sql.optimizer.dump.QueryDumpSerializer;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.system.BackendHbResponse;
 import com.starrocks.system.BrokerHbResponse;
 import com.starrocks.system.FrontendHbResponse;
 import com.starrocks.system.HeartbeatResponse;
+import ee.starrocks.persist.AlterPolicyInfo;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -591,7 +591,7 @@ public class GsonUtils {
                 throws JsonParseException {
             JsonObject expressionObject = jsonElement.getAsJsonObject();
             String expressionSql = expressionObject.get("expr").getAsString();
-            return SqlParser.parseSqlToExpr(expressionSql, SqlModeHelper.MODE_DEFAULT);
+            return GlobalStateMgr.getSqlParser().parseSqlToExpr(expressionSql, SqlModeHelper.MODE_DEFAULT);
         }
     }
 }

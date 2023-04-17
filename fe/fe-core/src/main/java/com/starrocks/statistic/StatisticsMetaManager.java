@@ -33,7 +33,6 @@ import com.starrocks.common.util.PropertyAnalyzer;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
-import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.DropTableStmt;
@@ -148,7 +147,7 @@ public class StatisticsMetaManager extends LeaderDaemon {
                 null,
                 "");
 
-        Analyzer.analyze(stmt, context);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, context);
         try {
             GlobalStateMgr.getCurrentState().createTable(stmt);
         } catch (DdlException e) {
@@ -179,7 +178,7 @@ public class StatisticsMetaManager extends LeaderDaemon {
                 null,
                 "");
 
-        Analyzer.analyze(stmt, context);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, context);
         try {
             GlobalStateMgr.getCurrentState().createTable(stmt);
         } catch (DdlException e) {
@@ -210,7 +209,7 @@ public class StatisticsMetaManager extends LeaderDaemon {
                 null,
                 "");
 
-        Analyzer.analyze(stmt, context);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, context);
         try {
             GlobalStateMgr.getCurrentState().createTable(stmt);
         } catch (DdlException e) {

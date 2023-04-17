@@ -78,7 +78,7 @@ public class RBACExecutorTest {
         for (int i = 0; i < 5; i++) {
             String sql = "create role r" + i;
             StatementBase stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-            DDLStmtExecutor.execute(stmt, ctx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
         }
     }
 
@@ -86,7 +86,7 @@ public class RBACExecutorTest {
     public void testShowGrants() throws Exception {
         String sql = "grant all on CATALOG default_catalog to u1";
         GrantPrivilegeStmt grantPrivilegeStmt = (GrantPrivilegeStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(grantPrivilegeStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(grantPrivilegeStmt, ctx);
 
         ShowGrantsStmt stmt = new ShowGrantsStmt(new UserIdentity("u1", "%"));
         ShowExecutor executor = new ShowExecutor(ctx, stmt);
@@ -96,7 +96,7 @@ public class RBACExecutorTest {
 
         sql = "grant all on CATALOG default_catalog to role r1";
         grantPrivilegeStmt = (GrantPrivilegeStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(grantPrivilegeStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(grantPrivilegeStmt, ctx);
 
         stmt = new ShowGrantsStmt("r1");
         executor = new ShowExecutor(ctx, stmt);
@@ -106,15 +106,15 @@ public class RBACExecutorTest {
 
         sql = "grant r1 to role r0";
         GrantRoleStmt grantRoleStmt = (GrantRoleStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(grantRoleStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(grantRoleStmt, ctx);
 
         sql = "grant r2 to role r0";
         grantRoleStmt = (GrantRoleStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(grantRoleStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(grantRoleStmt, ctx);
 
         sql = "grant SELECT on TABLE db.tbl0 to role r0";
         grantPrivilegeStmt = (GrantPrivilegeStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(grantPrivilegeStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(grantPrivilegeStmt, ctx);
 
         stmt = new ShowGrantsStmt("r0");
         executor = new ShowExecutor(ctx, stmt);
@@ -148,10 +148,10 @@ public class RBACExecutorTest {
     public void testCurrentRole() throws Exception {
         String sql = "create role drop_role1";
         StatementBase stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
         sql = "create role drop_role2";
         stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
 
         Long roleId1 = ctx.getGlobalStateMgr().getAuthorizationManager().getRoleIdByNameAllowNull("drop_role1");
         Long roleId2 = ctx.getGlobalStateMgr().getAuthorizationManager().getRoleIdByNameAllowNull("drop_role2");
@@ -167,7 +167,7 @@ public class RBACExecutorTest {
 
         sql = "drop role drop_role1";
         stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
 
         sql = "select current_role()";
         queryStatement = (QueryStatement) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
@@ -176,7 +176,7 @@ public class RBACExecutorTest {
 
         sql = "drop role drop_role2";
         stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
 
         sql = "select current_role()";
         queryStatement = (QueryStatement) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
@@ -186,13 +186,13 @@ public class RBACExecutorTest {
 
     @Test
     public void testRevokeDefaultRole() throws Exception {
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant select on db.tbl0 to role r1", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant r1 to u1", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant select on db.tbl1 to role r2", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant r2 to role r1", ctx), ctx);
 
         SetDefaultRoleExecutor.execute((SetDefaultRoleStmt) UtFrameUtils.parseStmtWithNewParser(
@@ -204,12 +204,12 @@ public class RBACExecutorTest {
         Assert.assertTrue(PrivilegeActions.checkTableAction(ctx, "db", "tbl0", PrivilegeType.SELECT));
         Assert.assertTrue(PrivilegeActions.checkTableAction(ctx, "db", "tbl1", PrivilegeType.SELECT));
 
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke r2 from role r1", ctx), ctx);
         Assert.assertTrue(PrivilegeActions.checkTableAction(ctx, "db", "tbl0", PrivilegeType.SELECT));
         Assert.assertFalse(PrivilegeActions.checkTableAction(ctx, "db", "tbl1", PrivilegeType.SELECT));
 
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke r1 from u1", ctx), ctx);
         Assert.assertFalse(PrivilegeActions.checkTableAction(ctx, "db", "tbl0", PrivilegeType.SELECT));
         Assert.assertFalse(PrivilegeActions.checkTableAction(ctx, "db", "tbl1", PrivilegeType.SELECT));
@@ -244,7 +244,7 @@ public class RBACExecutorTest {
         function.setChecksum("checksum");
 
         statement.setFunction(function);
-        DDLStmtExecutor.execute(statement, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(statement, ctx);
 
         ShowFunctionsStmt stmt = new ShowFunctionsStmt("db", false, false, false, null, null);
         ShowExecutor executor = new ShowExecutor(ctx, stmt);
@@ -257,7 +257,7 @@ public class RBACExecutorTest {
         resultSet = executor.execute();
         Assert.assertEquals("[]", resultSet.getResultRows().toString());
 
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant usage on function db.my_udf_json_get(int) to u1", ctx), ctx);
         stmt = new ShowFunctionsStmt("db", false, false, false, null, null);
         executor = new ShowExecutor(ctx, stmt);

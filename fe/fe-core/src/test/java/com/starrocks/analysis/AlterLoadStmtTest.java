@@ -19,6 +19,7 @@ import com.google.common.collect.Maps;
 import com.starrocks.mysql.privilege.Auth;
 import com.starrocks.mysql.privilege.PrivPredicate;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
@@ -67,7 +68,7 @@ public class AlterLoadStmtTest {
             AlterLoadStmt stmt = new AlterLoadStmt(new LabelName("db1", "label1"),
                     jobProperties);
 
-            com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
             Assert.assertEquals(1, stmt.getAnalyzedJobProperties().size());
             Assert.assertTrue(
                     stmt.getAnalyzedJobProperties().containsKey(LoadStmt.PRIORITY));
@@ -77,7 +78,7 @@ public class AlterLoadStmtTest {
             jobProperties.put(LoadStmt.PRIORITY, "HIGH");
             AlterLoadStmt stmt = new AlterLoadStmt(new LabelName("db1", "label1"),
                     jobProperties);
-            com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
 
             Assert.assertEquals(1, stmt.getAnalyzedJobProperties().size());
             Assert.assertTrue(
@@ -88,7 +89,7 @@ public class AlterLoadStmtTest {
             jobProperties.put(LoadStmt.PRIORITY, "HIGHEST");
             AlterLoadStmt stmt = new AlterLoadStmt(new LabelName("db1", "label1"),
                     jobProperties);
-            com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
 
             Assert.assertEquals(1, stmt.getAnalyzedJobProperties().size());
             Assert.assertTrue(
@@ -99,7 +100,7 @@ public class AlterLoadStmtTest {
             jobProperties.put(LoadStmt.PRIORITY, "LOW");
             AlterLoadStmt stmt = new AlterLoadStmt(new LabelName("db1", "label1"),
                     jobProperties);
-            com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
 
             Assert.assertEquals(1, stmt.getAnalyzedJobProperties().size());
             Assert.assertTrue(
@@ -110,7 +111,7 @@ public class AlterLoadStmtTest {
             jobProperties.put(LoadStmt.PRIORITY, "LOWEST");
             AlterLoadStmt stmt = new AlterLoadStmt(new LabelName("db1", "label1"),
                     jobProperties);
-            com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
 
             Assert.assertEquals(1, stmt.getAnalyzedJobProperties().size());
             Assert.assertTrue(
@@ -121,7 +122,7 @@ public class AlterLoadStmtTest {
     @Test(expected = SemanticException.class)
     public void testNoProperties() {
         AlterLoadStmt stmt = new AlterLoadStmt(new LabelName("db1", "label1"), null);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+        GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
     }
 
     @Test
@@ -132,7 +133,7 @@ public class AlterLoadStmtTest {
             AlterLoadStmt stmt = new AlterLoadStmt(new LabelName("db1", "label1"),
                     jobProperties);
             try {
-                com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+                GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
                 Assert.fail();
             } catch (SemanticException e) {
                 Assert.assertTrue(e.getMessage().contains("Unsupported properties 'format'"));
@@ -148,7 +149,7 @@ public class AlterLoadStmtTest {
                     jobProperties);
 
             try {
-                com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+                GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
                 Assert.fail();
             } catch (SemanticException e) {
                 Assert.assertTrue(e.getMessage().contains("priority"));

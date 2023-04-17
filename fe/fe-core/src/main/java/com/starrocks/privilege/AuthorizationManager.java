@@ -281,6 +281,7 @@ public class AuthorizationManager {
                 objects.add(provider.generatePolicyObject(objectType, null,
                         Lists.newArrayList("*", "*", "*"), globalStateMgr));
                 collection.grant(objectType, actionList, objects, false);
+                break;
 
             default:
                 throw new PrivilegeException("unsupported type " + objectType);
@@ -783,7 +784,7 @@ public class AuthorizationManager {
     /**
      * read from cache
      */
-    protected PrivilegeCollection mergePrivilegeCollection(UserIdentity userIdentity, Set<Long> roleIds)
+    public PrivilegeCollection mergePrivilegeCollection(UserIdentity userIdentity, Set<Long> roleIds)
             throws PrivilegeException {
         try {
             return ctxToMergedPrivilegeCollections.get(new Pair<>(userIdentity, roleIds));

@@ -34,7 +34,6 @@ import com.starrocks.qe.StmtExecutor;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.optimizer.LogicalPlanPrinter;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.utframe.StarRocksAssert;
 import com.starrocks.utframe.UtFrameUtils;
@@ -587,7 +586,8 @@ public class PlanTestNoneDBBase {
 
     protected static void executeSqlFile(String fileName) throws Exception {
         String sql = getFileContent(fileName);
-        List<StatementBase> statements = SqlParser.parse(sql, connectContext.getSessionVariable().getSqlMode());
+        List<StatementBase> statements =
+                GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable().getSqlMode());
         for (StatementBase stmt : statements) {
             StmtExecutor stmtExecutor = new StmtExecutor(connectContext, stmt);
             stmtExecutor.execute();

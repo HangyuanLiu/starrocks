@@ -70,7 +70,7 @@ public class ShowCreateMaterializedViewStmtTest {
         ShowCreateTableStmt stmt =
                 new ShowCreateTableStmt(new TableName("test", "mv1"),
                         ShowCreateTableStmt.CreateTableType.MATERIALIZED_VIEW);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("test", stmt.getDb());
         Assert.assertEquals("mv1", stmt.getTable());
         Assert.assertEquals(2, ShowCreateTableStmt.getMaterializedViewMetaData().getColumnCount());
@@ -352,7 +352,7 @@ public class ShowCreateMaterializedViewStmtTest {
     @Test(expected = SemanticException.class)
     public void testNoTbl() {
         ShowCreateTableStmt stmt = new ShowCreateTableStmt(null, ShowCreateTableStmt.CreateTableType.MATERIALIZED_VIEW);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No Exception throws.");
     }
 }

@@ -48,7 +48,7 @@ public class ShowWarehousesStmtTest {
         ConnectContext connectCtx = new ConnectContext();
         connectCtx.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
         CreateWarehouseStmt statement = (CreateWarehouseStmt) stmt;
-        DDLStmtExecutor.execute(statement, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(statement, connectCtx);
         starRocksAssert = new StarRocksAssert();
 
         ctx = new ConnectContext(null);

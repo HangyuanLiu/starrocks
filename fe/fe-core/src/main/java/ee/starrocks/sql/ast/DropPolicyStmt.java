@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.starrocks.sql.ast;
+package ee.starrocks.sql.ast;
 
+import com.starrocks.sql.ast.DdlStmt;
+import com.starrocks.sql.ast.PolicyName;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.parser.NodePosition;
 
-public class DropPolicyStmt extends DdlStmt {
+public class DropPolicyStmt extends DdlStmt implements EnterpriseStatement {
     private final PolicyType policyType;
     private final PolicyName policyName;
     private final boolean ifExists;
@@ -59,7 +62,7 @@ public class DropPolicyStmt extends DdlStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitorEE<R, C> visitor, C context) {
         return visitor.visitDropPolicyStatement(this, context);
     }
 }

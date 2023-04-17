@@ -1,6 +1,7 @@
 package com.starrocks.analysis;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.ShowWarningStmt;
 import com.starrocks.utframe.UtFrameUtils;
 import mockit.Mocked;
@@ -14,14 +15,14 @@ public class ShowWarningStmtTest {
 
     @Test
     public void testNormal() throws Exception {
-        ShowWarningStmt stmt = (ShowWarningStmt) com.starrocks.sql.parser.SqlParser.parse(
+        ShowWarningStmt stmt = (ShowWarningStmt) GlobalStateMgr.getSqlParser().parse(
                 "SHOW WARNINGS",32).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals(-1L, stmt.getLimitNum());
 
-        stmt = (ShowWarningStmt) com.starrocks.sql.parser.SqlParser.parse(
+        stmt = (ShowWarningStmt) GlobalStateMgr.getSqlParser().parse(
                 "SHOW WARNINGS LIMIT 10",32).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals(10L, stmt.getLimitNum());
 
         Assert.assertEquals( 3, stmt.getMetaData().getColumnCount());

@@ -38,7 +38,6 @@ import com.google.common.collect.Lists;
 import com.starrocks.analysis.Analyzer;
 import com.starrocks.analysis.CompoundPredicate;
 import com.starrocks.analysis.Expr;
-import com.starrocks.sql.ast.ImportColumnsStmt;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.KeysType;
@@ -47,6 +46,8 @@ import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.UserException;
 import com.starrocks.load.streamload.StreamLoadInfo;
+import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.ImportColumnsStmt;
 import com.starrocks.thrift.TFileFormatType;
 import com.starrocks.thrift.TFileType;
 import com.starrocks.thrift.TStreamLoadPutRequest;
@@ -161,11 +162,11 @@ public class StreamLoadPlannerTest {
     @Test
     public void testParseStmt() {
         String sql = "COLUMNS (k1, k2, k3=abc(), k4=default_value())";
-        ImportColumnsStmt columnsStmt = com.starrocks.sql.parser.SqlParser.parseImportColumns(sql, 0);
+        ImportColumnsStmt columnsStmt = GlobalStateMgr.getSqlParser().parseImportColumns(sql, 0);
         Assert.assertEquals(4, columnsStmt.getColumns().size());
 
         sql = "k1 > 2 and k3 < 4";
-        Expr where = com.starrocks.sql.parser.SqlParser.parseSqlToExpr(sql, 0);
+        Expr where = GlobalStateMgr.getSqlParser().parseSqlToExpr(sql, 0);
         Assert.assertTrue(where instanceof CompoundPredicate);
     }
 }

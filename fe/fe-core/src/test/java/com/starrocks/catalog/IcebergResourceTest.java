@@ -64,7 +64,7 @@ public class IcebergResourceTest {
         properties.put("iceberg.catalog.type", catalogType);
         properties.put("iceberg.catalog.hive.metastore.uris", metastoreURIs);
         CreateResourceStmt stmt = new CreateResourceStmt(true, name, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         IcebergResource resource = (IcebergResource) Resource.fromStmt(stmt);
         Assert.assertEquals("iceberg0", resource.getName());
@@ -97,7 +97,7 @@ public class IcebergResourceTest {
         properties.put("iceberg.catalog.type", catalogType);
         properties.put("iceberg.catalog-impl", catalogImpl);
         CreateResourceStmt stmt = new CreateResourceStmt(true, name, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         IcebergResource resource = (IcebergResource) Resource.fromStmt(stmt);
         Assert.assertEquals("iceberg1", resource.getName());

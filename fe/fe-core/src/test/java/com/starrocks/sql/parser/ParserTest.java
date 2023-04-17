@@ -23,6 +23,7 @@ import com.starrocks.analysis.JoinOperator;
 import com.starrocks.common.Pair;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.SqlModeHelper;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.JoinRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectList;
@@ -52,7 +53,7 @@ class ParserTest {
         SessionVariable sessionVariable = new SessionVariable();
         sessionVariable.setParseTokensLimit(1);
         try {
-            SqlParser.parse(sql, sessionVariable);
+            GlobalStateMgr.getSqlParser().parse(sql, sessionVariable);
         } catch (Exception e) {
             assertContains(e.getMessage(), "Getting syntax error. Detail message: " +
                     "Statement exceeds maximum length limit");
@@ -64,7 +65,7 @@ class ParserTest {
         String sql = "select 1 form tbl";
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            SqlParser.parse(sql, sessionVariable);
+            GlobalStateMgr.getSqlParser().parse(sql, sessionVariable);
             fail("sql should fail to parse.");
         } catch (Exception e) {
             assertContains(e.getMessage(), "Getting syntax error at line 1, column 14. " +
@@ -97,7 +98,7 @@ class ParserTest {
 
         for (String query : temporalQueries) {
             try {
-                com.starrocks.sql.parser.SqlParser.parse(query, 0).get(0);
+                GlobalStateMgr.getSqlParser().parse(query, 0).get(0);
             } catch (ParsingException e) {
                 fail("Unexpected parsing exception for query: " + query);
             } catch (Exception e) {
@@ -111,7 +112,7 @@ class ParserTest {
         String sql = "use a.b.c";
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            SqlParser.parse(sql, sessionVariable);
+            GlobalStateMgr.getSqlParser().parse(sql, sessionVariable);
             fail("sql should fail to parse.");
         } catch (Exception e) {
             assertContains(e.getMessage(), "Getting syntax error from line 1, column 4 to line 1, column 8. " +
@@ -124,7 +125,7 @@ class ParserTest {
         String sql = "submit task a.b.c as create table a.b (v1, v2) as select * from t1";
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            SqlParser.parse(sql, sessionVariable);
+            GlobalStateMgr.getSqlParser().parse(sql, sessionVariable);
             fail("sql should fail to parse.");
         } catch (Exception e) {
             assertContains(e.getMessage(), "Getting syntax error from line 1, column 12 to line 1, column 16." +
@@ -139,9 +140,9 @@ class ParserTest {
                 "from tbl left anti join t1 on ture left semi join t2 on false full join t3 on true minus select * from tbl";
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            QueryStatement stmt = (QueryStatement) SqlParser.parse(sql, sessionVariable).get(0);
+            QueryStatement stmt = (QueryStatement) GlobalStateMgr.getSqlParser().parse(sql, sessionVariable).get(0);
         } catch (Exception e) {
-            fail("sql should success. errMsg: " +  e.getMessage());
+            fail("sql should success. errMsg: " + e.getMessage());
         }
     }
 
@@ -151,7 +152,7 @@ class ParserTest {
         String sql = "select * from semi semi join anti anti on anti.col join t1 on true";
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            QueryStatement stmt = (QueryStatement) SqlParser.parse(sql, sessionVariable).get(0);
+            QueryStatement stmt = (QueryStatement) GlobalStateMgr.getSqlParser().parse(sql, sessionVariable).get(0);
             JoinRelation topJoinRelation = (JoinRelation) ((SelectRelation) stmt.getQueryRelation()).getRelation();
             Assert.assertEquals(JoinOperator.INNER_JOIN, topJoinRelation.getJoinOp());
 
@@ -160,7 +161,7 @@ class ParserTest {
             Assert.assertEquals("anti", bottomJoinRelation.getRight().getResolveTableName().getTbl());
             Assert.assertEquals(JoinOperator.INNER_JOIN, bottomJoinRelation.getJoinOp());
         } catch (Exception e) {
-            fail("sql should success. errMsg: " +  e.getMessage());
+            fail("sql should success. errMsg: " + e.getMessage());
         }
     }
 
@@ -185,8 +186,8 @@ class ParserTest {
                     fail(e.getMessage());
                 }
                 List<StarRocksParser.SingleStatementContext> sqlStatements = parser.sqlStatements().singleStatement();
-                QueryStatement statement = (QueryStatement) new AstBuilder(SqlModeHelper.MODE_DEFAULT)
-                        .visitSingleStatement(sqlStatements.get(0));
+                AstBuilder astBuilder = new AstBuilder();
+                QueryStatement statement = (QueryStatement) astBuilder.visitSingleStatement(sqlStatements.get(0));
                 SelectList item = ((SelectRelation) statement.getQueryRelation()).getSelectList();
                 exprs[0] = item.getItems().get(0).getExpr();
                 latch.countDown();
@@ -205,8 +206,9 @@ class ParserTest {
                 parser.addErrorListener(new BaseErrorListener());
                 parser.removeParseListeners();
                 List<StarRocksParser.SingleStatementContext> sqlStatements = parser.sqlStatements().singleStatement();
-                QueryStatement statement = (QueryStatement) new AstBuilder(sqlMode)
-                        .visitSingleStatement(sqlStatements.get(0));
+                AstBuilder astBuilder = new AstBuilder();
+                astBuilder.setSqlMode(sqlMode);
+                QueryStatement statement = (QueryStatement) astBuilder.visitSingleStatement(sqlStatements.get(0));
                 SelectList item = ((SelectRelation) statement.getQueryRelation()).getSelectList();
                 exprs[1] = item.getItems().get(0).getExpr();
                 lock.notify();
@@ -229,9 +231,9 @@ class ParserTest {
     void testNodeReservedWords_3(String sql) {
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            SqlParser.parse(sql, sessionVariable).get(0);
+            GlobalStateMgr.getSqlParser().parse(sql, sessionVariable).get(0);
         } catch (Exception e) {
-            fail("sql should success. errMsg: " +  e.getMessage());
+            fail("sql should success. errMsg: " + e.getMessage());
         }
     }
 
@@ -240,7 +242,7 @@ class ParserTest {
     void testReservedWords(String sql) {
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            SqlParser.parse(sql, sessionVariable).get(0);
+            GlobalStateMgr.getSqlParser().parse(sql, sessionVariable).get(0);
             fail("Not quoting reserved words. sql should fail.");
         } catch (Exception e) {
             Assert.assertTrue(e instanceof ParsingException);
@@ -252,13 +254,13 @@ class ParserTest {
     void testMultipleStatements(String sql, boolean isValid) {
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            SqlParser.parse(sql, sessionVariable).get(0);
+            GlobalStateMgr.getSqlParser().parse(sql, sessionVariable).get(0);
             if (!isValid) {
                 fail("sql should fail.");
             }
         } catch (Exception e) {
             if (isValid) {
-                fail("sql should success. errMsg: " +  e.getMessage());
+                fail("sql should success. errMsg: " + e.getMessage());
             }
         }
     }
@@ -268,18 +270,18 @@ class ParserTest {
     void testSetQuantifierInAggFunc(String sql, boolean isValid) {
         SessionVariable sessionVariable = new SessionVariable();
         try {
-            SqlParser.parse(sql, sessionVariable).get(0);
+            GlobalStateMgr.getSqlParser().parse(sql, sessionVariable).get(0);
             if (!isValid) {
                 fail("sql should fail.");
             }
         } catch (Exception e) {
             if (isValid) {
-                fail("sql should success. errMsg: " +  e.getMessage());
+                fail("sql should success. errMsg: " + e.getMessage());
             }
         }
     }
 
-    
+
     private static Stream<Arguments> keyWordSqls() {
         List<String> sqls = Lists.newArrayList();
         sqls.add("select current_role()");

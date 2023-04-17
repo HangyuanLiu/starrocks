@@ -14,9 +14,9 @@
 
 package com.starrocks.sql.analyzer;
 
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.DeleteStmt;
 import com.starrocks.sql.ast.StatementBase;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.utframe.UtFrameUtils;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -47,11 +47,11 @@ public class AnalyzeDeleteTest {
     @Test
     public void testPartitions() {
         DeleteStmt st;
-        st = (DeleteStmt) SqlParser.parse("delete from tjson partition (p0)", 0).get(0);
+        st = (DeleteStmt) GlobalStateMgr.getSqlParser().parse("delete from tjson partition (p0)", 0).get(0);
         Assert.assertEquals(1, st.getPartitionNamesList().size());
-        st = (DeleteStmt) SqlParser.parse("delete from tjson partition p0", 0).get(0);
+        st = (DeleteStmt) GlobalStateMgr.getSqlParser().parse("delete from tjson partition p0", 0).get(0);
         Assert.assertEquals(1, st.getPartitionNamesList().size());
-        st = (DeleteStmt) SqlParser.parse("delete from tjson partition (p0, p1)", 0).get(0);
+        st = (DeleteStmt) GlobalStateMgr.getSqlParser().parse("delete from tjson partition (p0, p1)", 0).get(0);
         Assert.assertEquals(2, st.getPartitionNamesList().size());
     }
 

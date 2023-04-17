@@ -50,7 +50,7 @@ public class ExportHandleTest {
         };
 
         try {
-            DDLStmtExecutor.execute(new CancelExportStmt("repo", null, NodePosition.ZERO),
+            GlobalStateMgr.getDDLStmtExecutor().execute(new CancelExportStmt("repo", null, NodePosition.ZERO),
                     new ConnectContext());
         } catch (Exception ex) {
             Assert.fail();

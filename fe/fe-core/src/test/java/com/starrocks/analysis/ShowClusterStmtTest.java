@@ -51,7 +51,7 @@ public class ShowClusterStmtTest {
         ConnectContext connectCtx = new ConnectContext();
         connectCtx.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
         CreateWarehouseStmt statement = (CreateWarehouseStmt) stmt;
-        DDLStmtExecutor.execute(statement, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(statement, connectCtx);
         starRocksAssert = new StarRocksAssert();
 
         ctx = new ConnectContext(null);
@@ -79,7 +79,7 @@ public class ShowClusterStmtTest {
         GlobalStateMgr.getCurrentState().getWarehouseMgr().alterWarehouse(addClusterStmt);
 
         ShowClustersStmt stmt = new ShowClustersStmt("testWh");
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("testWh", stmt.getWarehouseName());
         Assert.assertEquals(3, stmt.getMetaData().getColumnCount());
 
@@ -94,7 +94,7 @@ public class ShowClusterStmtTest {
     @Test(expected = SemanticException.class)
     public void testNoWh() throws Exception {
         ShowClustersStmt stmt = new ShowClustersStmt("");
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No exception throws");
     }
 }

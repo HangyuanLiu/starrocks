@@ -465,7 +465,7 @@ public class ShowExecutorTest {
         // Ok to test
         ShowPartitionsStmt stmt = new ShowPartitionsStmt(new TableName("testDb", "testTbl"),
                 null, null, null, false);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         ShowExecutor executor = new ShowExecutor(ctx, stmt);
         ShowResultSet resultSet = executor.execute();
 
@@ -510,9 +510,9 @@ public class ShowExecutorTest {
         ctx.setGlobalStateMgr(globalStateMgr);
         ctx.setQualifiedUser("testUser");
 
-        DescribeStmt stmt = (DescribeStmt) com.starrocks.sql.parser.SqlParser.parse("desc testTbl",
+        DescribeStmt stmt = (DescribeStmt) GlobalStateMgr.getSqlParser().parse("desc testTbl",
                 ctx.getSessionVariable().getSqlMode()).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
 
         ShowExecutor executor = new ShowExecutor(ctx, stmt);
         ShowResultSet resultSet;
@@ -659,9 +659,9 @@ public class ShowExecutorTest {
         ctx.setGlobalStateMgr(globalStateMgr);
         ctx.setQualifiedUser("testUser");
 
-        ShowColumnStmt stmt = (ShowColumnStmt) com.starrocks.sql.parser.SqlParser.parse("show columns from testTbl in testDb",
+        ShowColumnStmt stmt = (ShowColumnStmt) GlobalStateMgr.getSqlParser().parse("show columns from testTbl in testDb",
                 ctx.getSessionVariable()).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
 
         ShowExecutor executor = new ShowExecutor(ctx, stmt);
         ShowResultSet resultSet = executor.execute();
@@ -674,9 +674,9 @@ public class ShowExecutorTest {
         Assert.assertFalse(resultSet.next());
 
         // verbose
-        stmt = (ShowColumnStmt) com.starrocks.sql.parser.SqlParser.parse("show full columns from testTbl in testDb",
+        stmt = (ShowColumnStmt) GlobalStateMgr.getSqlParser().parse("show full columns from testTbl in testDb",
                 ctx.getSessionVariable()).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
 
         executor = new ShowExecutor(ctx, stmt);
         resultSet = executor.execute();
@@ -690,9 +690,9 @@ public class ShowExecutorTest {
         Assert.assertFalse(resultSet.next());
 
         // show full fields
-        stmt = (ShowColumnStmt) com.starrocks.sql.parser.SqlParser.parse("show full fields from testTbl in testDb",
+        stmt = (ShowColumnStmt) GlobalStateMgr.getSqlParser().parse("show full fields from testTbl in testDb",
                 ctx.getSessionVariable()).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
 
         executor = new ShowExecutor(ctx, stmt);
         resultSet = executor.execute();
@@ -706,9 +706,9 @@ public class ShowExecutorTest {
         Assert.assertFalse(resultSet.next());
 
         // pattern
-        stmt = (ShowColumnStmt) com.starrocks.sql.parser.SqlParser.parse("show full columns from testTbl in testDb like \"%1\"",
+        stmt = (ShowColumnStmt) GlobalStateMgr.getSqlParser().parse("show full columns from testTbl in testDb like \"%1\"",
                 ctx.getSessionVariable().getSqlMode()).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         executor = new ShowExecutor(ctx, stmt);
         resultSet = executor.execute();
 
@@ -723,7 +723,7 @@ public class ShowExecutorTest {
         ctx.setGlobalStateMgr(globalStateMgr);
         ctx.setQualifiedUser("testUser");
         ShowColumnStmt stmt = new ShowColumnStmt(new TableName("emptyDb", "testTable"), null, null, false);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         ShowExecutor executor = new ShowExecutor(ctx, stmt);
 
         expectedEx.expect(AnalysisException.class);
@@ -732,7 +732,7 @@ public class ShowExecutorTest {
 
         // empty table
         stmt = new ShowColumnStmt(new TableName("testDb", "emptyTable"), null, null, true);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         executor = new ShowExecutor(ctx, stmt);
 
         expectedEx.expect(AnalysisException.class);

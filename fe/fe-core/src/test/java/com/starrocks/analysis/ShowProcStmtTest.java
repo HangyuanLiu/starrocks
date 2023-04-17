@@ -15,6 +15,7 @@
 package com.starrocks.analysis;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.ShowProcStmt;
 import com.starrocks.utframe.StarRocksAssert;
 import com.starrocks.utframe.UtFrameUtils;
@@ -35,7 +36,7 @@ public class ShowProcStmtTest {
     @Test
     public void testShowProc() {
         ShowProcStmt stmt = new ShowProcStmt("/dbs");
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("/dbs", stmt.getPath());
     }
 
@@ -43,7 +44,7 @@ public class ShowProcStmtTest {
     public void testShowProcSql() {
         String sql = "show proc '/dbs/10001'";
         ShowProcStmt stmt =
-                (ShowProcStmt)com.starrocks.sql.parser.SqlParser.parse(sql, ctx.getSessionVariable().getSqlMode()).get(0);
+                (ShowProcStmt) GlobalStateMgr.getSqlParser().parse(sql, ctx.getSessionVariable().getSqlMode()).get(0);
         Assert.assertEquals("/dbs/10001", stmt.getPath());
     }
 

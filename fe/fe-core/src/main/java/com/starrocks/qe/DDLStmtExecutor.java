@@ -36,7 +36,6 @@ import com.starrocks.sql.ast.AlterDatabaseQuotaStmt;
 import com.starrocks.sql.ast.AlterDatabaseRenameStatement;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
-import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AlterResourceGroupStmt;
 import com.starrocks.sql.ast.AlterResourceStmt;
 import com.starrocks.sql.ast.AlterRoutineLoadStmt;
@@ -62,7 +61,6 @@ import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
-import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
 import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
@@ -80,7 +78,6 @@ import com.starrocks.sql.ast.DropDbStmt;
 import com.starrocks.sql.ast.DropFileStmt;
 import com.starrocks.sql.ast.DropFunctionStmt;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
-import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.DropRepositoryStmt;
 import com.starrocks.sql.ast.DropResourceGroupStmt;
 import com.starrocks.sql.ast.DropResourceStmt;
@@ -129,7 +126,7 @@ public class DDLStmtExecutor {
     /**
      * Execute various ddl statement
      */
-    public static ShowResultSet execute(StatementBase stmt, ConnectContext context) throws Exception {
+    public ShowResultSet execute(StatementBase stmt, ConnectContext context) throws Exception {
         try {
             return stmt.accept(StmtExecutorVisitor.getInstance(), context);
         } catch (RuntimeException re) {
@@ -537,30 +534,6 @@ public class DDLStmtExecutor {
                         stmt.getName(), stmt.getPropertyMap());
             });
 
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitCreatePolicyStatement(CreatePolicyStmt stmt, ConnectContext context) {
-            ErrorReport.wrapWithRuntimeException(() -> {
-                context.getGlobalStateMgr().getSecurityPolicyManager().createMaskingPolicy(stmt);
-            });
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitDropPolicyStatement(DropPolicyStmt stmt, ConnectContext context) {
-            ErrorReport.wrapWithRuntimeException(() -> {
-                context.getGlobalStateMgr().getSecurityPolicyManager().dropPolicy(stmt);
-            });
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitAlterPolicyStatement(AlterPolicyStmt stmt, ConnectContext context) {
-            ErrorReport.wrapWithRuntimeException(() -> {
-                context.getGlobalStateMgr().getSecurityPolicyManager().alterPolicy(stmt);
-            });
             return null;
         }
 

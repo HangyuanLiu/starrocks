@@ -219,14 +219,14 @@ statement
 
     // Security Policy
     | createMaskingPolicyStatement
-    | alterMaskingPolicyStatement
     | dropMaskingPolicyStatement
+    | alterMaskingPolicyStatement
     | showMaskingPolicyStatement
     | showCreateMaskingPolicyStatement
 
     | createRowAccessPolicyStatement
-    | alterRowAccessPolicyStatement
     | dropRowAccessPolicyStatement
+    | alterRowAccessPolicyStatement
     | showRowAccessPolicyStatement
     | showCreateRowAccessPolicyStatement
 
@@ -1378,6 +1378,10 @@ showGrantsStatement
     | SHOW GRANTS FOR ROLE identifierOrString
     ;
 
+createSecurityIntegrationStatement
+    : CREATE SECURITY INTEGRATION identifier properties
+    ;
+
 authOption
     : IDENTIFIED BY PASSWORD? string                                                                    #authWithoutPlugin
     | IDENTIFIED WITH identifierOrString ((BY | AS) string)?                                            #authWithPlugin
@@ -1421,10 +1425,8 @@ privObjectTypePlural
 
 createMaskingPolicyStatement
     : CREATE (OR REPLACE)? MASKING POLICY (IF NOT EXISTS)? policyName=qualifiedName
-        AS '(' arg (',' arg)* ')' RETURNS type ARROW expression comment?
+        AS '(' policySignature (',' policySignature)* ')' RETURNS type ARROW expression comment?
     ;
-
-arg : identifier type;
 
 dropMaskingPolicyStatement
     : DROP (IF EXISTS)? MASKING POLICY policyName=qualifiedName FORCE?
@@ -1432,7 +1434,7 @@ dropMaskingPolicyStatement
 
 alterMaskingPolicyStatement
     : ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName SET BODY ARROW expression
-    | ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName SET COMMENT string
+    | ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName SET COMMENT '=' string
     | ALTER MASKING POLICY (IF EXISTS)? policyName=qualifiedName RENAME TO newPolicyName=identifier
     ;
 
@@ -1446,7 +1448,7 @@ showCreateMaskingPolicyStatement
 
 createRowAccessPolicyStatement
     : CREATE (OR REPLACE)? ROW ACCESS POLICY (IF NOT EXISTS)? policyName=qualifiedName
-      AS '(' arg (',' arg)* ')' RETURNS BOOLEAN ARROW expression comment?
+      AS '(' policySignature (',' policySignature)* ')' RETURNS BOOLEAN ARROW expression comment?
     ;
 
 dropRowAccessPolicyStatement
@@ -1455,7 +1457,7 @@ dropRowAccessPolicyStatement
 
 alterRowAccessPolicyStatement
     : ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName SET BODY ARROW expression
-    | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName SET COMMENT string
+    | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName SET COMMENT '=' string
     | ALTER ROW ACCESS POLICY (IF EXISTS)? policyName=qualifiedName RENAME TO newPolicyName=identifier
     ;
 
@@ -1467,12 +1469,11 @@ showCreateRowAccessPolicyStatement
     : SHOW CREATE ROW ACCESS POLICY policyName=qualifiedName
     ;
 
+policySignature : identifier type;
+
+
 showPolicyReferences
     : SHOW POLICY APPLY
-    ;
-
-createSecurityIntegrationStatement
-    : CREATE SECURITY INTEGRATION identifier properties
     ;
 
 // ---------------------------------------- Backup Restore Statement ---------------------------------------------------
@@ -1817,6 +1818,11 @@ columnAliases
 partitionNames
     : TEMPORARY? (PARTITION | PARTITIONS) '(' identifier (',' identifier)* ')'
     | TEMPORARY? (PARTITION | PARTITIONS) identifier
+    | listPartition
+    ;
+
+listPartition
+    : PARTITION '(' partitionPair (',' partitionPair)* ')'                              #listPartitions
     ;
 
 tabletList
@@ -2144,6 +2150,10 @@ partitionValueList
     : '(' partitionValue (',' partitionValue)* ')'
     ;
 
+partitionPair
+    : key=identifier '=' value=literalExpression
+    ;
+
 partitionValue
     : MAXVALUE | string
     ;
@@ -2351,9 +2361,11 @@ number
 
 nonReserved
     : ACCESS | AFTER | AGGREGATE | APPLY | ASYNC | AUTHORS | AVG | ADMIN | ANTI | AUTHENTICATION | AUTO_INCREMENT
-    | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BINARY | BODY | BOOLEAN | BROKER | BUCKETS | BUILTIN | BASE
-    | CAST | CANCEL | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CLUSTER | CLUSTERS | CURRENT | COLLATION | COLUMNS | CUMULATIVE
-    | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT | CONFIG | COMPACT
+    | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BINARY | BODY | BOOLEAN | BROKER | BUCKETS
+    | BUILTIN | BASE
+    | CAST | CANCEL | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CLUSTER | CLUSTERS | CURRENT | COLLATION | COLUMNS
+    | CUMULATIVE | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTION_ID | CONSISTENT | COSTS | COUNT
+    | CONFIG | COMPACT
     | DATA | DATE | DATETIME | DAY | DECOMMISSION | DISTRIBUTION | DUPLICATE | DYNAMIC | DISTRIBUTED
     | END | ENGINE | ENGINES | ERRORS | EVENTS | EXECUTE | EXTERNAL | EXTRACT | EVERY | ENCLOSE | ESCAPE | EXPORT
     | FIELDS | FILE | FILTER | FIRST | FLOOR | FOLLOWING | FORMAT | FN | FRONTEND | FRONTENDS | FOLLOWER | FREE
@@ -2367,8 +2379,8 @@ nonReserved
     | MASKING | MANUAL | MAP | MATERIALIZED | MAX | META | MIN | MINUTE | MODE | MODIFY | MONTH | MERGE | MINUS
     | NAME | NAMES | NEGATIVE | NO | NODE | NODES | NONE | NULLS | NUMBER | NUMERIC
     | OBSERVER | OF | OFFSET | ONLY | OPTIMIZER | OPEN | OPERATE | OPTION | OVERWRITE
-    | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | POLICY | POLICIES | PRECEDING | PROC | PROCESSLIST
-    | PRIVILEGES PROPERTIES | PROPERTY
+    | PARTITIONS | PASSWORD | PATH | PAUSE | PERCENTILE_UNION | PLUGIN | PLUGINS | POLICY | POLICIES | PRECEDING | PROC
+    | PROCESSLIST | PRIVILEGES | PROPERTIES | PROPERTY
     | QUARTER | QUERY | QUOTA | QUALIFY
     | REMOVE | RANDOM | RANK | RECOVER | REFRESH | REPAIR | REPEATABLE | REPLACE_IF_NOT_NULL | REPLICA | REPOSITORY
     | REPOSITORIES

@@ -29,7 +29,7 @@ import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.qe.SqlModeHelper;
-import com.starrocks.sql.parser.SqlParser;
+import com.starrocks.server.GlobalStateMgr;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -67,7 +67,7 @@ public class ExpressionGsonSerializationTest {
         slotRef.setDesc(slotDescriptor);
         // because expr serialized with function tosql
         String sql = slotRef.toSql();
-        Expr expr = SqlParser.parseSqlToExpr(sql, SqlModeHelper.MODE_DEFAULT);
+        Expr expr = GlobalStateMgr.getSqlParser().parseSqlToExpr(sql, SqlModeHelper.MODE_DEFAULT);
         Assert.assertTrue(expr instanceof SlotRef);
         // serialize
         String json = GsonUtils.GSON.toJson(slotRef);
@@ -93,7 +93,7 @@ public class ExpressionGsonSerializationTest {
                 "date_trunc", new Type[] {Type.VARCHAR, Type.DATETIME}, Function.CompareMode.IS_IDENTICAL));
         // because expr serialized with function tosql
         String sql = functionCallExpr.toSql();
-        Expr expr = SqlParser.parseSqlToExpr(sql, SqlModeHelper.MODE_DEFAULT);
+        Expr expr = GlobalStateMgr.getSqlParser().parseSqlToExpr(sql, SqlModeHelper.MODE_DEFAULT);
         Assert.assertTrue(expr instanceof FunctionCallExpr);
         // serialize
         String json = GsonUtils.GSON.toJson(functionCallExpr);
@@ -128,7 +128,8 @@ public class ExpressionGsonSerializationTest {
         // format expressions
         List<Expr> formattedExpressions = Lists.newArrayList();
         for (Expr expression : expressionList.expressions) {
-            formattedExpressions.add(SqlParser.parseSqlToExpr(expression.toSql(), SqlModeHelper.MODE_DEFAULT));
+            formattedExpressions.add(GlobalStateMgr.getSqlParser().parseSqlToExpr(
+                    expression.toSql(), SqlModeHelper.MODE_DEFAULT));
         }
         // serialize
         String json = GsonUtils.GSON.toJson(expressionList);

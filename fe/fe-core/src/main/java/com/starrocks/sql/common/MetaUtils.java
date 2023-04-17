@@ -31,7 +31,6 @@ import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.optimizer.rule.mv.MVUtils;
-import com.starrocks.sql.parser.SqlParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -85,6 +84,14 @@ public class MetaUtils {
         return db;
     }
 
+    public static Database getDatabase(String catalogName, String dbName) {
+        Database db = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(catalogName, dbName);
+        if (db == null) {
+            throw new SemanticException("Database %s is not found", dbName);
+        }
+        return db;
+    }
+
     public static Table getTable(TableName tableName) {
         Database db = GlobalStateMgr.getCurrentState().getDb(tableName.getDb());
         if (db == null) {
@@ -105,6 +112,14 @@ public class MetaUtils {
         Table table = db.getTable(tableName.getTbl());
         if (table == null) {
             throw new SemanticException("Table %s is not found", tableName.getTbl());
+        }
+        return table;
+    }
+
+    public static Table getTable(String catalogName, String dbName, String tableName) {
+        Table table = GlobalStateMgr.getCurrentState().getMetadataMgr().getTable(catalogName, dbName, tableName);
+        if (table == null) {
+            throw new SemanticException("Table %s is not found", tableName);
         }
         return table;
     }
@@ -132,7 +147,7 @@ public class MetaUtils {
         CreateMaterializedViewStmt stmt;
 
         try {
-            List<StatementBase> stmts = SqlParser.parse(originStmt.originStmt, SqlModeHelper.MODE_DEFAULT);
+            List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(originStmt.originStmt, SqlModeHelper.MODE_DEFAULT);
             stmt = (CreateMaterializedViewStmt) stmts.get(originStmt.idx);
             stmt.setIsReplay(true);
             return stmt.parseDefineExprWithoutAnalyze(originStmt.originStmt);

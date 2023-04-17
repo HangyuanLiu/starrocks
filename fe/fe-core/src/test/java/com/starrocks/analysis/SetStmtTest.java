@@ -41,6 +41,7 @@ import com.starrocks.mysql.privilege.Auth;
 import com.starrocks.mysql.privilege.MockedAuth;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.analyzer.SetStmtAnalyzer;
 import com.starrocks.sql.ast.SetListItem;
@@ -76,7 +77,7 @@ public class SetStmtTest {
         List<SetListItem> vars = Lists.newArrayList(new UserVariable("times", new IntLiteral(100L)),
                 new SetNamesVar("utf8"));
         SetStmt stmt = new SetStmt(vars);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
 
         Assert.assertEquals("times", ((UserVariable) stmt.getSetListItems().get(0)).getVariable());
         Assert.assertEquals("100", ((UserVariable) stmt.getSetListItems().get(0)).getEvaluatedExpression().getStringValue());

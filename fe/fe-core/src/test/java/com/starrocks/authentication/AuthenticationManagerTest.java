@@ -22,8 +22,8 @@ import com.starrocks.persist.CreateUserInfo;
 import com.starrocks.persist.OperationType;
 import com.starrocks.privilege.AuthorizationManager;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.SetDefaultRoleExecutor;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AlterUserStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateUserStmt;
@@ -259,40 +259,40 @@ public class AuthenticationManagerTest {
 
         String sql = "create user test;";
         StatementBase stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
         Assert.assertTrue(manager.doesUserExist(testUser));
         sql = "create user 'test'@'10.1.1.1' identified by 'abc'";
         stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
         Assert.assertNull(manager.checkPassword(
                 testUser.getQualifiedUser(), testUser.getHost(), scramble, seed));
         Assert.assertTrue(manager.doesUserExist(testUserWithIp));
 
         sql = "alter user test identified by 'abc'";
         stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
         Assert.assertEquals(testUser,
                 manager.checkPassword(testUser.getQualifiedUser(), testUser.getHost(), scramble, seed));
         Assert.assertTrue(manager.doesUserExist(testUser));
 
         StatementBase dropStmt = UtFrameUtils.parseStmtWithNewParser("drop user test", ctx);
-        DDLStmtExecutor.execute(dropStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(dropStmt, ctx);
         Assert.assertNull(manager.checkPassword(
                 testUser.getQualifiedUser(), testUser.getHost(), scramble, seed));
         Assert.assertFalse(manager.doesUserExist(testUser));
 
         // can drop twice
-        DDLStmtExecutor.execute(dropStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(dropStmt, ctx);
 
         // can alter twice
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
 
         // still has max connection
         Assert.assertNotEquals(0, manager.getMaxConn("test"));
 
         sql = "drop user 'test'@'10.1.1.1' ";
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
-        DDLStmtExecutor.execute(dropStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(dropStmt, ctx);
         Assert.assertFalse(manager.doesUserExist(testUserWithIp));
 
         // can't get max connection after all test user are dropped
@@ -402,7 +402,7 @@ public class AuthenticationManagerTest {
         Assert.assertFalse(manager.doesUserExist(testUserWithHost));
 
         // create a user with host name
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user user_with_host@['host01'] identified by 'abc'", ctx), ctx);
         Assert.assertTrue(manager.doesUserExist(testUserWithHost));
         Assert.assertEquals(new HashSet<String>(Arrays.asList("host01")), manager.getAllHostnames());
@@ -430,7 +430,7 @@ public class AuthenticationManagerTest {
         Assert.assertNull(manager.checkPassword("user_with_host", "10.1.1.3", scramble, seed));
 
         // create a user with ip
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user user_with_host@'10.1.1.1' identified by 'abc'", ctx), ctx);
         UserIdentity testUserWithIp = UserIdentity.createAnalyzedUserIdentWithIp("user_with_host", "10.1.1.1");
         Assert.assertTrue(manager.doesUserExist(testUserWithHost));
@@ -440,7 +440,7 @@ public class AuthenticationManagerTest {
         Assert.assertEquals(testUserWithIp, manager.checkPassword("user_with_host", "10.1.1.1", scramble, seed));
 
         // create a user with %
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user user_with_host@'%' identified by 'def'", ctx), ctx);
         UserIdentity testUserWithAll = UserIdentity.createAnalyzedUserIdentWithIp("user_with_host", "%");
         byte[] scramble2 = MysqlPassword.scramble(seed, "def");
@@ -451,7 +451,7 @@ public class AuthenticationManagerTest {
         Assert.assertNull(manager.checkPassword("user_with_host", "10.1.1.1", scramble2, seed));
         Assert.assertNull(manager.checkPassword("user_with_host", "10.1.1.2", scramble2, seed));
 
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "alter user user_with_host@'%' identified by 'abc'", ctx), ctx);
         Assert.assertEquals(testUserWithIp, manager.checkPassword("user_with_host", "10.1.1.1", scramble, seed));
         Assert.assertEquals(testUserWithHost, manager.checkPassword("user_with_host", "10.1.1.2", scramble, seed));
@@ -460,13 +460,13 @@ public class AuthenticationManagerTest {
     @Test
     public void testSortUserIdentity() throws Exception {
         AuthenticationManager manager = ctx.getGlobalStateMgr().getAuthenticationManager();
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user sort_user@['host01'] identified by 'abc'", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user sort_user@'10.1.1.2' identified by 'abc'", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user sort_user@'10.1.1.1' identified by 'abc'", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user sort_user@'%' identified by 'abc'", ctx), ctx);
         List<String> l = new ArrayList<>();
         Iterator<Map.Entry<UserIdentity, UserAuthenticationInfo>> it = manager.userToAuthenticationInfo.entrySet().iterator();

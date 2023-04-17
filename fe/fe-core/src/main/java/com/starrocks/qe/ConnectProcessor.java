@@ -66,6 +66,7 @@ import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.sql.common.SqlDigestBuilder;
 import com.starrocks.sql.parser.ParsingException;
+import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.thrift.TMasterOpRequest;
 import com.starrocks.thrift.TMasterOpResult;
 import com.starrocks.thrift.TQueryOptions;
@@ -330,7 +331,8 @@ public class ConnectProcessor {
             ctx.setQueryId(UUIDUtil.genUUID());
             List<StatementBase> stmts;
             try {
-                stmts = com.starrocks.sql.parser.SqlParser.parse(originStmt, ctx.getSessionVariable());
+                SqlParser sqlParser = GlobalStateMgr.getCurrentState().getSqlParser();
+                stmts = GlobalStateMgr.getSqlParser().parse(originStmt, ctx.getSessionVariable());
             } catch (ParsingException parsingException) {
                 throw new AnalysisException(parsingException.getMessage());
             }

@@ -206,7 +206,7 @@ public class MaterializedViewAnalyzer {
 
             // derive alias
             // analyze query statement, can check whether tables and columns exist in catalog
-            Analyzer.analyze(queryStatement, context);
+            GlobalStateMgr.getAnalyzer().analyze(queryStatement, context);
 
             List<String> columnNames = selectRelations.get(0).getRelationFields().getAllFields()
                     .stream().map(Field::getName).collect(Collectors.toList());

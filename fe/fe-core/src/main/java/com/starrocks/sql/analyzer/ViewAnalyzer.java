@@ -19,6 +19,7 @@ import com.starrocks.common.AnalysisException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.BaseViewStmt;
 import com.starrocks.sql.ast.ColWithComment;
 import com.starrocks.sql.ast.QueryRelation;
@@ -38,7 +39,7 @@ public class ViewAnalyzer {
         } catch (AnalysisException e) {
             ErrorReport.reportSemanticException(ErrorCode.ERR_WRONG_TABLE_NAME, tableName);
         }
-        Analyzer.analyze(stmt.getQueryStatement(), session);
+        GlobalStateMgr.getAnalyzer().analyze(stmt.getQueryStatement(), session);
         QueryRelation queryRelation = stmt.getQueryStatement().getQueryRelation();
 
         // We create view columns from output fields of queryRelation if user-specified view columns are absent.

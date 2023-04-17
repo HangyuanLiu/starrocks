@@ -155,7 +155,7 @@ public class ExportRelativeStmtTest {
         ExportStmt stmt1 = new ExportStmt(new TableRef(tb, null), columnLst, path, new HashMap<>(), null);
 
         try {
-            Analyzer.analyze(stmt1, AnalyzeTestUtil.getConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(stmt1, AnalyzeTestUtil.getConnectContext());
         } catch (SemanticException e) {
             e.printStackTrace();
         }
@@ -225,7 +225,7 @@ public class ExportRelativeStmtTest {
         analyzeFail(originStmt);
         CancelExportStmt stmt1 = new CancelExportStmt("test", null);
         try {
-            Analyzer.analyze(stmt1, AnalyzeTestUtil.getConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(stmt1, AnalyzeTestUtil.getConnectContext());
         } catch (SemanticException e) {
             e.printStackTrace();
         }

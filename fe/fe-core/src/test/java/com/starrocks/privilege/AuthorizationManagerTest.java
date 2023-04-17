@@ -24,7 +24,6 @@ import com.starrocks.persist.RolePrivilegeCollectionInfo;
 import com.starrocks.persist.UserPrivilegeCollectionInfo;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.GlobalVariable;
 import com.starrocks.qe.SetRoleExecutor;
 import com.starrocks.qe.ShowExecutor;
@@ -78,7 +77,7 @@ public class AuthorizationManagerTest {
             starRocksAssert.withTable("create table db.tbl" + i + createTblStmtStr);
         }
         // create view
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create view db.view1 as select * from db.tbl1", ctx), ctx);
         GlobalStateMgr globalStateMgr = starRocksAssert.getCtx().getGlobalStateMgr();
         globalStateMgr.getAuthorizationManager().initBuiltinRolesAndUsers();
@@ -329,19 +328,19 @@ public class AuthorizationManagerTest {
         Assert.assertFalse(manager.checkRoleExists("test_role"));
 
         StatementBase stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
         Assert.assertTrue(manager.checkRoleExists("test_role"));
 
         // not check create twice
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
 
         sql = "drop role test_role";
         stmt = UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
         Assert.assertFalse(manager.checkRoleExists("test_role"));
 
         // not check drop twice
-        DDLStmtExecutor.execute(stmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, ctx);
     }
 
     // used in testPersistRole
@@ -381,7 +380,7 @@ public class AuthorizationManagerTest {
         // 1. create 2 roles
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
         for (int i = 0; i != 2; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "create role test_persist_role" + i, ctx), ctx);
             Assert.assertTrue(masterManager.checkRoleExists("test_persist_role" + i));
         }
@@ -390,7 +389,7 @@ public class AuthorizationManagerTest {
 
         // 2. grant select on db.tbl<i> to role
         for (int i = 0; i != 2; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "grant select on db.tbl" + i + " to role test_persist_role" + i, ctx), ctx);
         }
         UtFrameUtils.PseudoImage grantPrivsToRoleImage = new UtFrameUtils.PseudoImage();
@@ -398,28 +397,28 @@ public class AuthorizationManagerTest {
         assertTableSelectOnTest(masterManager, false, false);
 
         // 3. grant test_persist_role0 to test_user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant test_persist_role0 to test_user", ctx), ctx);
         assertTableSelectOnTest(masterManager, true, false);
         UtFrameUtils.PseudoImage grantRoleToUserImage = new UtFrameUtils.PseudoImage();
         masterGlobalStateMgr.saveRBACPrivilege(grantRoleToUserImage.getDataOutputStream());
 
         // 4. grant test_persist_role1 to role test_persist_role0
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant test_persist_role1 to role test_persist_role0", ctx), ctx);
         assertTableSelectOnTest(masterManager, true, true);
         UtFrameUtils.PseudoImage grantRoleToRoleImage = new UtFrameUtils.PseudoImage();
         masterGlobalStateMgr.saveRBACPrivilege(grantRoleToRoleImage.getDataOutputStream());
 
         // 5. revoke test_persist_role1 from role test_persist_role0
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke test_persist_role1 from role test_persist_role0", ctx), ctx);
         assertTableSelectOnTest(masterManager, true, false);
         UtFrameUtils.PseudoImage revokeRoleFromRoleImage = new UtFrameUtils.PseudoImage();
         masterGlobalStateMgr.saveRBACPrivilege(revokeRoleFromRoleImage.getDataOutputStream());
 
         // 6. revoke test_persist_role0 from test_user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke test_persist_role0 from test_user", ctx), ctx);
         assertTableSelectOnTest(masterManager, false, false);
         UtFrameUtils.PseudoImage revokeRoleFromUserImage = new UtFrameUtils.PseudoImage();
@@ -427,7 +426,7 @@ public class AuthorizationManagerTest {
 
         // 7. drop 2 roles
         for (int i = 0; i != 2; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "drop role test_persist_role" + i, ctx), ctx);
             Assert.assertFalse(masterManager.checkRoleExists("test_persist_role" + i));
         }
@@ -818,97 +817,97 @@ public class AuthorizationManagerTest {
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
 
         // grant create table on database db to role1
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create role role1;", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant create table on database db to role role1;", ctx), ctx);
 
         // can't create table
         assertDbActionsOnTest(false, false, testUser);
 
         // grant role1 to test_user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role1 to test_role_user", ctx), ctx);
 
         // can create table but can't drop
         assertDbActionsOnTest(true, false, testUser);
 
         // grant role2 to test_user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create role role2;", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant drop on database db to role role2;", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role2 to test_role_user;", ctx), ctx);
 
         // can create table & drop
         assertDbActionsOnTest(true, true, testUser);
 
         // grant drop to test_user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant drop on database db to test_role_user;", ctx), ctx);
 
         // still, can create table & drop
         assertDbActionsOnTest(true, true, testUser);
 
         // revoke role1 from test_user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke role1 from test_role_user;", ctx), ctx);
 
         // can drop but can't create table
         assertDbActionsOnTest(false, true, testUser);
 
         // grant role1 to test_user; revoke create table from role1
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role1 to test_role_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke create table on database db from role role1", ctx), ctx);
 
         // can drop but can't create table
         assertDbActionsOnTest(false, true, testUser);
 
         // revoke empty role role1
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke role1 from test_role_user;", ctx), ctx);
 
         // can drop but can't create table
         assertDbActionsOnTest(false, true, testUser);
 
         // revoke role2 from test_user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke role2 from test_role_user;", ctx), ctx);
 
         // can drop
         assertDbActionsOnTest(false, true, testUser);
 
         // grant role2 to test_user; revoke drop from role2
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role2 to test_role_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke drop on database db from role role2", ctx), ctx);
 
         // can drop
         assertDbActionsOnTest(false, true, testUser);
 
         // grant drop on role2; revoke drop from user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant drop on database db to role role2", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke drop on database db from test_role_user", ctx), ctx);
 
         assertDbActionsOnTest(false, true, testUser);
 
         // revoke role2 from test_user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke role2 from test_role_user;", ctx), ctx);
 
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role1, role2 to test_role_user;", ctx), ctx);
 
         Assert.assertEquals("[role1, role2]", manager.getRoleNamesByUser(
                 UserIdentity.createAnalyzedUserIdentWithIp("test_role_user", "%")).toString());
 
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "revoke role1, role2 from test_role_user;", ctx), ctx);
 
         Assert.assertEquals("[]", manager.getRoleNamesByUser(
@@ -924,18 +923,18 @@ public class AuthorizationManagerTest {
         // create role0 ~ role4
         long[] roleIds = new long[5];
         for (int i = 0; i != 5; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     String.format("create role role%d;", i), ctx), ctx);
             roleIds[i] = manager.getRoleIdByNameNoLock("role" + i);
         }
         // create user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("create user user_test_role_inheritance"), ctx), ctx);
 
         // role0 -> role1 -> role2
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role0 to role role1", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role1 to role role2", ctx), ctx);
 
         // role inheritance depth
@@ -961,9 +960,9 @@ public class AuthorizationManagerTest {
         //    \       ^
         //     \      |
         //      \-> role3
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role0 to role role3", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role3 to role role1", ctx), ctx);
         // role inheritance depth
         Assert.assertEquals(3, manager.getMaxRoleInheritanceDepthInner(0, roleIds[0]));
@@ -997,7 +996,7 @@ public class AuthorizationManagerTest {
         // simulate exception
         Config.privilege_max_role_depth = 3;
         try {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "grant role2 to role role4", ctx), ctx);
         } catch (DdlException e) {
             Assert.assertTrue(e.getMessage().contains("role inheritance depth for role0"));
@@ -1006,7 +1005,7 @@ public class AuthorizationManagerTest {
         Assert.assertEquals(3, manager.getMaxRoleInheritanceDepthInner(0, roleIds[0]));
         Config.privilege_max_role_depth = oldValue;
         // normal cases
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role2 to role role4", ctx), ctx);
         Assert.assertEquals(4, manager.getMaxRoleInheritanceDepthInner(0, roleIds[0]));
 
@@ -1015,17 +1014,17 @@ public class AuthorizationManagerTest {
         Config.privilege_max_total_roles_per_user = 3;
         UserIdentity user = UserIdentity.createAnalyzedUserIdentWithIp("user_test_role_inheritance", "%");
         UserPrivilegeCollection collection = manager.getUserPrivilegeCollectionUnlocked(user);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role1 to user_test_role_inheritance", ctx), ctx);
         Assert.assertEquals(new HashSet<>(Arrays.asList(roleIds[0], roleIds[1], roleIds[3])),
                 manager.getAllPredecessorsUnlocked(collection));
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role0 to user_test_role_inheritance", ctx), ctx);
         Assert.assertEquals(new HashSet<>(Arrays.asList(roleIds[0], roleIds[1], roleIds[3])),
                 manager.getAllPredecessorsUnlocked(collection));
         // exception:
         try {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "grant role4 to user_test_role_inheritance", ctx), ctx);
         } catch (DdlException e) {
             Assert.assertTrue(e.getMessage().contains("'user_test_role_inheritance'@'%' has total 5 predecessor roles > 3"));
@@ -1034,7 +1033,7 @@ public class AuthorizationManagerTest {
                 manager.getAllPredecessorsUnlocked(collection));
         // normal grant
         Config.privilege_max_total_roles_per_user = oldValue;
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant role4 to user_test_role_inheritance", ctx), ctx);
         Assert.assertEquals(new HashSet<>(Arrays.asList(
                         roleIds[0], roleIds[1], roleIds[2], roleIds[3], roleIds[4])),
@@ -1054,7 +1053,7 @@ public class AuthorizationManagerTest {
                 manager.getAllPredecessorsUnlocked(roleIds[4]));
         Assert.assertEquals(new HashSet<>(Arrays.asList(roleIds[0])), manager.getAllPredecessorsUnlocked(roleIds[0]));
         try {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "grant role4 to role role0", ctx), ctx);
         } catch (DdlException e) {
             Assert.assertTrue(e.getMessage().contains("role role0"));
@@ -1103,27 +1102,27 @@ public class AuthorizationManagerTest {
         // create role0 ~ role3
         long[] roleIds = new long[4];
         for (int i = 0; i != 4; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     String.format("create role test_drop_role_%d;", i), ctx), ctx);
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "grant select on db.tbl" + i + " to role test_drop_role_" + i, ctx), ctx);
             roleIds[i] = manager.getRoleIdByNameNoLock("test_drop_role_" + i);
         }
         // create user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("create user user_test_drop_role_inheritance"), ctx), ctx);
         UserIdentity user = UserIdentity.createAnalyzedUserIdentWithIp("user_test_drop_role_inheritance", "%");
         UserPrivilegeCollection collection = manager.getUserPrivilegeCollectionUnlocked(user);
 
         // role0 -> role1[user] -> role2
         // role3[user]
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant test_drop_role_0 to role test_drop_role_1", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant test_drop_role_1 to role test_drop_role_2", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant test_drop_role_1 to user_test_drop_role_inheritance", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant test_drop_role_3 to user_test_drop_role_inheritance", ctx), ctx);
 
         Assert.assertEquals(new HashSet<>(Arrays.asList(roleIds[0], roleIds[1], roleIds[3])),
@@ -1131,7 +1130,7 @@ public class AuthorizationManagerTest {
         assertTableSelectOnTest(user, true, true, false, true);
 
         // role0 -> role1[user] -> role2
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "drop role test_drop_role_3;", ctx), ctx);
         Assert.assertEquals(new HashSet<>(Arrays.asList(roleIds[0], roleIds[1])),
                 manager.getAllPredecessorsUnlocked(collection));
@@ -1140,7 +1139,7 @@ public class AuthorizationManagerTest {
         assertTableSelectOnTest(user, true, true, false, false);
 
         // role0 -> role1[user]
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "drop role test_drop_role_2;", ctx), ctx);
         Assert.assertEquals(new HashSet<>(Arrays.asList(roleIds[0], roleIds[1])),
                 manager.getAllPredecessorsUnlocked(collection));
@@ -1149,7 +1148,7 @@ public class AuthorizationManagerTest {
         assertTableSelectOnTest(user, true, true, false, false);
 
         // role1[user]
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "drop role test_drop_role_0;", ctx), ctx);
         Assert.assertEquals(new HashSet<>(Arrays.asList(roleIds[1])),
                 manager.getAllPredecessorsUnlocked(collection));
@@ -1177,7 +1176,7 @@ public class AuthorizationManagerTest {
         GlobalVariable.setActivateAllRolesOnLogin(false);
         AuthorizationManager manager = ctx.getGlobalStateMgr().getAuthorizationManager();
         // create user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("create user user_test_set_role"), ctx), ctx);
         UserIdentity user = UserIdentity.createAnalyzedUserIdentWithIp("user_test_set_role", "%");
         // create role0 ~ role3
@@ -1185,12 +1184,12 @@ public class AuthorizationManagerTest {
         // grant role0, role1, role2 to user
         long[] roleIds = new long[4];
         for (int i = 0; i != 4; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     String.format("create role test_set_role_%d;", i), ctx), ctx);
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "grant select on db.tbl" + i + " to role test_set_role_" + i, ctx), ctx);
             if (i != 3) {
-                DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+                GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                         "grant test_set_role_" + i + " to user_test_set_role", ctx), ctx);
             }
             roleIds[i] = manager.getRoleIdByNameNoLock("test_set_role_" + i);
@@ -1214,10 +1213,10 @@ public class AuthorizationManagerTest {
         assertTableSelectOnTestWithoutSetRole(user, false, true, true, false);
 
         // bad case: role not exists
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("create role bad_role", ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("create role bad_role", ctx), ctx);
         SetRoleStmt stmt = (SetRoleStmt) UtFrameUtils.parseStmtWithNewParser(
                 "set role 'test_set_role_1', 'test_set_role_2', 'bad_role'", ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("drop role bad_role", ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("drop role bad_role", ctx), ctx);
         setCurrentUserAndRoles(ctx, user);
         try {
             SetRoleExecutor.execute(stmt, ctx);
@@ -1243,7 +1242,7 @@ public class AuthorizationManagerTest {
 
         // drop role1
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "drop role test_set_role_1;", ctx), ctx);
 
         ctx.setCurrentUserIdentity(user);
@@ -1264,7 +1263,7 @@ public class AuthorizationManagerTest {
         assertTableSelectOnTestWithoutSetRole(user, true, false, false, false);
 
         // predecessors
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant test_set_role_3 to role test_set_role_0;", ctx), ctx);
         assertTableSelectOnTestWithoutSetRole(user, true, false, false, true);
         GlobalVariable.setActivateAllRolesOnLogin(true);
@@ -1275,19 +1274,19 @@ public class AuthorizationManagerTest {
         AuthorizationManager manager = ctx.getGlobalStateMgr().getAuthorizationManager();
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
         // create user
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("create user user_test_builtin_role"), ctx), ctx);
         UserIdentity user = UserIdentity.createAnalyzedUserIdentWithIp("user_test_builtin_role", "%");
 
         // public role
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("GRANT select on db.tbl0 TO ROLE public"), ctx), ctx);
         setCurrentUserAndRoles(ctx, user);
         Assert.assertTrue(PrivilegeActions.checkTableAction(ctx, DB_NAME, TABLE_NAME_0, PrivilegeType.SELECT));
 
         // root role
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("GRANT root TO user_test_builtin_role"), ctx), ctx);
         setCurrentUserAndRoles(ctx, user);
         Assert.assertTrue(PrivilegeActions.checkSystemAction(ctx, PrivilegeType.GRANT));
@@ -1297,11 +1296,11 @@ public class AuthorizationManagerTest {
         Assert.assertTrue(PrivilegeActions.checkViewAction(ctx, DB_NAME, "view1", PrivilegeType.DROP));
         Assert.assertTrue(manager.canExecuteAs(ctx, UserIdentity.ROOT));
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("REVOKE root FROM user_test_builtin_role"), ctx), ctx);
 
         // db_admin role
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("GRANT db_admin TO user_test_builtin_role"), ctx), ctx);
         setCurrentUserAndRoles(ctx, user);
         Assert.assertFalse(PrivilegeActions.checkSystemAction(ctx, PrivilegeType.GRANT));
@@ -1310,11 +1309,11 @@ public class AuthorizationManagerTest {
         Assert.assertTrue(PrivilegeActions.checkTableAction(ctx, DB_NAME, TABLE_NAME_1, PrivilegeType.DROP));
         Assert.assertTrue(PrivilegeActions.checkViewAction(ctx, DB_NAME, "view1", PrivilegeType.DROP));
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("REVOKE db_admin FROM user_test_builtin_role"), ctx), ctx);
 
         // cluster_admin
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("GRANT cluster_admin TO user_test_builtin_role"), ctx), ctx);
         setCurrentUserAndRoles(ctx, user);
         Assert.assertFalse(PrivilegeActions.checkSystemAction(ctx, PrivilegeType.GRANT));
@@ -1323,11 +1322,11 @@ public class AuthorizationManagerTest {
         Assert.assertFalse(PrivilegeActions.checkTableAction(ctx, DB_NAME, TABLE_NAME_1, PrivilegeType.DROP));
         Assert.assertFalse(PrivilegeActions.checkViewAction(ctx, DB_NAME, "view1", PrivilegeType.DROP));
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("REVOKE cluster_admin FROM user_test_builtin_role"), ctx), ctx);
 
         // user_admin
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("GRANT user_admin TO user_test_builtin_role"), ctx), ctx);
         setCurrentUserAndRoles(ctx, user);
         Assert.assertTrue(PrivilegeActions.checkSystemAction(ctx, PrivilegeType.GRANT));
@@ -1337,7 +1336,7 @@ public class AuthorizationManagerTest {
         Assert.assertFalse(PrivilegeActions.checkViewAction(ctx, DB_NAME, "view1", PrivilegeType.DROP));
         Assert.assertTrue(manager.canExecuteAs(ctx, UserIdentity.ROOT));
         setCurrentUserAndRoles(ctx, UserIdentity.ROOT);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("REVOKE user_admin FROM user_test_builtin_role"), ctx), ctx);
 
         // user root
@@ -1349,7 +1348,7 @@ public class AuthorizationManagerTest {
         Assert.assertTrue(PrivilegeActions.checkAnyActionOnOrInDb(ctx, DB_NAME));
 
         // grant to imutable role
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 String.format("create role role_test_builtin_role"), ctx), ctx);
         List<String> modifyImutableRoleSqls = Arrays.asList(
                 "GRANT select on db.tbl0 TO ROLE root",
@@ -1358,7 +1357,7 @@ public class AuthorizationManagerTest {
         );
         for (String sql : modifyImutableRoleSqls) {
             try {
-                DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
+                GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
                 System.err.println(sql);
                 Assert.fail();
             } catch (DdlException e) {
@@ -1369,7 +1368,7 @@ public class AuthorizationManagerTest {
 
         // drop builtin role
         try {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("drop role public", ctx), ctx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("drop role public", ctx), ctx);
             Assert.fail();
         } catch (DdlException e) {
             Assert.assertTrue(e.getMessage().contains("role public cannot be dropped"));
@@ -1377,7 +1376,7 @@ public class AuthorizationManagerTest {
 
         // revoke public role
         try {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     "revoke public from user_test_builtin_role", ctx), ctx);
             Assert.fail();
         } catch (DdlException e) {
@@ -1387,19 +1386,19 @@ public class AuthorizationManagerTest {
 
     @Test
     public void testGrantRoleSame() throws Exception {
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user grant_same_user", ctx), ctx);
         UserIdentity user = UserIdentity.createAnalyzedUserIdentWithIp("grant_same_user", "%");
         AuthorizationManager manager = ctx.getGlobalStateMgr().getAuthorizationManager();
         long[] roleIds = new long[3];
         for (int i = 0; i != 3; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     String.format("create role grant_same_role_%d;", i), ctx), ctx);
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     String.format("grant all on all users to role grant_same_role_%d;", i), ctx), ctx);
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     String.format("grant select on all tables in all databases to role grant_same_role_%d;", i), ctx), ctx);
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                     String.format("grant grant_same_role_%d to grant_same_user;", i), ctx), ctx);
 
             roleIds[i] = manager.getRoleIdByNameNoLock("grant_same_role_" + i);
@@ -1412,13 +1411,13 @@ public class AuthorizationManagerTest {
 
     @Test
     public void testGrantAllResource() throws Exception {
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user resource_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant drop on resource 'hive0' to resource_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant usage on all resources to resource_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant alter on all resources to resource_user with grant option", ctx), ctx);
         UserIdentity user = UserIdentity.createAnalyzedUserIdentWithIp("resource_user", "%");
         setCurrentUserAndRoles(ctx, user);
@@ -1429,17 +1428,17 @@ public class AuthorizationManagerTest {
 
     @Test
     public void testGrantOnCatalog() throws Exception {
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create external catalog test_catalog properties (\"type\"=\"iceberg\")", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user test_catalog_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant drop on catalog 'test_catalog' to test_catalog_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant usage on all catalogs to test_catalog_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant create database on all catalogs to test_catalog_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant alter on all catalogs to test_catalog_user with grant option", ctx), ctx);
         UserIdentity user = UserIdentity.createAnalyzedUserIdentWithIp("test_catalog_user", "%");
         setCurrentUserAndRoles(ctx, user);
@@ -1452,9 +1451,9 @@ public class AuthorizationManagerTest {
         Assert.assertTrue(PrivilegeActions.checkCatalogAction(ctx, "test_catalog",
                 PrivilegeType.ALTER));
 
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user test_catalog_user2", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant create database on catalog " + InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME +
                         " to test_catalog_user2 with grant option", ctx), ctx);
         setCurrentUserAndRoles(ctx, UserIdentity.createAnalyzedUserIdentWithIp("test_catalog_user2", "%"));
@@ -1464,13 +1463,13 @@ public class AuthorizationManagerTest {
 
     @Test
     public void testGrantView() throws Exception {
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user view_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant drop on view db.view1 to view_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant select on all views in all databases to view_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant alter on all views in database db to view_user with grant option", ctx), ctx);
         UserIdentity user = UserIdentity.createAnalyzedUserIdentWithIp("view_user", "%");
         setCurrentUserAndRoles(ctx, user);
@@ -1482,9 +1481,9 @@ public class AuthorizationManagerTest {
     @Test
     public void testGrantBrief() throws Exception {
         ctx.setDatabase("db");
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user brief_user", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant drop on tbl0 to brief_user", ctx), ctx);
         ctx.setCurrentUserIdentity(new UserIdentity("brief_user", "%"));
         Assert.assertTrue(PrivilegeActions.checkTableAction(ctx, "db", "tbl0", PrivilegeType.DROP));
@@ -1492,7 +1491,7 @@ public class AuthorizationManagerTest {
         try {
             StatementBase statementBase =
                     UtFrameUtils.parseStmtWithNewParser("grant drop on db to brief_user", ctx);
-            DDLStmtExecutor.execute(statementBase, ctx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(statementBase, ctx);
             Assert.fail();
         } catch (Exception e) {
             Assert.assertTrue(e.getMessage().contains("cannot find table db in db db"));
@@ -1502,15 +1501,15 @@ public class AuthorizationManagerTest {
     @Test
     public void testPartialRevoke() throws Exception {
         String sql = "grant select on table db.tbl0 to test_user";
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
 
         sql = "grant select on table db.* to test_user";
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
 
         try {
             StatementBase statementBase =
                     UtFrameUtils.parseStmtWithNewParser("revoke select on table db.tbl1 from test_user", ctx);
-            DDLStmtExecutor.execute(statementBase, ctx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(statementBase, ctx);
             Assert.fail();
         } catch (Exception e) {
             Assert.assertTrue(e.getMessage().contains("There is no such grant defined on TABLE db.tbl1"));
@@ -1527,17 +1526,17 @@ public class AuthorizationManagerTest {
 
     @Test
     public void testSystem() throws Exception {
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("create user u1", ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("create user u2", ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("create user u1", ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("create user u2", ctx), ctx);
 
         String sql = "grant OPERATE ON SYSTEM TO USER u1 with grant option";
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
 
         setCurrentUserAndRoles(ctx, new UserIdentity("u1", "%"));
         Assert.assertTrue(PrivilegeActions.checkSystemAction(ctx, PrivilegeType.OPERATE));
 
         sql = "grant OPERATE ON SYSTEM TO USER u2";
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
         setCurrentUserAndRoles(ctx, new UserIdentity("u2", "%"));
         Assert.assertTrue(PrivilegeActions.checkSystemAction(ctx, PrivilegeType.OPERATE));
     }

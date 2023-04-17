@@ -147,7 +147,7 @@ public class ResourceGroupStmtTest {
         starRocksAssert = new StarRocksAssert(ctx);
         starRocksAssert.withRole("rg1_role1");
         starRocksAssert.withUser("rg1_user1");
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("grant rg1_role1 to rg1_user1",
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("grant rg1_role1 to rg1_user1",
                 ctx), ctx);
         List<String> databases = Arrays.asList("db1", "db2");
         for (String db : databases) {

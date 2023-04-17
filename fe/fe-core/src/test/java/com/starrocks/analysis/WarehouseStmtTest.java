@@ -89,12 +89,12 @@ public class WarehouseStmtTest {
         ConnectContext connectCtx = new ConnectContext();
         connectCtx.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
         CreateWarehouseStmt statement = (CreateWarehouseStmt) stmt;
-        DDLStmtExecutor.execute(statement, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(statement, connectCtx);
         WarehouseManager warehouseMgr = GlobalStateMgr.getCurrentState().getWarehouseMgr();
         Assert.assertTrue(warehouseMgr.warehouseExists("warehouse_1"));
 
         try {
-            DDLStmtExecutor.execute(statement, connectCtx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(statement, connectCtx);
         } catch (IllegalStateException e) {
             Assert.assertTrue(e.getMessage().contains("exists"));
         }
@@ -122,21 +122,21 @@ public class WarehouseStmtTest {
         String suspendSql = "SUSPEND WAREHOUSE warehouse_1";
         stmt = AnalyzeTestUtil.analyzeSuccess(suspendSql);
         Assert.assertTrue(stmt instanceof SuspendWarehouseStmt);
-        DDLStmtExecutor.execute(stmt, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, connectCtx);
         Assert.assertEquals(Warehouse.WarehouseState.SUSPENDED,
                 warehouseMgr.getWarehouse("warehouse_1").getState());
 
         String resumeSql = "RESUME WAREHOUSE warehouse_1";
         stmt = AnalyzeTestUtil.analyzeSuccess(resumeSql);
         Assert.assertTrue(stmt instanceof ResumeWarehouseStmt);
-        DDLStmtExecutor.execute(stmt, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, connectCtx);
         Assert.assertEquals(Warehouse.WarehouseState.RUNNING,
                 warehouseMgr.getWarehouse("warehouse_1").getState());
 
         String alterSql = "ALTER WAREHOUSE warehouse_1 set(\"size\"=\"medium\")";
         stmt = AnalyzeTestUtil.analyzeSuccess(alterSql);
         Assert.assertTrue(stmt instanceof AlterWarehouseStmt);
-        DDLStmtExecutor.execute(stmt, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, connectCtx);
         Assert.assertEquals("medium", warehouseMgr.getWarehouse("warehouse_1").getSize());
 
         warehouseMgr.dropWarehouse(new DropWarehouseStmt(false,"warehouse_1"));
@@ -155,25 +155,25 @@ public class WarehouseStmtTest {
         ConnectContext connectCtx = new ConnectContext();
         connectCtx.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
         CreateWarehouseStmt createWarehouseStmt = (CreateWarehouseStmt) createStmtBase;
-        DDLStmtExecutor.execute(createWarehouseStmt, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(createWarehouseStmt, connectCtx);
         Assert.assertTrue(warehouseMgr.warehouseExists("warehouse_1"));
 
         StatementBase dropStmtBase = AnalyzeTestUtil.analyzeSuccess(dropSql);
         Assert.assertTrue(dropStmtBase instanceof DropWarehouseStmt);
         DropWarehouseStmt dropWarehouseStmt = (DropWarehouseStmt) dropStmtBase;
-        DDLStmtExecutor.execute(dropWarehouseStmt, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(dropWarehouseStmt, connectCtx);
         Assert.assertFalse(warehouseMgr.warehouseExists("warehouse_1"));
 
         // test DROP WAREHOUSE 'warehouse_name'
         String dropSql_2 = "DROP WAREHOUSE 'warehouse_1'";
 
-        DDLStmtExecutor.execute(createWarehouseStmt, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(createWarehouseStmt, connectCtx);
         Assert.assertTrue(warehouseMgr.warehouseExists("warehouse_1"));
 
         StatementBase dropStmtBase_2 = AnalyzeTestUtil.analyzeSuccess(dropSql_2);
         Assert.assertTrue(dropStmtBase_2 instanceof DropWarehouseStmt);
         DropWarehouseStmt dropWarehouseStmt_2 = (DropWarehouseStmt) dropStmtBase;
-        DDLStmtExecutor.execute(dropWarehouseStmt_2, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(dropWarehouseStmt_2, connectCtx);
         Assert.assertFalse(warehouseMgr.warehouseExists("warehouse_1"));
     }
 }

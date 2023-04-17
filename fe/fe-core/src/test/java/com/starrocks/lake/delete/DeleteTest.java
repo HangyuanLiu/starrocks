@@ -230,7 +230,7 @@ public class DeleteTest {
                 new PartitionNames(false, Lists.newArrayList(partitionName)), binaryPredicate);
 
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         } catch (Exception e) {
             Assert.fail();
         }
@@ -296,7 +296,7 @@ public class DeleteTest {
                 new PartitionNames(false, Lists.newArrayList(partitionName)), binaryPredicate);
 
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         } catch (Exception e) {
             Assert.fail();
         }
@@ -337,7 +337,7 @@ public class DeleteTest {
         DeleteStmt deleteStmt = new DeleteStmt(new TableName(dbName, tableName),
                 new PartitionNames(false, Lists.newArrayList(partitionName)), binaryPredicate);
 
-        com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         try {
             deleteHandler.process(deleteStmt);
         } catch (DdlException e) {

@@ -18,12 +18,12 @@ import com.starrocks.analysis.CompoundPredicate;
 import com.starrocks.common.Config;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SqlModeHelper;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectRelation;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.TableRelation;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.utframe.UtFrameUtils;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -73,7 +73,8 @@ public class AnalyzeSingleTest {
                 + "FORMAT AS PARQUET PROPERTIES" +
                 "(\"broker.name\" = \"my_broker\"," +
                 "\"broker.hadoop.security.authentication\" = \"kerberos\"," +
-                "\"line_delimiter\" = \"\n\", \"max_file_size\" = \"100MB\");", "line_delimiter is only for CSV format");
+                "\"line_delimiter\" = \"\n\", \"max_file_size\" = \"100MB\");",
+                "line_delimiter is only for CSV format");
 
         analyzeSuccess("SELECT v1,v2,v3 FROM t0  INTO OUTFILE \"hdfs://path/to/result_\""
                 + "FORMAT AS CSV PROPERTIES" +
@@ -90,16 +91,16 @@ public class AnalyzeSingleTest {
 
     @Test
     public void testIdentifierStartWithDigit() {
-        StatementBase statementBase = com.starrocks.sql.parser.SqlParser.parse("select * from a.11b", 0).get(0);
+        StatementBase statementBase = GlobalStateMgr.getSqlParser().parse("select * from a.11b", 0).get(0);
         Assert.assertEquals("SELECT * FROM a.11b", AstToStringBuilder.toString(statementBase));
 
-        statementBase = com.starrocks.sql.parser.SqlParser.parse("select a.11b.22c, * from a.11b", 0).get(0);
+        statementBase = GlobalStateMgr.getSqlParser().parse("select a.11b.22c, * from a.11b", 0).get(0);
         Assert.assertEquals("SELECT a.11b.22c, * FROM a.11b", AstToStringBuilder.toString(statementBase));
 
-        statementBase = com.starrocks.sql.parser.SqlParser.parse("select 00a.11b.22c, * from 00a.11b", 0).get(0);
+        statementBase = GlobalStateMgr.getSqlParser().parse("select 00a.11b.22c, * from 00a.11b", 0).get(0);
         Assert.assertEquals("SELECT 00a.11b.22c, * FROM 00a.11b", AstToStringBuilder.toString(statementBase));
 
-        statementBase = com.starrocks.sql.parser.SqlParser.parse("select 11b.* from 11b", 0).get(0);
+        statementBase = GlobalStateMgr.getSqlParser().parse("select 11b.* from 11b", 0).get(0);
         Assert.assertEquals("SELECT 11b.* FROM 11b", AstToStringBuilder.toString(statementBase));
     }
 
@@ -138,8 +139,10 @@ public class AnalyzeSingleTest {
         analyzeFail("select t.* from t0");
         analyzeFail("select t0.* from t0 t");
 
-        analyzeFail("select * from t0 t GROUP BY t.v1, t.v2, t.v3", "combine '*' in select list with GROUP BY: *");
-        analyzeFail("select * from tall t GROUP BY t.ta, t.tb, t.tc", "combine '*' in select list with GROUP BY: *");
+        analyzeFail("select * from t0 t GROUP BY t.v1, t.v2, t.v3",
+                "combine '*' in select list with GROUP BY: *");
+        analyzeFail("select * from tall t GROUP BY t.ta, t.tb, t.tc",
+                "combine '*' in select list with GROUP BY: *");
     }
 
     @Test
@@ -325,15 +328,20 @@ public class AnalyzeSingleTest {
          * In a double-quoted string, two double-quotes are combined into one double-quote
          */
         QueryStatement statement = (QueryStatement) analyzeSuccess("select '\"\"' ");
-        Assert.assertEquals("'\"\"'", AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
+        Assert.assertEquals("'\"\"'",
+                AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
         statement = (QueryStatement) analyzeSuccess("select \"\"\"\" ");
-        Assert.assertEquals("'\"'", AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
+        Assert.assertEquals("'\"'",
+                AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
         statement = (QueryStatement) analyzeSuccess("select \"7\\\"\\\"\"");
-        Assert.assertEquals("'7\"\"'", AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
+        Assert.assertEquals("'7\"\"'",
+                AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
         statement = (QueryStatement) analyzeSuccess("select '7'''");
-        Assert.assertEquals("'7\\''", AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
+        Assert.assertEquals("'7\\''",
+                AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
         statement = (QueryStatement) analyzeSuccess("SELECT '7\\'\\''");
-        Assert.assertEquals("'7\\'\\''", AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
+        Assert.assertEquals("'7\\'\\''",
+                AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
         statement = (QueryStatement) analyzeSuccess("select \"Hello ' World ' !\"");
         Assert.assertEquals("'Hello \\' World \\' !'",
                 AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
@@ -350,12 +358,15 @@ public class AnalyzeSingleTest {
     @Test
     public void testBinaryLiteral() {
         QueryStatement statement = (QueryStatement) analyzeSuccess("select x'0ABC' ");
-        Assert.assertEquals("\'0ABC\'", AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
+        Assert.assertEquals("\'0ABC\'",
+                AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
         statement = (QueryStatement) analyzeSuccess("select \"0ABC\" ");
-        Assert.assertEquals("\'0ABC\'", AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
+        Assert.assertEquals("\'0ABC\'",
+                AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
         // mysql client will output binary format in the outputs.
         statement = (QueryStatement) analyzeSuccess("select '0ABC' ");
-        Assert.assertEquals("\'0ABC\'", AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
+        Assert.assertEquals("\'0ABC\'",
+                AstToStringBuilder.toString(statement.getQueryRelation().getOutputExpression().get(0)));
 
         String expectMsg = "Binary literal can only contain hexadecimal digits and an even number of digits";
         analyzeFail("select x'0AB' ", expectMsg);
@@ -468,30 +479,32 @@ public class AnalyzeSingleTest {
         analyzeFail("select 'a' || 'b' from t0",
                 "Operand ''a' OR 'b'' part of predicate ''a'' should return type 'BOOLEAN'");
 
-        StatementBase statementBase = com.starrocks.sql.parser.SqlParser.parse("select true || false from t0",
+        StatementBase statementBase = GlobalStateMgr.getSqlParser().parse("select true || false from t0",
                 connectContext.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statementBase, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
         Assert.assertEquals("SELECT TRUE OR FALSE FROM test.t0",
                 AstToStringBuilder.toString(statementBase));
 
         connectContext.getSessionVariable().setSqlMode(SqlModeHelper.MODE_PIPES_AS_CONCAT);
-        statementBase = com.starrocks.sql.parser.SqlParser.parse("select 'a' || 'b' from t0",
+        statementBase = GlobalStateMgr.getSqlParser().parse("select 'a' || 'b' from t0",
                 connectContext.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statementBase, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
         Assert.assertEquals("SELECT concat('a', 'b') FROM test.t0",
                 AstToStringBuilder.toString(statementBase));
 
-        statementBase = SqlParser.parse("select * from  tall where ta like concat(\"h\", \"a\", \"i\")||'%'",
+        statementBase = GlobalStateMgr.getSqlParser().parse(
+                "select * from  tall where ta like concat(\"h\", \"a\", \"i\")||'%'",
                 connectContext.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statementBase, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
         Assert.assertEquals(
                 "SELECT * FROM test.tall WHERE test.tall.ta LIKE (concat(concat('h', 'a', 'i'), '%'))",
                 AstToStringBuilder.toString(statementBase));
 
         connectContext.getSessionVariable().setSqlMode(0);
-        statementBase = SqlParser.parse("select * from  tall where ta like concat(\"h\", \"a\", \"i\")|| true",
+        statementBase = GlobalStateMgr.getSqlParser().parse(
+                "select * from  tall where ta like concat(\"h\", \"a\", \"i\")|| true",
                 connectContext.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statementBase, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
         Assert.assertEquals(
                 "SELECT * FROM test.tall WHERE (test.tall.ta LIKE (concat('h', 'a', 'i'))) OR TRUE",
                 AstToStringBuilder.toString(statementBase));
@@ -500,23 +513,23 @@ public class AnalyzeSingleTest {
                 "LIKE (concat('h', 'a', 'i'))) OR '%'' part of predicate ''%'' should return type 'BOOLEAN'");
 
         connectContext.getSessionVariable().setSqlMode(SqlModeHelper.MODE_SORT_NULLS_LAST);
-        statementBase = SqlParser.parse("select * from  tall order by ta",
+        statementBase = GlobalStateMgr.getSqlParser().parse("select * from  tall order by ta",
                 connectContext.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statementBase, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
         Assert.assertEquals("SELECT * FROM test.tall ORDER BY test.tall.ta ASC NULLS LAST ",
                 AstToStringBuilder.toString(statementBase));
 
-        statementBase = SqlParser.parse("select * from  test.tall order by test.tall.ta desc",
+        statementBase = GlobalStateMgr.getSqlParser().parse("select * from  test.tall order by test.tall.ta desc",
                 connectContext.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statementBase, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
         Assert.assertEquals(
                 "SELECT * FROM test.tall ORDER BY test.tall.ta DESC NULLS FIRST ",
                 AstToStringBuilder.toString(statementBase));
 
         connectContext.getSessionVariable().setSqlMode(0);
-        statementBase = SqlParser.parse("select * from  test.tall order by test.tall.ta",
+        statementBase = GlobalStateMgr.getSqlParser().parse("select * from  test.tall order by test.tall.ta",
                 connectContext.getSessionVariable().getSqlMode()).get(0);
-        Analyzer.analyze(statementBase, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
         Assert.assertEquals(
                 "SELECT * FROM test.tall ORDER BY test.tall.ta ASC ",
                 AstToStringBuilder.toString(statementBase));
@@ -524,35 +537,38 @@ public class AnalyzeSingleTest {
 
     @Test
     public void testSqlSplit() {
-        List<StatementBase> list = SqlParser.parse("select * from t1;", 0);
+        List<StatementBase> list = GlobalStateMgr.getSqlParser().parse("select * from t1;", 0);
         Assert.assertEquals(1, list.size());
 
-        list = SqlParser.parse("select * from t1", 0);
+        list = GlobalStateMgr.getSqlParser().parse("select * from t1", 0);
         Assert.assertEquals(1, list.size());
 
-        list = SqlParser.parse("select * from t1;select * from t2;", 0);
+        list = GlobalStateMgr.getSqlParser().parse("select * from t1;select * from t2;", 0);
         Assert.assertEquals(2, list.size());
 
-        list = SqlParser.parse("select * from t1 where a1 = 'x\"x;asf';", 0);
+        list = GlobalStateMgr.getSqlParser().parse("select * from t1 where a1 = 'x\"x;asf';", 0);
         Assert.assertEquals(1, list.size());
 
-        list = SqlParser.parse("-- xxx;\nselect 1;", 0);
-        Assert.assertEquals(1, list.size());
-        Assert.assertTrue(list.get(0) instanceof QueryStatement);
-
-        list = SqlParser.parse("/* xx; x */select 1;", 0);
+        list = GlobalStateMgr.getSqlParser().parse("-- xxx;\nselect 1;", 0);
         Assert.assertEquals(1, list.size());
         Assert.assertTrue(list.get(0) instanceof QueryStatement);
 
-        list = SqlParser.parse("select array_contains([], cast('2021-01--1 08:00:00' as datetime)) \n from t0", 0);
+        list = GlobalStateMgr.getSqlParser().parse("/* xx; x */select 1;", 0);
         Assert.assertEquals(1, list.size());
         Assert.assertTrue(list.get(0) instanceof QueryStatement);
 
-        list = SqlParser.parse("select array_contains([], cast('2021-01--1 08:00:00' as datetime)) --x\n from t0", 0);
+        list = GlobalStateMgr.getSqlParser().parse(
+                "select array_contains([], cast('2021-01--1 08:00:00' as datetime)) \n from t0", 0);
         Assert.assertEquals(1, list.size());
         Assert.assertTrue(list.get(0) instanceof QueryStatement);
 
-        list = SqlParser.parse("select array_contains([], cast('2021-01--1 08:00:00' as datetime)) --x;x\n from t0", 0);
+        list = GlobalStateMgr.getSqlParser().parse(
+                "select array_contains([], cast('2021-01--1 08:00:00' as datetime)) --x\n from t0", 0);
+        Assert.assertEquals(1, list.size());
+        Assert.assertTrue(list.get(0) instanceof QueryStatement);
+
+        list = GlobalStateMgr.getSqlParser().parse(
+                "select array_contains([], cast('2021-01--1 08:00:00' as datetime)) --x;x\n from t0", 0);
         Assert.assertEquals(1, list.size());
         Assert.assertTrue(list.get(0) instanceof QueryStatement);
     }

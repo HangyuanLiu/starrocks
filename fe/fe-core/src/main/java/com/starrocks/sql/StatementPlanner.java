@@ -22,7 +22,7 @@ import com.starrocks.common.Config;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.ResultSink;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.sql.analyzer.Analyzer;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.PrivilegeChecker;
 import com.starrocks.sql.ast.DeleteStmt;
@@ -67,7 +67,7 @@ public class StatementPlanner {
         try {
             lock(dbs);
             try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Analyzer")) {
-                Analyzer.analyze(stmt, session);
+                GlobalStateMgr.getAnalyzer().analyze(stmt, session);
             }
 
             PrivilegeChecker.check(stmt, session);
@@ -183,7 +183,7 @@ public class StatementPlanner {
 
             // Only need to re analyze and re transform when schema isn't valid
             if (i > 0 && !isSchemaValid) {
-                Analyzer.analyze(queryStmt, session);
+                GlobalStateMgr.getAnalyzer().analyze(queryStmt, session);
                 try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Transformer")) {
                     logicalPlan = new RelationTransformer(columnRefFactory, session).transformWithSelectLimit(query);
                 }

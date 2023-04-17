@@ -17,8 +17,8 @@ package com.starrocks.connector.parser.trino;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.Pair;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.StatementPlanner;
-import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.common.UnsupportedException;
@@ -298,9 +298,9 @@ public class TrinoTestBase {
 
     public static void analyzeFail(String originStmt, String exceptMessage) {
         try {
-            StatementBase statementBase = com.starrocks.sql.parser.SqlParser.parse(originStmt,
+            StatementBase statementBase = GlobalStateMgr.getSqlParser().parse(originStmt,
                     connectContext.getSessionVariable()).get(0);
-            Analyzer.analyze(statementBase, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
             Assert.fail("Miss semantic error exception");
         } catch (ParsingException | SemanticException | UnsupportedException e) {
             if (!exceptMessage.equals("")) {
@@ -319,7 +319,7 @@ public class TrinoTestBase {
         connectContext.setDumpInfo(new QueryDumpInfo(connectContext.getSessionVariable()));
 
         List<StatementBase> statements =
-                com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable());
+                GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable());
         connectContext.getDumpInfo().setOriginStmt(sql);
         StatementBase statementBase = statements.get(0);
 
@@ -333,7 +333,7 @@ public class TrinoTestBase {
         connectContext.setDumpInfo(new QueryDumpInfo(connectContext.getSessionVariable()));
 
         List<StatementBase> statements =
-                com.starrocks.sql.parser.SqlParser.parse(originStmt, connectContext.getSessionVariable());
+                GlobalStateMgr.getSqlParser().parse(originStmt, connectContext.getSessionVariable());
         connectContext.getDumpInfo().setOriginStmt(originStmt);
         StatementBase statementBase = statements.get(0);
 

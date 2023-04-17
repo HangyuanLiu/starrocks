@@ -12,15 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.starrocks.sql.ast;
+package ee.starrocks.sql.ast;
 
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.TypeDef;
+import com.starrocks.sql.ast.DdlStmt;
+import com.starrocks.sql.ast.PolicyName;
+import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.parser.NodePosition;
 
 import java.util.List;
 
-public class CreatePolicyStmt extends DdlStmt {
+public class CreatePolicyStmt extends DdlStmt implements EnterpriseStatement {
     private final boolean replaceIfExists;
     private final boolean ifNotExists;
     private final PolicyType policyType;
@@ -83,7 +86,7 @@ public class CreatePolicyStmt extends DdlStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitorEE<R, C> visitor, C context) {
         return visitor.visitCreatePolicyStatement(this, context);
     }
 }

@@ -27,13 +27,10 @@ import com.starrocks.persist.OperationType;
 import com.starrocks.privilege.PrivilegeActions;
 import com.starrocks.privilege.PrivilegeType;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.GlobalVariable;
 import com.starrocks.qe.ShowExecutor;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.analyzer.Analyzer;
-import com.starrocks.sql.analyzer.PrivilegeCheckerV2;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AlterUserStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
@@ -77,7 +74,7 @@ public class AuthUpgraderTest {
         // 1. execute old grant
         Auth auth = GlobalStateMgr.getCurrentState().getAuth();
         for (StatementBase sql : sqls) {
-            Analyzer.analyze(sql, ctx);
+            GlobalStateMgr.getAnalyzer().analyze(sql, ctx);
             if (sql instanceof CreateUserStmt) {
                 auth.createUser((CreateUserStmt) sql);
             } else if (sql instanceof CreateRoleStmt) {
@@ -85,15 +82,15 @@ public class AuthUpgraderTest {
             } else if (sql instanceof GrantPrivilegeStmt) {
                 auth.grant((GrantPrivilegeStmt) sql);
             } else if (sql instanceof DropDbStmt) {
-                DDLStmtExecutor.execute(sql, ctx);
+                GlobalStateMgr.getDDLStmtExecutor().execute(sql, ctx);
             } else if (sql instanceof DropTableStmt) {
-                DDLStmtExecutor.execute(sql, ctx);
+                GlobalStateMgr.getDDLStmtExecutor().execute(sql, ctx);
             } else if (sql instanceof AlterUserStmt) {
-                DDLStmtExecutor.execute(sql, ctx);
+                GlobalStateMgr.getDDLStmtExecutor().execute(sql, ctx);
             } else if (sql instanceof DropUserStmt) {
                 auth.dropUser((DropUserStmt) sql);
             }
-            //DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
+            //GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
         }
         Map<String, Set<String>> resolvedIPsMap = new HashMap<>();
         resolvedIPsMap.put("localhost", new HashSet<>(Arrays.asList("127.0.0.1")));
@@ -143,7 +140,7 @@ public class AuthUpgraderTest {
         ctx.setQualifiedUser(user.getQualifiedUser());
         for (String sql : verifiedSqls) {
             System.err.println(sql);
-            PrivilegeCheckerV2.check(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
+            GlobalStateMgr.getPrivilegeChecker().check(UtFrameUtils.parseStmtWithNewParser(sql, ctx), ctx);
         }
     }
 
@@ -152,7 +149,7 @@ public class AuthUpgraderTest {
         ctx.setCurrentRoleIds(user);
         ctx.setQualifiedUser(user.getQualifiedUser());
         try {
-            PrivilegeCheckerV2.check(UtFrameUtils.parseStmtWithNewParser(badSql, ctx), ctx);
+            GlobalStateMgr.getPrivilegeChecker().check(UtFrameUtils.parseStmtWithNewParser(badSql, ctx), ctx);
             Assert.fail(badSql + " should fail");
         } catch (Exception e) {
             System.err.println("got exception as expect: " + e.getMessage());
@@ -165,9 +162,9 @@ public class AuthUpgraderTest {
         // create a user & grant
         String user = "test_role_user_" + roleUserId;
         roleUserId += 1;
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "create user " + user, ctx), ctx);
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant " + roleName + " to  " + user, ctx), ctx);
         return UserIdentity.createAnalyzedUserIdentWithIp(user, "%");
     }

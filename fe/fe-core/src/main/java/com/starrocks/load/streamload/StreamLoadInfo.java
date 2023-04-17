@@ -25,6 +25,7 @@ import com.starrocks.common.util.TimeUtils;
 import com.starrocks.load.routineload.RoutineLoadJob;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.SqlModeHelper;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.ColumnSeparator;
 import com.starrocks.sql.ast.ImportColumnDesc;
 import com.starrocks.sql.ast.ImportColumnsStmt;
@@ -32,6 +33,7 @@ import com.starrocks.sql.ast.ImportWhereStmt;
 import com.starrocks.sql.ast.PartitionNames;
 import com.starrocks.sql.ast.RowDelimiter;
 import com.starrocks.sql.parser.ParsingException;
+import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.thrift.TCompressionType;
 import com.starrocks.thrift.TFileFormatType;
 import com.starrocks.thrift.TFileType;
@@ -469,7 +471,8 @@ public class StreamLoadInfo {
         String columnsSQL = "COLUMNS (" + columns + ")";
         ImportColumnsStmt columnsStmt;
         try {
-            columnsStmt = com.starrocks.sql.parser.SqlParser.parseImportColumns(columnsSQL, SqlModeHelper.MODE_DEFAULT);
+            SqlParser sqlParser = GlobalStateMgr.getCurrentState().getSqlParser();
+            columnsStmt = GlobalStateMgr.getSqlParser().parseImportColumns(columnsSQL, SqlModeHelper.MODE_DEFAULT);
         } catch (ParsingException e) {
             LOG.warn("parse columns' statement failed, sql={}, error={}", columnsSQL, e.getMessage(), e);
             throw e;
@@ -486,7 +489,7 @@ public class StreamLoadInfo {
     private void setWhereExpr(String whereString) throws UserException {
         ImportWhereStmt whereStmt;
         try {
-            whereStmt = new ImportWhereStmt(com.starrocks.sql.parser.SqlParser.parseSqlToExpr(whereString,
+            whereStmt = new ImportWhereStmt(GlobalStateMgr.getSqlParser().parseSqlToExpr(whereString,
                     SqlModeHelper.MODE_DEFAULT));
         } catch (ParsingException e) {
             LOG.warn("analyze where statement failed, sql={}, error={}", whereString, e.getMessage(), e);

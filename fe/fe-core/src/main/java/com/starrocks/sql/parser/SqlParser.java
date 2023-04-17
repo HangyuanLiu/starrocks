@@ -36,13 +36,17 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 import java.util.Objects;
+import javax.inject.Inject;
 
 import static com.starrocks.sql.common.ErrorMsgProxy.PARSER_ERROR_MSG;
 
 public class SqlParser {
+    @Inject
+    private AstBuilder astBuilder;
+
     private static final Logger LOG = LogManager.getLogger(SqlParser.class);
 
-    public static List<StatementBase> parse(String sql, SessionVariable sessionVariable) {
+    public List<StatementBase> parse(String sql, SessionVariable sessionVariable) {
         if (sessionVariable.getSqlDialect().equalsIgnoreCase("trino")) {
             return parseWithTrinoDialect(sql, sessionVariable);
         } else {
@@ -50,7 +54,7 @@ public class SqlParser {
         }
     }
 
-    private static List<StatementBase> parseWithTrinoDialect(String sql, SessionVariable sessionVariable) {
+    private List<StatementBase> parseWithTrinoDialect(String sql, SessionVariable sessionVariable) {
         List<StatementBase> statements = Lists.newArrayList();
         try {
             StatementSplitter splitter = new StatementSplitter(sql);
@@ -72,14 +76,18 @@ public class SqlParser {
         return statements;
     }
 
-    private static List<StatementBase> parseWithStarRocksDialect(String sql, SessionVariable sessionVariable) {
+    private List<StatementBase> parseWithStarRocksDialect(String sql, SessionVariable sessionVariable) {
         List<StatementBase> statements = Lists.newArrayList();
         StarRocksParser parser = parserBuilder(sql, sessionVariable);
         List<StarRocksParser.SingleStatementContext> singleStatementContexts =
                 parser.sqlStatements().singleStatement();
+
+        astBuilder.setSqlMode(sessionVariable.getSqlMode());
         for (int idx = 0; idx < singleStatementContexts.size(); ++idx) {
-            StatementBase statement = (StatementBase) new AstBuilder(sessionVariable.getSqlMode())
-                    .visitSingleStatement(singleStatementContexts.get(idx));
+            StatementBase statement = (StatementBase) astBuilder.visitSingleStatement(singleStatementContexts.get(idx));
+            if (statement == null) {
+                throw new com.starrocks.sql.parser.ParsingException("Can't Support");
+            }
             statement.setOrigStmt(new OriginStatement(sql, idx));
             statements.add(statement);
         }
@@ -91,13 +99,13 @@ public class SqlParser {
      * Please consider use {@link #parse(String, SessionVariable)}
      */
     @Deprecated
-    public static List<StatementBase> parse(String originSql, long sqlMode) {
+    public List<StatementBase> parse(String originSql, long sqlMode) {
         SessionVariable sessionVariable = new SessionVariable();
         sessionVariable.setSqlMode(sqlMode);
         return parse(originSql, sessionVariable);
     }
 
-    public static StatementBase parseFirstStatement(String originSql, long sqlMode) {
+    public StatementBase parseFirstStatement(String originSql, long sqlMode) {
         return parse(originSql, sqlMode).get(0);
     }
 
@@ -108,20 +116,21 @@ public class SqlParser {
      * @param sqlMode       sqlMode
      * @return Expr
      */
-    public static Expr parseSqlToExpr(String expressionSql, long sqlMode) {
+    public Expr parseSqlToExpr(String expressionSql, long sqlMode) {
         SessionVariable sessionVariable = new SessionVariable();
         sessionVariable.setSqlMode(sqlMode);
+        astBuilder.setSqlMode(sqlMode);
 
-        return (Expr) new AstBuilder(sqlMode)
+        return (Expr) astBuilder
                 .visit(parserBuilder(expressionSql, sessionVariable).expressionSingleton().expression());
     }
 
-    public static ImportColumnsStmt parseImportColumns(String expressionSql, long sqlMode) {
+    public ImportColumnsStmt parseImportColumns(String expressionSql, long sqlMode) {
         SessionVariable sessionVariable = new SessionVariable();
         sessionVariable.setSqlMode(sqlMode);
 
-        return (ImportColumnsStmt) new AstBuilder(sqlMode)
-                .visit(parserBuilder(expressionSql, sessionVariable).importColumns());
+        astBuilder.setSqlMode(sqlMode);
+        return (ImportColumnsStmt) astBuilder.visit(parserBuilder(expressionSql, sessionVariable).importColumns());
     }
 
     private static StarRocksParser parserBuilder(String sql, SessionVariable sessionVariable) {

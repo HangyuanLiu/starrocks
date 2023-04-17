@@ -385,7 +385,7 @@ public class StmtExecutor {
                     context.getDumpInfo().reset();
                     context.getDumpInfo().setOriginStmt(parsedStmt.getOrigStmt().originStmt);
                     if (parsedStmt instanceof ShowStmt) {
-                        com.starrocks.sql.analyzer.Analyzer.analyze(parsedStmt, context);
+                        GlobalStateMgr.getAnalyzer().analyze(parsedStmt, context);
                         PrivilegeChecker.check(parsedStmt, context);
 
                         QueryStatement selectStmt = ((ShowStmt) parsedStmt).toSelectStmt();
@@ -625,7 +625,7 @@ public class StmtExecutor {
         if (parsedStmt == null) {
             List<StatementBase> stmts;
             try {
-                stmts = com.starrocks.sql.parser.SqlParser.parse(originStmt.originStmt,
+                stmts = GlobalStateMgr.getSqlParser().parse(originStmt.originStmt,
                         context.getSessionVariable());
                 parsedStmt = stmts.get(originStmt.idx);
                 parsedStmt.setOrigStmt(originStmt);
@@ -1190,7 +1190,7 @@ public class StmtExecutor {
 
     private void handleDdlStmt() {
         try {
-            ShowResultSet resultSet = DDLStmtExecutor.execute(parsedStmt, context);
+            ShowResultSet resultSet = GlobalStateMgr.getDDLStmtExecutor().execute(parsedStmt, context);
             if (resultSet == null) {
                 context.getState().setOk();
             } else {

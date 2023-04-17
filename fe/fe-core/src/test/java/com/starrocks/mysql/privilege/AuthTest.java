@@ -1055,7 +1055,7 @@ public class AuthTest {
 
         // 4. grant role to user
         GrantRoleStmt grantRoleStmt = new GrantRoleStmt(Collections.singletonList(selectRoleName), userIdentity);
-        com.starrocks.sql.analyzer.Analyzer.analyze(grantRoleStmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(grantRoleStmt, ctx);
         auth.grantRole(grantRoleStmt);
 
         // check if select privilege granted, load privilege not granted
@@ -1082,7 +1082,7 @@ public class AuthTest {
 
         // 7. grant role to user
         grantRoleStmt = new GrantRoleStmt(Collections.singletonList(loadRoleName), userIdentity);
-        com.starrocks.sql.analyzer.Analyzer.analyze(grantRoleStmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(grantRoleStmt, ctx);
         auth.grantRole(grantRoleStmt);
 
         // check if select & load privilege & spark resource usage all granted
@@ -1093,7 +1093,7 @@ public class AuthTest {
 
         // 8. revoke load & spark resource usage from user
         RevokeRoleStmt revokeRoleStmt = new RevokeRoleStmt(Collections.singletonList(loadRoleName), userIdentity);
-        com.starrocks.sql.analyzer.Analyzer.analyze(revokeRoleStmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(revokeRoleStmt, ctx);
         auth.revokeRole(revokeRoleStmt);
 
         // check if select privilege granted, load privilege not granted
@@ -1289,7 +1289,7 @@ public class AuthTest {
         createRoleSql = String.format("CREATE ROLE %s", role);
         try {
             roleStmt = (CreateRoleStmt) UtFrameUtils.parseStmtWithNewParser(createRoleSql, ctx);
-            com.starrocks.sql.analyzer.Analyzer.analyze(createUserStmt, new ConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(createUserStmt, new ConnectContext());
             auth.createRole(roleStmt);
         } catch (Exception e1) {
             e1.printStackTrace();
@@ -1757,7 +1757,7 @@ public class AuthTest {
         userIdentity.analyze();
         UserDesc userDesc = new UserDesc(userIdentity, "12345", true);
         CreateUserStmt createUserStmt = new CreateUserStmt(false, userDesc, Collections.emptyList());
-        com.starrocks.sql.analyzer.Analyzer.analyze(createUserStmt, new ConnectContext());
+        GlobalStateMgr.getAnalyzer().analyze(createUserStmt, new ConnectContext());
 
         auth.createUser(createUserStmt);
 
@@ -1967,7 +1967,7 @@ public class AuthTest {
         auth.grant(grantStmt);
         // 5.3 grant auror to neiville
         GrantRoleStmt grantRoleStmt = new GrantRoleStmt(Collections.singletonList(auror), neville);
-        com.starrocks.sql.analyzer.Analyzer.analyze(grantRoleStmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(grantRoleStmt, ctx);
         auth.grantRole(grantRoleStmt);
         // 5.4 assert
         Assert.assertTrue(auth.canImpersonate(neville, gregory));
@@ -1991,7 +1991,7 @@ public class AuthTest {
         // 8. revoke role from neville
         // 8.2 revoke
         RevokeRoleStmt revokeRoleStmt = new RevokeRoleStmt(Collections.singletonList(auror), neville);
-        com.starrocks.sql.analyzer.Analyzer.analyze(revokeRoleStmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(revokeRoleStmt, ctx);
         auth.revokeRole(revokeRoleStmt);
         // 8.2 assert
         Assert.assertFalse(auth.canImpersonate(neville, albert));
@@ -2007,7 +2007,7 @@ public class AuthTest {
             userIdentity.analyze();
             UserDesc userDesc = new UserDesc(userIdentity, "12345", true);
             CreateUserStmt createUserStmt = new CreateUserStmt(false, userDesc, Collections.emptyList());
-            com.starrocks.sql.analyzer.Analyzer.analyze(createUserStmt, new ConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(createUserStmt, new ConnectContext());
             auth.createUser(createUserStmt);
             userToBeCreated.add(userIdentity);
         }
@@ -2124,7 +2124,7 @@ public class AuthTest {
         for (UserIdentity userIdentity : userToBeCreated) {
             UserDesc userDesc = new UserDesc(userIdentity, "12345", true);
             CreateUserStmt createUserStmt = new CreateUserStmt(false, userDesc, Collections.emptyList());
-            com.starrocks.sql.analyzer.Analyzer.analyze(createUserStmt, new ConnectContext());
+            GlobalStateMgr.getAnalyzer().analyze(createUserStmt, new ConnectContext());
             auth.createUser(createUserStmt);
         }
 

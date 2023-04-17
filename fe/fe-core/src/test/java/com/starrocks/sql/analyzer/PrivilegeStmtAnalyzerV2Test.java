@@ -17,8 +17,8 @@ package com.starrocks.sql.analyzer;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.privilege.AuthorizationManager;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.SetDefaultRoleExecutor;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AlterUserStmt;
 import com.starrocks.sql.ast.CreateRoleStmt;
 import com.starrocks.sql.ast.CreateUserStmt;
@@ -329,7 +329,7 @@ public class PrivilegeStmtAnalyzerV2Test {
     @Test
     public void testSetRole() throws Exception {
         for (int i = 1; i != 4; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("create role role" + i, ctx), ctx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("create role role" + i, ctx), ctx);
         }
 
         String sql = "set role 'role1', 'role2'";
@@ -376,21 +376,21 @@ public class PrivilegeStmtAnalyzerV2Test {
         UtFrameUtils.parseStmtWithNewParser(sql, ctx);
 
         for (int i = 1; i != 4; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("drop role role" + i, ctx), ctx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("drop role role" + i, ctx), ctx);
         }
     }
 
     @Test
     public void testSetDefaultRole() throws Exception {
         for (int i = 1; i != 4; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("create role role" + i, ctx), ctx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("create role role" + i, ctx), ctx);
         }
 
         AuthorizationManager authorizationManager = ctx.getGlobalStateMgr().getAuthorizationManager();
 
         String sql = "grant role1, role2 to user test_user";
         GrantRoleStmt grantRoleStmt = (GrantRoleStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
-        DDLStmtExecutor.execute(grantRoleStmt, ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(grantRoleStmt, ctx);
 
         sql = "set default role all to test_user";
         SetDefaultRoleStmt setDefaultRoleStmt = (SetDefaultRoleStmt) UtFrameUtils.parseStmtWithNewParser(sql, ctx);
@@ -432,7 +432,7 @@ public class PrivilegeStmtAnalyzerV2Test {
         }
 
         for (int i = 1; i != 4; ++i) {
-            DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser("drop role role" + i, ctx), ctx);
+            GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser("drop role role" + i, ctx), ctx);
         }
     }
 

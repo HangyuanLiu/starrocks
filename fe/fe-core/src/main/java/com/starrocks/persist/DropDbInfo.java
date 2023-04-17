@@ -42,6 +42,7 @@ import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.server.GlobalStateMgr;
+import ee.starrocks.persist.DropPolicyInfo;
 
 import java.io.DataInput;
 import java.io.DataOutput;

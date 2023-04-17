@@ -55,7 +55,6 @@ import com.starrocks.common.FeConstants;
 import com.starrocks.metric.MetricRepo;
 import com.starrocks.persist.EditLog;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.BackupRestoreAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -535,7 +534,7 @@ public class BackupHandlerTest {
         TSnapshotRequest requestSnapshot = snapshotTask1.toThrift();
 
         // drop repo
-        DDLStmtExecutor.execute(new DropRepositoryStmt("repo"), new ConnectContext());
+        GlobalStateMgr.getDDLStmtExecutor().execute(new DropRepositoryStmt("repo"), new ConnectContext());
     }
 
     @Test

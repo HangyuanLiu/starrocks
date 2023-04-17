@@ -214,7 +214,7 @@ public class DeleteHandlerTest {
             }
         };
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         } catch (Exception e) {
             Assert.fail();
         }
@@ -260,7 +260,7 @@ public class DeleteHandlerTest {
         };
 
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         } catch (Exception e) {
             Assert.fail();
         }
@@ -316,7 +316,7 @@ public class DeleteHandlerTest {
         };
 
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         } catch (Exception e) {
             Assert.fail();
         }
@@ -379,7 +379,7 @@ public class DeleteHandlerTest {
         };
 
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         } catch (Exception e) {
             Assert.fail();
         }
@@ -446,7 +446,7 @@ public class DeleteHandlerTest {
         };
 
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         } catch (Exception e) {
             Assert.fail();
         }
@@ -500,7 +500,7 @@ public class DeleteHandlerTest {
         };
 
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(deleteStmt, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(deleteStmt, connectContext);
         } catch (Exception e) {
             Assert.fail();
         }

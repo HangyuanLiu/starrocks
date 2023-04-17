@@ -78,7 +78,7 @@ public class ShowCreateTableStmtTest {
         ctx.setDatabase("testDb");
         ShowCreateTableStmt stmt =
                 new ShowCreateTableStmt(new TableName("testDb", "testTbl"), ShowCreateTableStmt.CreateTableType.TABLE);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("testDb", stmt.getDb());
         Assert.assertEquals("testTbl", stmt.getTable());
         Assert.assertEquals(2, stmt.getMetaData().getColumnCount());
@@ -89,7 +89,7 @@ public class ShowCreateTableStmtTest {
     @Test(expected = SemanticException.class)
     public void testNoTbl() throws Exception {
         ShowCreateTableStmt stmt = new ShowCreateTableStmt(null, ShowCreateTableStmt.CreateTableType.TABLE);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No Exception throws.");
     }
 }

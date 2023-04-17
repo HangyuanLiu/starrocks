@@ -24,8 +24,8 @@ import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.QueryState;
 import com.starrocks.qe.StmtExecutor;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.StatementBase;
-import com.starrocks.sql.parser.SqlParser;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -101,7 +101,8 @@ public abstract class StatisticsCollectJob {
         int maxRetryTimes = 5;
         do {
             LOG.debug("statistics collect sql : {}", sql);
-            StatementBase parsedStmt = SqlParser.parseFirstStatement(sql, context.getSessionVariable().getSqlMode());
+            StatementBase parsedStmt = GlobalStateMgr.getSqlParser()
+                    .parseFirstStatement(sql, context.getSessionVariable().getSqlMode());
             StmtExecutor executor = new StmtExecutor(context, parsedStmt);
             context.setExecutor(executor);
             context.setQueryId(UUIDUtil.genUUID());

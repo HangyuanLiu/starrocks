@@ -16,10 +16,10 @@
 package com.starrocks.analysis;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.ShowStatusStmt;
-import com.starrocks.sql.parser.SqlParser;
 import mockit.Mocked;
 import org.junit.Assert;
 import org.junit.Test;
@@ -32,40 +32,40 @@ public class ShowStatusStmtTest {
     @Test
     public void testNormal() throws Exception {
         {
-            ShowStatusStmt stmt = (ShowStatusStmt) SqlParser.parse("SHOW STATUS", 32).get(0);
-            Analyzer.analyze(stmt, ctx);
+            ShowStatusStmt stmt = (ShowStatusStmt) GlobalStateMgr.getSqlParser().parse("SHOW STATUS", 32).get(0);
+            GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
             Assert.assertEquals(SetType.SESSION, stmt.getType());
             Assert.assertNull(stmt.getPattern());
             Assert.assertNull(stmt.getWhere());
         }
 
         {
-            ShowStatusStmt stmt = (ShowStatusStmt) SqlParser.parse("SHOW GLOBAL STATUS", 32).get(0);
-            Analyzer.analyze(stmt, ctx);
+            ShowStatusStmt stmt = (ShowStatusStmt) GlobalStateMgr.getSqlParser().parse("SHOW GLOBAL STATUS", 32).get(0);
+            GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
             Assert.assertEquals(SetType.GLOBAL, stmt.getType());
             Assert.assertNull(stmt.getPattern());
             Assert.assertNull(stmt.getWhere());
         }
 
         {
-            ShowStatusStmt stmt = (ShowStatusStmt) SqlParser.parse("SHOW LOCAL STATUS", 32).get(0);
-            Analyzer.analyze(stmt, ctx);
+            ShowStatusStmt stmt = (ShowStatusStmt) GlobalStateMgr.getSqlParser().parse("SHOW LOCAL STATUS", 32).get(0);
+            GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
             Assert.assertEquals(SetType.SESSION, stmt.getType());
             Assert.assertNull(stmt.getPattern());
             Assert.assertNull(stmt.getWhere());
         }
 
         {
-            ShowStatusStmt stmt = (ShowStatusStmt) SqlParser.parse("SHOW SESSION STATUS", 32).get(0);
-            Analyzer.analyze(stmt, ctx);
+            ShowStatusStmt stmt = (ShowStatusStmt) GlobalStateMgr.getSqlParser().parse("SHOW SESSION STATUS", 32).get(0);
+            GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
             Assert.assertEquals(SetType.SESSION, stmt.getType());
             Assert.assertNull(stmt.getPattern());
             Assert.assertNull(stmt.getWhere());
         }
 
         {
-            ShowStatusStmt stmt = (ShowStatusStmt) SqlParser.parse("SHOW STATUS like 'abc'", 32).get(0);
-            Analyzer.analyze(stmt, ctx);
+            ShowStatusStmt stmt = (ShowStatusStmt) GlobalStateMgr.getSqlParser().parse("SHOW STATUS like 'abc'", 32).get(0);
+            GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
             Assert.assertEquals(SetType.SESSION, stmt.getType());
             Assert.assertNotNull(stmt.getPattern());
             Assert.assertEquals("abc", stmt.getPattern());
@@ -73,7 +73,7 @@ public class ShowStatusStmtTest {
         }
 
         {
-            ShowStatusStmt stmt = (ShowStatusStmt) SqlParser.parse("SHOW STATUS where abc=123", 32).get(0);
+            ShowStatusStmt stmt = (ShowStatusStmt) GlobalStateMgr.getSqlParser().parse("SHOW STATUS where abc=123", 32).get(0);
             Assert.assertEquals(SetType.SESSION, stmt.getType());
             Assert.assertNull(stmt.getPattern());
             Assert.assertEquals("abc = 123", stmt.getWhere().toSql());

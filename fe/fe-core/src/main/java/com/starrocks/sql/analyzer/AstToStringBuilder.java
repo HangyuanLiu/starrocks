@@ -63,7 +63,6 @@ import com.starrocks.sql.ast.BaseCreateAlterUserStmt;
 import com.starrocks.sql.ast.BaseGrantRevokePrivilegeStmt;
 import com.starrocks.sql.ast.BaseGrantRevokeRoleStmt;
 import com.starrocks.sql.ast.CTERelation;
-import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
 import com.starrocks.sql.ast.CreateUserStmt;
@@ -81,7 +80,6 @@ import com.starrocks.sql.ast.LambdaFunctionExpr;
 import com.starrocks.sql.ast.LoadStmt;
 import com.starrocks.sql.ast.MapExpr;
 import com.starrocks.sql.ast.NormalizedTableFunctionRelation;
-import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
@@ -260,7 +258,7 @@ public class AstToStringBuilder {
 
             return sqlBuilder.toString();
         }
-
+        /*
         @Override
         public String visitCreatePolicyStatement(CreatePolicyStmt stmt, Void context) {
             StringBuilder sb = new StringBuilder();
@@ -286,6 +284,8 @@ public class AstToStringBuilder {
             sb.append(visit(stmt.getExpression()));
             return sb.toString();
         }
+
+         */
 
         // --------------------------------------------Set Statement -------------------------------------------------------
 

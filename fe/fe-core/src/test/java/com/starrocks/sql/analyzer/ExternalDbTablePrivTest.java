@@ -22,7 +22,6 @@ import com.starrocks.catalog.Table;
 import com.starrocks.common.DdlException;
 import com.starrocks.privilege.AuthorizationManager;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.ShowExecutor;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.server.GlobalStateMgr;
@@ -92,7 +91,7 @@ public class ExternalDbTablePrivTest {
     private void grantRevokeSqlAsRoot(String grantSql) throws Exception {
         ConnectContext ctx = starRocksAssert.getCtx();
         ctxToRoot();
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(grantSql, ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(grantSql, ctx), ctx);
         ctxToTestUser();
     }
 
@@ -105,7 +104,7 @@ public class ExternalDbTablePrivTest {
         // 1. before grant: access denied
         ctxToTestUser();
         try {
-            PrivilegeCheckerV2.check(statement, ctx);
+            GlobalStateMgr.getPrivilegeChecker().check(statement, ctx);
             Assert.fail();
         } catch (SemanticException e) {
             System.out.println(e.getMessage() + ", sql: " + sql);
@@ -113,17 +112,17 @@ public class ExternalDbTablePrivTest {
         }
 
         ctxToRoot();
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(grantSql, ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(grantSql, ctx), ctx);
 
         ctxToTestUser();
-        PrivilegeCheckerV2.check(statement, ctx);
+        GlobalStateMgr.getPrivilegeChecker().check(statement, ctx);
 
         ctxToRoot();
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(revokeSql, ctx), ctx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(revokeSql, ctx), ctx);
 
         ctxToTestUser();
         try {
-            PrivilegeCheckerV2.check(statement, starRocksAssert.getCtx());
+            GlobalStateMgr.getPrivilegeChecker().check(statement, starRocksAssert.getCtx());
             Assert.fail();
         } catch (SemanticException e) {
             System.out.println(e.getMessage() + ", sql: " + sql);
@@ -207,7 +206,7 @@ public class ExternalDbTablePrivTest {
 
         // Test show databases, check any action on table
         grantRevokeSqlAsRoot("grant drop on tpch.region to test");
-        StatementBase showTableStmt =  UtFrameUtils.parseStmtWithNewParser("show databases",
+        StatementBase showTableStmt = UtFrameUtils.parseStmtWithNewParser("show databases",
                 starRocksAssert.getCtx());
         ShowExecutor executor = new ShowExecutor(starRocksAssert.getCtx(), (ShowStmt) showTableStmt);
         ShowResultSet set = executor.execute();
@@ -222,7 +221,7 @@ public class ExternalDbTablePrivTest {
         grantRevokeSqlAsRoot("grant drop on tpch.region to test");
         grantRevokeSqlAsRoot("grant select on tpch.nation to test");
         grantRevokeSqlAsRoot("grant drop on database tpch to test");
-        StatementBase showGrantsStmt =  UtFrameUtils.parseStmtWithNewParser("show grants",
+        StatementBase showGrantsStmt = UtFrameUtils.parseStmtWithNewParser("show grants",
                 starRocksAssert.getCtx());
         executor = new ShowExecutor(starRocksAssert.getCtx(), (ShowStmt) showGrantsStmt);
         set = executor.execute();

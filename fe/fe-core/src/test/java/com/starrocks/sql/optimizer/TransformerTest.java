@@ -15,7 +15,7 @@
 package com.starrocks.sql.optimizer;
 
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.sql.analyzer.Analyzer;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
@@ -139,10 +139,10 @@ public class TransformerTest {
     public static void analyzeAndBuildOperator(String originStmt, String operatorString, String except,
                                                ErrorCollector collector) {
         try {
-            StatementBase statementBase = com.starrocks.sql.parser.SqlParser.parse(originStmt,
+            StatementBase statementBase = GlobalStateMgr.getSqlParser().parse(originStmt,
                     connectContext.getSessionVariable().getSqlMode()).get(0);
 
-            Analyzer.analyze(statementBase, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
             LogicalPlan logicalPlan = new RelationTransformer(new ColumnRefFactory(), connectContext)
                     .transform(((QueryStatement) statementBase).getQueryRelation());
 

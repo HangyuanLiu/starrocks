@@ -55,7 +55,7 @@ public class ShowCatalogsStmtTest {
         ConnectContext connectCtx = new ConnectContext();
         connectCtx.setGlobalStateMgr(GlobalStateMgr.getCurrentState());
         CreateCatalogStmt statement = (CreateCatalogStmt) stmt;
-        DDLStmtExecutor.execute(statement, connectCtx);
+        GlobalStateMgr.getDDLStmtExecutor().execute(statement, connectCtx);
         starRocksAssert = new StarRocksAssert();
         starRocksAssert.withDatabase("db1").useDatabase("tbl1");
 

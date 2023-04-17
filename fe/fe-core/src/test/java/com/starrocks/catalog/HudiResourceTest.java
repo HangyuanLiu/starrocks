@@ -60,7 +60,7 @@ public class HudiResourceTest {
         properties.put("type", type);
         properties.put("hive.metastore.uris", metastoreURIs);
         CreateResourceStmt stmt = new CreateResourceStmt(true, name, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         HudiResource resource = (HudiResource) Resource.fromStmt(stmt);
         Assert.assertEquals("hudi0", resource.getName());

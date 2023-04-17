@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.starrocks.sql.analyzer;
+package ee.starrocks.sql.analyzer;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
@@ -23,20 +23,21 @@ import com.starrocks.privilege.Policy;
 import com.starrocks.privilege.SecurityPolicyManager;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.ast.AlterPolicyStmt;
-import com.starrocks.sql.ast.AstVisitor;
-import com.starrocks.sql.ast.CreatePolicyStmt;
-import com.starrocks.sql.ast.DescribePolicyStmt;
-import com.starrocks.sql.ast.DropPolicyStmt;
+import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.PolicyName;
 import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectList;
 import com.starrocks.sql.ast.SelectListItem;
 import com.starrocks.sql.ast.SelectRelation;
-import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.ValuesRelation;
+import ee.starrocks.sql.ast.AlterPolicyStmt;
+import ee.starrocks.sql.ast.AstVisitorEE;
+import ee.starrocks.sql.ast.CreatePolicyStmt;
+import ee.starrocks.sql.ast.DropPolicyStmt;
+import ee.starrocks.sql.ast.ShowCreatePolicyStmt;
+import ee.starrocks.sql.ast.ShowPolicyStmt;
 
 import java.util.Collections;
 import java.util.List;
@@ -46,7 +47,7 @@ public class SecurityPolicyAnalyzer {
         new SecurityPolicyAnalyzerVisitor().analyze(statement, session);
     }
 
-    static class SecurityPolicyAnalyzerVisitor extends AstVisitor<Void, ConnectContext> {
+    static class SecurityPolicyAnalyzerVisitor extends AstVisitorEE<Void, ConnectContext> {
         SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getCurrentState().getSecurityPolicyManager();
 
         public void analyze(StatementBase statement, ConnectContext session) {
@@ -80,7 +81,7 @@ public class SecurityPolicyAnalyzer {
 
             SelectRelation selectRelation = new SelectRelation(selectList, valuesRelation, predicate, null, null);
             QueryStatement queryStatement = new QueryStatement(selectRelation);
-            Analyzer.analyze(queryStatement, session);
+            GlobalStateMgr.getAnalyzer().analyze(queryStatement, session);
 
             if (statement.getPolicyType().equals(PolicyType.COLUMN_MASKING)) {
                 Expr result = queryStatement.getQueryRelation().getOutputExpression().get(0);
@@ -131,7 +132,7 @@ public class SecurityPolicyAnalyzer {
         }
 
         @Override
-        public Void visitDescribePolicyStatement(DescribePolicyStmt stmt, ConnectContext session) {
+        public Void visitShowCreatePolicyStatement(ShowCreatePolicyStmt stmt, ConnectContext session) {
             PolicyName policyName = stmt.getPolicyName();
             normalizationTableName(session, policyName);
             return null;

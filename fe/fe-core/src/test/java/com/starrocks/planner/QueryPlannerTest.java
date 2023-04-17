@@ -34,17 +34,17 @@
 
 package com.starrocks.planner;
 
-import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.meta.BlackListSql;
 import com.starrocks.meta.SqlBlackList;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.StmtExecutor;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.DropDbStmt;
 import com.starrocks.sql.ast.ShowCreateDbStmt;
-import com.starrocks.sql.parser.SqlParser;
+import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.utframe.StarRocksAssert;
 import com.starrocks.utframe.UtFrameUtils;
 import org.junit.Assert;
@@ -93,19 +93,19 @@ public class QueryPlannerTest {
     @Test
     public void testMultiStmts() {
         String sql = "SHOW VARIABLES LIKE 'lower_case_%'; SHOW VARIABLES LIKE 'sql_mode'";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable());
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable());
         Assert.assertEquals(2, stmts.size());
 
         sql = "SHOW VARIABLES LIKE 'lower_case_%';;;";
-        stmts = com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable());
+        stmts = GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable());
         Assert.assertEquals(3, stmts.size());
 
         sql = "SHOW VARIABLES LIKE 'lower_case_%';;;SHOW VARIABLES LIKE 'lower_case_%';";
-        stmts = com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable());
+        stmts = GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable());
         Assert.assertEquals(4, stmts.size());
 
         sql = "SHOW VARIABLES LIKE 'lower_case_%'";
-        stmts = com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable());
+        stmts = GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable());
         Assert.assertEquals(1, stmts.size());
     }
 
@@ -158,7 +158,7 @@ public class QueryPlannerTest {
         }
 
         String sql = "select k1 from test.baseall";
-        StatementBase statement = SqlParser.parse(sql, connectContext.getSessionVariable().getSqlMode()).get(0);
+        StatementBase statement = GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable().getSqlMode()).get(0);
         StmtExecutor stmtExecutor2 = new StmtExecutor(connectContext, statement);
         stmtExecutor2.execute();
         Assert.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
@@ -188,13 +188,13 @@ public class QueryPlannerTest {
         }
 
         String sql4 = "select k1 as awhere from test.baseall";
-        StatementBase statementBase4 = SqlParser.parse(sql4, connectContext.getSessionVariable().getSqlMode()).get(0);
+        StatementBase statementBase4 = GlobalStateMgr.getSqlParser().parse(sql4, connectContext.getSessionVariable().getSqlMode()).get(0);
         StmtExecutor stmtExecutor4 = new StmtExecutor(connectContext, statementBase4);
         stmtExecutor4.execute();
         Assert.assertEquals("", connectContext.getState().getErrorMessage());
 
         String sql = "select k1 from test.baseall where k1 > 0";
-        StatementBase statementBase = SqlParser.parse(sql, connectContext.getSessionVariable().getSqlMode()).get(0);
+        StatementBase statementBase = GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable().getSqlMode()).get(0);
         StmtExecutor stmtExecutor2 = new StmtExecutor(connectContext, statementBase);
         stmtExecutor2.execute();
         Assert.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
@@ -224,7 +224,7 @@ public class QueryPlannerTest {
         }
 
         String sql = "insert into test.baseall values (1, 1, 1, 1, 1, 'a', '2020-02-05', '2020-02-05 13:22:35', 'starrocks', 33.3, 22.55)";
-        StatementBase statement = SqlParser.parse(sql, connectContext.getSessionVariable().getSqlMode()).get(0);
+        StatementBase statement = GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable().getSqlMode()).get(0);
         StmtExecutor stmtExecutor2 = new StmtExecutor(connectContext, statement);
         try {
             stmtExecutor2.execute();

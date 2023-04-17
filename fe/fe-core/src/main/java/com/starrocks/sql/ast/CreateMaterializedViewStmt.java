@@ -62,6 +62,7 @@ import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
 import com.starrocks.common.FeConstants;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.analyzer.mvpattern.MVColumnBitmapUnionPattern;
@@ -299,7 +300,7 @@ public class CreateMaterializedViewStmt extends DdlStmt {
         public Void visitCreateMaterializedViewStmt(CreateMaterializedViewStmt statement,
                                                     ConnectContext context) {
             QueryStatement queryStatement = statement.getQueryStatement();
-            com.starrocks.sql.analyzer.Analyzer.analyze(statement.getQueryStatement(), context);
+            GlobalStateMgr.getAnalyzer().analyze(statement.getQueryStatement(), context);
 
             // forbid explain query
             if (queryStatement.isExplain()) {

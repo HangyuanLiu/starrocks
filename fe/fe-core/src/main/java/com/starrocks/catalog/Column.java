@@ -34,7 +34,6 @@
 
 package com.starrocks.catalog;
 
-import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.gson.annotations.SerializedName;
@@ -51,8 +50,6 @@ import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.persist.gson.GsonUtils;
-import com.starrocks.privilege.ColumnMaskingPolicyContext;
-import com.starrocks.privilege.PolicyContext;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.ColumnDef;
@@ -65,7 +62,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import static com.starrocks.common.util.DateUtils.DATE_TIME_FORMATTER;
@@ -450,7 +446,7 @@ public class Column implements Writable {
         }
     }
 
-    public String toSql(PolicyContext policyContext) {
+    public String toSql() {
         StringBuilder sb = new StringBuilder();
         sb.append("`").append(name).append("` ");
         String typeStr = type.toSql();
@@ -477,7 +473,7 @@ public class Column implements Writable {
             sb.append("DEFAULT \"").append(defaultValue).append("\" ");
         }
 
-
+        /*
         if (policyContext != null) {
             Map<String, ColumnMaskingPolicyContext> maskingPolicyApply = policyContext.getMaskingPolicyApply();
             if (maskingPolicyApply.containsKey(name)) {
@@ -493,6 +489,8 @@ public class Column implements Writable {
                 }
             }
         }
+
+         */
 
         sb.append("COMMENT \"").append(comment).append("\"");
 
@@ -595,7 +593,7 @@ public class Column implements Writable {
 
     @Override
     public String toString() {
-        return toSql(null);
+        return toSql();
     }
 
     @Override

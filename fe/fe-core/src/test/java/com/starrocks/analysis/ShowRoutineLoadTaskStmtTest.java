@@ -15,6 +15,7 @@
 package com.starrocks.analysis;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.ShowStmtAnalyzer;
 import com.starrocks.sql.ast.ShowRoutineLoadTaskStmt;
 import com.starrocks.sql.ast.StatementBase;
@@ -45,7 +46,7 @@ public class ShowRoutineLoadTaskStmtTest {
     @Test
     public void testParser() {
         String sql = "SHOW ROUTINE LOAD TASK WHERE JobName = \"test1\";";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         ShowRoutineLoadTaskStmt loadTaskStmt = (ShowRoutineLoadTaskStmt)stmts.get(0);
         ShowStmtAnalyzer.analyze(loadTaskStmt, connectContext);
         Assert.assertEquals("test1", loadTaskStmt.getJobName());
@@ -54,7 +55,7 @@ public class ShowRoutineLoadTaskStmtTest {
     @Test
     public void testShowRoutineLoadTask() throws SecurityException, IllegalArgumentException {
         String sql = "SHOW ROUTINE LOAD TASK FROM `db_test` WHERE JobName = \"rl_test\"";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable());
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable());
 
         ShowRoutineLoadTaskStmt stmt = (ShowRoutineLoadTaskStmt)stmts.get(0);
         ShowStmtAnalyzer.analyze(stmt, connectContext);

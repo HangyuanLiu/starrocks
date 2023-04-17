@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.starrocks.sql.ast;
+package ee.starrocks.sql.ast;
 
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.ScalarType;
 import com.starrocks.qe.ShowResultSetMetaData;
+import com.starrocks.sql.ast.PolicyType;
+import com.starrocks.sql.ast.ShowStmt;
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowPolicyStmt extends ShowStmt {
+public class ShowPolicyStmt extends ShowStmt implements EnterpriseStatement {
     private static final ShowResultSetMetaData META_DATA;
     private String catalog;
     private String dbName;
@@ -67,7 +69,7 @@ public class ShowPolicyStmt extends ShowStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitorEE<R, C> visitor, C context) {
         return visitor.visitShowPolicyStatement(this, context);
     }
 }

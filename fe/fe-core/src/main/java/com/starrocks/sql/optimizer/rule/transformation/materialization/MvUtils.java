@@ -48,7 +48,6 @@ import com.starrocks.common.util.RangeUtils;
 import com.starrocks.connector.PartitionUtil;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.RelationFields;
 import com.starrocks.sql.analyzer.RelationId;
 import com.starrocks.sql.analyzer.Scope;
@@ -329,7 +328,7 @@ public class MvUtils {
         StatementBase mvStmt;
         try {
             List<StatementBase> statementBases =
-                    com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable());
+                    GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable());
             Preconditions.checkState(statementBases.size() == 1);
             mvStmt = statementBases.get(0);
         } catch (ParsingException parsingException) {
@@ -337,7 +336,7 @@ public class MvUtils {
             return null;
         }
         Preconditions.checkState(mvStmt instanceof QueryStatement);
-        Analyzer.analyze(mvStmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(mvStmt, connectContext);
         QueryRelation query = ((QueryStatement) mvStmt).getQueryRelation();
         LogicalPlan logicalPlan =
                 new RelationTransformer(columnRefFactory, connectContext).transformWithSelectLimit(query);

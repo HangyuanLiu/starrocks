@@ -222,7 +222,7 @@ public class SystemInfoServiceTest {
     public void addBackendTest() throws AnalysisException {
         clearAllBackend();
         AddBackendClause stmt = new AddBackendClause(Lists.newArrayList("192.168.0.1:1234"));
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(stmt), new ConnectContext(null));
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(stmt), new ConnectContext(null));
         try {
             GlobalStateMgr.getCurrentSystemInfo().addBackends(stmt.getHostPortPairs());
         } catch (DdlException e) {
@@ -251,7 +251,7 @@ public class SystemInfoServiceTest {
     public void removeBackendTest() throws AnalysisException {
         clearAllBackend();
         AddBackendClause stmt = new AddBackendClause(Lists.newArrayList("192.168.0.1:1234"));
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(stmt), new ConnectContext(null));
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(stmt), new ConnectContext(null));
         try {
             GlobalStateMgr.getCurrentSystemInfo().addBackends(stmt.getHostPortPairs());
         } catch (DdlException e) {
@@ -259,7 +259,7 @@ public class SystemInfoServiceTest {
         }
 
         DropBackendClause dropStmt = new DropBackendClause(Lists.newArrayList("192.168.0.1:1234"));
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(dropStmt), new ConnectContext(null));
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(dropStmt), new ConnectContext(null));
         try {
             GlobalStateMgr.getCurrentSystemInfo().dropBackends(dropStmt);
         } catch (DdlException e) {
@@ -301,7 +301,7 @@ public class SystemInfoServiceTest {
         };
 
         AddBackendClause stmt2 = new AddBackendClause(Lists.newArrayList("192.168.0.1:1235"));
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(stmt2), new ConnectContext(null));
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(stmt2), new ConnectContext(null));
 
         try {
             GlobalStateMgr.getCurrentSystemInfo().addBackends(stmt2.getHostPortPairs());
@@ -310,7 +310,7 @@ public class SystemInfoServiceTest {
         }
 
         DropBackendClause dropStmt2 = new DropBackendClause(Lists.newArrayList("192.168.0.1:1235"));
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(dropStmt2), new ConnectContext(null));
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(dropStmt2), new ConnectContext(null));
 
         try {
             GlobalStateMgr.getCurrentSystemInfo().dropBackends(dropStmt2);

@@ -95,7 +95,6 @@ import com.starrocks.sql.optimizer.statistics.ColumnStatistic;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
 import com.starrocks.sql.optimizer.transformer.RelationTransformer;
 import com.starrocks.sql.parser.ParsingException;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanFragmentBuilder;
 import com.starrocks.statistic.StatsConstants;
@@ -178,8 +177,8 @@ public class UtFrameUtils {
         StatementBase statementBase;
         try {
             statementBase =
-                    com.starrocks.sql.parser.SqlParser.parse(originStmt, ctx.getSessionVariable().getSqlMode()).get(0);
-            com.starrocks.sql.analyzer.Analyzer.analyze(statementBase, ctx);
+                    GlobalStateMgr.getSqlParser().parse(originStmt, ctx.getSessionVariable().getSqlMode()).get(0);
+            GlobalStateMgr.getAnalyzer().analyze(statementBase, ctx);
         } catch (ParsingException | SemanticException e) {
             System.err.println("parse failed: " + e.getMessage());
             if (e.getMessage() == null) {
@@ -197,7 +196,7 @@ public class UtFrameUtils {
         StatementBase statementBase;
         try {
             statementBase =
-                    com.starrocks.sql.parser.SqlParser.parse(originStmt, ctx.getSessionVariable().getSqlMode()).get(0);
+                    GlobalStateMgr.getSqlParser().parse(originStmt, ctx.getSessionVariable().getSqlMode()).get(0);
         } catch (ParsingException e) {
             if (e.getMessage() == null) {
                 throw e;
@@ -360,7 +359,7 @@ public class UtFrameUtils {
         connectContext.setDumpInfo(new QueryDumpInfo(connectContext.getSessionVariable()));
 
         List<StatementBase> statements =
-                com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable().getSqlMode());
+                GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable().getSqlMode());
         connectContext.getDumpInfo().setOriginStmt(sql);
         SessionVariable oldSessionVariable = connectContext.getSessionVariable();
         StatementBase statementBase = statements.get(0);
@@ -397,7 +396,7 @@ public class UtFrameUtils {
 
         List<StatementBase> statements;
         try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Parser")) {
-            statements = SqlParser.parse(originStmt, connectContext.getSessionVariable());
+            statements = GlobalStateMgr.getSqlParser().parse(originStmt, connectContext.getSessionVariable());
         }
         connectContext.getDumpInfo().setOriginStmt(originStmt);
         SessionVariable oldSessionVariable = connectContext.getSessionVariable();
@@ -453,9 +452,9 @@ public class UtFrameUtils {
                 createTableStmt = (CreateViewStmt) UtFrameUtils.parseStmtWithNewParser(createView, connectContext);
                 try {
                     StatementBase viewStatement =
-                            SqlParser.parse(createTableStmt.getInlineViewDef(),
+                            GlobalStateMgr.getSqlParser().parse(createTableStmt.getInlineViewDef(),
                                     connectContext.getSessionVariable().getSqlMode()).get(0);
-                    com.starrocks.sql.analyzer.Analyzer.analyze(viewStatement, connectContext);
+                    GlobalStateMgr.getAnalyzer().analyze(viewStatement, connectContext);
                 } catch (Exception e) {
                     System.out.println(e.getMessage());
                     throw e;
@@ -474,7 +473,7 @@ public class UtFrameUtils {
 
     public static String getStmtDigest(ConnectContext connectContext, String originStmt) throws Exception {
         StatementBase statementBase =
-                com.starrocks.sql.parser.SqlParser.parse(originStmt, connectContext.getSessionVariable())
+                GlobalStateMgr.getSqlParser().parse(originStmt, connectContext.getSessionVariable())
                         .get(0);
         Preconditions.checkState(statementBase instanceof QueryStatement);
         QueryStatement queryStmt = (QueryStatement) statementBase;
@@ -643,7 +642,7 @@ public class UtFrameUtils {
         Map<String, Database> dbs = null;
         try {
             PlannerProfile.ScopedTimer st = PlannerProfile.getScopedTimer("Parse");
-            StatementBase statementBase = com.starrocks.sql.parser.SqlParser.parse(replaySql,
+            StatementBase statementBase = GlobalStateMgr.getSqlParser().parse(replaySql,
                     connectContext.getSessionVariable()).get(0);
             st.close();
 
@@ -652,7 +651,7 @@ public class UtFrameUtils {
             }
 
             PlannerProfile.ScopedTimer st1 = PlannerProfile.getScopedTimer("Analyze");
-            com.starrocks.sql.analyzer.Analyzer.analyze(statementBase, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
             st1.close();
 
             dbs = AnalyzerUtils.collectAllDatabase(connectContext, statementBase);

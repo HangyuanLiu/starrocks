@@ -23,6 +23,7 @@ import com.starrocks.load.DeleteHandler;
 import com.starrocks.load.routineload.KafkaRoutineLoadJob;
 import com.starrocks.load.routineload.LoadDataSourceType;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.CreateRoutineLoadStmt;
 import com.starrocks.sql.ast.DeleteStmt;
 import com.starrocks.sql.ast.InsertStmt;
@@ -102,11 +103,11 @@ public class RestrictOpMaterializedViewTest {
                 "VALUES\n" +
                 "  (\"2021-02-02\", \"1\");";
         StatementBase statementBase =
-                com.starrocks.sql.parser.SqlParser.parse(sql1, ctx.getSessionVariable().getSqlMode()).get(0);
+                GlobalStateMgr.getSqlParser().parse(sql1, ctx.getSessionVariable().getSqlMode()).get(0);
         InsertStmt insertStmt = (InsertStmt) statementBase;
         insertStmt.setSystem(true);
         try {
-            com.starrocks.sql.analyzer.Analyzer.analyze(insertStmt, ctx);
+            GlobalStateMgr.getAnalyzer().analyze(insertStmt, ctx);
         } catch (Exception e) {
             assertFalse(
                     e.getMessage().contains("the data of materialized view must be consistent with the base table"));
@@ -144,9 +145,9 @@ public class RestrictOpMaterializedViewTest {
     public void testBrokerLoad() {
         String sql1 = "LOAD LABEL db1.label0 (DATA INFILE('/path/file1') INTO TABLE mv1) with broker 'broker0';";
         try {
-            LoadStmt loadStmt = (LoadStmt) com.starrocks.sql.parser.SqlParser.parse(sql1, ctx.getSessionVariable().getSqlMode()).get(0);
+            LoadStmt loadStmt = (LoadStmt) GlobalStateMgr.getSqlParser().parse(sql1, ctx.getSessionVariable().getSqlMode()).get(0);
             Deencapsulation.setField(loadStmt, "label", new LabelName("db1", "mv1"));
-            com.starrocks.sql.analyzer.Analyzer.analyze(loadStmt, ctx);
+            GlobalStateMgr.getAnalyzer().analyze(loadStmt, ctx);
             Assert.fail();
         } catch (Exception e) {
             assertTrue(e.getMessage().contains("the data of materialized view must be consistent with the base table"));

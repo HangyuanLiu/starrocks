@@ -45,7 +45,6 @@ import com.starrocks.analysis.SlotRef;
 import com.starrocks.analysis.StringLiteral;
 import com.starrocks.analysis.TableName;
 import com.starrocks.analysis.TableRef;
-import com.starrocks.analysis.TypeDef;
 import com.starrocks.authentication.AuthenticationManager;
 import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.backup.AbstractJob;
@@ -113,18 +112,13 @@ import com.starrocks.mysql.privilege.PrivPredicate;
 import com.starrocks.privilege.ActionSet;
 import com.starrocks.privilege.AuthorizationManager;
 import com.starrocks.privilege.CatalogPEntryObject;
-import com.starrocks.privilege.ColumnMaskingPolicyContext;
 import com.starrocks.privilege.DbPEntryObject;
 import com.starrocks.privilege.ObjectType;
-import com.starrocks.privilege.Policy;
-import com.starrocks.privilege.PolicyContext;
 import com.starrocks.privilege.PrivilegeActions;
 import com.starrocks.privilege.PrivilegeBuiltinConstants;
 import com.starrocks.privilege.PrivilegeCollection;
 import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.privilege.PrivilegeType;
-import com.starrocks.privilege.RowAccessPolicyContext;
-import com.starrocks.privilege.SecurityPolicyManager;
 import com.starrocks.privilege.TablePEntryObject;
 import com.starrocks.scheduler.TaskBuilder;
 import com.starrocks.scheduler.TaskManager;
@@ -141,15 +135,11 @@ import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AdminShowConfigStmt;
 import com.starrocks.sql.ast.AdminShowReplicaDistributionStmt;
 import com.starrocks.sql.ast.AdminShowReplicaStatusStmt;
-import com.starrocks.sql.ast.CreatePolicyStmt;
-import com.starrocks.sql.ast.DescribePolicyStmt;
 import com.starrocks.sql.ast.DescribeStmt;
 import com.starrocks.sql.ast.GrantPrivilegeStmt;
 import com.starrocks.sql.ast.GrantRevokeClause;
 import com.starrocks.sql.ast.HelpStmt;
 import com.starrocks.sql.ast.PartitionNames;
-import com.starrocks.sql.ast.PolicyName;
-import com.starrocks.sql.ast.PolicyType;
 import com.starrocks.sql.ast.ShowAlterStmt;
 import com.starrocks.sql.ast.ShowAnalyzeJobStmt;
 import com.starrocks.sql.ast.ShowAnalyzeStatusStmt;
@@ -183,8 +173,6 @@ import com.starrocks.sql.ast.ShowLoadStmt;
 import com.starrocks.sql.ast.ShowMaterializedViewsStmt;
 import com.starrocks.sql.ast.ShowPartitionsStmt;
 import com.starrocks.sql.ast.ShowPluginsStmt;
-import com.starrocks.sql.ast.ShowPolicyApplyStmt;
-import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.ShowProcStmt;
 import com.starrocks.sql.ast.ShowProcesslistStmt;
 import com.starrocks.sql.ast.ShowRepositoriesStmt;
@@ -209,7 +197,6 @@ import com.starrocks.sql.ast.ShowVariablesStmt;
 import com.starrocks.sql.ast.ShowWarehousesStmt;
 import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.sql.common.MetaUtils;
-import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.statistic.AnalyzeJob;
 import com.starrocks.statistic.AnalyzeStatus;
 import com.starrocks.statistic.BasicStatsMeta;
@@ -222,7 +209,6 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -234,7 +220,6 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -376,6 +361,7 @@ public class ShowExecutor {
             handleShowCreateExternalCatalog();
         } else if (stmt instanceof ShowCharsetStmt) {
             handleShowCharset();
+            /*
         } else if (stmt instanceof ShowPolicyStmt) {
             ShowPolicyStmt showPolicyStmt = (ShowPolicyStmt) stmt;
             Map<String, Policy> policies = GlobalStateMgr.getCurrentState().getSecurityPolicyManager().getNameToPolicy(
@@ -398,8 +384,8 @@ public class ShowExecutor {
                 }
             }
             resultSet = new ShowResultSet(stmt.getMetaData(), rows);
-        } else if (stmt instanceof DescribePolicyStmt) {
-            DescribePolicyStmt describePolicyStmt = (DescribePolicyStmt) stmt;
+        } else if (stmt instanceof ShowCreatePolicyStmt) {
+            ShowCreatePolicyStmt describePolicyStmt = (ShowCreatePolicyStmt) stmt;
             Policy policy = GlobalStateMgr.getCurrentState().getSecurityPolicyManager()
                     .getPolicyByName(describePolicyStmt.getPolicyType(), describePolicyStmt.getPolicyName());
 
@@ -463,10 +449,12 @@ public class ShowExecutor {
 
                     rows.add(row);
                 }
+
+
             }
 
             resultSet = new ShowResultSet(stmt.getMetaData(), rows);
-
+             */
         } else {
             handleEmpty();
         }

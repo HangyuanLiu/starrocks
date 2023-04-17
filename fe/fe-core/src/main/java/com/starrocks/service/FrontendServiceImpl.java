@@ -115,7 +115,6 @@ import com.starrocks.scheduler.TaskManager;
 import com.starrocks.scheduler.mv.MVManager;
 import com.starrocks.scheduler.persist.TaskRunStatus;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AddPartitionClause;
@@ -415,7 +414,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                         connectContext.setCurrentRoleIds(Sets.newHashSet(PrivilegeBuiltinConstants.ROOT_ROLE_ID));
 
                         try {
-                            Analyzer.analyze(queryStatement, connectContext);
+                            GlobalStateMgr.getAnalyzer().analyze(queryStatement, connectContext);
                             Map<TableName, Table> allTables = AnalyzerUtils.collectAllTable(queryStatement);
                             for (TableName tableName : allTables.keySet()) {
                                 if (GlobalStateMgr.getCurrentState().isUsingNewPrivilege()) {

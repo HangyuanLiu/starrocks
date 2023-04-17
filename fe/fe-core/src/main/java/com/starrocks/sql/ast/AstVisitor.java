@@ -639,32 +639,6 @@ public abstract class AstVisitor<R, C> {
         return visitStatement(statement, context);
     }
 
-    // ---------------------------------------- Security Policy Statement ---------------------------------------------------
-
-    public R visitCreatePolicyStatement(CreatePolicyStmt statement, C context) {
-        return visitDDLStatement(statement, context);
-    }
-
-    public R visitAlterPolicyStatement(AlterPolicyStmt statement, C context) {
-        return visitDDLStatement(statement, context);
-    }
-
-    public R visitDropPolicyStatement(DropPolicyStmt statement, C context) {
-        return visitDDLStatement(statement, context);
-    }
-
-    public R visitShowPolicyStatement(ShowPolicyStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
-
-    public R visitDescribePolicyStatement(DescribePolicyStmt statement, C context) {
-        return visitStatement(statement, context);
-    }
-
-    public R visitShowPolicyApplyStatement(ShowPolicyApplyStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
-
     // ---------------------------------------- Backup Restore Statement -----------------------------------------------
 
     public R visitBackupStatement(BackupStmt statement, C context) {

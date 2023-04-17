@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.authentication;
 
 import com.starrocks.common.Config;
@@ -20,7 +19,6 @@ import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.persist.OperationType;
 import com.starrocks.persist.SecurityIntegrationInfo;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.CreateSecurityIntegrationStatement;
 import com.starrocks.sql.ast.UserIdentity;
@@ -34,6 +32,7 @@ import java.util.Arrays;
 
 public class SecurityIntegrationTest {
     private static ConnectContext connectContext;
+
     @BeforeClass
     public static void beforeClass() throws Exception {
         UtFrameUtils.createMinStarRocksCluster();
@@ -44,7 +43,7 @@ public class SecurityIntegrationTest {
     private void createSecurityIntegration(String sql) throws Exception {
         CreateSecurityIntegrationStatement createSecurityIntegrationStatement =
                 (CreateSecurityIntegrationStatement) UtFrameUtils.parseStmtWithNewParser(sql, connectContext);
-        DDLStmtExecutor.execute(createSecurityIntegrationStatement, connectContext);
+        GlobalStateMgr.getDDLStmtExecutor().execute(createSecurityIntegrationStatement, connectContext);
     }
 
     @Test

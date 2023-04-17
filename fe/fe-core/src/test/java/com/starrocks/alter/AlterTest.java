@@ -69,7 +69,6 @@ import com.starrocks.persist.ListPartitionPersistInfo;
 import com.starrocks.persist.PartitionPersistInfoV2;
 import com.starrocks.persist.RangePartitionPersistInfo;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.scheduler.Constants;
 import com.starrocks.scheduler.Task;
 import com.starrocks.scheduler.TaskBuilder;
@@ -1774,7 +1773,7 @@ public class AlterTest {
         authenticationManager.createUser(createUserStmt);
 
         String sql = "grant ALTER on database test to testuser";
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(sql, starRocksAssert.getCtx()),
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(sql, starRocksAssert.getCtx()),
                 starRocksAssert.getCtx());
 
         UserIdentity testUser = new UserIdentity("testuser", "%");
@@ -2436,7 +2435,7 @@ public class AlterTest {
         };
         String sql = "alter database test set data quota 1KB;";
         AlterDatabaseQuotaStmt stmt = (AlterDatabaseQuotaStmt) UtFrameUtils.parseStmtWithNewParser(sql, starRocksAssert.getCtx());
-        DDLStmtExecutor.execute(stmt, starRocksAssert.getCtx());
+        GlobalStateMgr.getDDLStmtExecutor().execute(stmt, starRocksAssert.getCtx());
     }
 
     @Test(expected = DdlException.class)

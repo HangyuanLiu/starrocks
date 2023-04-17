@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.starrocks.persist;
+package ee.starrocks.persist;
 
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.analysis.Expr;
@@ -22,9 +22,9 @@ import com.starrocks.common.io.Writable;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.privilege.DbPEntryObject;
 import com.starrocks.privilege.Policy;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.ast.PolicyType;
-import com.starrocks.sql.parser.SqlParser;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -103,7 +103,7 @@ public class CreatePolicyInfo implements Writable {
     }
 
     public Expr getPolicyExpression() {
-        return SqlParser.parseSqlToExpr(policyExpressionSQL, sqlMode);
+        return GlobalStateMgr.getSqlParser().parseSqlToExpr(policyExpressionSQL, sqlMode);
     }
 
     public String getComment() {

@@ -42,6 +42,8 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
+import com.google.inject.Guice;
+import com.google.inject.Injector;
 import com.starrocks.alter.Alter;
 import com.starrocks.alter.AlterJobV2;
 import com.starrocks.alter.MaterializedViewHandler;
@@ -205,15 +207,11 @@ import com.starrocks.persist.TruncateTableInfo;
 import com.starrocks.plugin.PluginInfo;
 import com.starrocks.plugin.PluginMgr;
 import com.starrocks.privilege.AuthorizationManager;
-import com.starrocks.privilege.ColumnMaskingPolicyContext;
-import com.starrocks.privilege.PolicyContext;
 import com.starrocks.privilege.PrivilegeActions;
-import com.starrocks.privilege.PrivilegeException;
-import com.starrocks.privilege.RowAccessPolicyContext;
 import com.starrocks.privilege.SecurityPolicyManager;
-import com.starrocks.privilege.TablePEntryObject;
 import com.starrocks.qe.AuditEventProcessor;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.JournalObservable;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.ShowResultSet;
@@ -222,6 +220,8 @@ import com.starrocks.rpc.FrontendServiceProxy;
 import com.starrocks.scheduler.TaskManager;
 import com.starrocks.scheduler.mv.MVJobExecutor;
 import com.starrocks.scheduler.mv.MVManager;
+import com.starrocks.sql.analyzer.Analyzer;
+import com.starrocks.sql.analyzer.PrivilegeCheckerV2;
 import com.starrocks.sql.ast.AddPartitionClause;
 import com.starrocks.sql.ast.AdminCheckTabletsStmt;
 import com.starrocks.sql.ast.AdminSetConfigStmt;
@@ -267,6 +267,7 @@ import com.starrocks.sql.ast.WithColumnMaskingPolicy;
 import com.starrocks.sql.ast.WithRowAccessPolicy;
 import com.starrocks.sql.optimizer.statistics.CachedStatisticStorage;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
+import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.statistic.AnalyzeManager;
 import com.starrocks.statistic.StatisticAutoCollector;
 import com.starrocks.statistic.StatisticsMetaManager;
@@ -424,7 +425,6 @@ public class GlobalStateMgr {
 
     private AuthenticationManager authenticationManager;
     private AuthorizationManager authorizationManager;
-    private SecurityPolicyManager securityPolicyManager;
 
     private DomainResolver domainResolver;
 
@@ -502,6 +502,8 @@ public class GlobalStateMgr {
     private WarehouseManager warehouseMgr;
 
     private ConfigRefreshDaemon configRefreshDaemon;
+
+    private final GlobalStateMgrDependencyInjection globalStateDependencyInject;
 
     public List<Frontend> getFrontends(FrontendNodeType nodeType) {
         return nodeMgr.getFrontends(nodeType);
@@ -705,6 +707,9 @@ public class GlobalStateMgr {
                 gsm.transferToNonLeader(newType);
             }
         };
+
+        Injector injector = Guice.createInjector(new ServerModule());
+        this.globalStateDependencyInject = injector.getInstance(GlobalStateMgrDependencyInjection.class);
     }
 
     public static void destroyCheckpoint() {
@@ -777,7 +782,7 @@ public class GlobalStateMgr {
     }
 
     public SecurityPolicyManager getSecurityPolicyManager() {
-        return securityPolicyManager;
+        return globalStateDependencyInject.getSecurityPolicyManager();
     }
 
     public ResourceGroupMgr getResourceGroupMgr() {
@@ -854,6 +859,22 @@ public class GlobalStateMgr {
 
     public static TabletStatMgr getCurrentTabletStatMgr() {
         return getCurrentState().tabletStatMgr;
+    }
+
+    public static SqlParser getSqlParser() {
+        return getCurrentState().globalStateDependencyInject.getSqlParser();
+    }
+
+    public static Analyzer getAnalyzer() {
+        return getCurrentState().globalStateDependencyInject.getAnalyzer();
+    }
+
+    public static PrivilegeCheckerV2 getPrivilegeChecker() {
+        return getCurrentState().globalStateDependencyInject.getPrivilegeChecker();
+    }
+
+    public static DDLStmtExecutor getDDLStmtExecutor() {
+        return getCurrentState().globalStateDependencyInject.getDdlStmtExecutorEE();
     }
 
     // Only used in UT
@@ -1021,7 +1042,6 @@ public class GlobalStateMgr {
             this.authenticationManager = new AuthenticationManager();
             this.domainResolver = new DomainResolver(authenticationManager);
             this.authorizationManager = new AuthorizationManager(this, null);
-            this.securityPolicyManager = new SecurityPolicyManager();
             LOG.info("using new privilege framework..");
         } else {
             this.domainResolver = new DomainResolver(auth);
@@ -1406,7 +1426,10 @@ public class GlobalStateMgr {
             remoteChecksum = dis.readLong();
             checksum = localMetastore.loadAutoIncrementId(dis, checksum);
             remoteChecksum = dis.readLong();
-            this.securityPolicyManager = SecurityPolicyManager.load(dis);
+
+            this.globalStateDependencyInject.getSecurityPolicyManager().load(dis);
+            //remoteChecksum = dis.readLong();
+            checksum = localMetastore.loadAutoIncrementId(dis, checksum);
             remoteChecksum = dis.readLong();
             // ** NOTICE **: always add new code at the end
         } catch (EOFException exception) {
@@ -1735,7 +1758,7 @@ public class GlobalStateMgr {
             dos.writeLong(checksum);
             checksum = localMetastore.saveAutoIncrementId(dos, checksum);
             dos.writeLong(checksum);
-            securityPolicyManager.save(dos);
+            globalStateDependencyInject.getSecurityPolicyManager().save(dos);
             // ** NOTICE **: always add new code at the end
         }
 
@@ -2193,6 +2216,7 @@ public class GlobalStateMgr {
                                   List<String> addPartitionStmt,
                                   List<String> createRollupStmt, boolean separatePartition, boolean hidePassword) {
 
+        /*
         PolicyContext policyContext = null;
         SecurityPolicyManager securityPolicyManager = GlobalStateMgr.getServingState().getSecurityPolicyManager();
         try {
@@ -2203,6 +2227,8 @@ public class GlobalStateMgr {
         } catch (PrivilegeException e) {
             //FIXME
         }
+
+         */
 
         // 1. create table
         // 1.1 materialized view
@@ -2222,6 +2248,7 @@ public class GlobalStateMgr {
                 StringBuilder colSb = new StringBuilder();
                 colSb.append(column.getName());
 
+                /*
                 if (policyContext != null) {
                     Map<String, ColumnMaskingPolicyContext> maskingPolicyApply = policyContext.getMaskingPolicyApply();
                     if (maskingPolicyApply.containsKey(column.getName())) {
@@ -2237,6 +2264,8 @@ public class GlobalStateMgr {
                     }
                 }
 
+                 */
+
                 if (!Strings.isNullOrEmpty(column.getComment())) {
                     colSb.append(" COMMENT ").append("\"").append(column.getComment()).append("\"");
                 }
@@ -2245,6 +2274,7 @@ public class GlobalStateMgr {
             sb.append(Joiner.on(", ").join(colDef));
             sb.append(")");
 
+            /*
             if (policyContext != null) {
                 List<RowAccessPolicyContext> withRowAccessPolicies = policyContext.getRowAccessPolicyApply();
                 for (RowAccessPolicyContext withRowAccessPolicy : withRowAccessPolicies) {
@@ -2258,6 +2288,8 @@ public class GlobalStateMgr {
                     }
                 }
             }
+
+             */
 
             if (!Strings.isNullOrEmpty(view.getComment())) {
                 sb.append(" COMMENT \"").append(view.getComment()).append("\"");
@@ -2293,10 +2325,10 @@ public class GlobalStateMgr {
                 if (olapTable.getKeysType() == KeysType.PRIMARY_KEYS) {
                     sb.append("  ").append(column.toSqlWithoutAggregateTypeName());
                 } else {
-                    sb.append("  ").append(column.toSql(policyContext));
+                    sb.append("  ").append(column.toSql());
                 }
             } else {
-                sb.append("  ").append(column.toSql(policyContext));
+                sb.append("  ").append(column.toSql());
             }
         }
         if (table.isOlapOrCloudNativeTable() || table.getType() == TableType.OLAP_EXTERNAL) {
@@ -2324,7 +2356,7 @@ public class GlobalStateMgr {
                 }
             }
             sb.append(Joiner.on(", ").join(keysColumnNames)).append(")");
-
+            /*
             if (policyContext != null) {
                 List<RowAccessPolicyContext> withRowAccessPolicies = policyContext.getRowAccessPolicyApply();
                 for (RowAccessPolicyContext withRowAccessPolicy : withRowAccessPolicies) {
@@ -2338,6 +2370,8 @@ public class GlobalStateMgr {
                     }
                 }
             }
+
+             */
 
             if (!Strings.isNullOrEmpty(table.getComment())) {
                 sb.append("\nCOMMENT \"").append(table.getComment()).append("\"");

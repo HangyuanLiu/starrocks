@@ -11,40 +11,34 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package com.starrocks.sql.ast;
+package ee.starrocks.sql.ast;
 
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.ScalarType;
 import com.starrocks.qe.ShowResultSetMetaData;
+import com.starrocks.sql.ast.ShowStmt;
 import com.starrocks.sql.parser.NodePosition;
 
-public class DescribePolicyStmt extends ShowStmt {
+public class ShowPolicyApplyStmt extends ShowStmt implements EnterpriseStatement {
     private static final ShowResultSetMetaData META_DATA;
-
-    private final PolicyType policyType;
-    private final PolicyName policyName;
 
     static {
         ShowResultSetMetaData.Builder builder = ShowResultSetMetaData.builder();
+        builder.addColumn(new Column("apply_catalog", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("apply_database", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("apply_table", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("apply_column", ScalarType.createVarchar(100)));
+
+        builder.addColumn(new Column("catalog", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("database", ScalarType.createVarchar(100)));
         builder.addColumn(new Column("name", ScalarType.createVarchar(100)));
-        builder.addColumn(new Column("signature", ScalarType.createVarchar(100)));
-        builder.addColumn(new Column("return_type", ScalarType.createVarchar(100)));
-        builder.addColumn(new Column("body", ScalarType.createVarchar(100)));
+        builder.addColumn(new Column("type", ScalarType.createVarchar(100)));
+
         META_DATA = builder.build();
     }
 
-    public DescribePolicyStmt(PolicyType policyType, PolicyName policyName, NodePosition pos) {
+    public ShowPolicyApplyStmt(NodePosition pos) {
         super(pos);
-        this.policyType = policyType;
-        this.policyName = policyName;
-    }
-
-    public PolicyType getPolicyType() {
-        return policyType;
-    }
-
-    public PolicyName getPolicyName() {
-        return policyName;
     }
 
     @Override
@@ -53,7 +47,7 @@ public class DescribePolicyStmt extends ShowStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return visitor.visitDescribePolicyStatement(this, context);
+    public <R, C> R accept(AstVisitorEE<R, C> visitor, C context) {
+        return visitor.visitShowPolicyApplyStatement(this, context);
     }
 }

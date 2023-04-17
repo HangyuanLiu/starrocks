@@ -33,7 +33,6 @@ import com.starrocks.sql.optimizer.dump.DumpInfo;
 import com.starrocks.sql.optimizer.dump.QueryDumpDeserializer;
 import com.starrocks.sql.optimizer.dump.QueryDumpInfo;
 import com.starrocks.sql.optimizer.dump.QueryDumpSerializer;
-import com.starrocks.sql.parser.SqlParser;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.logging.log4j.LogManager;
@@ -100,7 +99,7 @@ public class QueryDumpAction extends RestBaseAction {
 
         StatementBase parsedStmt;
         try {
-            parsedStmt = SqlParser.parseFirstStatement(query, context.getSessionVariable().getSqlMode());
+            parsedStmt = GlobalStateMgr.getSqlParser().parseFirstStatement(query, context.getSessionVariable().getSqlMode());
             StmtExecutor executor = new StmtExecutor(context, parsedStmt);
             executor.execute();
         } catch (Exception e) {

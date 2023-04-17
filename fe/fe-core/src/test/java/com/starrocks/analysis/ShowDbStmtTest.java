@@ -112,13 +112,13 @@ public class ShowDbStmtTest {
     @Test
     public void testNormal() throws Exception {
         ShowDbStmt stmt = new ShowDbStmt(null);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertNull(stmt.getPattern());
         Assert.assertEquals(1, stmt.getMetaData().getColumnCount());
         Assert.assertEquals("Database", stmt.getMetaData().getColumn(0).getName());
 
         stmt = new ShowDbStmt("abc");
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("abc", stmt.getPattern());
         Assert.assertEquals(1, stmt.getMetaData().getColumnCount());
         Assert.assertEquals("Database", stmt.getMetaData().getColumn(0).getName());

@@ -15,6 +15,7 @@
 package com.starrocks.sql.analyzer;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.common.UnsupportedException;
@@ -269,19 +270,19 @@ public class AnalyzeTestUtil {
     }
 
     public static StatementBase parseSql(String originStmt) {
-        return com.starrocks.sql.parser.SqlParser.parse(originStmt, connectContext.getSessionVariable()).get(0);
+        return GlobalStateMgr.getSqlParser().parse(originStmt, connectContext.getSessionVariable()).get(0);
     }
 
     public static StatementBase analyzeSuccess(String originStmt) {
         try {
             StatementBase statementBase = parseSql(originStmt);
-            Analyzer.analyze(statementBase, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
 
             if (statementBase instanceof QueryStatement) {
                 StatementBase viewStatement =
-                        com.starrocks.sql.parser.SqlParser.parse(AstToSQLBuilder.toSQL(statementBase),
+                        GlobalStateMgr.getSqlParser().parse(AstToSQLBuilder.toSQL(statementBase),
                                 connectContext.getSessionVariable()).get(0);
-                Analyzer.analyze(viewStatement, connectContext);
+                GlobalStateMgr.getAnalyzer().analyze(viewStatement, connectContext);
             }
 
             return statementBase;
@@ -294,9 +295,9 @@ public class AnalyzeTestUtil {
 
     public static StatementBase analyzeWithoutTestView(String originStmt) {
         try {
-            StatementBase statementBase = com.starrocks.sql.parser.SqlParser.parse(originStmt,
+            StatementBase statementBase = GlobalStateMgr.getSqlParser().parse(originStmt,
                     connectContext.getSessionVariable()).get(0);
-            Analyzer.analyze(statementBase, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
             return statementBase;
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -311,9 +312,9 @@ public class AnalyzeTestUtil {
 
     public static void analyzeFail(String originStmt, String exceptMessage) {
         try {
-            StatementBase statementBase = com.starrocks.sql.parser.SqlParser.parse(originStmt,
+            StatementBase statementBase = GlobalStateMgr.getSqlParser().parse(originStmt,
                     connectContext.getSessionVariable().getSqlMode()).get(0);
-            Analyzer.analyze(statementBase, connectContext);
+            GlobalStateMgr.getAnalyzer().analyze(statementBase, connectContext);
             Assert.fail("Miss semantic error exception");
         } catch (ParsingException | SemanticException | UnsupportedException e) {
             if (!exceptMessage.equals("")) {

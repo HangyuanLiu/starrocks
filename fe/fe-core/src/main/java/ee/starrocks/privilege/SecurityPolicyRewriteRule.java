@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package com.starrocks.privilege;
+package ee.starrocks.privilege;
 
 import com.google.common.collect.Lists;
 import com.starrocks.analysis.Expr;
@@ -20,6 +20,13 @@ import com.starrocks.analysis.SlotRef;
 import com.starrocks.analysis.TableName;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.Table;
+import com.starrocks.privilege.ColumnMaskingPolicyContext;
+import com.starrocks.privilege.Policy;
+import com.starrocks.privilege.PolicyContext;
+import com.starrocks.privilege.PrivilegeException;
+import com.starrocks.privilege.RowAccessPolicyContext;
+import com.starrocks.privilege.SecurityPolicyManager;
+import com.starrocks.privilege.TablePEntryObject;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AstVisitor;

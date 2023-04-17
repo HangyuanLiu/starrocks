@@ -36,7 +36,6 @@ import com.starrocks.sql.ast.SelectRelation;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.TableRelation;
 import com.starrocks.sql.ast.ViewRelation;
-import com.starrocks.sql.parser.SqlParser;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -106,7 +105,7 @@ public class SqlWithIdUtils {
         for (Table table : tableMap.values()) {
             sql = sql.replaceAll(TABLE_ID_PREFIX + table.getId() + COMMON_SUFFIX, table.getName());
         }
-        return SqlParser.parse(sql, context.getSessionVariable()).get(0);
+        return GlobalStateMgr.getSqlParser().parse(sql, context.getSessionVariable()).get(0);
     }
 
     private static class SqlEncoderVisitor extends AstToStringBuilder.AST2StringBuilderVisitor {

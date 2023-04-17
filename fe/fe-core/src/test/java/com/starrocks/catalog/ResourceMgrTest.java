@@ -136,7 +136,7 @@ public class ResourceMgrTest {
         Map<String, String> properties = new HashMap<>();
         properties.put("hive.metastore.uris", newThriftPath);
         AlterResourceStmt stmt = new AlterResourceStmt(name, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         mgr.alterResource(stmt);
 
@@ -161,7 +161,7 @@ public class ResourceMgrTest {
         Map<String, String> properties = new HashMap<>();
         properties.put("broker", "broker2");
         AlterResourceStmt stmt = new AlterResourceStmt(name, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         mgr.alterResource(stmt);
     }
@@ -181,7 +181,7 @@ public class ResourceMgrTest {
         properties.put("hive.metastore.uris", "thrift://10.10.44.xxx:9083");
         String noExistName = "hive1";
         AlterResourceStmt stmt = new AlterResourceStmt(noExistName, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         mgr.alterResource(stmt);
     }
@@ -200,7 +200,7 @@ public class ResourceMgrTest {
         Map<String, String> properties = new HashMap<>();
         properties.put("hive.metastore.uris.xxx", "thrift://10.10.44.xxx:9083");
         AlterResourceStmt stmt = new AlterResourceStmt(name, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         mgr.alterResource(stmt);
     }
@@ -254,7 +254,7 @@ public class ResourceMgrTest {
         properties.put("type", type);
         properties.put("hive.metastore.uris", hiveMetastoreUris);
         CreateResourceStmt stmt = new CreateResourceStmt(true, name, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         Assert.assertEquals(0, mgr.getResourceNum());
         mgr.createResource(stmt);
@@ -283,7 +283,7 @@ public class ResourceMgrTest {
         };
 
         CreateResourceStmt stmt = new CreateResourceStmt(true, name, properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, connectContext);
         PrivilegeChecker.check(stmt, connectContext);
         Assert.assertEquals(0, mgr.getResourceNum());
         mgr.createResource(stmt);

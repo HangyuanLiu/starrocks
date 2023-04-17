@@ -20,6 +20,7 @@ package com.starrocks.analysis;
 import com.google.common.collect.Maps;
 import com.starrocks.common.UserException;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.InstallPluginStmt;
 import org.junit.Assert;
 import org.junit.Test;
@@ -32,7 +33,7 @@ public class InstallPluginStmtTest {
         Map<String, String> properties = Maps.newHashMap();
         properties.put("md5sum", "7529db41471ec72e165f96fe9fb92742");
         InstallPluginStmt stmt = new InstallPluginStmt("http://test/test.zip", properties);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, new ConnectContext());
+        GlobalStateMgr.getAnalyzer().analyze(stmt, new ConnectContext());
         Assert.assertEquals("7529db41471ec72e165f96fe9fb92742", stmt.getMd5sum());
         Assert.assertEquals("http://test/test.zip", stmt.getPluginPath());
     }

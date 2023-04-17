@@ -38,6 +38,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.SchemaTable;
 import com.starrocks.catalog.Table;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.AstToStringBuilder;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.ShowMaterializedViewsStmt;
@@ -63,17 +64,17 @@ public class ShowMaterializedViewTest {
 
         ShowMaterializedViewsStmt stmt = new ShowMaterializedViewsStmt("");
 
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("testDb", stmt.getDb());
         checkShowMaterializedViewsStmt(stmt);
 
         stmt = new ShowMaterializedViewsStmt("abc", (String) null);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("abc", stmt.getDb());
         checkShowMaterializedViewsStmt(stmt);
 
         stmt = new ShowMaterializedViewsStmt("abc", "bcd");
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("bcd", stmt.getPattern());
         Assert.assertEquals("abc", stmt.getDb());
         checkShowMaterializedViewsStmt(stmt);
@@ -139,7 +140,7 @@ public class ShowMaterializedViewTest {
     public void testNoDb() throws Exception {
         ctx = UtFrameUtils.createDefaultCtx();
         ShowMaterializedViewsStmt stmt = new ShowMaterializedViewsStmt("");
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No exception throws");
     }
 }

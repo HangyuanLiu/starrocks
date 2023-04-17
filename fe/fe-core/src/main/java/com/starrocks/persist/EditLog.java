@@ -110,6 +110,9 @@ import com.starrocks.system.Frontend;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.transaction.TransactionState;
 import com.starrocks.warehouse.Warehouse;
+import ee.starrocks.persist.AlterPolicyInfo;
+import ee.starrocks.persist.CreatePolicyInfo;
+import ee.starrocks.persist.DropPolicyInfo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -1046,7 +1049,8 @@ public class EditLog {
                 case OperationType.OP_ALTER_POLICY_SET_BODY:
                 case OperationType.OP_ALTER_POLICY_SET_COMMENT:
                 case OperationType.OP_ALTER_POLICY_RENAME: {
-                    AlterPolicyInfo alterPolicyInfo = (AlterPolicyInfo) journal.getData();
+                    AlterPolicyInfo alterPolicyInfo =
+                            (AlterPolicyInfo) journal.getData();
                     globalStateMgr.getSecurityPolicyManager().replayAlterPolicy(alterPolicyInfo);
                     break;
                 }
@@ -1079,7 +1083,7 @@ public class EditLog {
     /**
      * submit log to queue, wait for JournalWriter
      */
-    protected void logEdit(short op, Writable writable) {
+    public void logEdit(short op, Writable writable) {
         long start = System.nanoTime();
         Future<Boolean> task = submitLog(op, writable, -1);
         waitInfinity(start, task);
@@ -1816,6 +1820,26 @@ public class EditLog {
         logEdit(OperationType.OP_AUTH_UPGRADE_V2, new AuthUpgradeInfo(roleNameToId));
     }
 
+    public void logModifyBinlogConfig(ModifyTablePropertyOperationLog log) {
+        logEdit(OperationType.OP_MODIFY_BINLOG_CONFIG, log);
+    }
+
+    public void logModifyBinlogAvailableVersion(ModifyTablePropertyOperationLog log) {
+        logEdit(OperationType.OP_MODIFY_BINLOG_AVAILABLE_VERSION, log);
+    }
+
+    public void logMVJobState(MVMaintenanceJob job) {
+        logEdit(OperationType.OP_MV_JOB_STATE, job);
+    }
+
+    public void logMVEpochChange(MVEpoch epoch) {
+        logEdit(OperationType.OP_MV_EPOCH_UPDATE, epoch);
+    }
+
+    public void logAlterTableProperties(ModifyTablePropertyOperationLog info) {
+        logEdit(OperationType.OP_ALTER_TABLE_PROPERTIES, info);
+    }
+
     public void logCreateMaskingPolicy(Policy policy) {
         CreatePolicyInfo createPolicyInfo = new CreatePolicyInfo(policy);
         logEdit(OperationType.OP_CREATE_MASKING_POLICY, createPolicyInfo);
@@ -1848,25 +1872,5 @@ public class EditLog {
         AlterPolicyInfo alterPolicyInfo = new AlterPolicyInfo(policyName.getName(), db,
                 new AlterPolicyInfo.PolicyRenameInfo(newPolicyName));
         logEdit(OperationType.OP_ALTER_POLICY_RENAME, alterPolicyInfo);
-    }
-
-    public void logModifyBinlogConfig(ModifyTablePropertyOperationLog log) {
-        logEdit(OperationType.OP_MODIFY_BINLOG_CONFIG, log);
-    }
-
-    public void logModifyBinlogAvailableVersion(ModifyTablePropertyOperationLog log) {
-        logEdit(OperationType.OP_MODIFY_BINLOG_AVAILABLE_VERSION, log);
-    }
-
-    public void logMVJobState(MVMaintenanceJob job) {
-        logEdit(OperationType.OP_MV_JOB_STATE, job);
-    }
-
-    public void logMVEpochChange(MVEpoch epoch) {
-        logEdit(OperationType.OP_MV_EPOCH_UPDATE, epoch);
-    }
-
-    public void logAlterTableProperties(ModifyTablePropertyOperationLog info) {
-        logEdit(OperationType.OP_ALTER_TABLE_PROPERTIES, info);
     }
 }

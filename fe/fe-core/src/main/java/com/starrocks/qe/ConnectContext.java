@@ -60,7 +60,6 @@ import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.sql.ast.UserVariable;
 import com.starrocks.sql.optimizer.dump.DumpInfo;
 import com.starrocks.sql.optimizer.dump.QueryDumpInfo;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.thrift.TUniqueId;
 import com.starrocks.thrift.TWorkGroup;
 import org.apache.logging.log4j.LogManager;
@@ -715,7 +714,7 @@ public class ConnectContext {
     }
 
     public StmtExecutor executeSql(String sql) throws Exception {
-        StatementBase sqlStmt = SqlParser.parse(sql, getSessionVariable()).get(0);
+        StatementBase sqlStmt = GlobalStateMgr.getSqlParser().parse(sql, getSessionVariable()).get(0);
         sqlStmt.setOrigStmt(new OriginStatement(sql, 0));
         StmtExecutor executor = new StmtExecutor(this, sqlStmt);
         setExecutor(executor);

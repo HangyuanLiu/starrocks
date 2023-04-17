@@ -285,7 +285,7 @@ public abstract class BulkLoadJob extends LoadJob {
         fileGroupAggInfo = new BrokerFileGroupAggInfo();
         LoadStmt stmt = null;
         try {
-            stmt = (LoadStmt) com.starrocks.sql.parser.SqlParser.parseFirstStatement(originStmt.originStmt,
+            stmt = (LoadStmt) GlobalStateMgr.getSqlParser().parseFirstStatement(originStmt.originStmt,
                     Long.parseLong(sessionVariables.get(SessionVariable.SQL_MODE)));
             for (DataDescription dataDescription : stmt.getDataDescriptions()) {
                 dataDescription.analyzeWithoutCheckPriv();

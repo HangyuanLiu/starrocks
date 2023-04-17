@@ -30,6 +30,7 @@ import com.starrocks.authentication.AuthenticationManager;
 import com.starrocks.catalog.ScalarType;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.UserException;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.CreateUserStmt;
 import com.starrocks.sql.ast.SetListItem;
 import com.starrocks.sql.ast.SetNamesVar;
@@ -88,7 +89,7 @@ public class SetExecutorTest {
 
         SetStmt stmt = new SetStmt(vars);
         ctxToTestUser();
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, starRocksAssert.getCtx());
+        GlobalStateMgr.getAnalyzer().analyze(stmt, starRocksAssert.getCtx());
         SetExecutor executor = new SetExecutor(starRocksAssert.getCtx(), stmt);
 
         executor.execute();
@@ -98,7 +99,7 @@ public class SetExecutorTest {
     public void test1SetSessionAndGlobal() throws Exception {
         ConnectContext ctx = starRocksAssert.getCtx();
         ctxToRoot();
-        DDLStmtExecutor.execute(UtFrameUtils.parseStmtWithNewParser(
+        GlobalStateMgr.getDDLStmtExecutor().execute(UtFrameUtils.parseStmtWithNewParser(
                 "grant operate on system to testUser", ctx), ctx);
         ctxToTestUser();
 

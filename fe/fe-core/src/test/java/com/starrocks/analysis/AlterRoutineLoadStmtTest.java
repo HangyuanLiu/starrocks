@@ -38,6 +38,7 @@ import com.google.common.collect.Maps;
 import com.starrocks.mysql.privilege.Auth;
 import com.starrocks.mysql.privilege.PrivPredicate;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.AlterRoutineLoadAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AlterRoutineLoadStmt;
@@ -110,7 +111,7 @@ public class AlterRoutineLoadStmtTest {
                 + "\"property.group.id\" = \"group1\",\n"
                 + "\"confluent.schema.registry.url\" = \"https://key:passwrod@addr\"\n"
                 + ");";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         AlterRoutineLoadStmt stmt = (AlterRoutineLoadStmt)stmts.get(0);
         AlterRoutineLoadAnalyzer.analyze(stmt, connectContext);
 
@@ -133,7 +134,7 @@ public class AlterRoutineLoadStmtTest {
                 + "(\n"
                 + "\"max_error_number\"=\"1000\"\n"
                 + ")\n";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         AlterRoutineLoadStmt alterRoutineLoadStmt = (AlterRoutineLoadStmt)stmts.get(0);
         AlterRoutineLoadAnalyzer.analyze(alterRoutineLoadStmt, connectContext);
         Assert.assertNotNull(alterRoutineLoadStmt.getRoutineLoadDesc());
@@ -151,7 +152,7 @@ public class AlterRoutineLoadStmtTest {
                 "\"kafka_offsets\" = \"100, 200, 100\",\n" +
                 "\"property.group.id\" = \"group1\"\n" +
                 ")";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         AlterRoutineLoadStmt alterRoutineLoadStmt = (AlterRoutineLoadStmt)stmts.get(0);
         AlterRoutineLoadAnalyzer.analyze(alterRoutineLoadStmt, connectContext);
         Assert.assertEquals(6, alterRoutineLoadStmt.getRoutineLoadDesc().getColumnsInfo().getColumns().size());
@@ -159,7 +160,7 @@ public class AlterRoutineLoadStmtTest {
         sql = "ALTER ROUTINE LOAD for testdb.routine_name" +
                 " COLUMNS(`k1`, `k2`, `k3`, `k4`, `k5`)" +
                 " PROPERTIES (\"desired_concurrent_number\"=\"1\")";
-        stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         alterRoutineLoadStmt = (AlterRoutineLoadStmt)stmts.get(0);
         AlterRoutineLoadAnalyzer.analyze(alterRoutineLoadStmt, connectContext);
         Assert.assertEquals(5, alterRoutineLoadStmt.getRoutineLoadDesc().getColumnsInfo().getColumns().size());
@@ -171,7 +172,7 @@ public class AlterRoutineLoadStmtTest {
                 " `v4` = to_bitmap(`k4`)," +
                 " `v5` = to_bitmap(`k5`))" +
                 " PROPERTIES (\"desired_concurrent_number\"=\"1\")";
-        stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         alterRoutineLoadStmt = (AlterRoutineLoadStmt)stmts.get(0);
         AlterRoutineLoadAnalyzer.analyze(alterRoutineLoadStmt, connectContext);
         Assert.assertEquals(5, alterRoutineLoadStmt.getRoutineLoadDesc().getColumnsInfo().getColumns().size());
@@ -183,7 +184,7 @@ public class AlterRoutineLoadStmtTest {
                 " `v4` = to_bitmap(`k4`)," +
                 " `v5` = to_bitmap(`k5`)," +
                 " `k1`, `k2`, `k3`, `k4`, `k5` )";
-        stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         alterRoutineLoadStmt = (AlterRoutineLoadStmt)stmts.get(0);
         AlterRoutineLoadAnalyzer.analyze(alterRoutineLoadStmt, connectContext);
         Assert.assertEquals(10, alterRoutineLoadStmt.getRoutineLoadDesc().getColumnsInfo().getColumns().size());
@@ -195,7 +196,7 @@ public class AlterRoutineLoadStmtTest {
                 " `v4` = to_bitmap(`k4`), `k4`," +
                 " `v5` = to_bitmap(`k5`), `k5`)" +
                 " PROPERTIES (\"desired_concurrent_number\"=\"1\")";
-        stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         alterRoutineLoadStmt = (AlterRoutineLoadStmt)stmts.get(0);
         AlterRoutineLoadAnalyzer.analyze(alterRoutineLoadStmt, connectContext);
         Assert.assertEquals(10, alterRoutineLoadStmt.getRoutineLoadDesc().getColumnsInfo().getColumns().size());
@@ -208,7 +209,7 @@ public class AlterRoutineLoadStmtTest {
                 " `v4` = to_bitmap(`k4`)," +
                 " `v5` = to_bitmap(`k5`))" +
                 " PROPERTIES (\"desired_concurrent_number\"=\"1\")";
-        stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+        stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         alterRoutineLoadStmt = (AlterRoutineLoadStmt)stmts.get(0);
         AlterRoutineLoadAnalyzer.analyze(alterRoutineLoadStmt, connectContext);
         Assert.assertEquals(10, alterRoutineLoadStmt.getRoutineLoadDesc().getColumnsInfo().getColumns().size());
@@ -348,7 +349,7 @@ public class AlterRoutineLoadStmtTest {
                             "FROM kafka ( \"kafka_partitions\" = \"0, 1, 2\", \"kafka_offsets\" = \"100, 200, 100\"," +  
                             "\"property.group.id\" = \"new_group\" )";
 
-         List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, 32);
+         List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, 32);
         AlterRoutineLoadStmt stmt = (AlterRoutineLoadStmt) stmts.get(0);
 
         Assert.assertEquals("db_test", stmt.getDbName());

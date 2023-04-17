@@ -58,7 +58,6 @@ import com.starrocks.sql.ast.AlterDatabaseQuotaStmt;
 import com.starrocks.sql.ast.AlterDatabaseRenameStatement;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
-import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AlterResourceGroupStmt;
 import com.starrocks.sql.ast.AlterResourceStmt;
 import com.starrocks.sql.ast.AlterRoutineLoadStmt;
@@ -82,7 +81,6 @@ import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
-import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
 import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
@@ -94,7 +92,6 @@ import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.CreateViewStmt;
 import com.starrocks.sql.ast.DelSqlBlackListStmt;
 import com.starrocks.sql.ast.DeleteStmt;
-import com.starrocks.sql.ast.DescribePolicyStmt;
 import com.starrocks.sql.ast.DescribeStmt;
 import com.starrocks.sql.ast.DropCatalogStmt;
 import com.starrocks.sql.ast.DropDbStmt;
@@ -102,7 +99,6 @@ import com.starrocks.sql.ast.DropFileStmt;
 import com.starrocks.sql.ast.DropFunctionStmt;
 import com.starrocks.sql.ast.DropHistogramStmt;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
-import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.DropRepositoryStmt;
 import com.starrocks.sql.ast.DropResourceGroupStmt;
 import com.starrocks.sql.ast.DropResourceStmt;
@@ -160,7 +156,6 @@ import com.starrocks.sql.ast.ShowLoadStmt;
 import com.starrocks.sql.ast.ShowMaterializedViewsStmt;
 import com.starrocks.sql.ast.ShowPartitionsStmt;
 import com.starrocks.sql.ast.ShowPluginsStmt;
-import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.ShowProcStmt;
 import com.starrocks.sql.ast.ShowProcesslistStmt;
 import com.starrocks.sql.ast.ShowResourceGroupStmt;
@@ -199,10 +194,7 @@ import java.util.Map;
 import java.util.Set;
 
 public class PrivilegeCheckerV2 {
-    private PrivilegeCheckerV2() {
-    }
-
-    public static void check(StatementBase statement, ConnectContext context) {
+    public void check(StatementBase statement, ConnectContext context) {
         new PrivilegeCheckerVisitor().check(statement, context);
     }
 
@@ -1156,50 +1148,7 @@ public class PrivilegeCheckerV2 {
             return null;
         }
 
-        // ---------------------------------------- Security Policy Statement ---------------------------------------------------
 
-        @Override
-        public Void visitCreatePolicyStatement(CreatePolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkDbAction(context,
-                    statement.getPolicyName().getCatalog(), statement.getPolicyName().getDbName(),
-                    PrivilegeType.CREATE_POLICY)) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "CREATE POLICY");
-            }
-            return null;
-        }
-
-        @Override
-        public Void visitDropPolicyStatement(DropPolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyType(), statement.getPolicyName().getCatalog(),
-                    statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.DROP)) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "DROP");
-            }
-            return null;
-        }
-
-        @Override
-        public Void visitAlterPolicyStatement(AlterPolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkPolicyAction(context, statement.getPolicyType(), statement.getPolicyName().getCatalog(),
-                    statement.getPolicyName().getDbName(), statement.getPolicyName().getName(), PrivilegeType.ALTER)) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ALTER");
-            }
-            return null;
-        }
-
-        @Override
-        public Void visitShowPolicyStatement(ShowPolicyStmt statement, ConnectContext context) {
-            return visitShowStatement(statement, context);
-        }
-
-        @Override
-        public Void visitDescribePolicyStatement(DescribePolicyStmt statement, ConnectContext context) {
-            if (!PrivilegeActions.checkAnyActionOnPolicy(context, statement.getPolicyType(),
-                    statement.getPolicyName().getCatalog(), statement.getPolicyName().getDbName(),
-                    statement.getPolicyName().getName())) {
-                ErrorReport.reportSemanticException(ErrorCode.ERR_SPECIFIC_ACCESS_DENIED_ERROR, "ANY");
-            }
-            return null;
-        }
 
         // ---------------------------------------- View Statement ---------------------------------------
 

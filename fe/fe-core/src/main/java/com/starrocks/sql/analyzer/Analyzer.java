@@ -19,6 +19,7 @@ import com.starrocks.common.AnalysisException;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.OriginStatement;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AddSqlBlackListStmt;
 import com.starrocks.sql.ast.AdminCancelRepairTableStmt;
 import com.starrocks.sql.ast.AdminCheckTabletsStmt;
@@ -32,7 +33,6 @@ import com.starrocks.sql.ast.AlterDatabaseQuotaStmt;
 import com.starrocks.sql.ast.AlterDatabaseRenameStatement;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
-import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AlterResourceGroupStmt;
 import com.starrocks.sql.ast.AlterResourceStmt;
 import com.starrocks.sql.ast.AlterRoutineLoadStmt;
@@ -58,7 +58,6 @@ import com.starrocks.sql.ast.CreateFileStmt;
 import com.starrocks.sql.ast.CreateFunctionStmt;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.CreateMaterializedViewStmt;
-import com.starrocks.sql.ast.CreatePolicyStmt;
 import com.starrocks.sql.ast.CreateRepositoryStmt;
 import com.starrocks.sql.ast.CreateResourceGroupStmt;
 import com.starrocks.sql.ast.CreateResourceStmt;
@@ -70,14 +69,12 @@ import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.CreateWarehouseStmt;
 import com.starrocks.sql.ast.DeleteStmt;
-import com.starrocks.sql.ast.DescribePolicyStmt;
 import com.starrocks.sql.ast.DropCatalogStmt;
 import com.starrocks.sql.ast.DropDbStmt;
 import com.starrocks.sql.ast.DropFileStmt;
 import com.starrocks.sql.ast.DropFunctionStmt;
 import com.starrocks.sql.ast.DropHistogramStmt;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
-import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.DropRepositoryStmt;
 import com.starrocks.sql.ast.DropResourceStmt;
 import com.starrocks.sql.ast.DropRoleStmt;
@@ -118,8 +115,6 @@ import com.starrocks.sql.ast.ShowDynamicPartitionStmt;
 import com.starrocks.sql.ast.ShowExportStmt;
 import com.starrocks.sql.ast.ShowGrantsStmt;
 import com.starrocks.sql.ast.ShowHistogramStatsMetaStmt;
-import com.starrocks.sql.ast.ShowPolicyApplyStmt;
-import com.starrocks.sql.ast.ShowPolicyStmt;
 import com.starrocks.sql.ast.ShowResourcesStmt;
 import com.starrocks.sql.ast.ShowRestoreStmt;
 import com.starrocks.sql.ast.ShowSmallFilesStmt;
@@ -138,11 +133,11 @@ import com.starrocks.sql.ast.UseCatalogStmt;
 import com.starrocks.sql.ast.UseDbStmt;
 
 public class Analyzer {
-    public static void analyze(StatementBase statement, ConnectContext session) {
+    public void analyze(StatementBase statement, ConnectContext session) {
         new AnalyzerVisitor().analyze(statement, session);
     }
 
-    private static class AnalyzerVisitor extends AstVisitor<Void, ConnectContext> {
+    protected static class AnalyzerVisitor extends AstVisitor<Void, ConnectContext> {
         public void analyze(StatementBase statement, ConnectContext session) {
             visit(statement, session);
         }
@@ -265,7 +260,7 @@ public class Analyzer {
             CreateTableAsSelectStmt createTableAsSelectStmt = statement.getCreateTableAsSelectStmt();
             if (createTableAsSelectStmt != null) {
                 QueryStatement queryStatement = createTableAsSelectStmt.getQueryStatement();
-                Analyzer.analyze(queryStatement, context);
+                GlobalStateMgr.getAnalyzer().analyze(queryStatement, context);
                 OriginStatement origStmt = statement.getOrigStmt();
                 String sqlText = origStmt.originStmt.substring(statement.getSqlBeginIndex());
                 statement.setSqlText(sqlText);
@@ -727,51 +722,12 @@ public class Analyzer {
             return null;
         }
 
-        // ---------------------------------------- Security Policy Statement ---------------------------------------------------
-
-        @Override
-        public Void visitCreatePolicyStatement(CreatePolicyStmt stmt, ConnectContext context) {
-            SecurityPolicyAnalyzer.analyze(stmt, context);
-            return null;
-        }
-
-        @Override
-        public Void visitDropPolicyStatement(DropPolicyStmt stmt, ConnectContext context) {
-            SecurityPolicyAnalyzer.analyze(stmt, context);
-            return null;
-        }
-
-        @Override
-        public Void visitAlterPolicyStatement(AlterPolicyStmt stmt, ConnectContext context) {
-            SecurityPolicyAnalyzer.analyze(stmt, context);
-            return null;
-        }
-
-        @Override
-        public Void visitShowPolicyStatement(ShowPolicyStmt stmt, ConnectContext context) {
-            SecurityPolicyAnalyzer.analyze(stmt, context);
-            return null;
-        }
-
-        @Override
-        public Void visitDescribePolicyStatement(DescribePolicyStmt stmt, ConnectContext context) {
-            SecurityPolicyAnalyzer.analyze(stmt, context);
-            return null;
-        }
-
-        @Override
-        public Void visitShowPolicyApplyStatement(ShowPolicyApplyStmt stmt, ConnectContext context) {
-            SecurityPolicyAnalyzer.analyze(stmt, context);
-            return null;
-        }
-
         @Override
         public Void visitCreateSecurityIntegrationStatement(CreateSecurityIntegrationStatement statement,
                                                             ConnectContext context) {
             SecurityIntegrationStatementAnalyzer.analyze(statement, context);
             return null;
         }
-
 
         // ---------------------------------------- Backup Restore Statement -------------------------------------------
 

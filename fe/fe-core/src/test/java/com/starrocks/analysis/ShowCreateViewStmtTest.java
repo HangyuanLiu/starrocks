@@ -155,8 +155,8 @@ public class ShowCreateViewStmtTest {
         String descViewSql = "describe v2";
 
         StatementBase statement =
-                com.starrocks.sql.parser.SqlParser.parse(descViewSql, ctx.getSessionVariable()).get(0);
-        Analyzer.analyze(statement, ctx);
+                GlobalStateMgr.getSqlParser().parse(descViewSql, ctx.getSessionVariable()).get(0);
+        GlobalStateMgr.getAnalyzer().analyze(statement, ctx);
         Assert.assertTrue(statement instanceof DescribeStmt);
         ShowExecutor showExecutor = new ShowExecutor(ctx, (DescribeStmt) statement);
         ShowResultSet rs = showExecutor.execute();

@@ -22,7 +22,6 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.CreateViewStmt;
 import com.starrocks.sql.ast.StatementBase;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.utframe.UtFrameUtils;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -44,16 +43,18 @@ public class AnalyzeUtilTest {
         String sql;
         sql = "select count(*) from (select v1 from t0 group by v1) tx";
         List<StatementBase> statementBase =
-                SqlParser.parse(sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
+                GlobalStateMgr.getSqlParser().parse(sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
         Map<String, Database> stringDatabaseMap =
                 AnalyzerUtils.collectAllDatabase(AnalyzeTestUtil.getConnectContext(), statementBase.get(0));
         Assert.assertEquals(1, stringDatabaseMap.size());
         sql = "select count(*) from (select * from tarray, unnest(v3))";
-        statementBase = SqlParser.parse(sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
+        statementBase = GlobalStateMgr.getSqlParser().parse(
+                sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
         stringDatabaseMap = AnalyzerUtils.collectAllDatabase(AnalyzeTestUtil.getConnectContext(), statementBase.get(0));
         Assert.assertEquals(1, stringDatabaseMap.size());
         sql = "with mview as (select count(*) from t0) select * from mview";
-        statementBase = SqlParser.parse(sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
+        statementBase = GlobalStateMgr.getSqlParser().parse(
+                sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
         stringDatabaseMap = AnalyzerUtils.collectAllDatabase(AnalyzeTestUtil.getConnectContext(), statementBase.get(0));
         Assert.assertEquals(1, stringDatabaseMap.size());
         // test view
@@ -64,26 +65,30 @@ public class AnalyzeUtilTest {
                 (CreateViewStmt) UtFrameUtils.parseStmtWithNewParser(sql, AnalyzeTestUtil.getConnectContext());
         GlobalStateMgr.getCurrentState().createView(createTableStmt);
         sql = "select v1 from basic";
-        statementBase = SqlParser.parse(sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
+        statementBase = GlobalStateMgr.getSqlParser().parse(
+                sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
         final ConnectContext session = AnalyzeTestUtil.getConnectContext();
-        com.starrocks.sql.analyzer.Analyzer.analyze(statementBase.get(0), session);
+        GlobalStateMgr.getAnalyzer().analyze(statementBase.get(0), session);
         stringDatabaseMap = AnalyzerUtils.collectAllDatabase(AnalyzeTestUtil.getConnectContext(), statementBase.get(0));
         Assert.assertEquals(stringDatabaseMap.size(), 2);
 
         sql = "insert into test.t0 select * from db1.t0,db2.t1";
-        statementBase = SqlParser.parse(sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
+        statementBase = GlobalStateMgr.getSqlParser().parse(
+                sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
         stringDatabaseMap = AnalyzerUtils.collectAllDatabase(AnalyzeTestUtil.getConnectContext(), statementBase.get(0));
         Assert.assertEquals(stringDatabaseMap.size(), 3);
         Assert.assertEquals("[db1, test, db2]", stringDatabaseMap.keySet().toString());
 
         sql = "update test.t0 set v1 = 1";
-        statementBase = SqlParser.parse(sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
+        statementBase = GlobalStateMgr.getSqlParser().parse(
+                sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
         stringDatabaseMap = AnalyzerUtils.collectAllDatabase(AnalyzeTestUtil.getConnectContext(), statementBase.get(0));
         Assert.assertEquals(stringDatabaseMap.size(), 1);
         Assert.assertEquals("[test]", stringDatabaseMap.keySet().toString());
 
         sql = "delete from test.t0 where v1 = 1";
-        statementBase = SqlParser.parse(sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
+        statementBase = GlobalStateMgr.getSqlParser().parse(
+                sql, AnalyzeTestUtil.getConnectContext().getSessionVariable().getSqlMode());
         stringDatabaseMap = AnalyzerUtils.collectAllDatabase(AnalyzeTestUtil.getConnectContext(), statementBase.get(0));
         Assert.assertEquals(stringDatabaseMap.size(), 1);
         Assert.assertEquals("[test]", stringDatabaseMap.keySet().toString());

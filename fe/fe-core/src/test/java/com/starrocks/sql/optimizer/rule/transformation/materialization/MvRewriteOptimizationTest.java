@@ -35,7 +35,6 @@ import com.starrocks.scheduler.Task;
 import com.starrocks.scheduler.TaskBuilder;
 import com.starrocks.scheduler.TaskManager;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.StatementBase;
@@ -2237,14 +2236,14 @@ public class MvRewriteOptimizationTest {
         StatementBase mvStmt;
         try {
             List<StatementBase> statementBases =
-                    com.starrocks.sql.parser.SqlParser.parse(sql, connectContext.getSessionVariable());
+                    GlobalStateMgr.getSqlParser().parse(sql, connectContext.getSessionVariable());
             Preconditions.checkState(statementBases.size() == 1);
             mvStmt = statementBases.get(0);
         } catch (ParsingException parsingException) {
             return null;
         }
         Preconditions.checkState(mvStmt instanceof QueryStatement);
-        Analyzer.analyze(mvStmt, connectContext);
+        GlobalStateMgr.getAnalyzer().analyze(mvStmt, connectContext);
         QueryRelation query = ((QueryStatement) mvStmt).getQueryRelation();
         ColumnRefFactory columnRefFactory = new ColumnRefFactory();
         LogicalPlan logicalPlan =

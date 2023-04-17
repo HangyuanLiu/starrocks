@@ -35,6 +35,7 @@ import com.starrocks.load.routineload.RoutineLoadJob;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.OriginStatement;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.parser.NodePosition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -421,7 +422,7 @@ public class CreateRoutineLoadStmt extends DdlStmt {
 
         // parse the origin stmt to get routine load desc
         try {
-            List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(
+            List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(
                     origStmt.originStmt, buildSessionVariables(sessionVariables));
             StatementBase stmt = stmts.get(origStmt.idx);
             if (stmt instanceof CreateRoutineLoadStmt) {

@@ -19,6 +19,7 @@ package com.starrocks.analysis;
 
 import com.google.common.collect.Lists;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AddBackendClause;
 import com.starrocks.sql.ast.AlterSystemStmt;
@@ -69,20 +70,20 @@ public class BackendStmtTest {
     @Test(expected = SemanticException.class)
     public void initBackendsTest1() throws Exception {
         BackendClause stmt = createStmt(1);
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(stmt), new ConnectContext());
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(stmt), new ConnectContext());
     }
 
     @Test(expected = SemanticException.class)
     public void initBackendsTest3() throws Exception {
         BackendClause stmt = createStmt(3);
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(stmt), new ConnectContext());
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(stmt), new ConnectContext());
 
     }
 
     @Test
     public void initBackendsTest4() throws Exception {
         BackendClause stmt = createStmt(4);
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(stmt), new ConnectContext());
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(stmt), new ConnectContext());
 
         Assert.assertEquals("[192.168.1.1:12345]", stmt.getHostPortPairs().toString());
     }
@@ -90,7 +91,7 @@ public class BackendStmtTest {
     @Test
     public void initBackendsTest5() throws Exception {
         BackendClause stmt = createStmt(5);
-        com.starrocks.sql.analyzer.Analyzer.analyze(new AlterSystemStmt(stmt), new ConnectContext());
+        GlobalStateMgr.getAnalyzer().analyze(new AlterSystemStmt(stmt), new ConnectContext());
 
         Assert.assertEquals("[192.168.1.2:12345]", stmt.getHostPortPairs().toString());
     }

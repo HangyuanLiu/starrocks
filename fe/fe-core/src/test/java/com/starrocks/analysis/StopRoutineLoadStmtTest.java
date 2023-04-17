@@ -16,6 +16,7 @@
 package com.starrocks.analysis;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.StopRoutineLoadStmt;
 import com.starrocks.utframe.UtFrameUtils;
@@ -42,7 +43,7 @@ public class StopRoutineLoadStmtTest {
 
         StopRoutineLoadStmt stmt = new StopRoutineLoadStmt(new LabelName("testDb", "label"));
 
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("label", stmt.getName());
         Assert.assertEquals("testDb", stmt.getDbFullName());
     }
@@ -50,7 +51,7 @@ public class StopRoutineLoadStmtTest {
     @Test
     public void testBackquote() throws SecurityException, IllegalArgumentException {
         String sql = "STOP ROUTINE LOAD FOR `db_test`.`rl_test`";
-        List<StatementBase> stmts = com.starrocks.sql.parser.SqlParser.parse(sql, ctx.getSessionVariable());
+        List<StatementBase> stmts = GlobalStateMgr.getSqlParser().parse(sql, ctx.getSessionVariable());
 
         StopRoutineLoadStmt stmt = (StopRoutineLoadStmt) stmts.get(0);
         Assert.assertEquals("db_test", stmt.getDbFullName());

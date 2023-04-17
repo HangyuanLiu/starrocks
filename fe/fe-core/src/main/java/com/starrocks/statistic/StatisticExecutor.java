@@ -35,7 +35,6 @@ import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.common.ErrorType;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.common.StarRocksPlannerException;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.thrift.TResultBatch;
 import com.starrocks.thrift.TResultSinkType;
@@ -106,7 +105,8 @@ public class StatisticExecutor {
 
         StatementBase parsedStmt;
         try {
-            parsedStmt = SqlParser.parseFirstStatement(sql, statsConnectCtx.getSessionVariable().getSqlMode());
+            parsedStmt = GlobalStateMgr.getSqlParser()
+                    .parseFirstStatement(sql, statsConnectCtx.getSessionVariable().getSqlMode());
             StmtExecutor executor = new StmtExecutor(statsConnectCtx, parsedStmt);
             executor.execute();
         } catch (Exception e) {
@@ -127,7 +127,8 @@ public class StatisticExecutor {
         String sql = StatisticSQLBuilder.buildDropHistogramSQL(tableId, columnNames);
         StatementBase parsedStmt;
         try {
-            parsedStmt = SqlParser.parseFirstStatement(sql, statsConnectCtx.getSessionVariable().getSqlMode());
+            parsedStmt = GlobalStateMgr.getSqlParser()
+                    .parseFirstStatement(sql, statsConnectCtx.getSessionVariable().getSqlMode());
             StmtExecutor executor = new StmtExecutor(statsConnectCtx, parsedStmt);
             executor.execute();
         } catch (Exception e) {
@@ -159,7 +160,8 @@ public class StatisticExecutor {
 
         ConnectContext context = StatisticUtils.buildConnectContext();
         context.setThreadLocalInfo();
-        StatementBase parsedStmt = SqlParser.parseFirstStatement(sql, context.getSessionVariable().getSqlMode());
+        StatementBase parsedStmt = GlobalStateMgr.getSqlParser()
+                .parseFirstStatement(sql, context.getSessionVariable().getSqlMode());
 
         ExecPlan execPlan = StatementPlanner.plan(parsedStmt, context, TResultSinkType.STATISTIC);
         StmtExecutor executor = new StmtExecutor(context, parsedStmt);
@@ -273,7 +275,8 @@ public class StatisticExecutor {
     }
 
     private List<TResultBatch> executeDQL(ConnectContext context, String sql) {
-        StatementBase parsedStmt = SqlParser.parseFirstStatement(sql, context.getSessionVariable().getSqlMode());
+        StatementBase parsedStmt = GlobalStateMgr.getSqlParser()
+                .parseFirstStatement(sql, context.getSessionVariable().getSqlMode());
         ExecPlan execPlan = StatementPlanner.plan(parsedStmt, context, TResultSinkType.STATISTIC);
         StmtExecutor executor = new StmtExecutor(context, parsedStmt);
         context.setExecutor(executor);

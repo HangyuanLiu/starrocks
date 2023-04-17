@@ -40,7 +40,6 @@ import com.starrocks.catalog.View;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
-import com.starrocks.privilege.SecurityPolicyRewriteRule;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.MetadataMgr;
@@ -87,7 +86,7 @@ public class QueryAnalyzer {
     private final MetadataMgr metadataMgr;
 
     //TODO: policy
-    private boolean hasRewrite = false;
+    private boolean hasRewrite = true;
 
     public QueryAnalyzer(ConnectContext session) {
         this.session = session;
@@ -272,6 +271,8 @@ public class QueryAnalyzer {
                     ViewRelation viewRelation = new ViewRelation(tableName, view, queryStatement);
                     viewRelation.setAlias(tableRelation.getAlias());
 
+                    return viewRelation;
+                    /*
                     if (hasRewrite) {
                         return viewRelation;
                     }
@@ -282,6 +283,8 @@ public class QueryAnalyzer {
                         hasRewrite = true;
                         return new SubqueryRelation(policyRewriteQuery);
                     }
+
+                     */
                 } else {
                     if (tableRelation.getTemporalClause() != null) {
                         if (table.getType() != Table.TableType.MYSQL) {
@@ -294,10 +297,11 @@ public class QueryAnalyzer {
                     if (table.isSupported()) {
                         tableRelation.setTable(table);
 
+                        return tableRelation;
+                        /*
                         if (hasRewrite) {
                             return tableRelation;
-                        } else {
-
+                        }
                             QueryStatement policyRewriteQuery = SecurityPolicyRewriteRule.buildView(tableRelation);
                             if (policyRewriteQuery == null) {
                                 return tableRelation;
@@ -305,7 +309,7 @@ public class QueryAnalyzer {
                                 hasRewrite = true;
                                 return new SubqueryRelation(policyRewriteQuery);
                             }
-                        }
+                        */
                     } else {
                         throw unsupportedException("unsupported scan table type: " + table.getType());
                     }

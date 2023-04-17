@@ -64,7 +64,6 @@ import com.starrocks.qe.StmtExecutor;
 import com.starrocks.scheduler.persist.MVTaskRunExtraMessage;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.StatementPlanner;
-import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.ast.AddPartitionClause;
 import com.starrocks.sql.ast.DistributionDesc;
@@ -84,7 +83,6 @@ import com.starrocks.sql.common.DmlException;
 import com.starrocks.sql.common.PartitionDiff;
 import com.starrocks.sql.common.SyncPartitionUtils;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
-import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.sql.plan.ExecPlan;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.logging.log4j.LogManager;
@@ -125,6 +123,7 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
     public MvTaskRunContext getMvContext() {
         return mvContext;
     }
+
     @VisibleForTesting
     public void setMvContext(MvTaskRunContext mvContext) {
         this.mvContext = mvContext;
@@ -261,7 +260,7 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
             endPartitionName = startPartitionName;
             partitionsToRefresh.remove(endPartitionName);
         }
-        while (partitionNameIter.hasNext())  {
+        while (partitionNameIter.hasNext()) {
             endPartitionName = partitionNameIter.next();
             partitionsToRefresh.remove(endPartitionName);
         }
@@ -617,7 +616,8 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
     }
 
     private Set<String> getMVPartitionNamesToRefreshByRangePartitionNamesAndForce(Table partitionTable,
-            Set<String> mvRangePartitionNames, boolean force) {
+                                                                                  Set<String> mvRangePartitionNames,
+                                                                                  boolean force) {
         if (force || !supportRefreshByPartition(partitionTable)) {
             return Sets.newHashSet(mvRangePartitionNames);
         }
@@ -680,7 +680,7 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
 
     @VisibleForTesting
     public InsertStmt generateInsertStmt(Set<String> materializedViewPartitions,
-                                          Map<String, Set<String>> sourceTablePartitions) {
+                                         Map<String, Set<String>> sourceTablePartitions) {
         ConnectContext ctx = mvContext.getCtx();
         ctx.getAuditEventBuilder().reset();
         ctx.getAuditEventBuilder()
@@ -692,12 +692,11 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
         ctx.setThreadLocalInfo();
         ctx.getSessionVariable().setEnableMaterializedViewRewrite(false);
         String definition = mvContext.getDefinition();
-        InsertStmt insertStmt =
-                (InsertStmt) SqlParser.parse(definition, ctx.getSessionVariable()).get(0);
+        InsertStmt insertStmt = (InsertStmt) GlobalStateMgr.getSqlParser().parse(definition, ctx.getSessionVariable()).get(0);
         insertStmt.setTargetPartitionNames(new PartitionNames(false, new ArrayList<>(materializedViewPartitions)));
         // insert overwrite mv must set system = true
         insertStmt.setSystem(true);
-        Analyzer.analyze(insertStmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(insertStmt, ctx);
         // after analyze, we could get the table meta info of the tableRelation.
         QueryStatement queryStatement = insertStmt.getQueryStatement();
         Multimap<String, TableRelation> tableRelations =
@@ -794,7 +793,7 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
                     } else {
                         PartitionInfo mvPartitionInfo = materializedView.getPartitionInfo();
                         // do not need to check base partition table changed when mv is not partitioned
-                        if  (!(mvPartitionInfo instanceof ExpressionRangePartitionInfo)) {
+                        if (!(mvPartitionInfo instanceof ExpressionRangePartitionInfo)) {
                             return false;
                         }
 
@@ -824,7 +823,7 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
                     } else {
                         PartitionInfo mvPartitionInfo = materializedView.getPartitionInfo();
                         // do not need to check base partition table changed when mv is not partitioned
-                        if  (!(mvPartitionInfo instanceof ExpressionRangePartitionInfo)) {
+                        if (!(mvPartitionInfo instanceof ExpressionRangePartitionInfo)) {
                             return false;
                         }
 
@@ -882,7 +881,7 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
                 Table hiveTable = hdfsScanNode.getHiveTable();
 
                 Optional<BaseTableInfo> baseTableInfoOptional = materializedView.getBaseTableInfos().stream().filter(
-                        baseTableInfo -> baseTableInfo.getTableIdentifier().equals(hiveTable.getTableIdentifier())).
+                                baseTableInfo -> baseTableInfo.getTableIdentifier().equals(hiveTable.getTableIdentifier())).
                         findAny();
                 if (!baseTableInfoOptional.isPresent()) {
                     continue;
@@ -1094,7 +1093,7 @@ public class PartitionBasedMaterializedViewRefreshProcessor extends BaseTaskRunP
 
         List<com.starrocks.connector.PartitionInfo> hivePartitions = GlobalStateMgr.
                 getCurrentState().getMetadataMgr().getPartitions(baseTableInfo.getCatalogName(), hiveTable,
-                selectedPartitionNames);
+                        selectedPartitionNames);
 
         for (int index = 0; index < selectedPartitionNames.size(); ++index) {
             partitionInfos.put(selectedPartitionNames.get(index),

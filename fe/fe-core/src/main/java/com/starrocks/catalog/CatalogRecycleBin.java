@@ -781,7 +781,7 @@ public class CatalogRecycleBin extends LeaderDaemon implements Writable {
             // privilege object can be invalidated after gc
             GlobalStateMgr.getCurrentState().getAuthorizationManager().removeInvalidObject();
         }
-        GlobalStateMgr.getCurrentState().getSecurityPolicyManager().removeInvalidObject();
+        //GlobalStateMgr.getCurrentState().getSecurityPolicyManager().removeInvalidObject();
     }
 
     @Override

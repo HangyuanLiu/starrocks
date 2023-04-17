@@ -235,7 +235,7 @@ public class SetStmtAnalyzer {
 
                 SelectRelation selectRelation = new SelectRelation(selectList, valuesRelation, null, null, null);
                 QueryStatement queryStatement = new QueryStatement(selectRelation);
-                Analyzer.analyze(queryStatement, ConnectContext.get());
+                GlobalStateMgr.getAnalyzer().analyze(queryStatement, ConnectContext.get());
 
                 Expr variableResult = queryStatement.getQueryRelation().getOutputExpression().get(0);
 

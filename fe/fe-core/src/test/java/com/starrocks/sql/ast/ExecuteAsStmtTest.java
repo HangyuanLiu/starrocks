@@ -70,9 +70,9 @@ public class ExecuteAsStmtTest {
             }
         };
 
-        ExecuteAsStmt stmt = (ExecuteAsStmt) com.starrocks.sql.parser.SqlParser.parse(
+        ExecuteAsStmt stmt = (ExecuteAsStmt) GlobalStateMgr.getSqlParser().parse(
                 "execute as user1 with no revert", 1).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.assertEquals("user1", stmt.getToUser().getQualifiedUser());
         Assert.assertEquals("%", stmt.getToUser().getHost());
         Assert.assertEquals("EXECUTE AS 'user1'@'%' WITH NO REVERT", stmt.toString());
@@ -89,9 +89,9 @@ public class ExecuteAsStmtTest {
                 result = false;
             }
         };
-        ExecuteAsStmt stmt = (ExecuteAsStmt) com.starrocks.sql.parser.SqlParser.parse(
+        ExecuteAsStmt stmt = (ExecuteAsStmt) GlobalStateMgr.getSqlParser().parse(
                 "execute as user1", 1).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No exception throws.");
     }
 
@@ -106,9 +106,9 @@ public class ExecuteAsStmtTest {
             }
         };
 
-        ExecuteAsStmt stmt = (ExecuteAsStmt) com.starrocks.sql.parser.SqlParser.parse(
+        ExecuteAsStmt stmt = (ExecuteAsStmt) GlobalStateMgr.getSqlParser().parse(
                 "execute as user1", 1).get(0);
-        com.starrocks.sql.analyzer.Analyzer.analyze(stmt, ctx);
+        GlobalStateMgr.getAnalyzer().analyze(stmt, ctx);
         Assert.fail("No exception throws.");
     }
 }
