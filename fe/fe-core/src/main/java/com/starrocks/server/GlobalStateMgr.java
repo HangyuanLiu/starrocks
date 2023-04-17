@@ -1407,6 +1407,8 @@ public class GlobalStateMgr {
             checksum = localMetastore.loadAutoIncrementId(dis, checksum);
             remoteChecksum = dis.readLong();
             this.securityPolicyManager = SecurityPolicyManager.load(dis);
+            //remoteChecksum = dis.readLong();
+            checksum = localMetastore.loadAutoIncrementId(dis, checksum);
             remoteChecksum = dis.readLong();
             // ** NOTICE **: always add new code at the end
         } catch (EOFException exception) {

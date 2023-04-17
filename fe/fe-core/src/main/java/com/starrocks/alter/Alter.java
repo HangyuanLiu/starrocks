@@ -69,12 +69,14 @@ import com.starrocks.common.UserException;
 import com.starrocks.common.util.DynamicPartitionUtil;
 import com.starrocks.common.util.PropertyAnalyzer;
 import com.starrocks.persist.AlterViewInfo;
+import com.starrocks.persist.ApplyMaskingPolicyInfo;
 import com.starrocks.persist.BatchModifyPartitionsInfo;
 import com.starrocks.persist.ChangeMaterializedViewRefreshSchemeLog;
 import com.starrocks.persist.ModifyPartitionInfo;
 import com.starrocks.persist.ModifyTablePropertyOperationLog;
 import com.starrocks.persist.RenameMaterializedViewLog;
 import com.starrocks.persist.SwapTableOperationLog;
+import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.scheduler.Constants;
@@ -952,6 +954,14 @@ public class Alter {
                             tableName,
                             applyMaskingPolicyClause.getMaskingColumn(),
                             applyMaskingPolicyClause.getMaskingPolicyContext());
+
+                    ApplyMaskingPolicyInfo applyMaskingPolicyInfo = new ApplyMaskingPolicyInfo();
+                    String s = GsonUtils.GSON.toJson(applyMaskingPolicyInfo);
+                    System.out.println(s);
+                    ApplyMaskingPolicyInfo applyMaskingPolicyInfo1 = GsonUtils.GSON.fromJson(s, ApplyMaskingPolicyInfo.class);
+                    System.out.println(applyMaskingPolicyInfo1.a);
+                    System.out.println(applyMaskingPolicyInfo1.b);
+
                     break;
                 }
                 case REVOKE_COLUMN_MASKING_POLICY: {

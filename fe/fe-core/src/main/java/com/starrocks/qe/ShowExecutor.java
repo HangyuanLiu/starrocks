@@ -142,7 +142,7 @@ import com.starrocks.sql.ast.AdminShowConfigStmt;
 import com.starrocks.sql.ast.AdminShowReplicaDistributionStmt;
 import com.starrocks.sql.ast.AdminShowReplicaStatusStmt;
 import com.starrocks.sql.ast.CreatePolicyStmt;
-import com.starrocks.sql.ast.DescribePolicyStmt;
+import com.starrocks.sql.ast.ShowCreatePolicyStmt;
 import com.starrocks.sql.ast.DescribeStmt;
 import com.starrocks.sql.ast.GrantPrivilegeStmt;
 import com.starrocks.sql.ast.GrantRevokeClause;
@@ -398,8 +398,8 @@ public class ShowExecutor {
                 }
             }
             resultSet = new ShowResultSet(stmt.getMetaData(), rows);
-        } else if (stmt instanceof DescribePolicyStmt) {
-            DescribePolicyStmt describePolicyStmt = (DescribePolicyStmt) stmt;
+        } else if (stmt instanceof ShowCreatePolicyStmt) {
+            ShowCreatePolicyStmt describePolicyStmt = (ShowCreatePolicyStmt) stmt;
             Policy policy = GlobalStateMgr.getCurrentState().getSecurityPolicyManager()
                     .getPolicyByName(describePolicyStmt.getPolicyType(), describePolicyStmt.getPolicyName());
 

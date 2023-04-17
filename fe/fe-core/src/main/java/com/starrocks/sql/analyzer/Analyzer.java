@@ -70,7 +70,7 @@ import com.starrocks.sql.ast.CreateTableLikeStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.CreateWarehouseStmt;
 import com.starrocks.sql.ast.DeleteStmt;
-import com.starrocks.sql.ast.DescribePolicyStmt;
+import com.starrocks.sql.ast.ShowCreatePolicyStmt;
 import com.starrocks.sql.ast.DropCatalogStmt;
 import com.starrocks.sql.ast.DropDbStmt;
 import com.starrocks.sql.ast.DropFileStmt;
@@ -754,7 +754,7 @@ public class Analyzer {
         }
 
         @Override
-        public Void visitDescribePolicyStatement(DescribePolicyStmt stmt, ConnectContext context) {
+        public Void visitShowCreatePolicyStatement(ShowCreatePolicyStmt stmt, ConnectContext context) {
             SecurityPolicyAnalyzer.analyze(stmt, context);
             return null;
         }

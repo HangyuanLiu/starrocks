@@ -31,8 +31,6 @@ public class Policy {
     private Expr policyExpression;
     private String comment;
 
-    private boolean isValid;
-
     public Policy(PolicyType policyType, Long policyId,
                   String policyName, DbPEntryObject dbPEntryObject,
                   List<String> argNames, List<Type> argTypes, Type retType,

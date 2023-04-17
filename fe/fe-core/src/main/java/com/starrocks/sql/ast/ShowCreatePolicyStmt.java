@@ -18,7 +18,7 @@ import com.starrocks.catalog.ScalarType;
 import com.starrocks.qe.ShowResultSetMetaData;
 import com.starrocks.sql.parser.NodePosition;
 
-public class DescribePolicyStmt extends ShowStmt {
+public class ShowCreatePolicyStmt extends ShowStmt {
     private static final ShowResultSetMetaData META_DATA;
 
     private final PolicyType policyType;
@@ -33,7 +33,7 @@ public class DescribePolicyStmt extends ShowStmt {
         META_DATA = builder.build();
     }
 
-    public DescribePolicyStmt(PolicyType policyType, PolicyName policyName, NodePosition pos) {
+    public ShowCreatePolicyStmt(PolicyType policyType, PolicyName policyName, NodePosition pos) {
         super(pos);
         this.policyType = policyType;
         this.policyName = policyName;
@@ -54,6 +54,6 @@ public class DescribePolicyStmt extends ShowStmt {
 
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return visitor.visitDescribePolicyStatement(this, context);
+        return visitor.visitShowCreatePolicyStatement(this, context);
     }
 }

@@ -657,7 +657,7 @@ public abstract class AstVisitor<R, C> {
         return visitShowStatement(statement, context);
     }
 
-    public R visitDescribePolicyStatement(DescribePolicyStmt statement, C context) {
+    public R visitShowCreatePolicyStatement(ShowCreatePolicyStmt statement, C context) {
         return visitStatement(statement, context);
     }
 

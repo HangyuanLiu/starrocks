@@ -53,6 +53,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 public class SecurityPolicyManager {
+
     @SerializedName(value = "idToPolicy")
     private Map<Long, Policy> idToPolicy;
     private final Map<DbPEntryObject, Map<String, Policy>> nameToMaskingPolicy;

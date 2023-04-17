@@ -26,7 +26,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AlterPolicyStmt;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.CreatePolicyStmt;
-import com.starrocks.sql.ast.DescribePolicyStmt;
+import com.starrocks.sql.ast.ShowCreatePolicyStmt;
 import com.starrocks.sql.ast.DropPolicyStmt;
 import com.starrocks.sql.ast.PolicyName;
 import com.starrocks.sql.ast.PolicyType;
@@ -131,7 +131,7 @@ public class SecurityPolicyAnalyzer {
         }
 
         @Override
-        public Void visitDescribePolicyStatement(DescribePolicyStmt stmt, ConnectContext session) {
+        public Void visitShowCreatePolicyStatement(ShowCreatePolicyStmt stmt, ConnectContext session) {
             PolicyName policyName = stmt.getPolicyName();
             normalizationTableName(session, policyName);
             return null;

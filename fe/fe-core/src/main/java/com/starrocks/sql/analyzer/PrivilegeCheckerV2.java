@@ -94,7 +94,7 @@ import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.CreateViewStmt;
 import com.starrocks.sql.ast.DelSqlBlackListStmt;
 import com.starrocks.sql.ast.DeleteStmt;
-import com.starrocks.sql.ast.DescribePolicyStmt;
+import com.starrocks.sql.ast.ShowCreatePolicyStmt;
 import com.starrocks.sql.ast.DescribeStmt;
 import com.starrocks.sql.ast.DropCatalogStmt;
 import com.starrocks.sql.ast.DropDbStmt;
@@ -1192,7 +1192,7 @@ public class PrivilegeCheckerV2 {
         }
 
         @Override
-        public Void visitDescribePolicyStatement(DescribePolicyStmt statement, ConnectContext context) {
+        public Void visitShowCreatePolicyStatement(ShowCreatePolicyStmt statement, ConnectContext context) {
             if (!PrivilegeActions.checkAnyActionOnPolicy(context, statement.getPolicyType(),
                     statement.getPolicyName().getCatalog(), statement.getPolicyName().getDbName(),
                     statement.getPolicyName().getName())) {
