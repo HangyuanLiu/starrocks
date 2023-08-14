@@ -47,7 +47,7 @@ public class FeConstants {
     // for rollback compatible
     public static final int META_VERSION = 92;
     // Current starrocks metadata version. Use this version to write journals and image
-    public static final int STARROCKS_META_VERSION = StarRocksFEMetaVersion.VERSION_CURRENT;
+    public static final int STARROCKS_META_VERSION = Config.meta_version;
     // use \N to indicate NULL
     public static final String NULL_STRING = "\\N";
     public static final int AGG_FUNC_VERSION = 3;
