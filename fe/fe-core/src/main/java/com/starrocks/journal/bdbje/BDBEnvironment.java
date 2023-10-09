@@ -574,7 +574,7 @@ public class BDBEnvironment {
     /**
      * package private, used within com.starrocks.journal.bdbje
      */
-    TransactionConfig getTxnConfig() {
+    public TransactionConfig getTxnConfig() {
         return txnConfig;
     }
 }

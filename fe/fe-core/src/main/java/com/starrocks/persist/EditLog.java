@@ -36,6 +36,7 @@ package com.starrocks.persist;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.sleepycat.je.Transaction;
 import com.starrocks.alter.AlterJobV2;
 import com.starrocks.alter.BatchAlterJobPersistInfo;
 import com.starrocks.authentication.UserAuthenticationInfo;
@@ -65,6 +66,7 @@ import com.starrocks.journal.JournalEntity;
 import com.starrocks.journal.JournalInconsistentException;
 import com.starrocks.journal.JournalTask;
 import com.starrocks.journal.bdbje.Timestamp;
+import com.starrocks.journal.kv.TransactionJournalTask;
 import com.starrocks.load.DeleteInfo;
 import com.starrocks.load.DeleteMgr;
 import com.starrocks.load.ExportFailMsg;
@@ -801,6 +803,9 @@ public class EditLog {
                 }
                 case OperationType.OP_DROP_SMALL_FILE:
                 case OperationType.OP_DROP_SMALL_FILE_V2: {
+                    if (Config.kv_meta && !GlobalStateMgr.isCheckpointThread()) {
+                        break;
+                    }
                     SmallFile smallFile = (SmallFile) journal.getData();
                     globalStateMgr.getSmallFileMgr().replayRemoveFile(smallFile);
                     break;
@@ -1152,7 +1157,7 @@ public class EditLog {
         // because starmgr state change happens before global state mgr state change,
         // it will write log before global state mgr becomes leader
         Preconditions.checkState(RunMode.getCurrentRunMode() != RunMode.SHARED_NOTHING ||
-                                 GlobalStateMgr.getCurrentState().isLeader(),
+                        GlobalStateMgr.getCurrentState().isLeader(),
                 "Current node is not leader, submit log is not allowed");
         DataOutputBuffer buffer = new DataOutputBuffer(OUTPUT_BUFFER_INIT_SIZE);
 
@@ -2127,5 +2132,18 @@ public class EditLog {
 
     public void logDropStorageVolume(DropStorageVolumeLog log) {
         logEdit(OperationType.OP_DROP_STORAGE_VOLUME, log);
+    }
+
+    /**
+     * submit log to queue, wait for JournalWriter
+     */
+    public boolean commit(Transaction transaction, List<Pair<Short, Writable>> opLogs) {
+        TransactionJournalTask transactionJournalTask = new TransactionJournalTask(transaction, opLogs);
+        try {
+            this.journalQueue.put(transactionJournalTask);
+            return transactionJournalTask.get();
+        } catch (InterruptedException | ExecutionException e) {
+            return false;
+        }
     }
 }

@@ -130,6 +130,7 @@ import com.starrocks.common.util.PrintableMap;
 import com.starrocks.common.util.PropertyAnalyzer;
 import com.starrocks.common.util.QueryableReentrantLock;
 import com.starrocks.common.util.SmallFileMgr;
+import com.starrocks.common.util.SmallFileMgrKV;
 import com.starrocks.common.util.Util;
 import com.starrocks.common.util.WriteQuorum;
 import com.starrocks.connector.ConnectorMetadata;
@@ -151,11 +152,13 @@ import com.starrocks.journal.Journal;
 import com.starrocks.journal.JournalCursor;
 import com.starrocks.journal.JournalEntity;
 import com.starrocks.journal.JournalException;
-import com.starrocks.journal.JournalFactory;
 import com.starrocks.journal.JournalInconsistentException;
 import com.starrocks.journal.JournalTask;
 import com.starrocks.journal.JournalWriter;
+import com.starrocks.journal.bdbje.BDBEnvironment;
+import com.starrocks.journal.bdbje.BDBJEJournal;
 import com.starrocks.journal.bdbje.Timestamp;
+import com.starrocks.journal.kv.BDBKVClient;
 import com.starrocks.lake.ShardManager;
 import com.starrocks.lake.StarMgrMetaSyncer;
 import com.starrocks.lake.StarOSAgent;
@@ -389,6 +392,11 @@ public class GlobalStateMgr {
     private FrontendDaemon txnTimeoutChecker; // To abort timeout txns
     private FrontendDaemon taskCleaner;   // To clean expire Task/TaskRun
     private JournalWriter journalWriter; // leader only: write journal log
+    private BDBKVClient BDBKVClient;
+    public BDBKVClient getKvJournal() {
+        return BDBKVClient;
+    }
+
     private Daemon replayer;
     private Daemon timePrinter;
     private EsRepository esRepository;  // it is a daemon, so add it here
@@ -734,7 +742,11 @@ public class GlobalStateMgr {
         this.routineLoadTaskScheduler = new RoutineLoadTaskScheduler(routineLoadMgr);
         this.mvMVJobExecutor = new MVJobExecutor();
 
-        this.smallFileMgr = new SmallFileMgr();
+        if (Config.kv_meta && !GlobalStateMgr.isCheckpointThread()) {
+            this.smallFileMgr = new SmallFileMgrKV();
+        } else {
+            this.smallFileMgr = new SmallFileMgr();
+        }
 
         this.dynamicPartitionScheduler = new DynamicPartitionScheduler("DynamicPartitionScheduler",
                 Config.dynamic_partition_check_interval_seconds * 1000L);
@@ -1152,10 +1164,14 @@ public class GlobalStateMgr {
     protected void initJournal() throws JournalException, InterruptedException {
         BlockingQueue<JournalTask> journalQueue =
                 new ArrayBlockingQueue<JournalTask>(Config.metadata_journal_queue_size);
-        journal = JournalFactory.create(nodeMgr.getNodeName());
-        journalWriter = new JournalWriter(journal, journalQueue);
+        //journal = JournalFactory.create(nodeMgr.getNodeName());
 
+        BDBEnvironment environment = BDBEnvironment.initBDBEnvironment(nodeMgr.getNodeName());
+        journal = new BDBJEJournal(environment);
+        journalWriter = new JournalWriter(journal, journalQueue);
         editLog = new EditLog(journalQueue);
+
+        BDBKVClient = new BDBKVClient(environment);
     }
 
     // wait until FE is ready.
@@ -1213,6 +1229,7 @@ public class GlobalStateMgr {
         // setup for journal
         try {
             journal.open();
+            BDBKVClient.open();
             if (!haProtocol.fencing()) {
                 throw new Exception("fencing failed. will exit");
             }
@@ -1220,6 +1237,17 @@ public class GlobalStateMgr {
             replayJournal(maxJournalId);
             nodeMgr.checkCurrentNodeExist();
             journalWriter.init(maxJournalId);
+
+            if (Config.kv_meta) {
+                if (!BDBKVClient.isKVMeta(SRMetaBlockID.SMALL_FILE_MGR)) {
+                    smallFileMgr.upgradeToKV();
+                    BDBKVClient.markTransferred(SRMetaBlockID.SMALL_FILE_MGR);
+                }
+            } else {
+                if (BDBKVClient.isKVMeta(SRMetaBlockID.SMALL_FILE_MGR)) {
+                    BDBKVClient.ignoreTransferred(SRMetaBlockID.SMALL_FILE_MGR);
+                }
+            }
         } catch (Exception e) {
             // TODO: gracefully exit
             LOG.error("failed to init journal after transfer to leader! will exit", e);
@@ -1635,6 +1663,137 @@ public class GlobalStateMgr {
                 // ** NOTICE **: always add new code at the end
 
                 Preconditions.checkState(remoteChecksum == checksum, remoteChecksum + " vs. " + checksum);
+            }
+        } catch (EOFException exception) {
+            LOG.warn("load image eof.", exception);
+        } finally {
+            dis.close();
+        }
+
+        if (isUsingNewPrivilege() && needUpgradedToNewPrivilege() && !isLeader() && !isCheckpointThread()) {
+            LOG.warn(
+                    "follower has to wait for leader to upgrade the privileges, set usingNewPrivilege = false for now");
+            usingNewPrivilege.set(false);
+            domainResolver = new DomainResolver(auth);
+        }
+
+        try {
+            postLoadImage();
+        } catch (Exception t) {
+            LOG.warn("there is an exception during processing after load image. exception:", t);
+        }
+
+        long loadImageEndTime = System.currentTimeMillis();
+        this.imageJournalId = storage.getImageJournalId();
+        LOG.info("finished to load image in " + (loadImageEndTime - loadImageStartTime) + " ms");
+    }
+
+
+    public void upgradeToKV(String imageDir) throws IOException, DdlException {
+        Storage storage = new Storage(imageDir);
+        nodeMgr.setClusterId(storage.getClusterID());
+        File curFile = storage.getCurrentImageFile();
+        if (!curFile.exists()) {
+            // image.0 may not exist
+            LOG.info("image does not exist: {}", curFile.getAbsolutePath());
+            return;
+        }
+        replayedJournalId.set(storage.getImageJournalId());
+        LOG.info("start load image from {}. is ckpt: {}", curFile.getAbsolutePath(),
+                GlobalStateMgr.isCheckpointThread());
+        long loadImageStartTime = System.currentTimeMillis();
+        DataInputStream dis = new DataInputStream(new BufferedInputStream(Files.newInputStream(curFile.toPath())));
+
+        long checksum = 0;
+        long remoteChecksum = -1;  // in case of empty image file checksum match
+        try {
+            checksum = loadVersion(dis, checksum);
+            checkOpTypeValid();
+
+            if (GlobalStateMgr.getCurrentStateStarRocksMetaVersion() >= StarRocksFEMetaVersion.VERSION_4) {
+                Map<SRMetaBlockID, SRMetaBlockLoader> loadImages = ImmutableMap.<SRMetaBlockID, SRMetaBlockLoader>builder()
+                        .put(SRMetaBlockID.NODE_MGR, nodeMgr::load)
+                        .put(SRMetaBlockID.LOCAL_META_STORE, localMetastore::load)
+                        .put(SRMetaBlockID.ALTER_MGR, alterJobMgr::load)
+                        .put(SRMetaBlockID.CATALOG_RECYCLE_BIN, recycleBin::load)
+                        .put(SRMetaBlockID.VARIABLE_MGR, VariableMgr::load)
+                        .put(SRMetaBlockID.RESOURCE_MGR, resourceMgr::loadResourcesV2)
+                        .put(SRMetaBlockID.EXPORT_MGR, exportMgr::loadExportJobV2)
+                        .put(SRMetaBlockID.BACKUP_MGR, backupHandler::loadBackupHandlerV2)
+                        .put(SRMetaBlockID.AUTH, auth::load)
+                        .put(SRMetaBlockID.GLOBAL_TRANSACTION_MGR, globalTransactionMgr::loadTransactionStateV2)
+                        .put(SRMetaBlockID.COLOCATE_TABLE_INDEX, colocateTableIndex::loadColocateTableIndexV2)
+                        .put(SRMetaBlockID.ROUTINE_LOAD_MGR, routineLoadMgr::loadRoutineLoadJobsV2)
+                        .put(SRMetaBlockID.LOAD_MGR, loadMgr::loadLoadJobsV2JsonFormat)
+                        .put(SRMetaBlockID.SMALL_FILE_MGR, smallFileMgr::loadSmallFilesV2)
+                        .put(SRMetaBlockID.PLUGIN_MGR, pluginMgr::load)
+                        .put(SRMetaBlockID.DELETE_MGR, deleteMgr::load)
+                        .put(SRMetaBlockID.ANALYZE_MGR, analyzeMgr::load)
+                        .put(SRMetaBlockID.RESOURCE_GROUP_MGR, resourceGroupMgr::load)
+                        .put(SRMetaBlockID.AUTHENTICATION_MGR, authenticationMgr::upgradeToKV)
+                        .put(SRMetaBlockID.AUTHORIZATION_MGR, authorizationMgr::loadV2)
+                        .put(SRMetaBlockID.TASK_MGR, taskManager::loadTasksV2)
+                        .put(SRMetaBlockID.CATALOG_MGR, catalogMgr::load)
+                        .put(SRMetaBlockID.INSERT_OVERWRITE_JOB_MGR, insertOverwriteJobMgr::load)
+                        .put(SRMetaBlockID.COMPACTION_MGR, compactionMgr::load)
+                        .put(SRMetaBlockID.STREAM_LOAD_MGR, streamLoadMgr::load)
+                        .put(SRMetaBlockID.MATERIALIZED_VIEW_MGR, MaterializedViewMgr.getInstance()::load)
+                        .put(SRMetaBlockID.GLOBAL_FUNCTION_MGR, globalFunctionMgr::load)
+                        .put(SRMetaBlockID.STORAGE_VOLUME_MGR, storageVolumeMgr::load)
+                        .build();
+                try {
+                    loadHeaderV2(dis);
+
+                    Iterator<Map.Entry<SRMetaBlockID, SRMetaBlockLoader>> iterator = loadImages.entrySet().iterator();
+                    Map.Entry<SRMetaBlockID, SRMetaBlockLoader> entry = iterator.next();
+                    while (true) {
+                        SRMetaBlockID srMetaBlockID = entry.getKey();
+                        SRMetaBlockReader reader = new SRMetaBlockReader(dis);
+                        if (reader.getHeader().getVersion() == 1) {
+                            reader.close();
+                            continue;
+                        }
+
+                        if (!reader.getHeader().getSrMetaBlockID().equals(srMetaBlockID)) {
+                            /*
+                              The expected read module does not match the module stored in the image,
+                              and the json chunk is skipped directly. This usually occurs in several situations.
+                              1. When the obsolete image code is deleted.
+                              2. When the new version rolls back to the old version,
+                                 the old version ignores the functions of the new version
+                             */
+                            LOG.warn(String.format("Ignore this invalid meta block, sr meta block id mismatch" +
+                                    "(expect %s actual %s)", srMetaBlockID, reader.getHeader().getSrMetaBlockID()));
+                            reader.close();
+                            continue;
+                        }
+
+                        try {
+                            SRMetaBlockLoader imageLoader = entry.getValue();
+                            imageLoader.apply(reader);
+                            LOG.info("Success load StarRocks meta block " + srMetaBlockID + " from image");
+                        } catch (SRMetaBlockEOFException srMetaBlockEOFException) {
+                            /*
+                              The number of json expected to be read is more than the number of json actually stored
+                              in the image, which usually occurs when the module adds new functions.
+                             */
+                            LOG.warn("Got EOF exception, ignore, ", srMetaBlockEOFException);
+                        } catch (SRMetaBlockException srMetaBlockException) {
+                            LOG.error("Load meta block failed ", srMetaBlockException);
+                            throw new IOException("Load meta block failed ", srMetaBlockException);
+                        } finally {
+                            reader.close();
+                        }
+                        if (iterator.hasNext()) {
+                            entry = iterator.next();
+                        } else {
+                            break;
+                        }
+                    }
+                } catch (SRMetaBlockException e) {
+                    LOG.error("load meta block failed ", e);
+                    throw new IOException("load meta block failed ", e);
+                }
             }
         } catch (EOFException exception) {
             LOG.warn("load image eof.", exception);

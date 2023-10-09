@@ -15,13 +15,21 @@
 
 package com.starrocks.journal;
 
+import com.sleepycat.bind.tuple.TupleBinding;
+import com.sleepycat.je.DatabaseEntry;
+import com.sleepycat.je.Transaction;
 import com.starrocks.common.Config;
+import com.starrocks.common.Pair;
+import com.starrocks.common.io.DataOutputBuffer;
+import com.starrocks.common.io.Writable;
 import com.starrocks.common.util.Daemon;
 import com.starrocks.common.util.Util;
+import com.starrocks.journal.kv.TransactionJournalTask;
 import com.starrocks.metric.MetricRepo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -48,7 +56,7 @@ public class JournalWriter {
     // store journal tasks of this batch
     protected List<JournalTask> currentBatchTasks = new ArrayList<>();
     // current journal task
-    private JournalTask currentJournal;
+    private JournalTask currentJournalTask;
     // batch start time
     private long startTimeNano;
     // batch size in bytes
@@ -61,7 +69,9 @@ public class JournalWriter {
      */
     private boolean forceRollJournal;
 
-    /** Last timestamp in millisecond to log the commit triggered by delay. */
+    /**
+     * Last timestamp in millisecond to log the commit triggered by delay.
+     */
     private long lastLogTimeForDelayTriggeredCommit = -1;
 
     public JournalWriter(Journal journal, BlockingQueue<JournalTask> journalQueue) {
@@ -74,12 +84,12 @@ public class JournalWriter {
      */
     public void init(long maxJournalId) throws JournalException {
         this.nextVisibleJournalId = maxJournalId + 1;
-        this.journal.rollJournal(this.nextVisibleJournalId);
+        this.journal.rollJournal(nextVisibleJournalId);
     }
 
     public void startDaemon() {
         // ensure init() is called.
-        assert (nextVisibleJournalId > 0);
+        // assert (nextVisibleJournalId > 0);
         Daemon d = new Daemon("JournalWriter", 0L) {
             @Override
             protected void runOneCycle() {
@@ -97,47 +107,90 @@ public class JournalWriter {
         d.start();
     }
 
+    public void log(Transaction transaction, short operationType, long journalId, Writable writable) throws IOException {
+        DataOutputBuffer buffer = new DataOutputBuffer(128);
+        JournalEntity entity = new JournalEntity();
+        entity.setOpCode(operationType);
+        entity.setData(writable);
+        entity.write(buffer);
+        DatabaseEntry theData = new DatabaseEntry(buffer.getData(), 0, buffer.getLength());
+
+        DatabaseEntry theKey = new DatabaseEntry();
+        TupleBinding<Long> idBinding = TupleBinding.getPrimitiveBinding(Long.class);
+        idBinding.objectToEntry(journalId, theKey);
+
+        journal.putNoOverwrite(transaction, theKey, theData);
+    }
+
     protected void writeOneBatch() throws InterruptedException {
-        // waiting if necessary until an element becomes available
-        currentJournal = journalQueue.take();
+
         long nextJournalId = nextVisibleJournalId;
         initBatch();
 
-        try {
-            this.journal.batchWriteBegin();
+        if (currentJournalTask == null) {
+            // waiting if necessary until an element becomes available
+            currentJournalTask = journalQueue.take();
+        }
 
-            while (true) {
-                journal.batchWriteAppend(nextJournalId, currentJournal.getBuffer());
-                currentBatchTasks.add(currentJournal);
-                nextJournalId += 1;
-
-                if (shouldCommitNow()) {
-                    break;
-                }
-
-                currentJournal = journalQueue.take();
-            }
-        } catch (JournalException e) {
-            // abort current task
-            LOG.warn("failed to write batch, will abort current journal {} and commit", currentJournal, e);
-            abortJournalTask(currentJournal, e.getMessage());
-        } finally {
+        if (currentJournalTask instanceof TransactionJournalTask) {
             try {
-                // commit
-                journal.batchWriteCommit();
-                LOG.debug("batch write commit success, from {} - {}", nextVisibleJournalId, nextJournalId);
-                nextVisibleJournalId = nextJournalId;
-                markCurrentBatchSucceed();
-            } catch (JournalException e) {
-                // abort
-                LOG.warn("failed to commit batch, will abort current {} journals.",
-                        currentBatchTasks.size(), e);
-                try {
-                    journal.batchWriteAbort();
-                } catch (JournalException e2) {
-                    LOG.warn("failed to abort batch, will ignore and continue.", e);
+                TransactionJournalTask transactionJournalTask = (TransactionJournalTask) currentJournalTask;
+
+                Transaction transaction = transactionJournalTask.getTransaction();
+                for (Pair<Short, Writable> pair : transactionJournalTask.getOperationType()) {
+                    log(transaction, pair.first, nextJournalId, pair.second);
+                    nextJournalId += 1;
                 }
-                abortCurrentBatch(e.getMessage());
+                transaction.commit();
+
+                nextVisibleJournalId = nextJournalId;
+                currentJournalTask.markSucceed();
+            } catch (IOException e2) {
+                currentJournalTask.markAbort();
+            }
+        } else {
+            try {
+                this.journal.batchWriteBegin();
+
+                while (true) {
+                    journal.batchWriteAppend(nextJournalId, currentJournalTask.getBuffer());
+                    currentBatchTasks.add(currentJournalTask);
+                    nextJournalId += 1;
+
+                    if (shouldCommitNow()) {
+                        break;
+                    }
+
+                    currentJournalTask = journalQueue.take();
+                    if (currentJournalTask instanceof TransactionJournalTask) {
+                        break;
+                    }
+                }
+            } catch (JournalException e) {
+                // abort current task
+                LOG.warn("failed to write batch, will abort current journal {} and commit", currentJournalTask, e);
+                abortJournalTask(currentJournalTask, e.getMessage());
+            } finally {
+                try {
+                    // commit
+                    journal.batchWriteCommit();
+                    //LOG.debug("batch write commit success, from {} - {}", nextVisibleJournalId, nextJournalId);
+                    nextVisibleJournalId = nextJournalId;
+                    markCurrentBatchSucceed();
+
+                    //避免重复提交Task
+                    currentJournalTask = null;
+                } catch (JournalException e) {
+                    // abort
+                    LOG.warn("failed to commit batch, will abort current {} journals.",
+                            currentBatchTasks.size(), e);
+                    try {
+                        journal.batchWriteAbort();
+                    } catch (JournalException e2) {
+                        LOG.warn("failed to abort batch, will ignore and continue.", e);
+                    }
+                    abortCurrentBatch(e.getMessage());
+                }
             }
         }
 
@@ -166,9 +219,9 @@ public class JournalWriter {
 
     /**
      * We should notify the caller to rollback or report error on abort, like this.
-     *
+     * <p>
      * task.markAbort();
-     *
+     * <p>
      * But now we have to exit for historical reason.
      * Note that if we exit here, the final clause(commit current batch) will not be executed.
      */
@@ -180,15 +233,15 @@ public class JournalWriter {
 
     private boolean shouldCommitNow() {
         // 1. check if is an emergency journal
-        if (currentJournal.getBetterCommitBeforeTimeInNano() > 0) {
-            long delayNanos = System.nanoTime() - currentJournal.getBetterCommitBeforeTimeInNano();
+        if (currentJournalTask.getBetterCommitBeforeTimeInNano() > 0) {
+            long delayNanos = System.nanoTime() - currentJournalTask.getBetterCommitBeforeTimeInNano();
             if (delayNanos >= 0) {
                 long logTime = System.currentTimeMillis();
                 // avoid logging too many messages if triggered frequently
                 if (lastLogTimeForDelayTriggeredCommit + 500 < logTime) {
                     lastLogTimeForDelayTriggeredCommit = logTime;
                     LOG.warn("journal expect commit before {} is delayed {} nanos, will commit now",
-                            currentJournal.getBetterCommitBeforeTimeInNano(), delayNanos);
+                            currentJournalTask.getBetterCommitBeforeTimeInNano(), delayNanos);
                 }
                 return true;
             }
@@ -202,7 +255,7 @@ public class JournalWriter {
         }
 
         // 3. check uncommitted journals by size
-        uncommittedEstimatedBytes += currentJournal.estimatedSizeByte();
+        uncommittedEstimatedBytes += currentJournalTask.estimatedSizeByte();
         if (uncommittedEstimatedBytes >= Config.metadata_journal_max_batch_size_mb * 1024 * 1024) {
             LOG.warn("uncommitted estimated bytes {} >= {}MB, will commit now",
                     uncommittedEstimatedBytes, Config.metadata_journal_max_batch_size_mb);
@@ -261,7 +314,7 @@ public class JournalWriter {
             }
             String reason;
             if (rollJournalCounter >= Config.edit_log_roll_num) {
-                reason = String.format("rollEditCounter {} >= edit_log_roll_num {}",
+                reason = String.format("rollEditCounter %d >= edit_log_roll_num %d",
                         rollJournalCounter, Config.edit_log_roll_num);
             } else {
                 reason = "triggering a new checkpoint manually";

@@ -16,14 +16,20 @@
 package com.starrocks.authentication;
 
 import com.google.gson.annotations.SerializedName;
+import com.sleepycat.je.OperationStatus;
+import com.sleepycat.je.Transaction;
 import com.starrocks.StarRocksFE;
 import com.starrocks.common.Config;
 import com.starrocks.common.ConfigBase;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.Pair;
+import com.starrocks.journal.kv.BDBKVClient;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.mysql.privilege.Password;
+import com.starrocks.persist.AlterUserInfo;
+import com.starrocks.persist.CreateUserInfo;
+import com.starrocks.persist.OperationType;
 import com.starrocks.persist.metablock.SRMetaBlockEOFException;
 import com.starrocks.persist.metablock.SRMetaBlockException;
 import com.starrocks.persist.metablock.SRMetaBlockID;
@@ -307,61 +313,71 @@ public class AuthenticationMgr {
         }
     }
 
-    public void createUser(CreateUserStmt stmt) throws DdlException {
+    public void createUser(CreateUserStmt stmt) {
         UserIdentity userIdentity = stmt.getUserIdentity();
         UserAuthenticationInfo info = stmt.getAuthenticationInfo();
-        writeLock();
+
+        BDBKVClient BDBKVClient = GlobalStateMgr.getCurrentState().getKvJournal();
+        Transaction transaction = BDBKVClient.startTransaction();
         try {
-            if (userToAuthenticationInfo.containsKey(userIdentity)) {
+            if (BDBKVClient.contains(transaction, userIdentity)) {
                 // Existence verification has been performed in the Analyzer stage. If it exists here,
                 // it may be that other threads have performed the same operation, and return directly here
                 LOG.info("Operation CREATE USER failed for " + stmt.getUserIdentity()
                         + " : user " + stmt.getUserIdentity() + " already exists");
                 return;
             }
-            userToAuthenticationInfo.put(userIdentity, info);
 
-            UserProperty userProperty = null;
-            if (!userNameToProperty.containsKey(userIdentity.getQualifiedUser())) {
-                userProperty = new UserProperty();
-                userNameToProperty.put(userIdentity.getQualifiedUser(), userProperty);
+            OperationStatus status = BDBKVClient.putNoOverwrite(transaction, "authentication", userIdentity, info);
+            if (!status.equals(OperationStatus.SUCCESS)) {
+                throw new Exception();
             }
-            GlobalStateMgr globalStateMgr = GlobalStateMgr.getCurrentState();
-            AuthorizationMgr authorizationManager = globalStateMgr.getAuthorizationMgr();
-            // init user privilege
-            UserPrivilegeCollectionV2 collection =
-                    authorizationManager.onCreateUser(userIdentity, stmt.getDefaultRoles());
 
-            short pluginId = authorizationManager.getProviderPluginId();
-            short pluginVersion = authorizationManager.getProviderPluginVersion();
-            globalStateMgr.getEditLog().logCreateUser(
-                    userIdentity, info, userProperty, collection, pluginId, pluginVersion);
+            if (BDBKVClient.contains(transaction, userIdentity.getQualifiedUser())) {
+                BDBKVClient.putNoOverwrite(transaction, "user_property", userIdentity.getQualifiedUser(), new UserProperty());
+            }
 
-        } catch (PrivilegeException e) {
-            throw new DdlException("failed to create user " + userIdentity + " : " + e.getMessage(), e);
-        } finally {
-            writeUnlock();
+            AuthorizationMgr authorizationManager = GlobalStateMgr.getCurrentState().getAuthorizationMgr();
+            //UserPrivilegeCollectionV2 collection = authorizationManager.onCreateUser(userIdentity, stmt.getDefaultRoles());
+
+            UserPrivilegeCollectionV2 userPrivilegeCollection = new UserPrivilegeCollectionV2();
+            List<String> defaultRoleName = stmt.getDefaultRoles();
+            if (!defaultRoleName.isEmpty()) {
+                Set<Long> roleIds = new HashSet<>();
+                for (String role : defaultRoleName) {
+                    Long roleId = authorizationManager.getRoleIdByNameAllowNull(role);
+                    userPrivilegeCollection.grantRole(roleId);
+                    roleIds.add(roleId);
+                }
+                userPrivilegeCollection.setDefaultRoleIds(roleIds);
+            }
+            BDBKVClient.putNoOverwrite(transaction, "authorization", userIdentity, userPrivilegeCollection);
+
+            CreateUserInfo createUserInfo = new CreateUserInfo(userIdentity, info, new UserProperty(), userPrivilegeCollection,
+                    authorizationManager.getProviderPluginId(), authorizationManager.getProviderPluginVersion());
+            GlobalStateMgr.getCurrentState().getEditLog().log(transaction, OperationType.OP_CREATE_USER_V2, createUserInfo);
+            transaction.commit();
+        } catch (Exception e) {
+            transaction.abort();
         }
     }
 
-    public void alterUser(UserIdentity userIdentity, UserAuthenticationInfo userAuthenticationInfo)
-            throws DdlException {
-        writeLock();
-        try {
-            if (!userToAuthenticationInfo.containsKey(userIdentity)) {
-                // Existence verification has been performed in the Analyzer stage. If it not exists here,
-                // it may be that other threads have performed the same operation, and return directly here
-                LOG.info("Operation ALTER USER failed for " + userIdentity + " : user " + userIdentity + " not exists");
-                return;
-            }
+    public void alterUser(UserIdentity userIdentity, UserAuthenticationInfo userAuthenticationInfo) throws DdlException, IOException {
+        BDBKVClient BDBKVClient = GlobalStateMgr.getCurrentState().getKvJournal();
+        Transaction transaction = BDBKVClient.startTransaction();
 
-            updateUserNoLock(userIdentity, userAuthenticationInfo, true);
-            GlobalStateMgr.getCurrentState().getEditLog().logAlterUser(userIdentity, userAuthenticationInfo);
-        } catch (AuthenticationException e) {
-            throw new DdlException("failed to alter user " + userIdentity, e);
-        } finally {
-            writeUnlock();
+        if (!BDBKVClient.contains(transaction, userIdentity)) {
+            // Existence verification has been performed in the Analyzer stage. If it not exists here,
+            // it may be that other threads have performed the same operation, and return directly here
+            LOG.info("Operation ALTER USER failed for " + userIdentity + " : user " + userIdentity + " not exists");
+            return;
         }
+
+        BDBKVClient.putNoOverwrite(transaction, "authentication", userIdentity, userAuthenticationInfo);
+        GlobalStateMgr.getCurrentState().getEditLog().log(transaction, OperationType.OP_ALTER_USER_V2,
+                new AlterUserInfo(userIdentity, userAuthenticationInfo));
+
+        transaction.commit();
     }
 
     private void updateUserPropertyNoLock(String user, List<Pair<String, String>> properties) throws DdlException {
@@ -386,7 +402,6 @@ public class AuthenticationMgr {
 
     public void createSecurityIntegration(String name, Map<String, String> propertyMap) throws DdlException {
         createSecurityIntegration(name, propertyMap, false);
-
     }
 
     public void createSecurityIntegration(String name, Map<String, String> propertyMap, boolean isReplay) throws DdlException {
@@ -455,17 +470,15 @@ public class AuthenticationMgr {
         }
     }
 
-    public void dropUser(DropUserStmt stmt) throws DdlException {
+    public void dropUser(DropUserStmt stmt) throws DdlException, IOException {
         UserIdentity userIdentity = stmt.getUserIdentity();
-        writeLock();
-        try {
-            dropUserNoLock(userIdentity);
-            // drop user privilege as well
-            GlobalStateMgr.getCurrentState().getAuthorizationMgr().onDropUser(userIdentity);
-            GlobalStateMgr.getCurrentState().getEditLog().logDropUser(userIdentity);
-        } finally {
-            writeUnlock();
-        }
+        BDBKVClient BDBKVClient = GlobalStateMgr.getCurrentState().getKvJournal();
+        Transaction transaction = BDBKVClient.startTransaction();
+        BDBKVClient.delete(transaction, "authentication", userIdentity);
+        BDBKVClient.delete(transaction, "authorization", userIdentity);
+
+        GlobalStateMgr.getCurrentState().getEditLog().log(transaction, OperationType.OP_DROP_USER_V3, userIdentity);
+        transaction.commit();
     }
 
     public void replayDropUser(UserIdentity userIdentity) {
@@ -744,7 +757,7 @@ public class AuthenticationMgr {
         try {
             // 1 json for myself,1 json for number of users, 2 json for each user(kv)
             final int cnt = 1 + 1 + userToAuthenticationInfo.size() * 2;
-            SRMetaBlockWriter writer = new SRMetaBlockWriter(dos, SRMetaBlockID.AUTHENTICATION_MGR, cnt);
+            SRMetaBlockWriter writer = new SRMetaBlockWriter(dos, SRMetaBlockID.AUTHENTICATION_MGR, cnt, 1);
             // 1 json for myself
             writer.writeJson(this);
             // 1 json for num user
@@ -764,6 +777,11 @@ public class AuthenticationMgr {
     }
 
     public void loadV2(SRMetaBlockReader reader) throws IOException, SRMetaBlockException, SRMetaBlockEOFException {
+        if (reader.getHeader().getVersion() == 1) {
+            upgradeToKV(reader);
+            return;
+        }
+
         AuthenticationMgr ret = null;
         try {
             // 1 json for myself
@@ -789,5 +807,34 @@ public class AuthenticationMgr {
         this.userNameToProperty = ret.userNameToProperty;
         this.nameToSecurityIntegrationMap = ret.nameToSecurityIntegrationMap;
         this.userToAuthenticationInfo = ret.userToAuthenticationInfo;
+    }
+
+    public void upgradeToKV(SRMetaBlockReader reader) throws IOException, SRMetaBlockException, SRMetaBlockEOFException {
+        BDBKVClient BDBKVClient = GlobalStateMgr.getCurrentState().getKvJournal();
+        Transaction transaction = BDBKVClient.startTransaction();
+        AuthenticationMgr ret = reader.readJson(AuthenticationMgr.class);
+
+        try {
+            int numUser = reader.readJson(int.class);
+            LOG.info("loading {} users", numUser);
+            for (int i = 0; i != numUser; ++i) {
+                // 2 json for each user(kv)
+                UserIdentity userIdentity = reader.readJson(UserIdentity.class);
+                UserAuthenticationInfo userAuthenticationInfo = reader.readJson(UserAuthenticationInfo.class);
+                userAuthenticationInfo.analyze();
+
+                OperationStatus status = BDBKVClient.putNoOverwrite(transaction, "authentication", userIdentity, userAuthenticationInfo);
+            }
+        } catch (AuthenticationException e) {
+            throw new RuntimeException(e);
+        }
+
+        transaction.commit();
+
+        // mark data is loaded
+        this.isLoaded = true;
+        this.userNameToProperty = ret.userNameToProperty;
+        this.nameToSecurityIntegrationMap = ret.nameToSecurityIntegrationMap;
+        //this.userToAuthenticationInfo = ret.userToAuthenticationInfo;
     }
 }

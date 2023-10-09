@@ -377,6 +377,10 @@ public class BDBJEJournal implements Journal {
         throw exception;
     }
 
+    public OperationStatus putNoOverwrite(Transaction transaction, DatabaseEntry key, DatabaseEntry value) {
+        return currentJournalDB.getDb().putNoOverwrite(transaction, key, value);
+    }
+
     /**
      * persist current batch
      * for bdb: commit current transaction
@@ -494,5 +498,9 @@ public class BDBJEJournal implements Journal {
 
     private String getFullDatabaseName(long dbId) {
         return prefix + Long.toString(dbId);
+    }
+
+    public BDBEnvironment getBDBEnvironment() {
+        return bdbEnvironment;
     }
 }

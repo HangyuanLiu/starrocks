@@ -66,6 +66,15 @@ public class SRMetaBlockWriter {
         this.numJsonWritten = 0;
     }
 
+    public SRMetaBlockWriter(DataOutputStream dos, SRMetaBlockID id, int numJson, int version) throws SRMetaBlockException {
+        if (numJson <= 0) {
+            throw new SRMetaBlockException(String.format("invalid numJson: %d", numJson));
+        }
+        this.checkedOutputStream = new CheckedOutputStream(dos, new CRC32());
+        this.header = new SRMetaBlockHeader(id, numJson, version);
+        this.numJsonWritten = 0;
+    }
+
     public void writeJson(Object object) throws IOException, SRMetaBlockException {
         // always check if write more than expect
         if (numJsonWritten >= header.getNumJson()) {

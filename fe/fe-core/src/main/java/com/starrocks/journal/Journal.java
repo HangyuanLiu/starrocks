@@ -17,6 +17,9 @@
 
 package com.starrocks.journal;
 
+import com.sleepycat.je.DatabaseEntry;
+import com.sleepycat.je.OperationStatus;
+import com.sleepycat.je.Transaction;
 import com.starrocks.common.io.DataOutputBuffer;
 
 import java.util.List;
@@ -63,4 +66,6 @@ public interface Journal {
     public void batchWriteAbort() throws InterruptedException, JournalException;
 
     public String getPrefix();
+
+    public OperationStatus putNoOverwrite(Transaction transaction, DatabaseEntry key, DatabaseEntry value);
 }

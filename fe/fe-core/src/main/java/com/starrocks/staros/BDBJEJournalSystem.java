@@ -100,7 +100,6 @@ public class BDBJEJournalSystem implements JournalSystem {
             LOG.info("finish star manager replay in " + (replayEndTime - replayStartTime) + " msec.");
 
             journalWriter.init(bdbjeJournal.getMaxJournalId());
-
             journalWriter.startDaemon();
         } catch (Exception e) {
             LOG.warn("star mgr prepare journal failed before becoming leader, {}.", e);

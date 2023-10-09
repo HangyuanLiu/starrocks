@@ -25,9 +25,18 @@ public class SRMetaBlockHeader {
     @SerializedName(value = "nj")
     private int numJson;
 
+    @SerializedName(value = "v")
+    private int version;
+
     public SRMetaBlockHeader(SRMetaBlockID srMetaBlockID, int numJson) {
         this.srMetaBlockID = srMetaBlockID;
         this.numJson = numJson;
+    }
+
+    public SRMetaBlockHeader(SRMetaBlockID srMetaBlockID, int numJson, int version) {
+        this.srMetaBlockID = srMetaBlockID;
+        this.numJson = numJson;
+        this.version = version;
     }
 
     public SRMetaBlockHeader(String name, int numJson) {
@@ -45,5 +54,9 @@ public class SRMetaBlockHeader {
         } else {
             return srMetaBlockID;
         }
+    }
+
+    public int getVersion() {
+        return version;
     }
 }

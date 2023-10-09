@@ -188,7 +188,7 @@ public class SmallFileMgr implements Writable {
     }
 
     // db id -> globalStateMgr -> files
-    private final Table<Long, String, SmallFiles> files = HashBasedTable.create();
+    protected final Table<Long, String, SmallFiles> files = HashBasedTable.create();
     private final Map<Long, SmallFile> idToFiles = Maps.newHashMap();
 
     public SmallFileMgr() {
@@ -324,7 +324,7 @@ public class SmallFileMgr implements Writable {
         }
     }
 
-    private SmallFile downloadAndCheck(long dbId, String catalog, String fileName,
+    protected SmallFile downloadAndCheck(long dbId, String catalog, String fileName,
                                        String downloadUrl, String md5sum, boolean saveContent) throws DdlException {
         try {
             URL url = new URL(downloadUrl);
@@ -552,6 +552,9 @@ public class SmallFileMgr implements Writable {
     }
 
     public void loadSmallFilesV2(SRMetaBlockReader reader) throws IOException, SRMetaBlockEOFException, SRMetaBlockException {
+        if (Config.kv_meta && !GlobalStateMgr.isCheckpointThread()) {
+            return;
+        }
         int size = reader.readInt();
         while (size-- > 0) {
             SmallFile smallFile = reader.readJson(SmallFile.class);
@@ -585,5 +588,8 @@ public class SmallFileMgr implements Writable {
             writer.writeJson(file);
         }
         writer.close();
+    }
+
+    public void upgradeToKV() {
     }
 }
