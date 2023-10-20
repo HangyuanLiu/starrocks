@@ -51,7 +51,6 @@ import com.starrocks.privilege.ranger.SecurityPolicyRewriteRule;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.MetadataMgr;
-import com.starrocks.sql.ast.AstTraverser;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.CTERelation;
 import com.starrocks.sql.ast.ExceptRelation;
@@ -199,10 +198,17 @@ public class QueryAnalyzer {
             sourceScope.setParent(scope);
 
             Map<Expr, SlotRef> generatedExprToColumnRef = new HashMap<>();
-            new AstTraverser<Void, Void>() {
+            new AstVisitor<Void, Void>() {
                 @Override
                 public Void visitTable(TableRelation tableRelation, Void context) {
                     generatedExprToColumnRef.putAll(tableRelation.getGeneratedExprToColumnRef());
+                    return null;
+                }
+
+                @Override
+                public Void visitJoin(JoinRelation joinRelation, Void context) {
+                    visit(joinRelation.getLeft());
+                    visit(joinRelation.getRight());
                     return null;
                 }
             }.visit(resolvedRelation);
