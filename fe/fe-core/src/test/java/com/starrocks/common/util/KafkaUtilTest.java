@@ -28,7 +28,6 @@ import com.starrocks.server.WarehouseManager;
 import com.starrocks.system.Backend;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.thrift.TNetworkAddress;
-import com.starrocks.warehouse.Cluster;
 import com.starrocks.warehouse.Warehouse;
 import mockit.Expectations;
 import mockit.Mock;
@@ -79,11 +78,9 @@ public class KafkaUtilTest {
     }
 
     @Test
-    public void testNoAliveComputeNode(@Mocked Cluster cluster) throws UserException {
+    public void testNoAliveComputeNode() throws UserException {
         new Expectations() {
             {
-                cluster.getComputeNodeIds();
-                result = Lists.newArrayList(1L);
                 service.getBackendOrComputeNode(anyLong);
                 result = null;
             }
@@ -96,15 +93,13 @@ public class KafkaUtilTest {
     }
 
     @Test
-    public void testGetInfoRpcException(@Mocked Cluster cluster) throws UserException, RpcException {
+    public void testGetInfoRpcException() throws UserException, RpcException {
         Backend backend = new Backend(1L, "127.0.0.1", 9050);
         backend.setBeRpcPort(8060);
         backend.setAlive(true);
 
         new Expectations() {
             {
-                cluster.getComputeNodeIds();
-                result = Lists.newArrayList(1L);
                 service.getBackendOrComputeNode(anyLong);
                 result = backend;
                 client.getInfo((TNetworkAddress) any, (PProxyRequest) any);
@@ -118,15 +113,13 @@ public class KafkaUtilTest {
     }
 
     @Test
-    public void testGetInfoInterruptedException(@Mocked Cluster cluster) throws UserException, RpcException {
+    public void testGetInfoInterruptedException() throws UserException, RpcException {
         Backend backend = new Backend(1L, "127.0.0.1", 9050);
         backend.setBeRpcPort(8060);
         backend.setAlive(true);
 
         new Expectations() {
             {
-                cluster.getComputeNodeIds();
-                result = Lists.newArrayList(1L);
                 service.getBackendOrComputeNode(anyLong);
                 result = backend;
                 client.getInfo((TNetworkAddress) any, (PProxyRequest) any);
@@ -140,15 +133,13 @@ public class KafkaUtilTest {
     }
 
     @Test
-    public void testGetInfoValidateObjectException(@Mocked Cluster cluster) throws UserException, RpcException {
+    public void testGetInfoValidateObjectException() throws UserException, RpcException {
         Backend backend = new Backend(1L, "127.0.0.1", 9050);
         backend.setBeRpcPort(8060);
         backend.setAlive(true);
 
         new Expectations() {
             {
-                cluster.getComputeNodeIds();
-                result = Lists.newArrayList(1L);
                 service.getBackendOrComputeNode(anyLong);
                 result = backend;
                 client.getInfo((TNetworkAddress) any, (PProxyRequest) any);
@@ -162,7 +153,7 @@ public class KafkaUtilTest {
     }
 
     @Test
-    public void testGetInfoFailed(@Mocked Cluster cluster) throws UserException, RpcException {
+    public void testGetInfoFailed() throws UserException, RpcException {
         Backend backend = new Backend(1L, "127.0.0.1", 9050);
         backend.setBeRpcPort(8060);
         backend.setAlive(true);
@@ -176,8 +167,6 @@ public class KafkaUtilTest {
 
         new Expectations() {
             {
-                cluster.getComputeNodeIds();
-                result = Lists.newArrayList(1L);
                 service.getBackendOrComputeNode(anyLong);
                 result = backend;
                 client.getInfo((TNetworkAddress) any, (PProxyRequest) any);

@@ -48,10 +48,10 @@ public class WarehouseManager implements Writable {
     public static final String DEFAULT_WAREHOUSE_NAME = "default_warehouse";
     public static final long DEFAULT_WAREHOUSE_ID = 0L;
 
-    private final Map<Long, Warehouse> idToWh = new HashMap<>();
-    private final Map<String, Warehouse> nameToWh = new HashMap<>();
+    protected final Map<Long, Warehouse> idToWh = new HashMap<>();
+    protected final Map<String, Warehouse> nameToWh = new HashMap<>();
 
-    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
+    protected final ReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     public WarehouseManager() {
     }
