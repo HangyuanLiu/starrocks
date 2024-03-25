@@ -106,6 +106,7 @@ import com.starrocks.common.util.TimeUtils;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.scheduler.persist.TaskSchedule;
+import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.RelationId;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -499,11 +500,11 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                     FunctionSet.FROM_UNIXTIME, FunctionSet.FROM_UNIXTIME_MS,
                     FunctionSet.STR2DATE);
 
-    public AstBuilder(long sqlMode) {
+    private AstBuilder(long sqlMode) {
         this(sqlMode, new IdentityHashMap<>());
     }
 
-    public AstBuilder(long sqlMode, IdentityHashMap<ParserRuleContext, List<HintNode>> hintMap) {
+    private AstBuilder(long sqlMode, IdentityHashMap<ParserRuleContext, List<HintNode>> hintMap) {
         this.hintMap = hintMap;
         long hintSqlMode = 0L;
         for (Map.Entry<ParserRuleContext, List<HintNode>> entry : hintMap.entrySet()) {
@@ -515,6 +516,25 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             }
         }
         this.sqlMode = sqlMode | hintSqlMode;
+    }
+
+    private static final AstBuilder.AstBuilderFactory INSTANCE = new AstBuilder.AstBuilderFactory();
+
+    public static AstBuilder.AstBuilderFactory getInstance() {
+        return INSTANCE;
+    }
+
+    public static class AstBuilderFactory {
+        private AstBuilderFactory() {
+        }
+
+        public AstBuilder create(long sqlMode) {
+            return new AstBuilder(sqlMode, new IdentityHashMap<>());
+        }
+
+        public AstBuilder create(long sqlMode, IdentityHashMap<ParserRuleContext, List<HintNode>> hintMap) {
+            return new AstBuilder(sqlMode, hintMap);
+        }
     }
 
     public List<Parameter> getParameters() {
