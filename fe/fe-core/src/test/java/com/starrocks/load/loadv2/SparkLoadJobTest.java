@@ -487,8 +487,6 @@ public class SparkLoadJobTest {
                 result = Lists.newArrayList(tablet);
                 tablet.getId();
                 result = tabletId;
-                ((LakeTablet) tablet).getPrimaryComputeNodeId();
-                result = backendId;
                 AgentTaskExecutor.submit((AgentBatchTask) any);
                 GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
                 result = transactionMgr;

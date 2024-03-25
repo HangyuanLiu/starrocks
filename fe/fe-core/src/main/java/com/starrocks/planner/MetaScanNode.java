@@ -86,7 +86,7 @@ public class MetaScanNode extends ScanNode {
                 // random shuffle List && only collect one copy
                 List<Replica> allQueryableReplicas = Lists.newArrayList();
                 tablet.getQueryableReplicas(allQueryableReplicas, Collections.emptyList(),
-                        visibleVersion, -1, schemaHash);
+                        visibleVersion, -1, schemaHash, warehouseId);
                 if (allQueryableReplicas.isEmpty()) {
                     LOG.error("no queryable replica found in tablet {}. visible version {}",
                             tabletId, visibleVersion);
