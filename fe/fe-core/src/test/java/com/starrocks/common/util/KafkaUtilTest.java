@@ -71,8 +71,6 @@ public class KafkaUtilTest {
                 result = globalStateMgr;
                 globalStateMgr.getWarehouseMgr();
                 result = warehouseManager;
-                warehouseManager.getDefaultWarehouse();
-                result = warehouse;
                 BackendServiceClient.getInstance();
                 minTimes = 0;
                 result = client;

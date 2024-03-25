@@ -277,6 +277,11 @@ public enum ErrorCode {
     ERR_MULTI_SUB_PARTITION(5504, new byte[] {'4', '2', '0', '0', '0'},
             "Partition '%s' has sub partitions, should specify the partition id"),
     ERR_NO_SUCH_PARTITION(5505, new byte[] {'4', '2', '0', '0', '0'}, "Partition '%s' doesn't exist"),
+
+    /**
+     * 10000 - 10099: warehouse
+     */
+    ERR_UNKNOWN_WAREHOUSE(10001, new byte[] {'4', '2', '0', '0', '0'}, "Warehouse '%s' not exist.")
     ;
 
     public static final String ERR_ACCESS_DENIED_HINT_MSG_FORMAT = "Please ask the admin to grant permission(s) or" +
