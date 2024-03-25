@@ -17,7 +17,6 @@ package com.starrocks.lake;
 import com.staros.client.StarClientException;
 import com.staros.proto.FilePathInfo;
 import com.staros.proto.ShardInfo;
-import com.staros.proto.StatusCode;
 import com.starrocks.catalog.MaterializedIndex;
 import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.proto.DropTableRequest;
@@ -77,11 +76,6 @@ public class LakeTableCleanerTest {
 
                 index.getTablets();
                 result = Lists.newArrayList(tablet);
-                minTimes = 1;
-                maxTimes = 1;
-
-                tablet.getShardInfo();
-                result = shardInfo;
                 minTimes = 1;
                 maxTimes = 1;
 
@@ -158,11 +152,6 @@ public class LakeTableCleanerTest {
                 result = Lists.newArrayList(tablet);
                 minTimes = 1;
                 maxTimes = 1;
-
-                tablet.getShardInfo();
-                result = shardInfo;
-                minTimes = 1;
-                maxTimes = 1;
             }
         };
 
@@ -192,11 +181,6 @@ public class LakeTableCleanerTest {
 
                 index.getTablets();
                 result = Lists.newArrayList(tablet);
-                minTimes = 1;
-                maxTimes = 1;
-
-                tablet.getShardInfo();
-                result = new StarClientException(StatusCode.IO, "injected error");
                 minTimes = 1;
                 maxTimes = 1;
             }
@@ -242,11 +226,6 @@ public class LakeTableCleanerTest {
 
                 index.getTablets();
                 result = Lists.newArrayList(tablet);
-                minTimes = 1;
-                maxTimes = 1;
-
-                tablet.getShardInfo();
-                result = shardInfo;
                 minTimes = 1;
                 maxTimes = 1;
 

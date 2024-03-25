@@ -122,7 +122,7 @@ public class LakeTableSchemaChangeJobTest {
             @Mock
             public Warehouse getWarehouse(long warehouseId) {
                 return new DefaultWarehouse(WarehouseManager.DEFAULT_WAREHOUSE_ID,
-                        WarehouseManager.DEFAULT_WAREHOUSE_NAME, WarehouseManager.DEFAULT_CLUSTER_ID);
+                        WarehouseManager.DEFAULT_WAREHOUSE_NAME);
             }
 
             @Mock
@@ -279,7 +279,7 @@ public class LakeTableSchemaChangeJobTest {
             @Mock
             public Warehouse getWarehouse(long warehouseId) {
                 return new DefaultWarehouse(WarehouseManager.DEFAULT_WAREHOUSE_ID,
-                        WarehouseManager.DEFAULT_WAREHOUSE_NAME, WarehouseManager.DEFAULT_CLUSTER_ID);
+                        WarehouseManager.DEFAULT_WAREHOUSE_NAME);
             }
 
             @Mock
