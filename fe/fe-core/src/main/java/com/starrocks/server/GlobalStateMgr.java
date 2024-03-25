@@ -41,8 +41,10 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.alter.AlterJobMgr;
+import com.starrocks.alter.CompactionHandler;
 import com.starrocks.alter.MaterializedViewHandler;
 import com.starrocks.alter.SchemaChangeHandler;
+import com.starrocks.alter.SystemHandler;
 import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.analysis.TableName;
 import com.starrocks.authentication.AuthenticationMgr;
@@ -169,8 +171,10 @@ import com.starrocks.privilege.DefaultAuthorizationProvider;
 import com.starrocks.privilege.PrivilegeException;
 import com.starrocks.qe.AuditEventProcessor;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.JournalObservable;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.qe.ShowExecutor;
 import com.starrocks.qe.VariableMgr;
 import com.starrocks.qe.scheduler.slot.GlobalSlotProvider;
 import com.starrocks.qe.scheduler.slot.LocalSlotProvider;
@@ -183,6 +187,8 @@ import com.starrocks.scheduler.MVActiveChecker;
 import com.starrocks.scheduler.TaskManager;
 import com.starrocks.scheduler.mv.MVJobExecutor;
 import com.starrocks.scheduler.mv.MaterializedViewMgr;
+import com.starrocks.sql.analyzer.Analyzer;
+import com.starrocks.sql.analyzer.AnalyzerVisitor;
 import com.starrocks.sql.ast.RefreshTableStmt;
 import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.SystemVariable;
@@ -456,6 +462,10 @@ public class GlobalStateMgr {
 
     private final MetaRecoveryDaemon metaRecoveryDaemon = new MetaRecoveryDaemon();
 
+    private final Analyzer analyzer;
+    private final DDLStmtExecutor ddlStmtExecutor;
+    private final ShowExecutor showExecutor;
+
     public NodeMgr getNodeMgr() {
         return nodeMgr;
     }
@@ -570,7 +580,12 @@ public class GlobalStateMgr {
         this.portConnectivityChecker = new PortConnectivityChecker();
 
         // Alter Job Manager
-        this.alterJobMgr = new AlterJobMgr();
+        // Alter Job Manager
+        this.alterJobMgr = new AlterJobMgr(
+                new SchemaChangeHandler(),
+                new MaterializedViewHandler(),
+                new SystemHandler(),
+                new CompactionHandler());
 
         this.load = new Load();
         this.streamLoadMgr = new StreamLoadMgr();
@@ -716,6 +731,10 @@ public class GlobalStateMgr {
         nodeMgr.registerLeaderChangeListener(globalSlotProvider::leaderChangeListener);
 
         this.memoryUsageTracker = new MemoryUsageTracker();
+
+        this.analyzer = new Analyzer(new AnalyzerVisitor());
+        this.ddlStmtExecutor = new DDLStmtExecutor();
+        this.showExecutor = new ShowExecutor();
     }
 
     public static void destroyCheckpoint() {
@@ -916,6 +935,18 @@ public class GlobalStateMgr {
 
     public void setLockManager(LockManager lockManager) {
         this.lockManager = lockManager;
+    }
+
+    public Analyzer getAnalyzer() {
+        return analyzer;
+    }
+
+    public DDLStmtExecutor getDdlStmtExecutor() {
+        return ddlStmtExecutor;
+    }
+
+    public ShowExecutor getShowExecutor() {
+        return showExecutor;
     }
 
     // Use tryLock to avoid potential deadlock
@@ -1769,7 +1800,7 @@ public class GlobalStateMgr {
                 readSucc = true;
 
                 // apply
-                EditLog.loadJournal(this, entity);
+                editLog.loadJournal(this, entity);
             } catch (Throwable e) {
                 if (canSkipBadReplayedJournal(e)) {
                     LOG.error("!!! DANGER: SKIP JOURNAL {}: {} !!!",
