@@ -1622,7 +1622,7 @@ public class StmtExecutor {
 
     private void handleDdlStmt() throws DdlException {
         try {
-            ShowResultSet resultSet = DDLStmtExecutor.execute(parsedStmt, context);
+            ShowResultSet resultSet = GlobalStateMgr.getCurrentState().getDdlStmtExecutor().execute(parsedStmt, context);
             if (resultSet == null) {
                 context.getState().setOk();
             } else {
@@ -1693,8 +1693,7 @@ public class StmtExecutor {
                 com.starrocks.sql.parser.SqlParser.parse(showStmt, context.getSessionVariable()).get(0);
         ShowExportStmt showExportStmt = (ShowExportStmt) statementBase;
         showExportStmt.setQueryId(queryId);
-        ShowExecutor executor = new ShowExecutor();
-        ShowResultSet resultSet = executor.execute(showExportStmt, context);
+        ShowResultSet resultSet = GlobalStateMgr.getCurrentState().getShowExecutor().execute(showExportStmt, context);
         if (resultSet == null) {
             // state changed in execute
             return;
