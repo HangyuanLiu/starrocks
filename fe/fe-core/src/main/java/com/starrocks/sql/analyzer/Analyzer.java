@@ -15,22 +15,18 @@
 package com.starrocks.sql.analyzer;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.StatementBase;
 
 public class Analyzer {
-    private static final Analyzer INSTANCE = new Analyzer(new AnalyzerVisitor());
-
-    public static Analyzer getInstance() {
-        return INSTANCE;
-    }
 
     private final AnalyzerVisitor analyzerVisitor;
 
-    private Analyzer(AnalyzerVisitor analyzerVisitor) {
+    public Analyzer(AnalyzerVisitor analyzerVisitor) {
         this.analyzerVisitor = analyzerVisitor;
     }
 
     public static void analyze(StatementBase statement, ConnectContext context) {
-        getInstance().analyzerVisitor.analyze(statement, context);
+        GlobalStateMgr.getCurrentState().getAnalyzer().analyzerVisitor.analyze(statement, context);
     }
 }

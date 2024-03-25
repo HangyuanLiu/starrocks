@@ -1622,7 +1622,7 @@ public class StmtExecutor {
 
     private void handleDdlStmt() throws DdlException {
         try {
-            ShowResultSet resultSet = DDLStmtExecutor.execute(parsedStmt, context);
+            ShowResultSet resultSet = GlobalStateMgr.getCurrentState().getDdlStmtExecutor().execute(parsedStmt, context);
             if (resultSet == null) {
                 context.getState().setOk();
             } else {

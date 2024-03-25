@@ -56,6 +56,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+
 public class TabletStatMgrTest {
     private static final long DB_ID = 1;
     private static final long TABLE_ID = 2;
@@ -179,7 +181,7 @@ public class TabletStatMgrTest {
 
         // Index
         MaterializedIndex index = new MaterializedIndex(INDEX_ID, MaterializedIndex.IndexState.NORMAL);
-        TabletMeta tabletMeta = new TabletMeta(DB_ID,     TABLE_ID, PARTITION_ID, INDEX_ID, 0, TStorageMedium.HDD, true);
+        TabletMeta tabletMeta = new TabletMeta(DB_ID, TABLE_ID, PARTITION_ID, INDEX_ID, 0, TStorageMedium.HDD, true);
         index.addTablet(tablet1, tabletMeta);
         index.addTablet(tablet2, tabletMeta);
 
@@ -228,6 +230,7 @@ public class TabletStatMgrTest {
             public Long chooseNodeId(LakeTablet tablet) {
                 return 1000L;
             }
+
             @Mock
             public ComputeNode chooseNode(LakeTablet tablet) {
                 return new ComputeNode();
@@ -314,7 +317,7 @@ public class TabletStatMgrTest {
 
     @Test
     public void testUpdateLakeTabletStat2(@Mocked SystemInfoService systemInfoService,
-                                         @Mocked LakeService lakeService) {
+                                          @Mocked LakeService lakeService) {
         LakeTable table = createLakeTableForTest();
 
         long tablet1Id = table.getPartition(PARTITION_ID).getBaseIndex().getTablets().get(0).getId();
@@ -340,6 +343,7 @@ public class TabletStatMgrTest {
             public Long chooseNodeId(LakeTablet tablet) {
                 return 1000L;
             }
+
             @Mock
             public ComputeNode chooseNode(LakeTablet tablet) {
                 return new ComputeNode();
@@ -362,7 +366,7 @@ public class TabletStatMgrTest {
 
     @Test
     public void testUpdateLakeTabletStat3(@Mocked SystemInfoService systemInfoService,
-                                         @Mocked LakeService lakeService) {
+                                          @Mocked LakeService lakeService) {
         LakeTable table = createLakeTableForTest();
 
         long tablet1Id = table.getPartition(PARTITION_ID).getBaseIndex().getTablets().get(0).getId();
@@ -388,6 +392,7 @@ public class TabletStatMgrTest {
             public Long chooseNodeId(LakeTablet tablet) {
                 return 1000L;
             }
+
             @Mock
             public ComputeNode chooseNode(LakeTablet tablet) {
                 return new ComputeNode();
@@ -449,5 +454,42 @@ public class TabletStatMgrTest {
         Assert.assertEquals(0, tablet2.getDataSize(true));
         Assert.assertEquals(0L, tablet1.getDataSizeUpdateTime());
         Assert.assertEquals(0L, tablet2.getDataSizeUpdateTime());
+    }
+
+    @Test
+    public void testNoAliveNode(@Mocked SystemInfoService systemInfoService, @Mocked LakeService lakeService) {
+        LakeTable table = createLakeTableForTest();
+
+        // db
+        Database db = new Database(DB_ID, "db");
+        db.registerTableUnlocked(table);
+
+        new MockUp<BrpcProxy>() {
+            @Mock
+            public LakeService getLakeService(TNetworkAddress addr) {
+                return lakeService;
+            }
+
+            @Mock
+            public LakeService getLakeService(String host, int port) {
+                return lakeService;
+            }
+        };
+        new MockUp<Utils>() {
+            @Mock
+            public Long chooseNodeId(LakeTablet tablet) {
+                return 1000L;
+            }
+
+            @Mock
+            public ComputeNode chooseNode(LakeTablet tablet) {
+                return null;
+            }
+        };
+
+        TabletStatMgr tabletStatMgr = new TabletStatMgr();
+        assertDoesNotThrow(() -> {
+            Deencapsulation.invoke(tabletStatMgr, "updateLakeTableTabletStat", db, table);
+        });
     }
 }

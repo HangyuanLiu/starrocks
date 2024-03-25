@@ -59,7 +59,6 @@ import com.starrocks.common.util.NetUtils;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.datacache.DataCacheMetrics;
-import com.starrocks.lake.StarOSAgent;
 import com.starrocks.metric.MetricRepo;
 import com.starrocks.persist.CancelDecommissionDiskInfo;
 import com.starrocks.persist.CancelDisableDiskInfo;
@@ -71,7 +70,6 @@ import com.starrocks.qe.ShowResultSet;
 import com.starrocks.qe.ShowResultSetMetaData;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
-import com.starrocks.server.WarehouseManager;
 import com.starrocks.sql.analyzer.AlterSystemStmtAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.DropBackendClause;
@@ -168,15 +166,12 @@ public class SystemInfoService implements GsonPostProcessable {
         idToComputeNodeRef.put(newComputeNode.getId(), newComputeNode);
         setComputeNodeOwner(newComputeNode);
 
-        newComputeNode.setWorkerGroupId(StarOSAgent.DEFAULT_WORKER_GROUP_ID);
-        newComputeNode.setWarehouseId(WarehouseManager.DEFAULT_WAREHOUSE_ID);
-
         // log
         GlobalStateMgr.getCurrentState().getEditLog().logAddComputeNode(newComputeNode);
         LOG.info("finished to add {} ", newComputeNode);
     }
 
-    protected void setComputeNodeOwner(ComputeNode computeNode) {
+    public void setComputeNodeOwner(ComputeNode computeNode) {
         computeNode.setBackendState(BackendState.using);
     }
 
@@ -197,7 +192,7 @@ public class SystemInfoService implements GsonPostProcessable {
         }
     }
 
-    private void checkSameNodeExist(String host, int heartPort) throws DdlException {
+    public void checkSameNodeExist(String host, int heartPort) throws DdlException {
         // check is already exist
         if (getBackendWithHeartbeatPort(host, heartPort) != null) {
             throw new DdlException("Backend already exists with same host " + host + " and port " + heartPort);
@@ -226,7 +221,7 @@ public class SystemInfoService implements GsonPostProcessable {
         idToReportVersionRef = ImmutableMap.copyOf(copiedReportVersions);
     }
 
-    protected void setBackendOwner(Backend backend) {
+    public void setBackendOwner(Backend backend) {
         backend.setBackendState(BackendState.using);
     }
 
@@ -378,7 +373,7 @@ public class SystemInfoService implements GsonPostProcessable {
             // only need to remove worker after be reported its staretPort
             if (starletPort != 0) {
                 String workerAddr = NetUtils.getHostPortInAccessibleFormat(dropComputeNode.getHost(), starletPort);
-                GlobalStateMgr.getCurrentState().getStarOSAgent().removeWorker(workerAddr, dropComputeNode.getWorkerGroupId());
+                GlobalStateMgr.getCurrentState().getStarOSAgent().removeWorker(workerAddr);
             }
         }
 
@@ -487,7 +482,7 @@ public class SystemInfoService implements GsonPostProcessable {
             // only need to remove worker after be reported its staretPort
             if (starletPort != 0) {
                 String workerAddr = NetUtils.getHostPortInAccessibleFormat(droppedBackend.getHost(), starletPort);
-                GlobalStateMgr.getCurrentState().getStarOSAgent().removeWorker(workerAddr, droppedBackend.getWorkerGroupId());
+                GlobalStateMgr.getCurrentState().getStarOSAgent().removeWorker(workerAddr);
             }
         }
 

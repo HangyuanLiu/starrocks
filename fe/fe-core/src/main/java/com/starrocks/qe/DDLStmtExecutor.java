@@ -150,7 +150,7 @@ public class DDLStmtExecutor {
     /**
      * Execute various ddl statement
      */
-    public static ShowResultSet execute(StatementBase stmt, ConnectContext context) throws Exception {
+    public ShowResultSet execute(StatementBase stmt, ConnectContext context) throws Exception {
         try {
             return stmt.accept(StmtExecutorVisitor.getInstance(), context);
         } catch (RuntimeException re) {
