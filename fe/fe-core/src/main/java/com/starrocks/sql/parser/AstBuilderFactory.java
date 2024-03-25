@@ -11,22 +11,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+package com.starrocks.sql.parser;
 
-package com.starrocks.sql.analyzer;
+import com.starrocks.analysis.HintNode;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-import com.starrocks.qe.ConnectContext;
-import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.ast.StatementBase;
+import java.util.IdentityHashMap;
+import java.util.List;
 
-public class Analyzer {
 
-    private final AnalyzerVisitor analyzerVisitor;
-
-    public Analyzer(AnalyzerVisitor analyzerVisitor) {
-        this.analyzerVisitor = analyzerVisitor;
-    }
-
-    public static void analyze(StatementBase statement, ConnectContext context) {
-        GlobalStateMgr.getCurrentState().getAnalyzer().analyzerVisitor.analyze(statement, context);
-    }
-}
