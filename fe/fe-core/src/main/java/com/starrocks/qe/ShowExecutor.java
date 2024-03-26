@@ -287,7 +287,7 @@ public class ShowExecutor {
             return INSTANCE;
         }
 
-        private ShowExecutorVisitor() {
+        protected ShowExecutorVisitor() {
         }
 
         @Override

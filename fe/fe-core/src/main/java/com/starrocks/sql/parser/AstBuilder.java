@@ -106,7 +106,6 @@ import com.starrocks.common.util.TimeUtils;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.scheduler.persist.TaskSchedule;
-import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.RelationId;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -500,11 +499,11 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                     FunctionSet.FROM_UNIXTIME, FunctionSet.FROM_UNIXTIME_MS,
                     FunctionSet.STR2DATE);
 
-    private AstBuilder(long sqlMode) {
+    protected AstBuilder(long sqlMode) {
         this(sqlMode, new IdentityHashMap<>());
     }
 
-    private AstBuilder(long sqlMode, IdentityHashMap<ParserRuleContext, List<HintNode>> hintMap) {
+    protected AstBuilder(long sqlMode, IdentityHashMap<ParserRuleContext, List<HintNode>> hintMap) {
         this.hintMap = hintMap;
         long hintSqlMode = 0L;
         for (Map.Entry<ParserRuleContext, List<HintNode>> entry : hintMap.entrySet()) {
@@ -525,7 +524,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     public static class AstBuilderFactory {
-        private AstBuilderFactory() {
+        protected AstBuilderFactory() {
         }
 
         public AstBuilder create(long sqlMode) {
@@ -7097,7 +7096,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
     // ------------------------------------------- Util Functions -------------------------------------------
 
-    private <T> List<T> visit(List<? extends ParserRuleContext> contexts, Class<T> clazz) {
+    protected <T> List<T> visit(List<? extends ParserRuleContext> contexts, Class<T> clazz) {
         return contexts.stream()
                 .map(this::visit)
                 .map(clazz::cast)
@@ -7421,7 +7420,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         }
     }
 
-    private NodePosition createPos(ParserRuleContext context) {
+    protected NodePosition createPos(ParserRuleContext context) {
         return createPos(context.start, context.stop);
     }
 
@@ -7473,4 +7472,3 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         return res;
     }
 }
-

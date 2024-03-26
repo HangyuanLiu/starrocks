@@ -166,7 +166,7 @@ public class Analyzer {
             return INSTANCE;
         }
 
-        private AnalyzerVisitor() {
+        protected AnalyzerVisitor() {
         }
 
         // ---------------------------------------- Database Statement -----------------------------------------------------

@@ -179,7 +179,7 @@ public class DDLStmtExecutor {
             return INSTANCE;
         }
 
-        private StmtExecutorVisitor() {
+        protected StmtExecutorVisitor() {
         }
 
         @Override
