@@ -194,6 +194,7 @@ import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.SystemVariable;
 import com.starrocks.sql.optimizer.statistics.CachedStatisticStorage;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
+import com.starrocks.sql.parser.AstBuilder;
 import com.starrocks.statistic.AnalyzeMgr;
 import com.starrocks.statistic.StatisticAutoCollector;
 import com.starrocks.statistic.StatisticsMetaManager;
@@ -461,6 +462,7 @@ public class GlobalStateMgr {
 
     private final MetaRecoveryDaemon metaRecoveryDaemon = new MetaRecoveryDaemon();
 
+    private final AstBuilder.AstBuilderFactory astBuilderFactory;
     private final Analyzer analyzer;
     private final DDLStmtExecutor ddlStmtExecutor;
     private final ShowExecutor showExecutor;
@@ -728,6 +730,7 @@ public class GlobalStateMgr {
 
         this.memoryUsageTracker = new MemoryUsageTracker();
 
+        this.astBuilderFactory = new AstBuilder.AstBuilderFactory();
         this.analyzer = new Analyzer(new AnalyzerVisitor());
         this.ddlStmtExecutor = new DDLStmtExecutor();
         this.showExecutor = new ShowExecutor();
@@ -931,6 +934,10 @@ public class GlobalStateMgr {
 
     public void setLockManager(LockManager lockManager) {
         this.lockManager = lockManager;
+    }
+
+    public AstBuilder.AstBuilderFactory getAstBuilderFactory() {
+        return astBuilderFactory;
     }
 
     public Analyzer getAnalyzer() {
