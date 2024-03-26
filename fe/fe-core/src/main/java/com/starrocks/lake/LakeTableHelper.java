@@ -17,6 +17,7 @@ package com.starrocks.lake;
 import com.google.common.base.Preconditions;
 import com.staros.client.StarClientException;
 import com.staros.proto.ShardInfo;
+import com.staros.proto.StatusCode;
 import com.starrocks.alter.AlterJobV2Builder;
 import com.starrocks.alter.LakeTableAlterJobV2Builder;
 import com.starrocks.catalog.Column;
@@ -108,14 +109,20 @@ public class LakeTableHelper {
                 continue;
             }
             LakeTablet tablet = (LakeTablet) tablets.get(0);
+            try {
+                if (GlobalStateMgr.isCheckpointThread()) {
+                    throw new RuntimeException("Cannot call getShardInfo in checkpoint thread");
+                }
+                ShardInfo shardInfo = GlobalStateMgr.getCurrentState().getStarOSAgent().getShardInfo(tablet.getShardId(),
+                        StarOSAgent.DEFAULT_WORKER_GROUP_ID);
 
-            if (GlobalStateMgr.isCheckpointThread()) {
-                throw new RuntimeException("Cannot call getShardInfo in checkpoint thread");
+                return Optional.of(shardInfo);
+            } catch (StarClientException e) {
+                if (e.getCode() != StatusCode.NOT_EXIST) {
+                    throw e;
+                }
+                // Shard does not exist, ignore this shard
             }
-            ShardInfo shardInfo = GlobalStateMgr.getCurrentState().getStarOSAgent().getShardInfo(tablet.getShardId(),
-                    StarOSAgent.DEFAULT_WORKER_GROUP_ID);
-
-            return Optional.of(shardInfo);
         }
         return Optional.empty();
     }
