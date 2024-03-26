@@ -189,12 +189,15 @@ import com.starrocks.scheduler.mv.MVJobExecutor;
 import com.starrocks.scheduler.mv.MaterializedViewMgr;
 import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AnalyzerVisitor;
+import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.ast.RefreshTableStmt;
 import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.SystemVariable;
 import com.starrocks.sql.optimizer.statistics.CachedStatisticStorage;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
 import com.starrocks.sql.parser.AstBuilder;
+import com.starrocks.sql.parser.AstBuilder;
+import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.statistic.AnalyzeMgr;
 import com.starrocks.statistic.StatisticAutoCollector;
 import com.starrocks.statistic.StatisticsMetaManager;
@@ -462,7 +465,7 @@ public class GlobalStateMgr {
 
     private final MetaRecoveryDaemon metaRecoveryDaemon = new MetaRecoveryDaemon();
 
-    private final AstBuilder.AstBuilderFactory astBuilderFactory;
+    private final SqlParser sqlParser;
     private final Analyzer analyzer;
     private final DDLStmtExecutor ddlStmtExecutor;
     private final ShowExecutor showExecutor;
@@ -730,10 +733,10 @@ public class GlobalStateMgr {
 
         this.memoryUsageTracker = new MemoryUsageTracker();
 
-        this.astBuilderFactory = new AstBuilder.AstBuilderFactory();
-        this.analyzer = new Analyzer(new AnalyzerVisitor());
-        this.ddlStmtExecutor = new DDLStmtExecutor();
-        this.showExecutor = new ShowExecutor();
+        this.sqlParser = new SqlParser(AstBuilder.getInstance());
+        this.analyzer = new Analyzer(Analyzer.AnalyzerVisitor.getInstance());
+        this.ddlStmtExecutor = new DDLStmtExecutor(DDLStmtExecutor.StmtExecutorVisitor.getInstance());
+        this.showExecutor = new ShowExecutor(ShowExecutor.ShowExecutorVisitor.getInstance());
     }
 
     public static void destroyCheckpoint() {
@@ -936,8 +939,8 @@ public class GlobalStateMgr {
         this.lockManager = lockManager;
     }
 
-    public AstBuilder.AstBuilderFactory getAstBuilderFactory() {
-        return astBuilderFactory;
+    public SqlParser getSqlParser() {
+        return sqlParser;
     }
 
     public Analyzer getAnalyzer() {

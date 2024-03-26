@@ -106,6 +106,7 @@ import com.starrocks.common.util.TimeUtils;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.scheduler.persist.TaskSchedule;
+import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.RelationId;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -517,7 +518,16 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         this.sqlMode = sqlMode | hintSqlMode;
     }
 
+    private static final AstBuilder.AstBuilderFactory INSTANCE = new AstBuilder.AstBuilderFactory();
+
+    public static AstBuilder.AstBuilderFactory getInstance() {
+        return INSTANCE;
+    }
+
     public static class AstBuilderFactory {
+        private AstBuilderFactory() {
+        }
+
         public AstBuilder create(long sqlMode) {
             return new AstBuilder(sqlMode, new IdentityHashMap<>());
         }
@@ -7087,7 +7097,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
     // ------------------------------------------- Util Functions -------------------------------------------
 
-    protected <T> List<T> visit(List<? extends ParserRuleContext> contexts, Class<T> clazz) {
+    private <T> List<T> visit(List<? extends ParserRuleContext> contexts, Class<T> clazz) {
         return contexts.stream()
                 .map(this::visit)
                 .map(clazz::cast)
@@ -7411,7 +7421,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         }
     }
 
-    protected NodePosition createPos(ParserRuleContext context) {
+    private NodePosition createPos(ParserRuleContext context) {
         return createPos(context.start, context.stop);
     }
 
