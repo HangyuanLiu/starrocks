@@ -165,7 +165,7 @@ public class EditLogTest {
         JournalEntity journal = new JournalEntity();
         journal.setData(fe);
         journal.setOpCode(OperationType.OP_UPDATE_FRONTEND);
-        EditLog.loadJournal(mgr, journal);
+        GlobalStateMgr.getCurrentState().getEditLog().loadJournal(mgr, journal);
         List<Frontend> updatedFrontends = mgr.getNodeMgr().getFrontends(null);
         Frontend updatedfFe = updatedFrontends.get(0);
         Assert.assertEquals("testHost", updatedfFe.getHost());
@@ -180,7 +180,7 @@ public class EditLogTest {
         journal.setData(null);
 
         try {
-            EditLog.loadJournal(GlobalStateMgr.getCurrentState(), journal);
+            GlobalStateMgr.getCurrentState().getEditLog().loadJournal(GlobalStateMgr.getCurrentState(), journal);
         } catch (JournalInconsistentException e) {
             Assert.assertEquals(OperationType.OP_SAVE_NEXTID, e.getOpCode());
         }
