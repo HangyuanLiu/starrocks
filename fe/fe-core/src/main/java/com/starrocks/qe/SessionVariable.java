@@ -699,6 +699,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
      */
     public static final String CONNECTOR_HUGE_FILE_SIZE = "connector_huge_file_size";
 
+    public static final String ENABLE_CONNECTOR_SINK_WRITER_SCALING = "enable_connector_sink_writer_scaling";
+
     public static final List<String> DEPRECATED_VARIABLES = ImmutableList.<String>builder()
             .add(CODEGEN_LEVEL)
             .add(MAX_EXECUTION_TIME)
@@ -1322,7 +1324,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = ENABLE_PARTITION_BUCKET_OPTIMIZE, flag = VariableMgr.INVISIBLE)
     private boolean enablePartitionBucketOptimize = false;
-    
+
     @VarAttr(name = ENABLE_GROUP_EXECUTION)
     private boolean enableGroupExecution = false;
 
@@ -1441,7 +1443,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public void setEnablePartitionBucketOptimize(boolean enablePartitionBucketOptimize) {
         this.enablePartitionBucketOptimize = enablePartitionBucketOptimize;
     }
-    
+
     public void setEnableGroupExecution(boolean enableGroupExecution) {
         this.enableGroupExecution = enableGroupExecution;
     }
@@ -1579,10 +1581,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private boolean enableMaterializedViewUnionRewrite = true;
 
     /**
-     * <= 0: default mode, only try to union all rewrite by logical plan tree after partition compensate
-     * 1: eager mode v1, try to pull up query's filter after union when query's output matches mv's define query
-     * which will increase union rewrite's ability.
-     * 2: eager mode v2, try to pull up query's filter after union as much as possible.
+     * see {@code MaterializedViewUnionRewriteMode} for more details.
      */
     @VarAttr(name = MATERIALIZED_VIEW_UNION_REWRITE_MODE)
     private int materializedViewUnionRewriteMode = 0;
@@ -1794,6 +1793,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = CONNECTOR_HUGE_FILE_SIZE)
     private long connectorHugeFileSize = 1024L * 1024L * 1024L;
+
+    @VarAttr(name = ENABLE_CONNECTOR_SINK_WRITER_SCALING)
+    private boolean enableConnectorSinkWriterScaling = true;
 
     private int exprChildrenLimit = -1;
 
@@ -3666,6 +3668,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         tResult.setEnable_hyperscan_vec(enableHyperscanVec);
         tResult.setJit_level(jitLevel);
         tResult.setEnable_result_sink_accumulate(enableResultSinkAccumulate);
+        tResult.setEnable_connector_sink_writer_scaling(enableConnectorSinkWriterScaling);
         tResult.setEnable_wait_dependent_event(enableWaitDependentEvent);
         tResult.setConnector_max_split_size(connectorMaxSplitSize);
         tResult.setOrc_use_column_names(orcUseColumnNames);

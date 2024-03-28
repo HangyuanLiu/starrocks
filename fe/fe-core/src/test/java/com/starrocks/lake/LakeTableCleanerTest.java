@@ -23,6 +23,7 @@ import com.starrocks.proto.DropTableRequest;
 import com.starrocks.proto.DropTableResponse;
 import com.starrocks.rpc.BrpcProxy;
 import com.starrocks.rpc.LakeService;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TNetworkAddress;
 import mockit.Expectations;
@@ -31,16 +32,36 @@ import mockit.MockUp;
 import mockit.Mocked;
 import org.assertj.core.util.Lists;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.concurrent.CompletableFuture;
 
-
 public class LakeTableCleanerTest {
     private final ShardInfo shardInfo;
 
+    @Mocked
+    private StarOSAgent starOSAgent;
+
     public LakeTableCleanerTest() {
         shardInfo = ShardInfo.newBuilder().setFilePath(FilePathInfo.newBuilder().setFullPath("oss://1/2")).build();
+    }
+
+    @Before
+    public void setup() {
+        new MockUp<GlobalStateMgr>() {
+            @Mock
+            public StarOSAgent getStarOSAgent() {
+                return starOSAgent;
+            }
+        };
+
+        new MockUp<StarOSAgent>() {
+            @Mock
+            public ShardInfo getShardInfo(long shardId, long workerGroupId) throws StarClientException {
+                return shardInfo;
+            }
+        };
     }
 
     @Test
@@ -71,7 +92,6 @@ public class LakeTableCleanerTest {
                 result = Lists.newArrayList(partition);
                 minTimes = 1;
                 maxTimes = 1;
-
 
                 partition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL);
                 result = Lists.newArrayList(index);
@@ -107,7 +127,6 @@ public class LakeTableCleanerTest {
                 result = Lists.newArrayList(partition);
                 minTimes = 1;
                 maxTimes = 1;
-
 
                 partition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL);
                 result = Lists.newArrayList(index);
@@ -146,7 +165,6 @@ public class LakeTableCleanerTest {
                 minTimes = 1;
                 maxTimes = 1;
 
-
                 partition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL);
                 result = Lists.newArrayList(index);
                 minTimes = 1;
@@ -176,7 +194,6 @@ public class LakeTableCleanerTest {
                 result = Lists.newArrayList(partition);
                 minTimes = 1;
                 maxTimes = 1;
-
 
                 partition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL);
                 result = Lists.newArrayList(index);
@@ -222,7 +239,6 @@ public class LakeTableCleanerTest {
                 minTimes = 1;
                 maxTimes = 1;
 
-
                 partition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL);
                 result = Lists.newArrayList(index);
                 minTimes = 1;
@@ -258,7 +274,6 @@ public class LakeTableCleanerTest {
                 minTimes = 1;
                 maxTimes = 1;
 
-
                 partition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL);
                 result = Lists.newArrayList(index);
                 minTimes = 1;
@@ -268,11 +283,13 @@ public class LakeTableCleanerTest {
                 result = Lists.newArrayList(tablet);
                 minTimes = 1;
                 maxTimes = 1;
+            }
+        };
 
-                tablet.getShardInfo();
-                result = new StarClientException(StatusCode.NOT_EXIST, "injected error");
-                minTimes = 1;
-                maxTimes = 1;
+        new MockUp<StarOSAgent>() {
+            @Mock
+            public ShardInfo getShardInfo(long shardId, long workerGroupId) throws StarClientException {
+                throw new StarClientException(StatusCode.NOT_EXIST, "injected error");
             }
         };
 

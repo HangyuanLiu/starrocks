@@ -342,7 +342,7 @@ public class LakeTableSchemaChangeJob extends AlterJobV2 {
                             .setId(shadowIdxId) // For newly create materialized index, schema id equals to index id
                             .setKeysType(originKeysType)
                             .setShortKeyColumnCount(shadowShortKeyColumnCount)
-                            .setSortKeyUniqueIds(copiedSortKeyIdxes)
+                            .setSortKeyIndexes(copiedSortKeyIdxes)
                             .setSortKeyUniqueIds(null)
                             .setIndexes(indexes)
                             .setBloomFilterColumnNames(bfColumns)
@@ -359,6 +359,7 @@ public class LakeTableSchemaChangeJob extends AlterJobV2 {
                                 .getComputeNodeAssignedToTablet(WarehouseManager.DEFAULT_WAREHOUSE_NAME,
                                         (LakeTablet) shadowTablet);
                         if (computeNode == null) {
+                            //todo: fix the error message.
                             throw new AlterCancelException("No alive backend");
                         }
                         countDownLatch.addMark(computeNode.getId(), shadowTabletId);
