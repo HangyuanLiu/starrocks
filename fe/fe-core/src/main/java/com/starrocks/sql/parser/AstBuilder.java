@@ -4197,6 +4197,12 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         if (identifierListContext != null && identifierListContext.identifier() != null) {
             identifierList = visit(identifierListContext.identifier(), Identifier.class);
         }
+
+        if (context.expression() != null) {
+            Expr e = (Expr) visit(context.expression());
+            return new DropPartitionClause(exists, e, createPos(context));
+        }
+
         if (context.multiRangePartition() != null) {
             PartitionDesc partitionDesc = (PartitionDesc) visitMultiRangePartition(context.multiRangePartition());
             return new DropPartitionClause(exists, partitionDesc, temp, force, createPos(context));

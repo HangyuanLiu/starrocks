@@ -16,6 +16,7 @@
 package com.starrocks.sql.ast;
 
 import com.starrocks.alter.AlterOpType;
+import com.starrocks.analysis.Expr;
 import com.starrocks.sql.parser.NodePosition;
 
 import java.util.List;
@@ -69,6 +70,24 @@ public class DropPartitionClause extends AlterTableClause {
         this.forceDrop = forceDrop;
         this.partitionDesc = partitionDesc;
         this.partitionNames = null;
+    }
+
+    private Expr partitionExpression;
+
+    public DropPartitionClause(boolean ifExists, Expr expr, NodePosition pos) {
+        super(AlterOpType.DROP_PARTITION, pos);
+        this.ifExists = ifExists;
+        this.partitionName = null;
+        this.isTempPartition = false;
+        this.needTableStable = false;
+        this.forceDrop = false;
+        this.partitionDesc = null;
+        this.partitionNames = null;
+        this.partitionExpression = expr;
+    }
+
+    public Expr getPartitionExpression() {
+        return partitionExpression;
     }
 
     public boolean isSetIfExists() {

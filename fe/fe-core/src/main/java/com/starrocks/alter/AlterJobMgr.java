@@ -39,6 +39,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 import com.starrocks.analysis.DateLiteral;
+import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.TableName;
 import com.starrocks.analysis.TableRef;
 import com.starrocks.authentication.AuthenticationMgr;
@@ -139,6 +140,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -593,6 +595,10 @@ public class AlterJobMgr {
                             throw new DdlException("Deletion of shadow partitions is not allowed");
                         }
                     }
+                    if (dropPartitionClause.getPartitionExpression() != null) {
+                        dropExprPartition(db, olapTable, dropPartitionClause);
+                    }
+
                     GlobalStateMgr.getCurrentState().getLocalMetastore().dropPartition(db, olapTable, dropPartitionClause);
                 } else if (alterClause instanceof ReplacePartitionClause) {
                     ReplacePartitionClause replacePartitionClause = (ReplacePartitionClause) alterClause;
@@ -741,6 +747,35 @@ public class AlterJobMgr {
         if (isSynchronous) {
             olapTable.lastSchemaUpdateTime.set(System.nanoTime());
         }
+    }
+
+    public void dropExprPartition(Database db, Table table, DropPartitionClause clause) {
+        OlapTable olapTable = (OlapTable) table;
+
+        List<String> partitionColumnNames = olapTable.getPartitionColumnNames();
+
+        PartitionInfo partitionInfo = olapTable.getPartitionInfo();
+        RangePartitionInfo rangePartitionInfo = (RangePartitionInfo) olapTable.getPartitionInfo();
+        List<Type> columnType =
+                rangePartitionInfo.getPartitionColumns().stream().map(Column::getType).collect(Collectors.toList());
+
+        List<List<String>> rows = new ArrayList<>();
+        for (Map.Entry<Long, Range<PartitionKey>> pk : rangePartitionInfo.getIdToRange(false).entrySet()) {
+            List<String> row = new ArrayList<>();
+            Range<PartitionKey> r = pk.getValue();
+            PartitionKey p1 = r.lowerEndpoint();
+            PartitionKey p2 = r.upperEndpoint();
+
+            row.add(p1.getKeys().get(0).getStringValue());
+            rows.add(row);
+        }
+
+        Expr.evaluate(
+                clause.getPartitionExpression(),
+                rows,
+                new TableName(db.getFullName(), table.getName()),
+                partitionColumnNames,
+                columnType);
     }
 
     public void replaySwapTable(SwapTableOperationLog log) {

@@ -50,9 +50,14 @@ import com.starrocks.common.io.Writable;
 import com.starrocks.planner.FragmentNormalizer;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalyzeState;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
+import com.starrocks.sql.analyzer.Field;
+import com.starrocks.sql.analyzer.RelationFields;
+import com.starrocks.sql.analyzer.RelationId;
+import com.starrocks.sql.analyzer.Scope;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.LambdaFunctionExpr;
@@ -1054,7 +1059,7 @@ public abstract class Expr extends TreeNode<Expr> implements ParseNode, Cloneabl
     /**
      * Attention: if you just want check whether the expr is a constant literal, please consider
      * use isLiteral()
-     *
+     * <p>
      * Returns true if this expression should be treated as constant. I.e. if the frontend
      * and backend should assume that two evaluations of the expression within a query will
      * return the same value. Examples of constant expressions include:
@@ -1510,6 +1515,36 @@ public abstract class Expr extends TreeNode<Expr> implements ParseNode, Cloneabl
         } catch (UnsupportedException e) {
             return expr;
         }
+    }
+
+    public static List<Boolean> evaluate(Expr expr, List<List<String>> rows,
+                                         TableName tableName, List<String> columns, List<Type> columnTypes) {
+        List<Field> fields = new ArrayList<>();
+        for (int i = 0; i < columns.size(); ++i) {
+            Field field = new Field(columns.get(i), columnTypes.get(i), tableName, null);
+            fields.add(field);
+        }
+
+        RelationFields relationFields = new RelationFields(fields);
+        Scope scope = new Scope(RelationId.anonymous(), relationFields);
+
+        ExpressionAnalyzer.analyzeExpression(expr, new AnalyzeState(), scope, new ConnectContext());
+
+
+        List<Boolean> r = new ArrayList<>();
+        for (List<String> row : rows) {
+            ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translate(expr);
+            ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
+            // Add cast and constant fold
+            scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
+            Expr result = ScalarOperatorToExpr.buildExprIgnoreSlot(scalarOperator,
+                    new ScalarOperatorToExpr.FormatterContext(Maps.newHashMap()));
+
+            BoolLiteral boolLiteral = (BoolLiteral) result;
+            r.add(boolLiteral.getValue());
+        }
+
+        return r;
     }
 
     public void setHints(List<String> hints) {
