@@ -1956,7 +1956,7 @@ public class LocalMetastore implements ConnectorMetadata {
         return partition;
     }
 
-    void buildPartitions(Database db, OlapTable table, List<PhysicalPartition> partitions, long warehouseId, PartitionInfo partitionInfo)
+    void buildPartitions(Long dbId, Long tableId, List<PhysicalPartition> partitions, long warehouseId, PartitionInfo partitionInfo)
             throws DdlException {
         if (partitions.isEmpty()) {
             return;
@@ -2004,7 +2004,7 @@ public class LocalMetastore implements ConnectorMetadata {
         return Collections.max(tasksPerBackend.values());
     }
 
-    private void buildPartitionsSequentially(long dbId, OlapTable table, List<PhysicalPartition> partitions, int numReplicas,
+    private void buildPartitionsSequentially(long dbId, OlapTable tablexxx, List<PhysicalPartition> partitions, int numReplicas,
                                              int numBackends, long warehouseId,
                                              PartitionInfo partitionInfo) throws DdlException {
         // Try to bundle at least 200 CreateReplicaTask's in a single AgentBatchTask.
@@ -2114,7 +2114,11 @@ public class LocalMetastore implements ConnectorMetadata {
         return tasks;
     }
 
-    private List<CreateReplicaTask> buildCreateReplicaTasks(long dbId, OlapTable table, PhysicalPartition partition,
+    private List<CreateReplicaTask> buildCreateReplicaTasks(long dbId,
+                                                            long tableId,
+                                                            //OlapTable tableXXX,
+                                                            MaterializedIndexMeta indexMeta,
+                                                            PhysicalPartition partition,
                                                             MaterializedIndex index, long warehouseId,
                                                             PartitionInfo partitionInfo) {
         LOG.info("build create replica tasks for index {} db {} table {} partition {}",
@@ -2122,7 +2126,7 @@ public class LocalMetastore implements ConnectorMetadata {
         boolean isCloudNativeTable = table.isCloudNativeTableOrMaterializedView();
         boolean createSchemaFile = true;
         List<CreateReplicaTask> tasks = new ArrayList<>((int) index.getReplicaCount());
-        MaterializedIndexMeta indexMeta = table.getIndexMetaByIndexId(index.getId());
+        //MaterializedIndexMeta indexMeta = table.getIndexMetaByIndexId(index.getId());
         TTabletType tabletType = isCloudNativeTable ? TTabletType.TABLET_TYPE_LAKE : TTabletType.TABLET_TYPE_DISK;
         TTabletSchema tabletSchema = SchemaInfo.newBuilder()
                 .setId(indexMeta.getSchemaId())
