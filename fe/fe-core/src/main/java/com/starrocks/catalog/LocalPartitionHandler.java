@@ -13,27 +13,39 @@
 // limitations under the License.
 package com.starrocks.catalog;
 
-import com.google.api.client.util.Lists;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
-import com.staros.proto.FileCacheInfo;
 import com.staros.proto.FilePathInfo;
 import com.starrocks.binlog.BinlogConfig;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReportException;
+import com.starrocks.common.Pair;
 import com.starrocks.common.Status;
 import com.starrocks.common.TimeoutException;
+import com.starrocks.common.io.DeepCopy;
 import com.starrocks.common.util.concurrent.CountingLatch;
 import com.starrocks.common.util.concurrent.MarkedCountDownLatch;
+import com.starrocks.common.util.concurrent.lock.LockType;
+import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.lake.LakeTablet;
+import com.starrocks.persist.AddPartitionsInfoV2;
 import com.starrocks.persist.ColocatePersistInfo;
+import com.starrocks.persist.ListPartitionPersistInfo;
+import com.starrocks.persist.PartitionPersistInfoV2;
+import com.starrocks.persist.RangePartitionPersistInfo;
+import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
 import com.starrocks.server.WarehouseManager;
+import com.starrocks.sql.ast.AddPartitionClause;
 import com.starrocks.sql.ast.PartitionDesc;
+import com.starrocks.sql.ast.SingleRangePartitionDesc;
 import com.starrocks.system.Backend;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.task.AgentBatchTask;
@@ -66,104 +78,161 @@ import java.util.concurrent.TimeUnit;
 public class LocalPartitionHandler {
     private static final Logger LOG = LogManager.getLogger(LocalPartitionHandler.class);
 
-    public static List<Partition> createPartitions(Database db,
-                                                   OlapTable table,
-                                                   List<PartitionDesc> partitionDescList,
-                                                   Set<String> existPartitionNameSet,
+    public static void addPartitions(ConnectContext ctx, Database db, OlapTable table, AddPartitionClause addPartitionClause) throws DdlException {
+        List<PartitionDesc> partitionDescList = addPartitionClause.getResolvedPartitionDescList();
+        List<Partition> partitionList = Lists.newArrayList();
 
-                                                   ) {
-        List<Partition> partitions = Lists.newArrayList();
-        for (PartitionDesc partitionDesc : partitionDescList) {
+        Map<Long, MaterializedIndexMeta> materializedIndexMetaMapCopy = Maps.newHashMap();
+        Locker locker = new Locker();
+        locker.lockTablesWithIntensiveDbLock(db, Lists.newArrayList(table.getId()), LockType.READ);
+        try {
 
-            String partitionName = partitionDesc.getPartitionName();
-
-            if (existPartitionNameSet.contains(partitionName)) {
-                continue;
+            for (Map.Entry<Long, MaterializedIndexMeta> entry : table.getIndexIdToMeta().entrySet()) {
+                MaterializedIndexMeta materializedIndexMeta = entry.getValue();
+                MaterializedIndexMeta mCopy = DeepCopy.copyWithGson(materializedIndexMeta, MaterializedIndexMeta.class);
+                materializedIndexMetaMapCopy.put(entry.getKey(), mCopy);
             }
-
-            Long version = partitionDesc.getVersionInfo();
+        } finally {
+            locker.unLockTablesWithIntensiveDbLock(db, Lists.newArrayList(table.getId()), LockType.READ);
         }
 
+        for (PartitionDesc partitionDesc : partitionDescList) {
+            partitionList.add(createPartition(ctx, db, table, partitionDesc, null, materializedIndexMetaMapCopy));
+        }
+
+        for (Map.Entry<Long, MaterializedIndexMeta> entry : materializedIndexMetaMapCopy.entrySet()) {
+            MaterializedIndexMeta materializedIndexMeta = entry.getValue();
+
+            buildPartitions(
+                    db.getId(),
+                    table.getId(),
+                    materializedIndexMeta,
+                    partitionList,
+                    ctx.getCurrentWarehouseId(),
+                    partitionDescList.get(xxx),
+                    table.isCloudNativeTableOrMaterializedView(),
+                    table.getIndexes(),
+                    table.getBfColumns(),
+                    table.getBfFpp(),
+                    table.enablePersistentIndex(),
+                    table.getPersistentIndexType(),
+                    table.primaryIndexCacheExpireSec(),
+                    table.getCurBinlogConfig(),
+                    table.getCompressionType());
+        }
     }
 
-    public static Partition createPartition(Long databaseId, long tableid,
+    public static Partition createPartition(ConnectContext ctx,
+                                            Database database, OlapTable table,
                                             PartitionDesc partitionDesc,
                                             DistributionInfo distributionInfo,
-                                            Map<Long, MaterializedIndexMeta> indexIdToMeta
-    ) {
-        PartitionInfo partitionInfo = table.getPartitionInfo();
+                                            Map<Long, MaterializedIndexMeta> indexIdToMeta) throws DdlException {
         long partitionId = GlobalStateMgr.getCurrentState().getNextId();
-        String partitionName = partitionDesc.getPartitionName();
 
-        // create shard group
-        long shardGroupId = 0;
         if (table.isCloudNativeTableOrMaterializedView()) {
-            shardGroupId = GlobalStateMgr.getCurrentState().getStarOSAgent().
-                    createShardGroup(db.getId(), table.getId(), partitionId);
+            return createLakeTablets(
+                    database.getId(),
+                    table.getId(),
+                    partitionId,
+                    partitionDesc,
+                    distributionInfo,
+                    indexIdToMeta,
+                    null,
+                    ctx.getCurrentWarehouseId(),
+                    table.getPartitionFilePathInfo(partitionId));
+        } else {
+            return createOlapTablets(
+                    database.getId(),
+                    table.getId(),
+                    partitionId,
+                    partitionDesc,
+                    distributionInfo,
+                    indexIdToMeta,
+                    partitionDesc.getVersionInfo(),
+                    partitionDesc.getReplicationNum(),
+                    null,
+                    table.getLocation()
+            );
         }
+    }
 
+
+    private static Partition createLakeTablets(long databaseId, long tableId, long partitionId,
+                                               PartitionDesc partitionDesc,
+                                               DistributionInfo distributionInfo,
+                                               Map<Long, MaterializedIndexMeta> indexIdToMeta,
+                                               Set<Long> tabletIdSet,
+                                               long warehouseId,
+                                               FilePathInfo pathInfo) throws DdlException {
+
+        String partitionName = partitionDesc.getPartitionName();
+        long shardGroupId = GlobalStateMgr.getCurrentState().getStarOSAgent().createShardGroup(databaseId, tableId, partitionId);
         Partition partition = new Partition(
                 partitionId,
                 partitionName,
                 null,
                 distributionInfo,
                 shardGroupId);
-
         Long partitionVersion = partitionDesc.getVersionInfo();
         if (partitionVersion != null) {
             partition.updateVisibleVersion(partitionVersion);
         }
 
-
         for (Map.Entry<Long, MaterializedIndexMeta> entry : indexIdToMeta.entrySet()) {
             Long indexId = entry.getKey();
             MaterializedIndexMeta materializedIndexMeta = entry.getValue();
 
-            MaterializedIndex materializedIndex = new MaterializedIndex(indexId, MaterializedIndex.IndexState.NORMAL);
+            MaterializedIndex index = new MaterializedIndex(indexId, MaterializedIndex.IndexState.NORMAL);
 
             TabletMeta tabletMeta = new TabletMeta(
-                    databaseId, tableid, partitionId, indexId,
+                    databaseId, tableId, partitionId, indexId,
                     materializedIndexMeta.getSchemaHash(),
                     partitionDesc.getPartitionDataProperty().getStorageMedium(),
-                    table.isCloudNativeTableOrMaterializedView());
+                    true);
 
-            if (table.isCloudNativeTableOrMaterializedView()) {
-                createLakeTablets(materializedIndex, partitionId, shardGroupId, materializedIndex,
-                        distributionInfo, partitionDesc,
-                        tabletMeta, tabletIdSet, warehouseId);
-            } else {
-                createOlapTablets(materializedIndex,
-                        Replica.ReplicaState.NORMAL,
-                        distributionInfo,
-                        partitionDesc.getVersionInfo(),
-                        partitionDesc.getReplicationNum(),
-                        tabletMeta
-                );
+            DistributionInfo.DistributionInfoType distributionInfoType = distributionInfo.getType();
+            if (distributionInfoType != DistributionInfo.DistributionInfoType.HASH
+                    && distributionInfoType != DistributionInfo.DistributionInfoType.RANDOM) {
+                throw new DdlException("Unknown distribution type: " + distributionInfoType);
+            }
+
+            Map<String, String> properties = new HashMap<>();
+            properties.put(LakeTablet.PROPERTY_KEY_TABLE_ID, Long.toString(tableId));
+            properties.put(LakeTablet.PROPERTY_KEY_PARTITION_ID, Long.toString(partitionId));
+            properties.put(LakeTablet.PROPERTY_KEY_INDEX_ID, Long.toString(index.getId()));
+            int bucketNum = distributionInfo.getBucketNum();
+            WarehouseManager warehouseManager = GlobalStateMgr.getCurrentState().getWarehouseMgr();
+            Optional<Long> workerGroupId = warehouseManager.selectWorkerGroupByWarehouseId(warehouseId);
+            if (workerGroupId.isEmpty()) {
+                Warehouse warehouse = warehouseManager.getWarehouse(warehouseId);
+                ErrorReportException.report(ErrorCode.ERR_NO_NODES_IN_WAREHOUSE, warehouse.getName());
+            }
+
+            List<Long> shardIds = GlobalStateMgr.getCurrentState().getStarOSAgent().createShards(
+                    bucketNum,
+                    pathInfo,
+                    partitionDesc.getDataCacheInfo().getCacheInfo(),
+                    shardGroupId, null, properties, workerGroupId.get());
+            for (long shardId : shardIds) {
+                Tablet tablet = new LakeTablet(shardId);
+                index.addTablet(tablet, tabletMeta);
+                tabletIdSet.add(tablet.getId());
             }
         }
+
+        return partition;
     }
 
-    private void createTablet(Database db, OlapTable table,
-                              List<PartitionDesc> partitionDescs,
-                              HashMap<String, Set<Long>> partitionNameToTabletSet,
-                              Set<Long> tabletIdSetForAll,
-                              Set<String> existPartitionNameSet,
-                              long warehouseId) {
-        if (table.isCloudNativeTableOrMaterializedView()) {
-            createLakeTablets(table, partitionId, shardGroupId, index,
-                    distributionInfo, partitionDesc,
-                    tabletMeta, tabletIdSet, warehouseId);
-        } else {
-            createOlapTablets(table, index, Replica.ReplicaState.NORMAL, distributionInfo,
-                    partition.getVisibleVersion(), replicationNum, tabletMeta, tabletIdSet);
-        }
-    }
-
-
-    private void createOlapTablets(
-            MaterializedIndex index, Replica.ReplicaState replicaState,
-            DistributionInfo distributionInfo, long version, short replicationNum,
-            TabletMeta tabletMeta, Set<Long> tabletIdSet,
+    private static Partition createOlapTablets(
+            long databaseId,
+            long tableId,
+            long partitionId,
+            PartitionDesc partitionDesc,
+            DistributionInfo distributionInfo,
+            Map<Long, MaterializedIndexMeta> indexIdToMeta,
+            long version,
+            short replicationNum,
+            Set<Long> tabletIdSet,
             Multimap<String, String> locReq) throws DdlException {
         Preconditions.checkArgument(replicationNum > 0);
 
@@ -177,164 +246,289 @@ public class LocalPartitionHandler {
         ColocateTableIndex colocateTableIndex = GlobalStateMgr.getCurrentState().getColocateTableIndex();
         CountingLatch colocateTableCreateSyncer = GlobalStateMgr.getCurrentState().getLocalMetastore().getColocateTableCreateSyncer();
 
-        List<List<Long>> backendsPerBucketSeq = null;
-        ColocateTableIndex.GroupId groupId = null;
-        boolean initBucketSeqWithSameOrigNameGroup = false;
-        boolean isColocateTable = colocateTableIndex.isColocateTable(tabletMeta.getTableId());
-        // chooseBackendsArbitrary is true, means this may be the first table of colocation group,
-        // or this is just a normal table, and we can choose backends arbitrary.
-        // otherwise, backends should be chosen from backendsPerBucketSeq;
-        boolean chooseBackendsArbitrary;
+        for (Map.Entry<Long, MaterializedIndexMeta> entry : indexIdToMeta.entrySet()) {
+            Long indexId = entry.getKey();
+            MaterializedIndexMeta materializedIndexMeta = entry.getValue();
 
-        // We should synchronize the creation of colocate tables, otherwise it can have concurrent issues.
-        // Considering the following situation,
-        // T1: P1 issues `create colocate table` and finds that there isn't a bucket sequence associated
-        //     with the colocate group, so it will initialize the bucket sequence for the first time
-        // T2: P2 do the same thing as P1
-        // T3: P1 set the bucket sequence for colocate group stored in `ColocateTableIndex`
-        // T4: P2 also set the bucket sequence, hence overwrite what P1 just wrote
-        // T5: After P1 creates the colocate table, the actual tablet distribution won't match the bucket sequence
-        //     of the colocate group, and balancer will create a lot of COLOCATE_MISMATCH tasks which shouldn't exist.
-        if (isColocateTable) {
-            try {
-                // Optimization: wait first time, before global lock
-                colocateTableCreateSyncer.awaitZero();
-                // Since we have supported colocate tables in different databases,
-                // we should use global lock, not db lock.
-                GlobalStateMgr.getCurrentState().tryLock(false);
+            MaterializedIndex materializedIndex = new MaterializedIndex(indexId, MaterializedIndex.IndexState.NORMAL);
+
+            TabletMeta tabletMeta = new TabletMeta(
+                    databaseId, tableId, partitionId, indexId,
+                    materializedIndexMeta.getSchemaHash(),
+                    partitionDesc.getPartitionDataProperty().getStorageMedium(),
+                    false);
+
+            List<List<Long>> backendsPerBucketSeq = null;
+            ColocateTableIndex.GroupId groupId = null;
+            boolean initBucketSeqWithSameOrigNameGroup = false;
+            boolean isColocateTable = colocateTableIndex.isColocateTable(tabletMeta.getTableId());
+            // chooseBackendsArbitrary is true, means this may be the first table of colocation group,
+            // or this is just a normal table, and we can choose backends arbitrary.
+            // otherwise, backends should be chosen from backendsPerBucketSeq;
+            boolean chooseBackendsArbitrary;
+
+            // We should synchronize the creation of colocate tables, otherwise it can have concurrent issues.
+            // Considering the following situation,
+            // T1: P1 issues `create colocate table` and finds that there isn't a bucket sequence associated
+            //     with the colocate group, so it will initialize the bucket sequence for the first time
+            // T2: P2 do the same thing as P1
+            // T3: P1 set the bucket sequence for colocate group stored in `ColocateTableIndex`
+            // T4: P2 also set the bucket sequence, hence overwrite what P1 just wrote
+            // T5: After P1 creates the colocate table, the actual tablet distribution won't match the bucket sequence
+            //     of the colocate group, and balancer will create a lot of COLOCATE_MISMATCH tasks which shouldn't exist.
+            if (isColocateTable) {
                 try {
-                    // Wait again, for safety
-                    // We are in global lock, we should have timeout in case holding lock for too long
-                    colocateTableCreateSyncer.awaitZero(Config.catalog_try_lock_timeout_ms, TimeUnit.MILLISECONDS);
-                    // if this is a colocate table, try to get backend seqs from colocation index.
-                    groupId = colocateTableIndex.getGroup(tabletMeta.getTableId());
-                    backendsPerBucketSeq = colocateTableIndex.getBackendsPerBucketSeq(groupId);
-                    if (backendsPerBucketSeq.isEmpty()) {
-                        List<ColocateTableIndex.GroupId> colocateWithGroupsInOtherDb =
-                                colocateTableIndex.getColocateWithGroupsInOtherDb(groupId);
-                        if (!colocateWithGroupsInOtherDb.isEmpty()) {
-                            backendsPerBucketSeq =
-                                    colocateTableIndex.getBackendsPerBucketSeq(colocateWithGroupsInOtherDb.get(0));
-                            initBucketSeqWithSameOrigNameGroup = true;
+                    // Optimization: wait first time, before global lock
+                    colocateTableCreateSyncer.awaitZero();
+                    // Since we have supported colocate tables in different databases,
+                    // we should use global lock, not db lock.
+                    GlobalStateMgr.getCurrentState().tryLock(false);
+                    try {
+                        // Wait again, for safety
+                        // We are in global lock, we should have timeout in case holding lock for too long
+                        colocateTableCreateSyncer.awaitZero(Config.catalog_try_lock_timeout_ms, TimeUnit.MILLISECONDS);
+                        // if this is a colocate table, try to get backend seqs from colocation index.
+                        groupId = colocateTableIndex.getGroup(tabletMeta.getTableId());
+                        backendsPerBucketSeq = colocateTableIndex.getBackendsPerBucketSeq(groupId);
+                        if (backendsPerBucketSeq.isEmpty()) {
+                            List<ColocateTableIndex.GroupId> colocateWithGroupsInOtherDb =
+                                    colocateTableIndex.getColocateWithGroupsInOtherDb(groupId);
+                            if (!colocateWithGroupsInOtherDb.isEmpty()) {
+                                backendsPerBucketSeq =
+                                        colocateTableIndex.getBackendsPerBucketSeq(colocateWithGroupsInOtherDb.get(0));
+                                initBucketSeqWithSameOrigNameGroup = true;
+                            }
                         }
+                        chooseBackendsArbitrary = backendsPerBucketSeq == null || backendsPerBucketSeq.isEmpty();
+                        if (chooseBackendsArbitrary) {
+                            colocateTableCreateSyncer.increment();
+                        }
+                    } finally {
+                        GlobalStateMgr.getCurrentState().unlock();
                     }
-                    chooseBackendsArbitrary = backendsPerBucketSeq == null || backendsPerBucketSeq.isEmpty();
-                    if (chooseBackendsArbitrary) {
-                        colocateTableCreateSyncer.increment();
-                    }
-                } finally {
-                    GlobalStateMgr.getCurrentState().unlock();
+                } catch (InterruptedException e) {
+                    LOG.warn("wait for concurrent colocate table creation finish failed, msg: {}",
+                            e.getMessage(), e);
+                    Thread.currentThread().interrupt();
+                    throw new DdlException("wait for concurrent colocate table creation finish failed", e);
                 }
-            } catch (InterruptedException e) {
-                LOG.warn("wait for concurrent colocate table creation finish failed, msg: {}",
-                        e.getMessage(), e);
-                Thread.currentThread().interrupt();
-                throw new DdlException("wait for concurrent colocate table creation finish failed", e);
+            } else {
+                chooseBackendsArbitrary = true;
+            }
+
+            try {
+                if (chooseBackendsArbitrary) {
+                    backendsPerBucketSeq = com.google.common.collect.Lists.newArrayList();
+                }
+                for (int i = 0; i < distributionInfo.getBucketNum(); ++i) {
+                    // create a new tablet with random chosen backends
+                    LocalTablet tablet = new LocalTablet(GlobalStateMgr.getCurrentState().getNextId());
+
+                    // add tablet to inverted index first
+                    materializedIndex.addTablet(tablet, tabletMeta);
+                    tabletIdSet.add(tablet.getId());
+
+                    // get BackendIds
+                    List<Long> chosenBackendIds;
+                    if (chooseBackendsArbitrary) {
+                        // This is the first colocate table in the group, or just a normal table,
+                        // randomly choose backends
+                        if (Config.enable_strict_storage_medium_check) {
+                            chosenBackendIds =
+                                    chosenBackendIdBySeq(replicationNum, locReq, tabletMeta.getStorageMedium());
+                        } else {
+                            try {
+                                chosenBackendIds = chosenBackendIdBySeq(replicationNum, locReq);
+                            } catch (DdlException ex) {
+                                throw new DdlException(String.format("%s, table=%s, default_replication_num=%d",
+                                        ex.getMessage(), table.getName(), Config.default_replication_num));
+                            }
+                        }
+                        backendsPerBucketSeq.add(chosenBackendIds);
+                    } else {
+                        // get backends from existing backend sequence
+                        chosenBackendIds = backendsPerBucketSeq.get(i);
+                    }
+
+                    // create replicas
+                    for (long backendId : chosenBackendIds) {
+                        long replicaId = GlobalStateMgr.getCurrentState().getNextId();
+                        Replica replica = new Replica(replicaId, backendId, Replica.ReplicaState.NORMAL, version,
+                                tabletMeta.getOldSchemaHash());
+                        tablet.addReplica(replica);
+                    }
+                    Preconditions.checkState(chosenBackendIds.size() == replicationNum,
+                            chosenBackendIds.size() + " vs. " + replicationNum);
+                }
+
+                // In the following two situations, we should set the bucket seq for colocate group and persist the info,
+                //   1. This is the first time we add a table to colocate group, and it doesn't have the same original name
+                //      with colocate group in other database.
+                //   2. It's indeed the first time, but it should colocate with group in other db
+                //      (because of having the same original name), we should use the bucket
+                //      seq of other group to initialize our own.
+                if ((groupId != null && chooseBackendsArbitrary) || initBucketSeqWithSameOrigNameGroup) {
+                    colocateTableIndex.addBackendsPerBucketSeq(groupId, backendsPerBucketSeq);
+                    ColocatePersistInfo info =
+                            ColocatePersistInfo.createForBackendsPerBucketSeq(groupId, backendsPerBucketSeq);
+                    GlobalStateMgr.getCurrentState().getEditLog().logColocateBackendsPerBucketSeq(info);
+                }
+            } finally {
+                if (isColocateTable && chooseBackendsArbitrary) {
+                    colocateTableCreateSyncer.decrement();
+                }
+            }
+        }
+
+        return partition;
+    }
+
+    private void updatePartitionInfo(PartitionInfo partitionInfo, List<Pair<Partition, PartitionDesc>> partitionList,
+                                     Set<String> existPartitionNameSet, AddPartitionClause addPartitionClause,
+                                     OlapTable olapTable)
+            throws DdlException {
+        boolean isTempPartition = addPartitionClause.isTempPartition();
+        if (partitionInfo instanceof RangePartitionInfo) {
+            RangePartitionInfo rangePartitionInfo = (RangePartitionInfo) partitionInfo;
+            rangePartitionInfo.handleNewRangePartitionDescs(partitionList, existPartitionNameSet, isTempPartition);
+        } else if (partitionInfo instanceof ListPartitionInfo) {
+            ListPartitionInfo listPartitionInfo = (ListPartitionInfo) partitionInfo;
+            listPartitionInfo.handleNewListPartitionDescs(partitionList, existPartitionNameSet, isTempPartition);
+        } else {
+            throw new DdlException("Only support adding partition to range/list partitioned table");
+        }
+
+        if (isTempPartition) {
+            for (Pair<Partition, PartitionDesc> entry : partitionList) {
+                Partition partition = entry.first;
+                if (!existPartitionNameSet.contains(partition.getName())) {
+                    olapTable.addTempPartition(partition);
+                }
             }
         } else {
-            chooseBackendsArbitrary = true;
-        }
-
-        try {
-            if (chooseBackendsArbitrary) {
-                backendsPerBucketSeq = com.google.common.collect.Lists.newArrayList();
-            }
-            for (int i = 0; i < distributionInfo.getBucketNum(); ++i) {
-                // create a new tablet with random chosen backends
-                LocalTablet tablet = new LocalTablet(GlobalStateMgr.getCurrentState().getNextId());
-
-                // add tablet to inverted index first
-                index.addTablet(tablet, tabletMeta);
-                tabletIdSet.add(tablet.getId());
-
-                // get BackendIds
-                List<Long> chosenBackendIds;
-                if (chooseBackendsArbitrary) {
-                    // This is the first colocate table in the group, or just a normal table,
-                    // randomly choose backends
-                    if (Config.enable_strict_storage_medium_check) {
-                        chosenBackendIds =
-                                chosenBackendIdBySeq(replicationNum, locReq, tabletMeta.getStorageMedium());
-                    } else {
-                        try {
-                            chosenBackendIds = chosenBackendIdBySeq(replicationNum, locReq);
-                        } catch (DdlException ex) {
-                            throw new DdlException(String.format("%s, table=%s, default_replication_num=%d",
-                                    ex.getMessage(), table.getName(), Config.default_replication_num));
-                        }
-                    }
-                    backendsPerBucketSeq.add(chosenBackendIds);
-                } else {
-                    // get backends from existing backend sequence
-                    chosenBackendIds = backendsPerBucketSeq.get(i);
+            for (Pair<Partition, PartitionDesc> entry : partitionList) {
+                Partition partition = entry.first;
+                if (!existPartitionNameSet.contains(partition.getName())) {
+                    olapTable.addPartition(partition);
                 }
-
-                // create replicas
-                for (long backendId : chosenBackendIds) {
-                    long replicaId = GlobalStateMgr.getCurrentState().getNextId();
-                    Replica replica = new Replica(replicaId, backendId, replicaState, version,
-                            tabletMeta.getOldSchemaHash());
-                    tablet.addReplica(replica);
-                }
-                Preconditions.checkState(chosenBackendIds.size() == replicationNum,
-                        chosenBackendIds.size() + " vs. " + replicationNum);
-            }
-
-            // In the following two situations, we should set the bucket seq for colocate group and persist the info,
-            //   1. This is the first time we add a table to colocate group, and it doesn't have the same original name
-            //      with colocate group in other database.
-            //   2. It's indeed the first time, but it should colocate with group in other db
-            //      (because of having the same original name), we should use the bucket
-            //      seq of other group to initialize our own.
-            if ((groupId != null && chooseBackendsArbitrary) || initBucketSeqWithSameOrigNameGroup) {
-                colocateTableIndex.addBackendsPerBucketSeq(groupId, backendsPerBucketSeq);
-                ColocatePersistInfo info =
-                        ColocatePersistInfo.createForBackendsPerBucketSeq(groupId, backendsPerBucketSeq);
-                GlobalStateMgr.getCurrentState().getEditLog().logColocateBackendsPerBucketSeq(info);
-            }
-        } finally {
-            if (isColocateTable && chooseBackendsArbitrary) {
-                colocateTableCreateSyncer.decrement();
             }
         }
     }
 
-    private void createLakeTablets(long tableId, long partitionId, long shardGroupId,
-                                   MaterializedIndex index,
-                                   DistributionInfo distributionInfo,
-                                   TabletMeta tabletMeta,
-                                   Set<Long> tabletIdSet, long warehouseId,
-                                   FilePathInfo pathInfo,
-                                   FileCacheInfo cacheInfo) throws DdlException {
-        DistributionInfo.DistributionInfoType distributionInfoType = distributionInfo.getType();
-        if (distributionInfoType != DistributionInfo.DistributionInfoType.HASH
-                && distributionInfoType != DistributionInfo.DistributionInfoType.RANDOM) {
-            throw new DdlException("Unknown distribution type: " + distributionInfoType);
-        }
-
-        Map<String, String> properties = new HashMap<>();
-        properties.put(LakeTablet.PROPERTY_KEY_TABLE_ID, Long.toString(tableId));
-        properties.put(LakeTablet.PROPERTY_KEY_PARTITION_ID, Long.toString(partitionId));
-        properties.put(LakeTablet.PROPERTY_KEY_INDEX_ID, Long.toString(index.getId()));
-        int bucketNum = distributionInfo.getBucketNum();
-        WarehouseManager warehouseManager = GlobalStateMgr.getCurrentState().getWarehouseMgr();
-        Optional<Long> workerGroupId = warehouseManager.selectWorkerGroupByWarehouseId(warehouseId);
-        if (workerGroupId.isEmpty()) {
-            Warehouse warehouse = warehouseManager.getWarehouse(warehouseId);
-            ErrorReportException.report(ErrorCode.ERR_NO_NODES_IN_WAREHOUSE, warehouse.getName());
-        }
-        List<Long> shardIds = GlobalStateMgr.getCurrentState().getStarOSAgent()
-                .createShards(bucketNum, pathInfo, cacheInfo, shardGroupId, null, properties, workerGroupId.get());
-        for (long shardId : shardIds) {
-            Tablet tablet = new LakeTablet(shardId);
-            index.addTablet(tablet, tabletMeta);
-            tabletIdSet.add(tablet.getId());
+    private void addPartitionLog(Database db, OlapTable olapTable, List<PartitionDesc> partitionDescs,
+                                 AddPartitionClause addPartitionClause, PartitionInfo partitionInfo,
+                                 List<Partition> partitionList, Set<String> existPartitionNameSet)
+            throws DdlException {
+        PartitionType partitionType = partitionInfo.getType();
+        if (partitionInfo.isRangePartition()) {
+            addRangePartitionLog(db, olapTable, partitionDescs, addPartitionClause, partitionInfo, partitionList,
+                    existPartitionNameSet);
+        } else if (partitionType == PartitionType.LIST) {
+            addListPartitionLog(db, olapTable, partitionDescs, addPartitionClause, partitionInfo, partitionList,
+                    existPartitionNameSet);
+        } else {
+            throw new DdlException("Only support adding partition log to range/list partitioned table");
         }
     }
+
+
+    private void addRangePartitionLog(Database db, OlapTable olapTable, List<PartitionDesc> partitionDescs,
+                                      AddPartitionClause addPartitionClause, PartitionInfo partitionInfo,
+                                      List<Partition> partitionList, Set<String> existPartitionNameSet) {
+        boolean isTempPartition = addPartitionClause.isTempPartition();
+        int partitionLen = partitionList.size();
+        List<PartitionPersistInfoV2> partitionInfoV2List = Lists.newArrayListWithCapacity(partitionLen);
+        if (partitionLen == 1) {
+            Partition partition = partitionList.get(0);
+            if (existPartitionNameSet.contains(partition.getName())) {
+                LOG.info("add partition[{}] which already exists", partition.getName());
+                return;
+            }
+            PartitionPersistInfoV2 info = new RangePartitionPersistInfo(db.getId(), olapTable.getId(), partition,
+                    partitionDescs.get(0).getPartitionDataProperty(),
+                    partitionInfo.getReplicationNum(partition.getId()),
+                    partitionInfo.getIsInMemory(partition.getId()), isTempPartition,
+                    ((RangePartitionInfo) partitionInfo).getRange(partition.getId()),
+                    ((SingleRangePartitionDesc) partitionDescs.get(0)).getDataCacheInfo());
+            partitionInfoV2List.add(info);
+            AddPartitionsInfoV2 infos = new AddPartitionsInfoV2(partitionInfoV2List);
+            GlobalStateMgr.getCurrentState().getEditLog().logAddPartitions(infos);
+
+            LOG.info("succeed in creating partition[{}], name: {}, temp: {}", partition.getId(),
+                    partition.getName(), isTempPartition);
+        } else {
+            for (int i = 0; i < partitionLen; i++) {
+                Partition partition = partitionList.get(i);
+                if (!existPartitionNameSet.contains(partition.getName())) {
+                    PartitionPersistInfoV2 info = new RangePartitionPersistInfo(db.getId(), olapTable.getId(),
+                            partition, partitionDescs.get(i).getPartitionDataProperty(),
+                            partitionInfo.getReplicationNum(partition.getId()),
+                            partitionInfo.getIsInMemory(partition.getId()), isTempPartition,
+                            ((RangePartitionInfo) partitionInfo).getRange(partition.getId()),
+                            ((SingleRangePartitionDesc) partitionDescs.get(i)).getDataCacheInfo());
+
+                    partitionInfoV2List.add(info);
+                }
+            }
+
+            AddPartitionsInfoV2 infos = new AddPartitionsInfoV2(partitionInfoV2List);
+            GlobalStateMgr.getCurrentState().getEditLog().logAddPartitions(infos);
+
+            for (PartitionPersistInfoV2 infoV2 : partitionInfoV2List) {
+                LOG.info("succeed in creating partition[{}], name: {}, temp: {}", infoV2.getPartition().getId(),
+                        infoV2.getPartition().getName(), isTempPartition);
+            }
+        }
+    }
+
+    @VisibleForTesting
+    public void addListPartitionLog(Database db, OlapTable olapTable, List<PartitionDesc> partitionDescs,
+                                    AddPartitionClause addPartitionClause, PartitionInfo partitionInfo,
+                                    List<Partition> partitionList, Set<String> existPartitionNameSet)
+            throws DdlException {
+        if (partitionList == null) {
+            throw new DdlException("partitionList should not null");
+        } else if (partitionList.size() == 0) {
+            return;
+        }
+
+        // TODO: add only 1 log for multi list partition
+        int i = 0;
+        for (Partition partition : partitionList) {
+            boolean isTempPartition = addPartitionClause.isTempPartition();
+            if (existPartitionNameSet.contains(partition.getName())) {
+                LOG.info("add partition[{}] which already exists", partition.getName());
+                continue;
+            }
+            long partitionId = partition.getId();
+            PartitionPersistInfoV2 info = new ListPartitionPersistInfo(db.getId(), olapTable.getId(), partition,
+                    partitionDescs.get(i).getPartitionDataProperty(),
+                    partitionInfo.getReplicationNum(partitionId),
+                    partitionInfo.getIsInMemory(partitionId),
+                    isTempPartition,
+                    ((ListPartitionInfo) partitionInfo).getIdToValues().get(partitionId),
+                    ((ListPartitionInfo) partitionInfo).getIdToMultiValues().get(partitionId),
+                    partitionDescs.get(i).getDataCacheInfo());
+            GlobalStateMgr.getCurrentState().getEditLog().logAddPartition(info);
+            LOG.info("succeed in creating list partition[{}], name: {}, temp: {}", partitionId,
+                    partition.getName(), isTempPartition);
+            i++;
+        }
+    }
+
+    private static OlapTable checkTable(Database db, String tableName) throws DdlException {
+        CatalogUtils.checkTableExist(db, tableName);
+        Table table = db.getTable(tableName);
+        CatalogUtils.checkNativeTable(db, table);
+        OlapTable olapTable = (OlapTable) table;
+        CatalogUtils.checkTableState(olapTable, tableName);
+        return olapTable;
+    }
+
 
     // create replicas for tablet with random chosen backends
-    private List<Long> chosenBackendIdBySeq(int replicationNum, Multimap<String, String> locReq,
-                                            TStorageMedium storageMedium)
+    private static List<Long> chosenBackendIdBySeq(int replicationNum, Multimap<String, String> locReq,
+                                                   TStorageMedium storageMedium)
             throws DdlException {
         List<Long> chosenBackendIds =
                 GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getNodeSelector()
@@ -352,7 +546,7 @@ public class LocalPartitionHandler {
         return chosenBackendIds;
     }
 
-    private List<Long> chosenBackendIdBySeq(int replicationNum, Multimap<String, String> locReq) throws DdlException {
+    private static List<Long> chosenBackendIdBySeq(int replicationNum, Multimap<String, String> locReq) throws DdlException {
         SystemInfoService systemInfoService = GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo();
         List<Long> chosenBackendIds = systemInfoService.getNodeSelector()
                 .seqChooseBackendIds(replicationNum, true, true, locReq);
@@ -369,7 +563,21 @@ public class LocalPartitionHandler {
         }
     }
 
-    private void buildPartitions(Long dbId, Long tableId, List<PhysicalPartition> partitions) {
+    private void buildPartitions(long dbId,
+                                 long tableId,
+                                 Map<Long, MaterializedIndexMeta> indexMetaMap,
+                                 List<PhysicalPartition> partitions,
+                                 long warehouseId,
+                                 PartitionDesc partitionDesc,
+                                 boolean isCloudNativeTable,
+                                 List<Index> indexes,
+                                 Collection<String> bloomFilterColumnNames,
+                                 double fpp,
+                                 boolean enablePersistentIndex,
+                                 TPersistentIndexType persistentIndexType,
+                                 int primaryIndexCacheExpireSec,
+                                 BinlogConfig binlogConfig,
+                                 TCompressionType compressionType) {
         if (partitions.isEmpty()) {
             return;
         }
@@ -408,9 +616,21 @@ public class LocalPartitionHandler {
         }
     }
 
-    private void buildPartitionsSequentially(long dbId, OlapTable tablexxx, List<PhysicalPartition> partitions, int numReplicas,
-                                             int numBackends, long warehouseId,
-                                             PartitionInfo partitionInfo) throws DdlException {
+    private void buildPartitionsSequentially(long dbId,
+                                             long tableId,
+                                             Map<Long, MaterializedIndexMeta> indexMetaMap,
+                                             List<PhysicalPartition> partitions,
+                                             long warehouseId,
+                                             PartitionDesc partitionDesc,
+                                             boolean isCloudNativeTable,
+                                             List<Index> indexes,
+                                             Collection<String> bloomFilterColumnNames,
+                                             double fpp,
+                                             boolean enablePersistentIndex,
+                                             TPersistentIndexType persistentIndexType,
+                                             int primaryIndexCacheExpireSec,
+                                             BinlogConfig binlogConfig,
+                                             TCompressionType compressionType) throws DdlException {
         // Try to bundle at least 200 CreateReplicaTask's in a single AgentBatchTask.
         // The number 200 is just an experiment value that seems to work without obvious problems, feel free to
         // change it if you have a better choice.
@@ -419,7 +639,23 @@ public class LocalPartitionHandler {
         int partitionGroupSize = Math.max(1, numBackends * 200 / Math.max(1, avgReplicasPerPartition));
         for (int i = 0; i < partitions.size(); i += partitionGroupSize) {
             int endIndex = Math.min(partitions.size(), i + partitionGroupSize);
-            List<CreateReplicaTask> tasks = buildCreateReplicaTasks(dbId, table, partitions.subList(i, endIndex), warehouseId, partitionInfo);
+            List<CreateReplicaTask> tasks = buildCreateReplicaTasks(
+                    dbId,
+                    tableId,
+                    indexMetaMap.get(xxx),
+                    partitions.get(xxx),
+                    null,
+                    warehouseId,
+                    partitionDesc,
+                    isCloudNativeTable,
+                    indexes,
+                    bloomFilterColumnNames,
+                    fpp,
+                    enablePersistentIndex,
+                    persistentIndexType,
+                    primaryIndexCacheExpireSec,
+                    binlogConfig,
+                    compressionType);
             int partitionCount = endIndex - i;
             int indexCountPerPartition = partitions.get(i).getMaterializedIndices(MaterializedIndex.IndexExtState.VISIBLE).size();
             int timeout = Config.tablet_create_timeout_second * countMaxTasksPerBackend(tasks);
@@ -441,9 +677,21 @@ public class LocalPartitionHandler {
         }
     }
 
-    private void buildPartitionsConcurrently(long dbId, OlapTable table, List<PhysicalPartition> partitions,
-                                             int numReplicas,
-                                             int numBackends, long warehouseId) throws DdlException {
+    private void buildPartitionsConcurrently(long dbId,
+                                             long tableId,
+                                             Map<Long, MaterializedIndexMeta> indexMetaMap,
+                                             List<PhysicalPartition> partitions,
+                                             long warehouseId,
+                                             PartitionDesc partitionDesc,
+                                             boolean isCloudNativeTable,
+                                             List<Index> indexes,
+                                             Collection<String> bloomFilterColumnNames,
+                                             double fpp,
+                                             boolean enablePersistentIndex,
+                                             TPersistentIndexType persistentIndexType,
+                                             int primaryIndexCacheExpireSec,
+                                             BinlogConfig binlogConfig,
+                                             TCompressionType compressionType) throws DdlException {
         long start = System.currentTimeMillis();
         int timeout = Math.max(1, numReplicas / numBackends) * Config.tablet_create_timeout_second;
         int numIndexes = partitions.stream().mapToInt(
@@ -506,25 +754,13 @@ public class LocalPartitionHandler {
         }
     }
 
-    private List<CreateReplicaTask> buildCreateReplicaTasks(long dbId, OlapTable table, List<PhysicalPartition> partitions,
-                                                            long warehouseId,
-                                                            PartitionInfo partitionInfo) {
-        List<CreateReplicaTask> tasks = new ArrayList<>();
-        for (PhysicalPartition partition : partitions) {
-            for (MaterializedIndex index : partition.getMaterializedIndices(MaterializedIndex.IndexExtState.VISIBLE)) {
-                tasks.addAll(buildCreateReplicaTasks(dbId, table, partition, index, warehouseId, partitionInfo));
-            }
-        }
-        return tasks;
-    }
-
     private List<CreateReplicaTask> buildCreateReplicaTasks(long dbId,
                                                             long tableId,
                                                             MaterializedIndexMeta indexMeta,
                                                             PhysicalPartition partition,
                                                             MaterializedIndex index,
                                                             long warehouseId,
-                                                            PartitionInfo partitionInfo,
+                                                            PartitionDesc partitionDesc,
                                                             boolean isCloudNativeTable,
                                                             List<Index> indexes,
                                                             Collection<String> bloomFilterColumnNames,
@@ -576,7 +812,7 @@ public class LocalPartitionHandler {
                         .setIndexId(index.getId())
                         .setTabletId(tablet.getId())
                         .setVersion(partition.getVisibleVersion())
-                        .setStorageMedium(partitionInfo.getDataProperty(partition.getParentId()).getStorageMedium())
+                        .setStorageMedium(partitionDesc.getPartitionDataProperty().getStorageMedium())
                         .setEnablePersistentIndex(enablePersistentIndex)
                         .setPersistentIndexType(persistentIndexType)
                         .setPrimaryIndexCacheExpireSec(primaryIndexCacheExpireSec)
