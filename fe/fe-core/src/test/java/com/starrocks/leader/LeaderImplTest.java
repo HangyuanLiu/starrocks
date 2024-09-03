@@ -19,7 +19,7 @@ import com.google.common.collect.Sets;
 import com.starrocks.catalog.LocalTablet;
 import com.starrocks.catalog.MaterializedIndex;
 import com.starrocks.catalog.OlapTable;
-import com.starrocks.catalog.Partition;
+import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.Replica;
 import com.starrocks.common.jmockit.Deencapsulation;
 import com.starrocks.lake.LakeTable;
@@ -65,13 +65,14 @@ public class LeaderImplTest {
 
     @Test
     public void testFindRelatedReplica(@Mocked OlapTable olapTable, @Mocked LakeTable lakeTable,
-                                       @Mocked Partition partition, @Mocked MaterializedIndex index
+                                       @Mocked PhysicalPartition partition,
+                                       @Mocked MaterializedIndex index
                                        ) throws Exception {
 
         // olap table
         new Expectations() {
             {
-                partition.getDefaultPhysicalPartition().getIndex(indexId);
+                partition.getIndex(indexId);
                 result = index;
                 index.getTablet(tabletId);
                 result = new LocalTablet(tabletId);
@@ -90,7 +91,7 @@ public class LeaderImplTest {
 
         new Expectations() {
             {
-                partition.getDefaultPhysicalPartition().getIndex(indexId);
+                partition.getIndex(indexId);
                 result = index;
                 index.getTablet(tabletId);
                 result = new LakeTablet(tabletId);

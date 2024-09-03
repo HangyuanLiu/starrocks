@@ -273,7 +273,6 @@ public class AnalyzeStmtTest {
     public void testStatisticsSqlBuilder() throws Exception {
         Database database = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb("test");
         OlapTable table = (OlapTable) GlobalStateMgr.getCurrentState().getLocalMetastore().getTable(database.getFullName(), "t0");
-        System.out.println(table.getPartitions());
         Partition partition = (new ArrayList<>(table.getPartitions())).get(0);
 
         Column v1 = table.getColumn("v1");

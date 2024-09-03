@@ -988,7 +988,7 @@ public class RestoreJob extends AbstractJob {
 
         // generate new partition id
         long newPartId = globalStateMgr.getNextId();
-        remotePart.getDefaultPhysicalPartition().setIdForRestore(newPartId);
+        remotePart.setIdForRestore(newPartId);
 
         // indexes
         Map<String, Long> localIdxNameToId = localTbl.getIndexNameToId();

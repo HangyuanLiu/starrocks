@@ -836,7 +836,7 @@ public class OlapTable extends Table {
                 });
                 idToPartition.put(newPartId, idToPartition.remove(entry.getValue()));
                 Partition partition = idToPartition.get(newPartId);
-                partition.getDefaultPhysicalPartition().setIdForRestore(newPartId);
+                partition.setIdForRestore(newPartId);
                 partition.getSubPartitions().forEach(physicalPartition -> {
                     if (physicalPartition.getId() != newPartId) {
                         partition.removeSubPartition(physicalPartition.getId());
@@ -862,7 +862,7 @@ public class OlapTable extends Table {
                 });
                 idToPartition.put(newPartId, idToPartition.remove(entry.getValue()));
                 Partition partition = idToPartition.get(newPartId);
-                partition.getDefaultPhysicalPartition().setIdForRestore(newPartId);
+                partition.setIdForRestore(newPartId);
                 partition.getSubPartitions().forEach(physicalPartition -> {
                     if (physicalPartition.getId() != newPartId) {
                         partition.removeSubPartition(physicalPartition.getId());

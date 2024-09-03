@@ -35,6 +35,7 @@
 package com.starrocks.catalog;
 
 import com.google.common.base.Objects;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.persist.gson.GsonPostProcessable;
@@ -123,6 +124,7 @@ public class Partition extends MetaObject implements GsonPostProcessable {
         this.defaultPhysicalPartitionId = id;
         PhysicalPartition physicalPartition = new PhysicalPartition(id, name, id, this.shardGroupId, baseIndex);
         this.idToSubPartition.put(id, physicalPartition);
+        this.nameToSubPartition.put(name, physicalPartition);
     }
 
     public Partition shallowCopy() {
@@ -144,6 +146,7 @@ public class Partition extends MetaObject implements GsonPostProcessable {
         partition.shardGroupId = this.shardGroupId;
         partition.idToSubPartition = Maps.newHashMap(this.idToSubPartition);
         partition.nameToSubPartition = Maps.newHashMap(this.nameToSubPartition);
+        partition.defaultPhysicalPartitionId = this.defaultPhysicalPartitionId;
         return partition;
     }
 
@@ -198,7 +201,7 @@ public class Partition extends MetaObject implements GsonPostProcessable {
     }
 
     public Collection<PhysicalPartition> getSubPartitions() {
-        return idToSubPartition.values();
+        return Lists.newArrayList(idToSubPartition.values());
     }
 
     public PhysicalPartition getSubPartition(long id) {
@@ -244,6 +247,16 @@ public class Partition extends MetaObject implements GsonPostProcessable {
             replicaCount += subPartition.storageReplicaCount();
         }
         return replicaCount;
+    }
+
+    public void setIdForRestore(long id) {
+        PhysicalPartition physicalPartition = getDefaultPhysicalPartition();
+        removeSubPartition(defaultPhysicalPartitionId);
+        physicalPartition.setIdForRestore(id);
+        addSubPartition(physicalPartition);
+
+        this.id = id;
+        this.defaultPhysicalPartitionId = id;
     }
 
     @Override

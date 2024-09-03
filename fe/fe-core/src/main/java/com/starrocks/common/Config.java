@@ -143,6 +143,8 @@ public class Config extends ConfigBase {
     public static String[] audit_log_modules = {"slow_query", "query"};
     @ConfField(mutable = true)
     public static long qe_slow_log_ms = 5000;
+    @ConfField(mutable = true)
+    public static boolean enable_qe_slow_log = true;
     @ConfField
     public static String audit_log_roll_interval = "DAY";
     @ConfField
@@ -3159,4 +3161,7 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true)
     public static int thrift_max_recursion_depth = 64;
+
+    @ConfField(mutable = true)
+    public static double partition_hash_join_min_cardinality_rate = 0.3;
 }

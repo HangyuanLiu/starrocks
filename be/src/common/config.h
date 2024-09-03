@@ -1251,6 +1251,8 @@ CONF_String(rocksdb_db_options_string, "create_if_missing=true;create_missing_co
 CONF_Int64(local_exchange_buffer_mem_limit_per_driver, "134217728"); // 128MB
 // only used for test. default: 128M
 CONF_mInt64(streaming_agg_limited_memory_size, "134217728");
+// mem limit for partition hash join probe side buffer
+CONF_mInt64(partition_hash_join_probe_limit_size, "134217728");
 // pipeline streaming aggregate chunk buffer size
 CONF_mInt32(streaming_agg_chunk_buffer_size, "1024");
 CONF_mInt64(wait_apply_time, "6000"); // 6s
@@ -1297,7 +1299,7 @@ CONF_mInt32(finish_publish_version_internal, "100");
 
 CONF_mBool(enable_stream_load_verbose_log, "false");
 
-CONF_mInt32(get_txn_status_internal_sec, "30");
+CONF_mInt32(get_txn_status_internal_sec, "10");
 
 CONF_mBool(dump_metrics_with_bvar, "true");
 
@@ -1374,10 +1376,6 @@ CONF_mDouble(connector_sink_mem_urgent_space_ratio, "0.1");
 
 // .crm file can be removed after 1day.
 CONF_mInt32(unused_crm_file_threshold_second, "86400" /** 1day **/);
-
-// When the keys that we want to delete, number of them is larger than this config,
-// we will fallback and using `DeleteRange` in rocksdb.
-CONF_mInt32(rocksdb_opt_delete_range_limit, "500");
 
 // python envs config
 // create time worker timeout
