@@ -184,7 +184,7 @@ public class RestoreJobTest {
             }
         };
 
-        new MockUp<GlobalStateMgr> () {
+        new MockUp<GlobalStateMgr>() {
             @Mock
             public long getNextId() {
                 return idGenerator.getNextId();
@@ -381,7 +381,7 @@ public class RestoreJobTest {
             }
         };
 
-        new MockUp<GlobalStateMgr> () {
+        new MockUp<GlobalStateMgr>() {
             @Mock
             public long getNextId() {
                 return idGenerator.getNextId();

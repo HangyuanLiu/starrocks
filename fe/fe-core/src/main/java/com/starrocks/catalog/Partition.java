@@ -274,11 +274,7 @@ public class Partition extends MetaObject implements GsonPostProcessable {
         }
 
         Partition partition = (Partition) obj;
-        return (id == partition.id)
-                && (visibleVersion == partition.visibleVersion)
-                && (baseIndex.equals(partition.baseIndex)
-                && distributionInfo.equals(partition.distributionInfo))
-                && Objects.equal(idToVisibleRollupIndex, partition.idToVisibleRollupIndex);
+        return id == partition.id;
     }
 
     @Override
