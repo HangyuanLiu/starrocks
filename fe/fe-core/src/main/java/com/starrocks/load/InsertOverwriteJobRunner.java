@@ -230,7 +230,7 @@ public class InsertOverwriteJobRunner {
                     InsertOverwriteJobState.OVERWRITE_RUNNING, job.getSourcePartitionIds(), job.getTmpPartitionIds());
             GlobalStateMgr.getCurrentState().getEditLog().logInsertOverwriteStateChange(info);
         } finally {
-            locker.unLockDatabase(db, tableId, LockType.WRITE);
+            locker.unLockTableWithIntensiveDbLock(db.getId(), tableId, LockType.WRITE);
         }
 
         transferTo(InsertOverwriteJobState.OVERWRITE_RUNNING);
@@ -357,7 +357,7 @@ public class InsertOverwriteJobRunner {
         try {
             targetTable = checkAndGetTable(db, tableId);
         } finally {
-            locker.unLockDatabase(db, tableId, LockType.READ);
+            locker.unLockTableWithIntensiveDbLock(db.getId(), tableId, LockType.READ);
         }
         PartitionUtils.createAndAddTempPartitionsForTable(db, targetTable, postfix,
                 job.getSourcePartitionIds(), job.getTmpPartitionIds(), null, job.getWarehouseId());
@@ -412,7 +412,7 @@ public class InsertOverwriteJobRunner {
         } catch (Exception e) {
             LOG.warn("exception when gc insert overwrite job.", e);
         } finally {
-            locker.unLockDatabase(db, tableId, LockType.WRITE);
+            locker.unLockTableWithIntensiveDbLock(db.getId(), tableId, LockType.WRITE);
         }
     }
 
@@ -477,7 +477,7 @@ public class InsertOverwriteJobRunner {
                     job.getTargetDbId(), job.getTargetTableId(), e);
             throw new DmlException("replace partitions failed", e);
         } finally {
-            locker.unLockDatabase(db, tableId, LockType.WRITE);
+            locker.unLockTableWithIntensiveDbLock(db.getId(), tableId, LockType.WRITE);
         }
 
         // trigger listeners after insert overwrite committed, trigger listeners after
@@ -519,7 +519,7 @@ public class InsertOverwriteJobRunner {
         } catch (Exception e) {
             throw new DmlException("prepareInsert exception", e);
         } finally {
-            locker.unLockDatabase(db, tableId, LockType.READ);
+            locker.unLockTableWithIntensiveDbLock(db.getId(), tableId, LockType.READ);
         }
     }
 

@@ -206,7 +206,7 @@ public class ConsistencyChecker extends FrontendDaemon {
 
                 Locker locker = new Locker();
                 try {
-                    locker.lockDatabase(db, LockType.READ);
+                    locker.lockDatabase(db.getId(), LockType.READ);
 
                     // validate table
                     long tableId = tabletMeta.getTableId();
@@ -281,7 +281,7 @@ public class ConsistencyChecker extends FrontendDaemon {
 
                     tabletMeta.resetToBeCleanedTime();
                 } finally {
-                    locker.unLockDatabase(db, LockType.READ);
+                    locker.unLockDatabase(db.getId(), LockType.READ);
                 }
             } // end for tabletIds
         } // end for backendIds
@@ -470,7 +470,7 @@ public class ConsistencyChecker extends FrontendDaemon {
             while ((chosenOne = dbQueue.poll()) != null) {
                 Database db = (Database) chosenOne;
                 Locker locker = new Locker();
-                locker.lockDatabase(db, LockType.READ);
+                locker.lockDatabase(db.getId(), LockType.READ);
                 long startTime = System.currentTimeMillis();
                 try {
                     // sort tables
@@ -560,8 +560,8 @@ public class ConsistencyChecker extends FrontendDaemon {
                     // Since only at most `MAX_JOB_NUM` tablet are chosen, we don't need to release the db read lock
                     // from time to time, just log the time cost here.
                     LOG.info("choose tablets from db[{}-{}](with read lock held) took {}ms",
-                            db.getFullName(), db.getId(), System.currentTimeMillis() - startTime);
-                    locker.unLockDatabase(db, LockType.READ);
+                                db.getFullName(), db.getId(), System.currentTimeMillis() - startTime);
+                    locker.unLockDatabase(db.getId(), LockType.READ);
                 }
             } // end while dbQueue
         } finally {
@@ -598,7 +598,7 @@ public class ConsistencyChecker extends FrontendDaemon {
         }
 
         try (AutoCloseableLock ignore
-                    = new AutoCloseableLock(new Locker(), db, Lists.newArrayList(table.getId()), LockType.WRITE)) {
+                    = new AutoCloseableLock(new Locker(), db.getId(), Lists.newArrayList(table.getId()), LockType.WRITE)) {
             Partition partition = table.getPartition(info.getPartitionId());
             if (partition == null) {
                 LOG.warn("replay finish consistency check failed, partition is null, info: {}", info);

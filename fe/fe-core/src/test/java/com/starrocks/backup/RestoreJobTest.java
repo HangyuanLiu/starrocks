@@ -174,6 +174,14 @@ public class RestoreJobTest {
                 minTimes = 0;
                 result = db;
 
+                globalStateMgr.getNextId();
+                minTimes = 0;
+                result = 50000;
+
+                globalStateMgr.getNextId();
+                minTimes = 0;
+                result = 50001;
+
                 globalStateMgr.getEditLog();
                 minTimes = 0;
                 result = editLog;
