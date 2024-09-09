@@ -195,7 +195,7 @@ public class OlapTable extends Table {
         /* This state means table is updating table meta during alter operation(SCHEMA_CHANGE
          * or ROLLUP).
          * The query plan which is generate during this state is invalid because the meta
-         * during the creation of the logical plan and the physical plan might be inconsistent. 
+         * during the creation of the logical plan and the physical plan might be inconsistent.
         */
         UPDATING_META
     }
