@@ -552,7 +552,7 @@ public class OnlineOptimizeJobV2 extends AlterJobV2 implements GsonPostProcessab
                         for (MaterializedIndex index : partition.getDefaultPhysicalPartition()
                                 .getMaterializedIndices(MaterializedIndex.IndexExtState.ALL)) {
                             // hash set is able to deduplicate the elements
-                            tmpTablets.addAll(index.getTablets());
+                            tmpTablets.addAll(GlobalStateMgr.getCurrentState().getTabletMetastore().getAllTablets(index));
                         }
                         targetTable.dropTempPartition(partition.getName(), true);
                     } else {

@@ -57,6 +57,7 @@ import com.starrocks.common.util.concurrent.lock.AutoCloseableLock;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.consistency.CheckConsistencyJob.JobState;
+import com.starrocks.meta.TabletMetastore;
 import com.starrocks.persist.ConsistencyCheckInfo;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.LocalMetastore;
@@ -164,6 +165,7 @@ public class ConsistencyChecker extends FrontendDaemon {
         LocalMetastore localMetastore = GlobalStateMgr.getCurrentState().getLocalMetastore();
         CatalogRecycleBin recycleBin = GlobalStateMgr.getCurrentState().getRecycleBin();
         TabletInvertedIndex tabletInvertedIndex = GlobalStateMgr.getCurrentState().getTabletInvertedIndex();
+        TabletMetastore tabletMetastore = GlobalStateMgr.getCurrentState().getTabletMetastore();
 
         Set<Long> invalidTablets = new HashSet<>();
         // backend id -> <num of currently existed tablet, num of tablet in recycle bin>
@@ -263,7 +265,7 @@ public class ConsistencyChecker extends FrontendDaemon {
 
                     if (!table.isCloudNativeTableOrMaterializedView()) {
                         // validate tablet
-                        Tablet tablet = index.getTablet(tabletId);
+                        Tablet tablet = tabletMetastore.getTablet(index, tabletId);
                         if (tablet == null) {
                             deleteTabletByConsistencyChecker(tabletMeta, tabletId, backendId,
                                     "tablet " + dbId + "." + tableId + "." +
@@ -609,7 +611,8 @@ public class ConsistencyChecker extends FrontendDaemon {
                 LOG.warn("replay finish consistency check failed, index is null, info: {}", info);
                 return;
             }
-            LocalTablet tablet = (LocalTablet) index.getTablet(info.getTabletId());
+            LocalTablet tablet = (LocalTablet) GlobalStateMgr.getCurrentState()
+                    .getTabletMetastore().getTablet(index, info.getTabletId());
             if (tablet == null) {
                 LOG.warn("replay finish consistency check failed, tablet is null, info: {}", info);
                 return;

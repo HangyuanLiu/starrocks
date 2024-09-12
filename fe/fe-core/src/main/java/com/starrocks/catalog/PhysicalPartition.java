@@ -400,6 +400,10 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
         return true;
     }
 
+    public String generatePhysicalPartitionName(long physicalParitionId) {
+        return this.name + '_' + physicalParitionId;
+    }
+
     public int hashCode() {
         return Objects.hashCode(visibleVersion, baseIndex);
     }
