@@ -26,6 +26,7 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.LocalMetastore;
 import com.starrocks.server.RunMode;
+import com.starrocks.server.WarehouseManager;
 import com.starrocks.utframe.StarRocksAssert;
 import com.starrocks.utframe.UtFrameUtils;
 import mockit.Mock;
@@ -117,7 +118,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter1 = globalTransactionMgr.commitTransaction(db.getId(), transactionId1, transTablets1,
                 Lists.newArrayList(), null);
@@ -126,7 +128,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable2,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter2 = globalTransactionMgr.commitTransaction(db.getId(), transactionId2, transTablets2,
                 Lists.newArrayList(), null);
@@ -135,7 +138,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable3,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter3 = globalTransactionMgr.commitTransaction(db.getId(), transactionId3, transTablets1,
                 Lists.newArrayList(), null);
@@ -144,7 +148,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable4,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter4 = globalTransactionMgr.commitTransaction(db.getId(), transactionId4, transTablets2,
                 Lists.newArrayList(), null);
@@ -181,7 +186,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable9,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter9 = globalTransactionMgr.commitTransaction(db.getId(), transactionId9, transTablets,
                 Lists.newArrayList(), null);
@@ -212,7 +218,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable5,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         globalTransactionMgr.commitTransaction(db.getId(), transactionId5, transTablets,
                 Lists.newArrayList(), null);
@@ -221,7 +228,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable6,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         globalTransactionMgr.commitTransaction(db.getId(), transactionId6, transTablets,
                 Lists.newArrayList(), null);
@@ -268,7 +276,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable7,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter1 = globalTransactionMgr.commitTransaction(db.getId(), transactionId7, transTablets,
                 Lists.newArrayList(), null);
@@ -277,7 +286,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         GlobalStateMgrTestUtil.testTxnLable8,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter2 = globalTransactionMgr.commitTransaction(db.getId(), transactionId8, transTablets,
                 Lists.newArrayList(), null);
@@ -331,7 +341,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         "label1",
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter1 = globalTransactionMgr.commitTransaction(db.getId(), transactionId1, transTablets1,
                 Lists.newArrayList(), null);
@@ -340,7 +351,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         "label2",
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter2 = globalTransactionMgr.commitTransaction(db.getId(), transactionId2, transTablets2,
                 Lists.newArrayList(), null);
@@ -359,7 +371,8 @@ public class LakePublishBatchTest {
                 beginTransaction(db.getId(), Lists.newArrayList(table.getId()),
                         "label3",
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         VisibleStateWaiter waiter3 = globalTransactionMgr.commitTransaction(db.getId(), transactionId3, transTablets1,
                 Lists.newArrayList(), null);

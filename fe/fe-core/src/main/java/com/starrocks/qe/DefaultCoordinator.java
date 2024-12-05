@@ -355,6 +355,11 @@ public class DefaultCoordinator extends Coordinator {
     }
 
     @Override
+    public TLoadJobType getLoadJobType() {
+        return jobSpec.getLoadJobType();
+    }
+
+    @Override
     public Status getExecStatus() {
         return queryStatus;
     }
@@ -467,7 +472,7 @@ public class DefaultCoordinator extends Coordinator {
     // 'Request' must contain at least a coordinator plan fragment (ie, can't
     // be for a query like 'SELECT 1').
     // A call to Exec() must precede all other member function calls.
-    public void prepareExec() throws Exception {
+    public void prepareExec() throws StarRocksException {
         if (LOG.isDebugEnabled()) {
             if (!jobSpec.getScanNodes().isEmpty()) {
                 LOG.debug("debug: in Coordinator::exec. query id: {}, planNode: {}",
@@ -1327,7 +1332,7 @@ public class DefaultCoordinator extends Coordinator {
                 jobSpec.getResourceGroup().getName();
     }
 
-    private void execShortCircuit() throws Exception {
+    private void execShortCircuit() throws StarRocksException {
         shortCircuitExecutor.exec();
     }
 

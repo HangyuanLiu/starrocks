@@ -69,6 +69,7 @@ import com.starrocks.persist.ImageWriter;
 import com.starrocks.persist.metablock.SRMetaBlockReader;
 import com.starrocks.persist.metablock.SRMetaBlockReaderV2;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.server.WarehouseManager;
 import com.starrocks.thrift.TKafkaRLTaskProgress;
 import com.starrocks.thrift.TLoadSourceType;
 import com.starrocks.thrift.TRLTaskTxnCommitAttachment;
@@ -149,7 +150,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         TransactionState transactionState =
                 masterTransMgr.getTransactionState(GlobalStateMgrTestUtil.testDbId1, transactionId);
         assertNotNull(transactionState);
@@ -170,7 +172,8 @@ public class GlobalTransactionMgrTest {
                             Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                             GlobalStateMgrTestUtil.testTxnLable1,
                             transactionSource,
-                            LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                            LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                            WarehouseManager.DEFAULT_WAREHOUSE_ID);
         } catch (AnalysisException | LabelAlreadyUsedException e) {
             e.printStackTrace();
         }
@@ -188,7 +191,8 @@ public class GlobalTransactionMgrTest {
                             Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                             GlobalStateMgrTestUtil.testTxnLable1,
                             transactionSource,
-                            LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                            LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                            WarehouseManager.DEFAULT_WAREHOUSE_ID);
         } catch (Exception e) {
             // TODO: handle exception
         }
@@ -202,7 +206,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         TabletCommitInfo tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,
                 GlobalStateMgrTestUtil.testBackendId1);
@@ -249,7 +254,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction with 1,2 success
         TabletCommitInfo tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,
                 GlobalStateMgrTestUtil.testBackendId1);
@@ -273,7 +279,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable2,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1, GlobalStateMgrTestUtil.testBackendId1);
         TabletCommitInfo tabletCommitInfo3 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,
                 GlobalStateMgrTestUtil.testBackendId3);
@@ -547,7 +554,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         TabletCommitInfo tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,
                 GlobalStateMgrTestUtil.testBackendId1);
@@ -609,7 +617,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction with 1,2 success
         TabletCommitInfo tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,
                 GlobalStateMgrTestUtil.testBackendId1);
@@ -670,7 +679,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable2,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1, GlobalStateMgrTestUtil.testBackendId1);
         TabletCommitInfo tabletCommitInfo3 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,
                 GlobalStateMgrTestUtil.testBackendId3);
@@ -810,7 +820,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // commit a transaction
         TabletCommitInfo tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,
                 GlobalStateMgrTestUtil.testBackendId1);
@@ -875,7 +886,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
 
         UtFrameUtils.PseudoImage pseudoImage = new UtFrameUtils.PseudoImage();
         masterTransMgr.saveTransactionStateV2(pseudoImage.getImageWriter());
@@ -964,7 +976,8 @@ public class GlobalTransactionMgrTest {
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSourceBe,
-                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         long res = masterTransMgr.getTransactionNumByCoordinateBe("localbe");
         assertEquals(1, res);
     }
@@ -974,7 +987,8 @@ public class GlobalTransactionMgrTest {
         Config.disable_load_job = true;
         boolean exceptionThrown = false;
         try {
-            masterTransMgr.beginTransaction(1L, null, "xxx", null, null, LoadJobSourceType.FRONTEND, 1L, 1000L);
+            masterTransMgr.beginTransaction(1L, null, "xxx", null, null, LoadJobSourceType.FRONTEND, 1L, 1000L,
+                    WarehouseManager.DEFAULT_WAREHOUSE_ID);
         } catch (Exception e) {
             Assert.assertTrue(e instanceof ErrorReportException);
             Assert.assertEquals(ErrorCode.ERR_BEGIN_TXN_FAILED, ((ErrorReportException) e).getErrorCode());
@@ -987,7 +1001,8 @@ public class GlobalTransactionMgrTest {
         Config.metadata_enable_recovery_mode = true;
         exceptionThrown = false;
         try {
-            masterTransMgr.beginTransaction(1L, null, "xxx", null, null, LoadJobSourceType.FRONTEND, 1L, 1000L);
+            masterTransMgr.beginTransaction(1L, null, "xxx", null, null, LoadJobSourceType.FRONTEND, 1L, 1000L,
+                    WarehouseManager.DEFAULT_WAREHOUSE_ID);
         } catch (Exception e) {
             Assert.assertTrue(e instanceof ErrorReportException);
             Assert.assertEquals(ErrorCode.ERR_BEGIN_TXN_FAILED, ((ErrorReportException) e).getErrorCode());
@@ -1000,7 +1015,8 @@ public class GlobalTransactionMgrTest {
         GlobalStateMgr.getCurrentState().setSafeMode(true);
         exceptionThrown = false;
         try {
-            masterTransMgr.beginTransaction(1L, null, "xxx", null, null, LoadJobSourceType.FRONTEND, 1L, 1000L);
+            masterTransMgr.beginTransaction(1L, null, "xxx", null, null, LoadJobSourceType.FRONTEND, 1L, 1000L,
+                    WarehouseManager.DEFAULT_WAREHOUSE_ID);
         } catch (Exception e) {
             Assert.assertTrue(e instanceof ErrorReportException);
             Assert.assertEquals(ErrorCode.ERR_BEGIN_TXN_FAILED, ((ErrorReportException) e).getErrorCode());

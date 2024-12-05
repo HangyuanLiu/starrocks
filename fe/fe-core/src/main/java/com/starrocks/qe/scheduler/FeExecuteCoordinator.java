@@ -136,6 +136,11 @@ public class FeExecuteCoordinator extends Coordinator {
     }
 
     @Override
+    public TLoadJobType getLoadJobType() {
+        return null;
+    }
+
+    @Override
     public long getLoadJobId() {
         return 0;
     }

@@ -60,8 +60,7 @@ public class GlobalLoadJobListenerBus {
         if (transactionState == null) {
             return;
         }
-        listeners.stream().forEach(listener -> listener.onDMLStmtJobTransactionFinish(transactionState, db, table,
-                dmlType
+        listeners.forEach(listener -> listener.onDMLStmtJobTransactionFinish(transactionState, db, table, dmlType
         ));
     }
 

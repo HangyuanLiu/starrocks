@@ -12,19 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package com.starrocks.transaction;
 
-package com.starrocks.common;
+import com.google.gson.annotations.SerializedName;
 
-public class NoAliveBackendException extends StarRocksException {
-    public NoAliveBackendException(String msg, Throwable cause) {
-        super(msg, cause);
+public class ExplicitTxnCommitAttachment extends TxnCommitAttachment {
+    @SerializedName("loadedRows")
+    private long loadedRows;
+
+    public ExplicitTxnCommitAttachment(long loadedRows) {
+        super(TransactionState.LoadJobSourceType.EXPLICIT_TXN);
+        this.loadedRows = loadedRows;
     }
 
-    public NoAliveBackendException(String msg) {
-        super(msg);
+    public void addLoadedRows(long loadedRows) {
+        this.loadedRows += loadedRows;
     }
 
-    public NoAliveBackendException() {
-        super(ErrorCode.ERR_QUERY_CANCELLED_BY_CRASH);
+    public long getLoadedRows() {
+        return loadedRows;
     }
 }

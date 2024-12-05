@@ -24,6 +24,7 @@ import com.starrocks.http.rest.TransactionResult;
 import com.starrocks.http.rest.transaction.TransactionOperationParams.Body;
 import com.starrocks.load.loadv2.MiniLoadTxnCommitAttachment;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.server.WarehouseManager;
 import com.starrocks.transaction.GlobalTransactionMgr;
 import com.starrocks.transaction.TabletCommitInfo;
 import com.starrocks.transaction.TabletFailInfo;
@@ -113,8 +114,8 @@ public class BypassWriteTransactionHandler implements TransactionOperationHandle
 
         TxnCoordinator coordinator = new TxnCoordinator(TxnSourceType.FE, HOST_NAME);
         GlobalTransactionMgr globalTxnMgr = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
-        long txnId = globalTxnMgr.beginTransaction(
-                dbId, Lists.newArrayList(tableId), label, coordinator, sourceType, timeoutMillis);
+        long txnId = globalTxnMgr.beginTransaction(dbId, Lists.newArrayList(tableId), label, coordinator, sourceType,
+                timeoutMillis, WarehouseManager.DEFAULT_WAREHOUSE_ID);
         TransactionResult result = new TransactionResult();
         result.addResultEntry(TransactionResult.TXN_ID_KEY, txnId);
         result.addResultEntry(TransactionResult.LABEL_KEY, label);

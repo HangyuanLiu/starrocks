@@ -52,6 +52,7 @@ import com.starrocks.common.jmockit.Deencapsulation;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.load.routineload.RLTaskTxnCommitAttachment;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.server.WarehouseManager;
 import com.starrocks.thrift.TTransactionStatus;
 import mockit.Mock;
 import mockit.MockUp;
@@ -112,7 +113,8 @@ public class DatabaseTransactionMgrTest {
                         Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable10,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
 
         // commit a transaction
         TabletCommitInfo tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,
@@ -146,7 +148,8 @@ public class DatabaseTransactionMgrTest {
                         Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable1,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
 
         Assert.assertEquals(transactionId1, masterTransMgr.getMinActiveTxnId());
         Assert.assertEquals(idGenerator.peekNextTransactionId(), masterTransMgr.getMinActiveCompactionTxnId());
@@ -187,47 +190,54 @@ public class DatabaseTransactionMgrTest {
                         GlobalStateMgrTestUtil.testTxnLable2,
                         beTransactionSource,
                         TransactionState.LoadJobSourceType.ROUTINE_LOAD_TASK,
-                        Config.stream_load_default_timeout_second);
+                        Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         long transactionId3 = masterTransMgr
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1,
                         Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable3,
                         beTransactionSource,
                         TransactionState.LoadJobSourceType.BACKEND_STREAMING,
-                        Config.stream_load_default_timeout_second);
+                        Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         long transactionId4 = masterTransMgr
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1,
                         Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable4,
                         beTransactionSource,
                         TransactionState.LoadJobSourceType.BACKEND_STREAMING,
-                        Config.stream_load_default_timeout_second);
+                        Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         long transactionId5 = masterTransMgr
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1,
                         Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable5,
                         feTransactionSource,
                         TransactionState.LoadJobSourceType.LAKE_COMPACTION,
-                        Config.max_load_timeout_second);
+                        Config.max_load_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         // for test batch
         long transactionId6 = masterTransMgr
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable6,
                         beTransactionSource,
                         TransactionState.LoadJobSourceType.BACKEND_STREAMING,
-                        Config.stream_load_default_timeout_second);
+                        Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         long transactionId7 = masterTransMgr
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable7,
                         beTransactionSource,
                         TransactionState.LoadJobSourceType.BACKEND_STREAMING,
-                        Config.stream_load_default_timeout_second);
+                        Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
         long transactionId8 = masterTransMgr
                 .beginTransaction(GlobalStateMgrTestUtil.testDbId1, Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable8,
                         beTransactionSource,
                         TransactionState.LoadJobSourceType.BACKEND_STREAMING,
-                        Config.stream_load_default_timeout_second);
+                        Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
 
 
         masterTransMgr.commitTransaction(GlobalStateMgrTestUtil.testDbId1, transactionId6, transTablets,
@@ -562,7 +572,8 @@ public class DatabaseTransactionMgrTest {
                         Lists.newArrayList(GlobalStateMgrTestUtil.testTableId1),
                         GlobalStateMgrTestUtil.testTxnLable9,
                         transactionSource,
-                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
+                        TransactionState.LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
 
         // commit a transaction
         TabletCommitInfo tabletCommitInfo1 = new TabletCommitInfo(GlobalStateMgrTestUtil.testTabletId1,

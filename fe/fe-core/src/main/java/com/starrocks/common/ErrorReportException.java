@@ -15,6 +15,7 @@
 package com.starrocks.common;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.qe.QueryState;
 
 public class ErrorReportException extends RuntimeException {
     private final ErrorCode errorCode;
@@ -34,6 +35,15 @@ public class ErrorReportException extends RuntimeException {
         if (ctx != null) {
             ctx.getState().setError(errMsg);
             ctx.getState().setErrorCode(errorCode);
+
+            if (errorCode.getSqlState()[0] == 'X' && errorCode.getSqlState()[1] == 'X') {
+                ctx.getState().setErrType(QueryState.ErrType.INTERNAL_ERR);
+            }
+
+            if (errorCode.getSqlState()[1] == '5' && errorCode.getSqlState()[2] == '3' &&
+                    errorCode.getSqlState()[3] == '4') {
+                ctx.getState().setErrType(QueryState.ErrType.EXEC_TIME_OUT);
+            }
         }
         return new ErrorReportException(errorCode, errMsg);
     }

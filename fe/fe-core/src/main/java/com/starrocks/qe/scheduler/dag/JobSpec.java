@@ -445,6 +445,10 @@ public class JobSpec {
         queryOptions.setLoad_job_type(type);
     }
 
+    public TLoadJobType getLoadJobType() {
+        return queryOptions.getLoad_job_type();
+    }
+
     public long getStartTimeMs() {
         return this.queryGlobals.getTimestamp_ms();
     }

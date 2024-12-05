@@ -1488,6 +1488,20 @@ public interface AstVisitor<R, C> {
         return visitStatement(statement, context);
     }
 
+    // ---------------------------------------- Transaction Statement --------------------------------------------------
+
+    default R visitBeginStatement(BeginStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitCommitStatement(CommitStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitRollbackStatement(RollbackStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
     // ------------------------------------------- AST -----------------------------------------------------------------
 
     default R visitLimitElement(LimitElement node, C context) {

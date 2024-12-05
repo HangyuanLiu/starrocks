@@ -45,6 +45,7 @@ import com.starrocks.sql.ast.BackupStmt;
 import com.starrocks.sql.ast.BaseCreateAlterUserStmt;
 import com.starrocks.sql.ast.BaseGrantRevokePrivilegeStmt;
 import com.starrocks.sql.ast.BaseGrantRevokeRoleStmt;
+import com.starrocks.sql.ast.BeginStmt;
 import com.starrocks.sql.ast.CancelAlterSystemStmt;
 import com.starrocks.sql.ast.CancelAlterTableStmt;
 import com.starrocks.sql.ast.CancelCompactionStmt;
@@ -52,6 +53,7 @@ import com.starrocks.sql.ast.CancelExportStmt;
 import com.starrocks.sql.ast.CancelLoadStmt;
 import com.starrocks.sql.ast.CancelRefreshMaterializedViewStmt;
 import com.starrocks.sql.ast.ClearDataCacheRulesStmt;
+import com.starrocks.sql.ast.CommitStmt;
 import com.starrocks.sql.ast.CreateAnalyzeJobStmt;
 import com.starrocks.sql.ast.CreateCatalogStmt;
 import com.starrocks.sql.ast.CreateDataCacheRuleStmt;
@@ -111,6 +113,7 @@ import com.starrocks.sql.ast.RefreshMaterializedViewStatement;
 import com.starrocks.sql.ast.RefreshTableStmt;
 import com.starrocks.sql.ast.RestoreStmt;
 import com.starrocks.sql.ast.ResumeRoutineLoadStmt;
+import com.starrocks.sql.ast.RollbackStmt;
 import com.starrocks.sql.ast.SetCatalogStmt;
 import com.starrocks.sql.ast.SetDefaultRoleStmt;
 import com.starrocks.sql.ast.SetDefaultStorageVolumeStmt;
@@ -221,7 +224,8 @@ public class Analyzer {
         }
 
         @Override
-        public Void visitCreateTemporaryTableLikeStatement(CreateTemporaryTableLikeStmt statement, ConnectContext context) {
+        public Void visitCreateTemporaryTableLikeStatement(CreateTemporaryTableLikeStmt statement,
+                                                           ConnectContext context) {
             CreateTableLikeAnalyzer.analyze(statement, context);
             return null;
         }
@@ -393,12 +397,6 @@ public class Analyzer {
         }
 
         @Override
-        public Void visitInsertStatement(InsertStmt statement, ConnectContext session) {
-            InsertAnalyzer.analyze(statement, session);
-            return null;
-        }
-
-        @Override
         public Void visitShowStatement(ShowStmt statement, ConnectContext session) {
             ShowStmtAnalyzer.analyze(statement, session);
             return null;
@@ -443,18 +441,6 @@ public class Analyzer {
         @Override
         public Void visitQueryStatement(QueryStatement stmt, ConnectContext session) {
             new QueryAnalyzer(session).analyze(stmt);
-            return null;
-        }
-
-        @Override
-        public Void visitUpdateStatement(UpdateStmt node, ConnectContext context) {
-            UpdateAnalyzer.analyze(node, context);
-            return null;
-        }
-
-        @Override
-        public Void visitDeleteStatement(DeleteStmt node, ConnectContext context) {
-            DeleteAnalyzer.analyze(node, context);
             return null;
         }
 
@@ -628,6 +614,26 @@ public class Analyzer {
         @Override
         public Void visitAlterCatalogStatement(AlterCatalogStmt statement, ConnectContext context) {
             CatalogAnalyzer.analyze(statement, context);
+            return null;
+        }
+
+        // ------------------------------------------- DML Statement -------------------------------------------------------
+
+        @Override
+        public Void visitInsertStatement(InsertStmt statement, ConnectContext context) {
+            DMLStmtAnalyzer.analyze(statement, context);
+            return null;
+        }
+
+        @Override
+        public Void visitUpdateStatement(UpdateStmt statement, ConnectContext context) {
+            DMLStmtAnalyzer.analyze(statement, context);
+            return null;
+        }
+
+        @Override
+        public Void visitDeleteStatement(DeleteStmt statement, ConnectContext context) {
+            DMLStmtAnalyzer.analyze(statement, context);
             return null;
         }
 
@@ -946,7 +952,8 @@ public class Analyzer {
         }
 
         @Override
-        public Void visitSetDefaultStorageVolumeStatement(SetDefaultStorageVolumeStmt statement, ConnectContext context) {
+        public Void visitSetDefaultStorageVolumeStatement(SetDefaultStorageVolumeStmt statement,
+                                                          ConnectContext context) {
             StorageVolumeAnalyzer.analyze(statement, context);
             return null;
         }
@@ -1076,6 +1083,26 @@ public class Analyzer {
         @Override
         public Void visitAlterWarehouseStatement(AlterWarehouseStmt statement, ConnectContext context) {
             WarehouseAnalyzer.analyze(statement, context);
+            return null;
+        }
+
+        // ---------------------------------------- Transaction Statement --------------------------------------------------
+
+        @Override
+        public Void visitBeginStatement(BeginStmt statement, ConnectContext context) {
+            TransactionAnalyzer.analyze(statement, context);
+            return null;
+        }
+
+        @Override
+        public Void visitCommitStatement(CommitStmt statement, ConnectContext context) {
+            TransactionAnalyzer.analyze(statement, context);
+            return null;
+        }
+
+        @Override
+        public Void visitRollbackStatement(RollbackStmt statement, ConnectContext context) {
+            TransactionAnalyzer.analyze(statement, context);
             return null;
         }
     }

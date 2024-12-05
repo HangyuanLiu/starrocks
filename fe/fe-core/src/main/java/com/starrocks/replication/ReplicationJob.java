@@ -39,6 +39,7 @@ import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.persist.gson.GsonPostProcessable;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.server.WarehouseManager;
 import com.starrocks.system.Backend;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.task.AgentBatchTask;
@@ -826,7 +827,8 @@ public class ReplicationJob implements GsonPostProcessable {
         String label = String.format("REPLICATION_%d_%d_%s", databaseId, tableId, jobId);
         transactionId = GlobalStateMgr.getServingState().getGlobalTransactionMgr().beginTransaction(databaseId,
                 Lists.newArrayList(tableId), label, coordinator, loadJobSourceType,
-                Config.replication_transaction_timeout_sec);
+                Config.replication_transaction_timeout_sec,
+                WarehouseManager.DEFAULT_WAREHOUSE_ID);
     }
 
     private void commitTransaction() throws StarRocksException {

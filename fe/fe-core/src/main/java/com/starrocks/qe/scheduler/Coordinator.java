@@ -230,6 +230,8 @@ public abstract class Coordinator {
     // Common methods.
     // ------------------------------------------------------------------------------------
 
+    public abstract TLoadJobType getLoadJobType();
+
     public abstract Status getExecStatus();
 
     public abstract boolean isUsingBackend(Long backendID);

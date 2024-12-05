@@ -186,6 +186,7 @@ import com.starrocks.system.BackendHbResponse;
 import com.starrocks.system.BrokerHbResponse;
 import com.starrocks.system.FrontendHbResponse;
 import com.starrocks.system.HeartbeatResponse;
+import com.starrocks.transaction.ExplicitTxnCommitAttachment;
 import com.starrocks.transaction.InsertTxnCommitAttachment;
 import com.starrocks.transaction.TxnCommitAttachment;
 import com.starrocks.warehouse.DefaultWarehouse;
@@ -361,7 +362,8 @@ public class GsonUtils {
                     .registerSubtype(RLTaskTxnCommitAttachment.class, "RLTaskTxnCommitAttachment")
                     .registerSubtype(StreamLoadTxnCommitAttachment.class, "StreamLoadTxnCommitAttachment")
                     .registerSubtype(ReplicationTxnCommitAttachment.class, "ReplicationTxnCommitAttachment")
-                    .registerSubtype(CompactionTxnCommitAttachment.class, "CompactionTxnCommitAttachment");
+                    .registerSubtype(CompactionTxnCommitAttachment.class, "CompactionTxnCommitAttachment")
+                    .registerSubtype(ExplicitTxnCommitAttachment.class, "ExplicitTxnCommitAttachment");
 
     public static final RuntimeTypeAdapterFactory<RoutineLoadProgress> ROUTINE_LOAD_PROGRESS_TYPE_RUNTIME_ADAPTER_FACTORY =
             RuntimeTypeAdapterFactory.of(RoutineLoadProgress.class, "clazz")

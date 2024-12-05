@@ -49,6 +49,7 @@ import com.starrocks.common.MetaNotFoundException;
 import com.starrocks.common.Pair;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.common.TimeoutException;
+import com.starrocks.common.io.Writable;
 import com.starrocks.common.util.LogBuilder;
 import com.starrocks.common.util.LogKey;
 import com.starrocks.load.EtlJobType;
@@ -69,7 +70,6 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AlterLoadStmt;
 import com.starrocks.sql.ast.CancelLoadStmt;
 import com.starrocks.sql.ast.LoadStmt;
-import com.starrocks.thrift.TLoadJobType;
 import com.starrocks.thrift.TReportExecStatusParams;
 import com.starrocks.thrift.TUniqueId;
 import com.starrocks.transaction.TransactionState;
@@ -79,6 +79,7 @@ import com.starrocks.warehouse.WarehouseLoadStatusInfo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.DataOutput;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -104,7 +105,7 @@ import java.util.stream.Collectors;
  * LoadManager.lock
  * LoadJob.lock
  */
-public class LoadMgr implements MemoryTrackable {
+public class LoadMgr implements Writable, MemoryTrackable {
     private static final Logger LOG = LogManager.getLogger(LoadMgr.class);
     private static final int MEMORY_JOB_SAMPLES = 10;
 
@@ -215,8 +216,8 @@ public class LoadMgr implements MemoryTrackable {
         labelToLoadJobs.get(loadJob.getLabel()).add(loadJob);
     }
 
-    public void recordFinishedOrCacnelledLoadJob(long jobId, EtlJobType jobType, String failMsg, String trackingUrl)
-            throws StarRocksException {
+    public void recordFinishedOrCancelledLoadJob(long jobId, EtlJobType jobType, String failMsg, String trackingUrl)
+            throws LoadException {
         LoadJob loadJob = getLoadJob(jobId);
         if (loadJob.isTxnDone() && !Strings.isNullOrEmpty(failMsg)) {
             throw new LoadException("LoadJob " + jobId + " state " + loadJob.getState().name()
@@ -234,9 +235,24 @@ public class LoadMgr implements MemoryTrackable {
         }
     }
 
-    public InsertLoadJob registerInsertLoadJob(String label, String dbName, long tableId, long txnId, String loadId, String user,
-                                               EtlJobType jobType, long createTimestamp, long estimateScanRows,
-                                               int estimateFileNum, long estimateFileSize, TLoadJobType type, long timeout,
+    public static class EstimateStats {
+        long estimateScanRows;
+        int estimateFileNum;
+        long estimateFileSize;
+
+        public EstimateStats(long estimateScanRows, int estimateFileNum, long estimateFileSize) {
+            this.estimateScanRows = estimateScanRows;
+            this.estimateFileNum = estimateFileNum;
+            this.estimateFileSize = estimateFileSize;
+        }
+    }
+
+    public InsertLoadJob registerInsertLoadJob(String label, String dbName, long tableId, long txnId, String loadId,
+                                               String user,
+                                               EtlJobType jobType,
+                                               long createTimestamp,
+                                               EstimateStats estimateStats,
+                                               long timeout,
                                                Coordinator coordinator) throws StarRocksException {
         // get db id
         Database db = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb(dbName);
@@ -247,9 +263,9 @@ public class LoadMgr implements MemoryTrackable {
         InsertLoadJob loadJob;
         if (Objects.requireNonNull(jobType) == EtlJobType.INSERT) {
             loadJob = new InsertLoadJob(label, db.getId(), tableId, txnId, loadId, user,
-                    createTimestamp, type, timeout, coordinator);
-            loadJob.setLoadFileInfo(estimateFileNum, estimateFileSize);
-            loadJob.setEstimateScanRow(estimateScanRows);
+                    createTimestamp, timeout, coordinator);
+            loadJob.setLoadFileInfo(estimateStats.estimateFileNum, estimateStats.estimateFileSize);
+            loadJob.setEstimateScanRow(estimateStats.estimateScanRows);
             loadJob.setTransactionId(txnId);
         } else {
             throw new LoadException("Unknown job type [" + jobType.name() + "]");
@@ -410,11 +426,12 @@ public class LoadMgr implements MemoryTrackable {
         }
 
         insertJobs.forEach(job -> {
-            TransactionState state = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr().getLabelTransactionState(
-                    job.getDbId(), job.getLabel());
+            TransactionState state =
+                    GlobalStateMgr.getCurrentState().getGlobalTransactionMgr().getLabelTransactionState(
+                            job.getDbId(), job.getLabel());
             if (state == null || state.getTransactionStatus() == TransactionStatus.UNKNOWN) {
                 try {
-                    recordFinishedOrCacnelledLoadJob(
+                    recordFinishedOrCancelledLoadJob(
                             job.getId(), EtlJobType.INSERT, "Cancelled since transaction status unknown", "");
                     LOG.warn("abort job: {}-{} since transaction status unknown", job.getLabel(), job.getId());
                 } catch (StarRocksException e) {
@@ -760,6 +777,16 @@ public class LoadMgr implements MemoryTrackable {
         LoadJob job = idToLoadJob.get(jobId);
         if (job != null) {
             job.updateProgress(params);
+        }
+    }
+
+    @Override
+    public void write(DataOutput out) throws IOException {
+        List<LoadJob> loadJobs = idToLoadJob.values().stream().filter(this::needSave).collect(Collectors.toList());
+
+        out.writeInt(loadJobs.size());
+        for (LoadJob loadJob : loadJobs) {
+            loadJob.write(out);
         }
     }
 

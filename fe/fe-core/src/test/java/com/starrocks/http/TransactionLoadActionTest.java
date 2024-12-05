@@ -26,6 +26,7 @@ import com.starrocks.http.rest.TransactionResult;
 import com.starrocks.http.rest.transaction.TransactionOperation;
 import com.starrocks.load.streamload.StreamLoadMgr;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.server.WarehouseManager;
 import com.starrocks.system.Backend;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.transaction.BeginTransactionException;
@@ -334,7 +335,8 @@ public class TransactionLoadActionTest extends StarRocksHttpTestCase {
                             anyString,
                             (TxnCoordinator) any,
                             LoadJobSourceType.BYPASS_WRITE,
-                            anyLong);
+                            anyLong,
+                            WarehouseManager.DEFAULT_WAREHOUSE_ID);
                     times = 1;
                     result = new BeginTransactionException("begin transaction error");
                 }
@@ -364,7 +366,8 @@ public class TransactionLoadActionTest extends StarRocksHttpTestCase {
                             anyString,
                             (TxnCoordinator) any,
                             LoadJobSourceType.BYPASS_WRITE,
-                            anyLong);
+                            anyLong,
+                            WarehouseManager.DEFAULT_WAREHOUSE_ID);
                     times = 1;
                     result = txnId;
                 }
@@ -1050,7 +1053,8 @@ public class TransactionLoadActionTest extends StarRocksHttpTestCase {
                         anyString,
                         (TxnCoordinator) any,
                         LoadJobSourceType.BYPASS_WRITE,
-                        anyLong);
+                        anyLong,
+                        WarehouseManager.DEFAULT_WAREHOUSE_ID);
                 times = 1;
                 result = txnId;
 

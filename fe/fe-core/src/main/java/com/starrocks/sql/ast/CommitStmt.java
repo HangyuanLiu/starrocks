@@ -12,19 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package com.starrocks.sql.ast;
 
-package com.starrocks.common;
+import com.starrocks.analysis.RedirectStatus;
+import com.starrocks.sql.parser.NodePosition;
 
-public class NoAliveBackendException extends StarRocksException {
-    public NoAliveBackendException(String msg, Throwable cause) {
-        super(msg, cause);
+public class CommitStmt extends StatementBase {
+    public CommitStmt(NodePosition pos) {
+        super(pos);
     }
 
-    public NoAliveBackendException(String msg) {
-        super(msg);
+    @Override
+    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+        return visitor.visitCommitStatement(this, context);
     }
 
-    public NoAliveBackendException() {
-        super(ErrorCode.ERR_QUERY_CANCELLED_BY_CRASH);
+    @Override
+    public RedirectStatus getRedirectStatus() {
+        return RedirectStatus.FORWARD_WITH_SYNC;
     }
 }

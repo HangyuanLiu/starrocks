@@ -84,6 +84,7 @@ import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.thrift.TPipelineProfileLevel;
 import com.starrocks.thrift.TUniqueId;
 import com.starrocks.thrift.TWorkGroup;
+import com.starrocks.transaction.GlobalTransactionState;
 import com.starrocks.warehouse.Warehouse;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -252,6 +253,16 @@ public class ConnectContext {
     // In order to ensure the correctness of imported data, in some cases, we don't use connector metadata cache for
     // `insert into table select external table`. Currently, this feature only supports hive table.
     private Optional<Boolean> useConnectorMetadataCache = Optional.empty();
+
+    private GlobalTransactionState globalTransactionState;
+
+    public void setGlobalTransactionLoadState(GlobalTransactionState globalTransactionState) {
+        this.globalTransactionState = globalTransactionState;
+    }
+
+    public GlobalTransactionState getGlobalTransactionLoadState() {
+        return globalTransactionState;
+    }
 
     public StmtExecutor getExecutor() {
         return executor;
