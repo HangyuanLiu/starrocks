@@ -62,16 +62,20 @@ public class MysqlHandshakePacket extends MysqlPacket {
     public static final String NATIVE_AUTH_PLUGIN_NAME = "mysql_native_password";
     public static final String CLEAR_PASSWORD_PLUGIN_NAME = "mysql_clear_password";
     public static final String AUTHENTICATION_KERBEROS_CLIENT = "authentication_kerberos_client";
+    public static final String AUTHENTICATION_OPENID_CONNECT_CLIENT = "authentication_openid_connect_client";
+    public static final String AUTHENTICATION_OAUTH2_CLIENT = "authentication_oauth2_client";
 
     private static final ImmutableMap<String, Boolean> SUPPORTED_PLUGINS = new ImmutableMap.Builder<String, Boolean>()
             .put(NATIVE_AUTH_PLUGIN_NAME, true)
             .put(CLEAR_PASSWORD_PLUGIN_NAME, true)
+            .put(AUTHENTICATION_OPENID_CONNECT_CLIENT, true)
+            .put(AUTHENTICATION_OAUTH2_CLIENT, true)
             .build();
 
     // connection id used in KILL statement.
-    private int connectionId;
-    private byte[] authPluginData;
-    private boolean supportSSL;
+    private final int connectionId;
+    private final byte[] authPluginData;
+    private final boolean supportSSL;
 
     public MysqlHandshakePacket(int connectionId, boolean supportSSL) {
         this.connectionId = connectionId;
@@ -125,7 +129,7 @@ public class MysqlHandshakePacket extends MysqlPacket {
     }
 
     public boolean checkAuthPluginSameAsStarRocks(String pluginName) {
-        return SUPPORTED_PLUGINS.containsKey(pluginName) && SUPPORTED_PLUGINS.get(pluginName);
+        return SUPPORTED_PLUGINS.containsKey(pluginName) && Boolean.TRUE.equals(SUPPORTED_PLUGINS.get(pluginName));
     }
 
     // If the auth default plugin in client is different from StarRocks

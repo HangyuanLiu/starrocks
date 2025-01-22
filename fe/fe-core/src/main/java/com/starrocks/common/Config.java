@@ -3411,4 +3411,19 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = false)
     public static int max_historical_automated_cluster_snapshot_jobs = 100;
+
+    @ConfField(mutable = false)
+    public static String token_server_url = "http://localhost:38080/realms/master/protocol/openid-connect/token";
+
+    @ConfField(mutable = false)
+    public static String client_id = "12345";
+
+    @ConfField(mutable = false)
+    public static String client_secret = "LsWyD9vPcM3LHxLZfzJsuoBwWQFBLcoR";
+
+    @ConfField(mutable = false)
+    public static String redirect_url = "http://localhost:8035/api/callback";
+
+    @ConfField(mutable = false)
+    public static String jwks_url = "http://localhost:38080/realms/master/protocol/openid-connect/certs";
 }

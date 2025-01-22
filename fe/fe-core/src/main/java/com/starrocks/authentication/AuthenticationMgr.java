@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.authentication;
 
 import com.google.gson.annotations.SerializedName;
@@ -50,6 +49,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class AuthenticationMgr {
@@ -61,6 +62,12 @@ public class AuthenticationMgr {
     // user identity -> all the authentication information
     // will be manually serialized one by one
     protected Map<UserIdentity, UserAuthenticationInfo> userToAuthenticationInfo;
+
+    public static class Resource {
+        public CountDownLatch countDownLatch = new CountDownLatch(1);
+    }
+
+    public Map<Long, Resource> oAuth2WaitCallbackList = new ConcurrentHashMap<>();
 
     private static class UserAuthInfoTreeMap extends TreeMap<UserIdentity, UserAuthenticationInfo> {
         public UserAuthInfoTreeMap() {
@@ -121,6 +128,10 @@ public class AuthenticationMgr {
                 LDAPAuthProviderForNative.PLUGIN_NAME, new LDAPAuthProviderForNative());
         AuthenticationProviderFactory.installPlugin(
                 KerberosAuthenticationProvider.PLUGIN_NAME, new KerberosAuthenticationProvider());
+        AuthenticationProviderFactory.installPlugin(
+                OpenIdConnectAuthenticationProvider.PLUGIN_NAME, new OpenIdConnectAuthenticationProvider());
+        AuthenticationProviderFactory.installPlugin(
+                OAuth2AuthenticationProvider.PLUGIN_NAME, new OAuth2AuthenticationProvider());
 
         // default user
         userToAuthenticationInfo = new UserAuthInfoTreeMap();
@@ -164,6 +175,7 @@ public class AuthenticationMgr {
     /**
      * Get max connection number of the user, if the user is ephemeral, i.e. the user is saved in SR,
      * but some external system, like LDAP, return default max connection number
+     *
      * @param currUserIdentity user identity of current connection
      * @return max connection number of the user
      */
@@ -179,6 +191,7 @@ public class AuthenticationMgr {
     /**
      * Get max connection number based on plain username, the user should be an internal user,
      * if the user doesn't exist in SR, it will throw an exception.
+     *
      * @param userName plain username saved in SR
      * @return max connection number of the user
      */
@@ -248,7 +261,27 @@ public class AuthenticationMgr {
     }
 
     public UserIdentity checkPassword(String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString) {
-        return checkPasswordForNative(remoteUser, remoteHost, remotePasswd, randomString);
+        if (remotePasswd != null && remotePasswd.length > 10) {
+            OpenIdConnectAuthenticationProvider openIdConnectAuthenticationProvider = new OpenIdConnectAuthenticationProvider();
+            try {
+                openIdConnectAuthenticationProvider.authenticate(remoteUser, remoteHost, remotePasswd, randomString, null);
+                return new UserIdentity(remoteUser, "%");
+            } catch (Exception e) {
+                LOG.error("OAuth2 Error : ", e);
+            }
+            return null;
+        } else {
+            OAuth2AuthenticationProvider provider = new OAuth2AuthenticationProvider();
+            try {
+                provider.authenticate(remoteUser, remoteHost, remotePasswd, randomString, null);
+                return new UserIdentity(remoteUser, "%");
+            } catch (Exception e) {
+                LOG.error("OAuth2 Error : ", e);
+            }
+            return null;
+        }
+
+        //return checkPasswordForNative(remoteUser, remoteHost, remotePasswd, randomString);
     }
 
     public UserIdentity checkPlainPassword(String remoteUser, String remoteHost, String remotePasswd) {
