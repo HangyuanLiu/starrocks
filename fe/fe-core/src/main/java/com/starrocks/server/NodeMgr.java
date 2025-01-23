@@ -117,6 +117,9 @@ public class NodeMgr {
     @SerializedName(value = "rf")
     private ConcurrentLinkedQueue<String> removedFrontends = new ConcurrentLinkedQueue<>();
 
+    @SerializedName(value = "gid")
+    private int gid;
+
     /**
      * Backends and Compute Node
      */
@@ -758,6 +761,9 @@ public class NodeMgr {
             }
 
             Frontend fe = new Frontend(role, nodeName, host, editLogPort);
+            gid = gid + 1;
+            fe.setGid(gid);
+
             frontends.put(nodeName, fe);
             if (role == FrontendNodeType.FOLLOWER) {
                 helperNodes.add(Pair.create(host, editLogPort));
@@ -777,6 +783,37 @@ public class NodeMgr {
             }
 
             GlobalStateMgr.getCurrentState().getEditLog().logAddFrontend(fe);
+        } finally {
+            unlock();
+        }
+    }
+
+    public void replayAddFrontend(Frontend fe) {
+        tryLock(true);
+        try {
+            Frontend existFe = unprotectCheckFeExist(fe.getHost(), fe.getEditLogPort());
+            if (existFe != null) {
+                LOG.warn("fe {} already exist.", existFe);
+                if (existFe.getRole() != fe.getRole()) {
+                    /*
+                     * This may happen if:
+                     * 1. first, add a FE as OBSERVER.
+                     * 2. This OBSERVER is restarted with ROLE and VERSION file being DELETED.
+                     *    In this case, this OBSERVER will be started as a FOLLOWER, and add itself to the frontends.
+                     * 3. this "FOLLOWER" begin to load image or replay journal,
+                     *    then find the origin OBSERVER in image or journal.
+                     * This will cause UNDEFINED behavior, so it is better to exit and fix it manually.
+                     */
+                    System.err.println("Try to add an already exist FE with different role" + fe.getRole());
+                    System.exit(-1);
+                }
+                return;
+            }
+            gid = fe.getGid();
+            frontends.put(fe.getNodeName(), fe);
+            if (fe.getRole() == FrontendNodeType.FOLLOWER) {
+                helperNodes.add(Pair.create(fe.getHost(), fe.getEditLogPort()));
+            }
         } finally {
             unlock();
         }
@@ -868,36 +905,6 @@ public class NodeMgr {
         GlobalStateMgr.getCurrentState().getCheckpointController().cancelCheckpoint(fe.getNodeName(), "FE is dropped");
         if (RunMode.isSharedDataMode()) {
             StarMgrServer.getCurrentState().getCheckpointController().cancelCheckpoint(fe.getNodeName(), "FE is dropped");
-        }
-    }
-
-    public void replayAddFrontend(Frontend fe) {
-        tryLock(true);
-        try {
-            Frontend existFe = unprotectCheckFeExist(fe.getHost(), fe.getEditLogPort());
-            if (existFe != null) {
-                LOG.warn("fe {} already exist.", existFe);
-                if (existFe.getRole() != fe.getRole()) {
-                    /*
-                     * This may happen if:
-                     * 1. first, add a FE as OBSERVER.
-                     * 2. This OBSERVER is restarted with ROLE and VERSION file being DELETED.
-                     *    In this case, this OBSERVER will be started as a FOLLOWER, and add itself to the frontends.
-                     * 3. this "FOLLOWER" begin to load image or replay journal,
-                     *    then find the origin OBSERVER in image or journal.
-                     * This will cause UNDEFINED behavior, so it is better to exit and fix it manually.
-                     */
-                    System.err.println("Try to add an already exist FE with different role" + fe.getRole());
-                    System.exit(-1);
-                }
-                return;
-            }
-            frontends.put(fe.getNodeName(), fe);
-            if (fe.getRole() == FrontendNodeType.FOLLOWER) {
-                helperNodes.add(Pair.create(fe.getHost(), fe.getEditLogPort()));
-            }
-        } finally {
-            unlock();
         }
     }
 
@@ -1195,6 +1202,13 @@ public class NodeMgr {
 
         systemInfo = nodeMgr.systemInfo;
         brokerMgr = nodeMgr.brokerMgr;
+
+        if (gid == 0) {
+            for (Frontend fe : frontends.values()) {
+                gid = gid + 1;
+                fe.setGid(gid);
+            }
+        }
     }
 
     public void setLeaderInfo() {

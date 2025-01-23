@@ -58,6 +58,8 @@ public class Frontend extends JsonWriter {
     private String host;
     @SerializedName(value = "e")
     private int editLogPort;
+    @SerializedName(value = "gid")
+    private int gid;
 
     private int queryPort;
     private int rpcPort;
@@ -149,6 +151,14 @@ public class Frontend extends JsonWriter {
     @VisibleForTesting
     public void setAlive(boolean isAlive) {
         this.isAlive = isAlive;
+    }
+
+    public int getGid() {
+        return gid;
+    }
+
+    public void setGid(int gid) {
+        this.gid = gid;
     }
 
     /**

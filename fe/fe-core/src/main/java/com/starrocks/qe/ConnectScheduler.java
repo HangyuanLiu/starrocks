@@ -47,8 +47,10 @@ import com.starrocks.http.HttpConnectContext;
 import com.starrocks.mysql.MysqlProto;
 import com.starrocks.mysql.NegotiateState;
 import com.starrocks.mysql.nio.NConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
 import com.starrocks.sql.analyzer.Authorizer;
+import com.starrocks.system.Frontend;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -69,7 +71,7 @@ public class ConnectScheduler {
     private static final Logger LOG = LogManager.getLogger(ConnectScheduler.class);
     private final AtomicInteger maxConnections;
     private final AtomicInteger numberConnection;
-    private final AtomicInteger nextConnectionId;
+    private final AtomicResetCounter nextConnectionId;
 
     private final Map<Long, ConnectContext> connectionMap = Maps.newConcurrentMap();
     private final Map<String, ArrowFlightSqlConnectContext> arrowFlightSqlConnectContextMap = Maps.newConcurrentMap();
@@ -82,7 +84,7 @@ public class ConnectScheduler {
     public ConnectScheduler(int maxConnections) {
         this.maxConnections = new AtomicInteger(maxConnections);
         numberConnection = new AtomicInteger(0);
-        nextConnectionId = new AtomicInteger(0);
+        nextConnectionId = new AtomicResetCounter(0);
         // Use a thread to check whether connection is timeout. Because
         // 1. If use a scheduler, the task maybe a huge number when query is messy.
         //    Let timeout is 10m, and 5000 qps, then there are up to 3000000 tasks in scheduler.
@@ -135,7 +137,9 @@ public class ConnectScheduler {
             return false;
         }
 
-        context.setConnectionId(nextConnectionId.getAndAdd(1));
+        Frontend frontend = GlobalStateMgr.getCurrentState().getNodeMgr().getMySelf();
+        int connectionId = (frontend.getGid() & 0xFF) << 24 | (nextConnectionId.incrementAndGet() & 0xFFFFFF);
+        context.setConnectionId(connectionId);
         context.resetConnectionStartTime();
         // no necessary for nio or Http.
         if (context instanceof NConnectContext || context instanceof HttpConnectContext) {
@@ -237,10 +241,10 @@ public class ConnectScheduler {
 
     public ConnectContext findContextByQueryId(String queryId) {
         return connectionMap.values().stream().filter(
-                (Predicate<ConnectContext>) c ->
-                        c.getQueryId() != null
-                                && queryId.equals(c.getQueryId().toString())
-        )
+                        (Predicate<ConnectContext>) c ->
+                                c.getQueryId() != null
+                                        && queryId.equals(c.getQueryId().toString())
+                )
                 .findFirst().orElse(null);
     }
 
@@ -252,7 +256,7 @@ public class ConnectScheduler {
     public int getConnectionNum() {
         return numberConnection.get();
     }
-    
+
     public Map<String, AtomicInteger> getUserConnectionMap() {
         return connCountByUser;
     }
@@ -348,6 +352,33 @@ public class ConnectScheduler {
             } finally {
                 unregisterConnection(context);
                 context.cleanup();
+            }
+        }
+    }
+
+    public class AtomicResetCounter {
+        private final AtomicInteger counter;
+        private final int threshold;
+
+        public AtomicResetCounter(int threshold) {
+            this.counter = new AtomicInteger(0);
+            this.threshold = threshold;
+        }
+
+        public int incrementAndGet() {
+            while (true) {
+                int currentValue = counter.get();
+                if (currentValue == threshold) {
+                    // 达到阈值时，重置为 0
+                    if (counter.compareAndSet(currentValue, 0)) {
+                        return 0;
+                    }
+                } else {
+                    // 否则正常自增
+                    if (counter.compareAndSet(currentValue, currentValue + 1)) {
+                        return currentValue + 1;
+                    }
+                }
             }
         }
     }
