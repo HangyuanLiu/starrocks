@@ -12,14 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package com.starrocks.sql.ast.group;
 
-package com.starrocks.mysql.privilege;
+import com.starrocks.sql.ast.AstVisitor;
+import com.starrocks.sql.ast.DdlStmt;
+import com.starrocks.sql.parser.NodePosition;
 
-public enum AuthPlugin {
-    MYSQL_NATIVE_PASSWORD,
-    AUTHENTICATION_LDAP_SIMPLE,
-    AUTHENTICATION_KERBEROS,
-    AUTHENTICATION_LDAP_SIMPLE_FOR_EXTERNAL,
-    AUTHENTICATION_OPENID_CONNECT,
-    AUTHENTICATION_OAUTH2
+public class DropGroupProviderStmt extends DdlStmt {
+    private final String name;
+
+    public DropGroupProviderStmt(String name, NodePosition pos) {
+        super(pos);
+        this.name = name;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+        return visitor.visitDropGroupProviderStatement(this, context);
+    }
 }

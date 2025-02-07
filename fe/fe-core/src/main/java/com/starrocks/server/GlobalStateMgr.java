@@ -47,6 +47,7 @@ import com.starrocks.alter.SystemHandler;
 import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.analysis.TableName;
 import com.starrocks.authentication.AuthenticationMgr;
+import com.starrocks.authentication.OAuth2TokenMgr;
 import com.starrocks.authorization.AccessControlProvider;
 import com.starrocks.authorization.AuthorizationMgr;
 import com.starrocks.authorization.DefaultAuthorizationProvider;
@@ -522,6 +523,8 @@ public class GlobalStateMgr {
 
     private final SqlBlackList sqlBlackList;
 
+    private final OAuth2TokenMgr oAuth2TokenMgr;
+
     public NodeMgr getNodeMgr() {
         return nodeMgr;
     }
@@ -827,6 +830,8 @@ public class GlobalStateMgr {
                         "query-deploy", true);
 
         this.warehouseIdleChecker = new WarehouseIdleChecker();
+
+        this.oAuth2TokenMgr = new OAuth2TokenMgr();
     }
 
     public static void destroyCheckpoint() {
@@ -1076,6 +1081,10 @@ public class GlobalStateMgr {
 
     public ClusterSnapshotMgr getClusterSnapshotMgr() {
         return clusterSnapshotMgr;
+    }
+
+    public OAuth2TokenMgr getoAuth2TokenMgr() {
+        return oAuth2TokenMgr;
     }
 
     // Use tryLock to avoid potential deadlock

@@ -36,10 +36,9 @@ package com.starrocks.mysql;
 
 import com.google.common.base.Strings;
 import com.starrocks.authentication.AuthenticationMgr;
-import com.starrocks.authentication.OAuth2AuthenticationProvider;
-import com.starrocks.authentication.OpenIdConnectAuthenticationProvider;
+import com.starrocks.authentication.GroupProvider;
+import com.starrocks.authentication.UnixGroupProvider;
 import com.starrocks.authentication.UserAuthenticationInfo;
-import com.starrocks.authorization.PrivilegeBuiltinConstants;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.ErrorCode;
@@ -53,14 +52,12 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 import static com.starrocks.mysql.MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT;
-import static com.starrocks.mysql.MysqlHandshakePacket.AUTHENTICATION_OAUTH2_CLIENT;
-import static com.starrocks.mysql.MysqlHandshakePacket.AUTHENTICATION_OPENID_CONNECT_CLIENT;
 
 // MySQL protocol util
 public class MysqlProto {
@@ -104,6 +101,15 @@ public class MysqlProto {
             context.setCurrentRoleIds(currentUser);
             context.setAuthDataSalt(randomString);
         }
+
+        authenticationManager.getGroupProvider("");
+
+        String groupProviderName = Config.group_provider;
+        GroupProvider groupProvider = new UnixGroupProvider("", new HashMap<>());
+        if (groupProviderName.equals("unix")) {
+            context.setGroups(groupProvider.getGroup(currentUser));
+        }
+
         context.setQualifiedUser(user);
         return true;
     }
@@ -228,7 +234,11 @@ public class MysqlProto {
                 Objects.equals(authPluginName, MysqlHandshakePacket.CLEAR_PASSWORD_PLUGIN_NAME) ?
                         null : handshakePacket.getAuthPluginData();
         // check authenticate
-
+        if (!authenticate(context, authPacket.getAuthResponse(), randomString, authPacket.getUser())) {
+            sendResponsePacket(context);
+            return new NegotiateResult(authPacket, NegotiateState.AUTHENTICATION_FAILED);
+        }
+        /*
         UserIdentity currentUser = null;
         byte[] remotePasswd = authPacket.getAuthResponse();
 
@@ -270,12 +280,7 @@ public class MysqlProto {
         }
         context.setQualifiedUser(authPacket.getUser());
 
-        /*
-        if (!authenticate(context, authPacket.getAuthResponse(), randomString, authPacket.getUser())) {
-            sendResponsePacket(context);
-            return new NegotiateResult(authPacket, NegotiateState.AUTHENTICATION_FAILED);
-        }
-        */
+         */
 
         // set database
         String db = authPacket.getDb();

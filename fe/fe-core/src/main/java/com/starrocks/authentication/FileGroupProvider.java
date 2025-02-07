@@ -12,14 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package com.starrocks.authentication;
 
-package com.starrocks.mysql.privilege;
+import com.starrocks.sql.ast.UserIdentity;
 
-public enum AuthPlugin {
-    MYSQL_NATIVE_PASSWORD,
-    AUTHENTICATION_LDAP_SIMPLE,
-    AUTHENTICATION_KERBEROS,
-    AUTHENTICATION_LDAP_SIMPLE_FOR_EXTERNAL,
-    AUTHENTICATION_OPENID_CONNECT,
-    AUTHENTICATION_OAUTH2
+import java.util.List;
+import java.util.Map;
+
+public class FileGroupProvider extends GroupProvider {
+    public static final String TYPE = "file";
+
+    public FileGroupProvider(String name, Map<String, String> properties) {
+        super(name, properties);
+    }
+
+    @Override
+    public List<String> getGroup(UserIdentity userIdentity) {
+        return List.of();
+    }
 }

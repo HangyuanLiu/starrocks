@@ -63,6 +63,7 @@ public class ArrowFlightSqlSessionManager {
         ctx.setCurrentRoleIds(currentUser);
         ctx.setToken(token);
 
+        ExecuteEnv.getInstance().getScheduler().putConnectContext(ctx);
         Pair<Boolean, String> result = ExecuteEnv.getInstance().getScheduler().registerConnection(ctx);
         if (!result.first.booleanValue()) {
             ctx.getState().setError(result.second);

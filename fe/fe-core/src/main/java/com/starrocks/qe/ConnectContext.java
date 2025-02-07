@@ -257,6 +257,16 @@ public class ConnectContext {
     // ExplicitTxnStateItem, and the transaction state is recorded in TransactionState.
     private ExplicitTxnState explicitTxnState;
 
+    public volatile String authorizationCode;
+
+    public void setAuthorizationCode(String authorizationCode) {
+        this.authorizationCode = authorizationCode;
+    }
+
+    public String getAuthorizationCode() {
+        return authorizationCode;
+    }
+
     public void setExplicitTxnState(ExplicitTxnState explicitTxnState) {
         this.explicitTxnState = explicitTxnState;
     }
@@ -461,6 +471,10 @@ public class ConnectContext {
 
     public void setCurrentRoleIds(Set<Long> roleIds) {
         this.currentRoleIds = roleIds;
+    }
+
+    public void setGroups(List<String> groups) {
+
     }
 
     public void modifySystemVariable(SystemVariable setVar, boolean onlySetSessionVar) throws DdlException {

@@ -14,31 +14,34 @@
 
 package com.starrocks.http.rest;
 
-import com.nimbusds.jose.jwk.JWKSet;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
-import com.starrocks.authentication.AuthenticationException;
-import com.starrocks.authentication.AuthenticationMgr;
-import com.starrocks.authentication.JWTUtils;
-import com.starrocks.common.Config;
 import com.starrocks.http.ActionController;
 import com.starrocks.http.BaseRequest;
 import com.starrocks.http.BaseResponse;
 import com.starrocks.http.IllegalArgException;
-import com.starrocks.mysql.privilege.AuthPlugin;
+import com.starrocks.qe.ConnectContext;
+import com.starrocks.qe.ConnectScheduler;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.server.NodeMgr;
+import com.starrocks.service.ExecuteEnv;
+import com.starrocks.system.Frontend;
+import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpMethod;
-import org.json.JSONObject;
+import io.netty.handler.codec.http.HttpObject;
+import io.netty.handler.codec.http.HttpObjectAggregator;
+import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpResponseDecoder;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.nio.charset.Charset;
 
 public class OAuth2Action extends RestBaseAction {
     public OAuth2Action(ActionController controller) {
@@ -53,104 +56,97 @@ public class OAuth2Action extends RestBaseAction {
     public void execute(BaseRequest request, BaseResponse response) {
         String authorizationCode = getSingleParameter(request, "code", r -> r);
         String connectionIdStr = getSingleParameter(request, "connectionId", r -> r);
-        Long connectionId = Long.valueOf(connectionIdStr);
+        long connectionId = Long.parseLong(connectionIdStr);
 
-        String openIdConnect;
-        try {
-            openIdConnect = getToken(authorizationCode, connectionId);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        NodeMgr nodeMgr = GlobalStateMgr.getCurrentState().getNodeMgr();
+
+        int fid = (int) ((connectionId >> 24) & 0xFF);
+        Frontend frontend = GlobalStateMgr.getCurrentState().getNodeMgr().getFrontend(fid);
+        if (!nodeMgr.getMySelf().getNodeName().equals(frontend.getNodeName())) {
+            forwardHttpRequest(frontend.getHost(), frontend.getRpcPort(), request, response);
+            return;
         }
 
-        if (openIdConnect == null) {
-            response.appendContent("Login Fail");
-            sendResult(request, response);
-        } else {
-            try {
-                JWKSet jwkSet = JWTUtils.getPublicKeyFromJWKS();
+        ConnectScheduler connectScheduler = ExecuteEnv.getInstance().getScheduler();
+        ConnectContext context = connectScheduler.getContext(connectionId);
+        context.setAuthorizationCode(authorizationCode);
 
-                JSONObject openIdConnectJson = new JSONObject(new String(openIdConnect));
-                // 提取不同的 JWT
-                String idToken = openIdConnectJson.getString("id_token");
-                String accessToken = openIdConnectJson.getString("access_token");
-                JWTUtils.verifyJWT(idToken, jwkSet);
-                JWTUtils.verifyJWT(accessToken, jwkSet);
+        /*
+        OAuth2TokenMgr oAuth2TokenMgr = GlobalStateMgr.getCurrentState().getoAuth2TokenMgr();
+        OAuth2TokenMgr.Resource resource = new OAuth2TokenMgr.Resource();
+        resource.authorizationCode = authorizationCode;
+        oAuth2TokenMgr.oAuth2WaitCallbackList.put(connectionId, resource);
 
-                SignedJWT signedJWT = SignedJWT.parse(idToken);
+         */
 
-                // 获取 JWT 声明
-                JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
-                String jwtUserName = claims.getStringClaim("preferred_username");
+        response.appendContent("Login Success");
+        //response.appendContent(openIdConnect);
+        sendResult(request, response);
+    }
 
-                AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
-                AuthenticationMgr.Resource resource = authenticationMgr.oAuth2WaitCallbackList
-                        .get(connectionId);
-                if (resource == null) {
-                    resource = new AuthenticationMgr.Resource();
-                    authenticationMgr.oAuth2WaitCallbackList.put(connectionId, resource);
-                    try {
-                        boolean result = resource.countDownLatch.await(30, TimeUnit.SECONDS);
+    public void forwardHttpRequest(String forwardHost, int forwardPort, BaseRequest request, BaseResponse response) {
+        // 创建一个事件循环组
+        EventLoopGroup group = new NioEventLoopGroup();
 
-                        if (!result) {
-                            throw new AuthenticationException(AuthPlugin.AUTHENTICATION_OAUTH2_CLIENT.name()
-                                    + " authentication timed out.");
+        try {
+            // 1. 创建一个BootStrap来连接目标主机
+            Bootstrap bootstrap = new Bootstrap();
+            bootstrap.group(group)
+                    .channel(NioSocketChannel.class)
+                    .handler(new ChannelInitializer<>() {
+                        @Override
+                        protected void initChannel(Channel ch) {
+                            ch.pipeline().addLast(new HttpClientCodec())
+                                    .addLast(new HttpObjectAggregator(8192))
+                                    .addLast(new HttpResponseDecoder())
+                                    .addLast(new ForwardHandler(request, response)
+                                    );  // 转发请求的Handler
                         }
-                    } catch (InterruptedException e) {
-                        throw new AuthenticationException(e.getMessage());
-                    } finally {
-                        authenticationMgr.oAuth2WaitCallbackList.remove(connectionId);
-                    }
-                } else {
-                    resource.countDownLatch.countDown();
-                }
+                    });
 
-                response.appendContent("Login Success");
-                response.appendContent(openIdConnect);
-                sendResult(request, response);
-            } catch (Exception e) {
-                response.appendContent("Login Fail");
-                response.appendContent(e.getMessage());
-                sendResult(request, response);
-            }
+            // 2. 连接到目标地址
+            ChannelFuture future = bootstrap.connect(forwardHost, forwardPort).sync();
+
+            // 等待连接关闭
+            future.channel().closeFuture().sync();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            // 优雅地关闭EventLoopGroup
+            group.shutdownGracefully();
         }
     }
 
-    private String getToken(String authorizationCode, Long connectionId) throws IOException {
-        // Step 3: 通过授权码获取令牌
-        String tokenUrl = Config.token_server_url;
-        Map<Object, Object> body = Map.of(
-                "grant_type", "authorization_code",
-                "code", authorizationCode,
-                "redirect_uri", Config.redirect_url + "?connectionId=" + connectionId,
-                "client_id", Config.client_id,
-                "client_secret", Config.client_secret
-        );
+    public class ForwardHandler extends SimpleChannelInboundHandler<HttpObject> {
+        private BaseRequest request;
+        private BaseResponse response;
 
-        String requestBody = body.entrySet().stream()
-                .map(entry -> URLEncoder.encode(entry.getKey().toString(), StandardCharsets.UTF_8) + "=" +
-                        URLEncoder.encode(entry.getValue().toString(), StandardCharsets.UTF_8))
-                .reduce((a, b) -> a + "&" + b)
-                .orElse("");
-
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(tokenUrl))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .build();
-
-        HttpResponse<String> response;
-        try {
-            response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+        public ForwardHandler(BaseRequest request, BaseResponse response) {
+            this.request = request;
+            this.response = response;
         }
 
-        // Step 4: 处理响应
-        if (response.statusCode() == 200) {
-            return response.body();
-        } else {
-            return null;
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) {
+            if (msg instanceof HttpResponse) {
+                HttpResponse httpResponse = (HttpResponse) msg;
+                DefaultFullHttpResponse defaultFullHttpResponse =
+                        (DefaultFullHttpResponse) msg;
+                String result = defaultFullHttpResponse.content()
+                        .toString(Charset.forName("UTF-8"));
+                response.appendContent(result);
+            }
+        }
+
+        @Override
+        public void channelActive(ChannelHandlerContext ctx) throws Exception {
+            ctx.writeAndFlush(request.getRequest());
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+            cause.printStackTrace();
+            ctx.close();
         }
     }
 }

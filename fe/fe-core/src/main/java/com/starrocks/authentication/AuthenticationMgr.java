@@ -14,15 +14,20 @@
 
 package com.starrocks.authentication;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.StarRocksFE;
 import com.starrocks.authorization.AuthorizationMgr;
 import com.starrocks.authorization.PrivilegeException;
 import com.starrocks.authorization.UserPrivilegeCollectionV2;
 import com.starrocks.common.Config;
+import com.starrocks.common.ConfigBase;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.Pair;
 import com.starrocks.mysql.MysqlPassword;
+import com.starrocks.mysql.privilege.AuthPlugin;
+import com.starrocks.persist.EditLog;
 import com.starrocks.persist.ImageWriter;
 import com.starrocks.persist.metablock.MapEntryConsumer;
 import com.starrocks.persist.metablock.SRMetaBlockEOFException;
@@ -30,11 +35,14 @@ import com.starrocks.persist.metablock.SRMetaBlockException;
 import com.starrocks.persist.metablock.SRMetaBlockID;
 import com.starrocks.persist.metablock.SRMetaBlockReader;
 import com.starrocks.persist.metablock.SRMetaBlockWriter;
+import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.CreateUserStmt;
 import com.starrocks.sql.ast.DropUserStmt;
 import com.starrocks.sql.ast.UserIdentity;
+import com.starrocks.sql.ast.group.CreateGroupProviderStmt;
+import com.starrocks.sql.ast.group.DropGroupProviderStmt;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -43,6 +51,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -50,7 +59,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class AuthenticationMgr {
@@ -62,12 +70,6 @@ public class AuthenticationMgr {
     // user identity -> all the authentication information
     // will be manually serialized one by one
     protected Map<UserIdentity, UserAuthenticationInfo> userToAuthenticationInfo;
-
-    public static class Resource {
-        public CountDownLatch countDownLatch = new CountDownLatch(1);
-    }
-
-    public Map<Long, Resource> oAuth2WaitCallbackList = new ConcurrentHashMap<>();
 
     private static class UserAuthInfoTreeMap extends TreeMap<UserIdentity, UserAuthenticationInfo> {
         public UserAuthInfoTreeMap() {
@@ -120,18 +122,42 @@ public class AuthenticationMgr {
     // set by load() to distinguish brand-new environment with upgraded environment
     private boolean isLoaded = false;
 
+    @SerializedName("sim")
+    protected Map<String, SecurityIntegration> nameToSecurityIntegrationMap = new ConcurrentHashMap<>();
+
+    @SerializedName("gp")
+    protected Map<String, GroupProviderLog> nameToGroupProvider = new ConcurrentHashMap<>();
+    protected Map<String, GroupProvider> nameToGroupProviderMap = new ConcurrentHashMap<>();
+
     public AuthenticationMgr() {
         // default plugin
         AuthenticationProviderFactory.installPlugin(
                 PlainPasswordAuthenticationProvider.PLUGIN_NAME, new PlainPasswordAuthenticationProvider());
+
         AuthenticationProviderFactory.installPlugin(
                 LDAPAuthProviderForNative.PLUGIN_NAME, new LDAPAuthProviderForNative());
+
         AuthenticationProviderFactory.installPlugin(
                 KerberosAuthenticationProvider.PLUGIN_NAME, new KerberosAuthenticationProvider());
-        AuthenticationProviderFactory.installPlugin(
-                OpenIdConnectAuthenticationProvider.PLUGIN_NAME, new OpenIdConnectAuthenticationProvider());
-        AuthenticationProviderFactory.installPlugin(
-                OAuth2AuthenticationProvider.PLUGIN_NAME, new OAuth2AuthenticationProvider());
+
+        AuthenticationProviderFactory.installPlugin(OpenIdConnectAuthenticationProvider.PLUGIN_NAME,
+                new OpenIdConnectAuthenticationProvider(
+                        Config.oidc_jwks_url,
+                        Config.oidc_principal_field,
+                        Config.oidc_required_issuer,
+                        Config.oidc_required_audience));
+
+        AuthenticationProviderFactory.installPlugin(OAuth2AuthenticationProvider.PLUGIN_NAME,
+                new OAuth2AuthenticationProvider(
+                        Config.oauth2_token_server_url,
+                        Config.oauth2_redirect_url,
+                        Config.oauth2_client_id,
+                        Config.oauth2_client_secret,
+                        Config.oidc_jwks_url,
+                        Config.oidc_principal_field,
+                        Config.oidc_required_issuer,
+                        Config.oidc_required_audience,
+                        Config.oauth_connect_wait_timeout));
 
         // default user
         userToAuthenticationInfo = new UserAuthInfoTreeMap();
@@ -260,6 +286,7 @@ public class AuthenticationMgr {
         return null;
     }
 
+    /*
     public UserIdentity checkPassword(String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString) {
         if (remotePasswd != null && remotePasswd.length > 10) {
             OpenIdConnectAuthenticationProvider openIdConnectAuthenticationProvider = new OpenIdConnectAuthenticationProvider();
@@ -283,15 +310,70 @@ public class AuthenticationMgr {
 
         //return checkPasswordForNative(remoteUser, remoteHost, remotePasswd, randomString);
     }
+     */
+
+    public UserIdentity checkPassword(String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString) {
+        String[] authChain = Config.authentication_chain;
+        UserIdentity authenticatedUser = null;
+        for (String authMechanism : authChain) {
+            if (authenticatedUser != null) {
+                break;
+            }
+
+            if (authMechanism.equals(ConfigBase.AUTHENTICATION_CHAIN_MECHANISM_NATIVE)) {
+                authenticatedUser = checkPasswordForNative(remoteUser, remoteHost, remotePasswd, randomString);
+            } else {
+                authenticatedUser = checkPasswordForNonNative(
+                        remoteUser, remoteHost, remotePasswd, randomString, authMechanism);
+            }
+        }
+
+        return authenticatedUser;
+    }
 
     public UserIdentity checkPlainPassword(String remoteUser, String remoteHost, String remotePasswd) {
         return checkPassword(remoteUser, remoteHost,
                 remotePasswd.getBytes(StandardCharsets.UTF_8), null);
     }
 
+    protected UserIdentity checkPasswordForNonNative(
+            String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString, String authMechanism) {
+        SecurityIntegration securityIntegration =
+                nameToSecurityIntegrationMap.getOrDefault(authMechanism, null);
+        if (securityIntegration == null) {
+            LOG.info("'{}' authentication mechanism not found", authMechanism);
+        } else {
+            try {
+                AuthenticationProvider provider = securityIntegration.getAuthenticationProvider();
+                UserAuthenticationInfo userAuthenticationInfo = new UserAuthenticationInfo();
+                userAuthenticationInfo.extraInfo.put(AuthPlugin.AUTHENTICATION_LDAP_SIMPLE_FOR_EXTERNAL.name(),
+                        securityIntegration);
+                provider.authenticate(remoteUser, remoteHost, remotePasswd, randomString,
+                        userAuthenticationInfo);
+                // the ephemeral user is identified as 'username'@'auth_mechanism'
+                UserIdentity authenticatedUser = UserIdentity.createEphemeralUserIdent(remoteUser, authMechanism);
+                /*
+                ConnectContext currentContext = ConnectContext.get();
+                if (currentContext != null) {
+                    currentContext.setCurrentRoleIds(new HashSet<>(
+                            Collections.singletonList(PrivilegeBuiltinConstants.ROOT_ROLE_ID)));
+                }
+                 */
+                return authenticatedUser;
+            } catch (AuthenticationException e) {
+                LOG.debug("failed to authenticate, user: {}@{}, security integration: {}, error: {}",
+                        remoteUser, remoteHost, securityIntegration, e.getMessage());
+            }
+        }
+
+        return null;
+    }
+
     public void createUser(CreateUserStmt stmt) throws DdlException {
         UserIdentity userIdentity = stmt.getUserIdentity();
         UserAuthenticationInfo info = stmt.getAuthenticationInfo();
+        Preconditions.checkNotNull(userIdentity);
+
         writeLock();
         try {
             if (userToAuthenticationInfo.containsKey(userIdentity)) {
@@ -612,7 +694,7 @@ public class AuthenticationMgr {
         }
     }
 
-    public void loadV2(SRMetaBlockReader reader) throws IOException, SRMetaBlockException, SRMetaBlockEOFException {
+    public void loadV2(SRMetaBlockReader reader) throws IOException, SRMetaBlockEOFException {
         // 1 json for myself
         AuthenticationMgr ret = reader.readJson(AuthenticationMgr.class);
         ret.userToAuthenticationInfo = new UserAuthInfoTreeMap();
@@ -635,6 +717,12 @@ public class AuthenticationMgr {
         this.isLoaded = true;
         this.userNameToProperty = ret.userNameToProperty;
         this.userToAuthenticationInfo = ret.userToAuthenticationInfo;
+
+        for (Map.Entry<String, GroupProviderLog> entry : nameToGroupProvider.entrySet()) {
+            GroupProvider groupProvider = GroupProviderFactory.createGroupProvider(entry.getKey(), entry.getValue().propertyMap);
+            groupProvider.init();
+            nameToGroupProviderMap.put(entry.getKey(), groupProvider);
+        }
     }
 
     public UserProperty getUserProperty(String userName) {
@@ -655,5 +743,109 @@ public class AuthenticationMgr {
         }
 
         return matchedUserIdentity.getKey();
+    }
+
+    public void createSecurityIntegration(String name,
+                                          Map<String, String> propertyMap,
+                                          boolean isReplay) throws DdlException {
+        SecurityIntegration securityIntegration;
+        try {
+            securityIntegration =
+                    SecurityIntegrationFactory.createSecurityIntegration(name, propertyMap);
+        } catch (DdlException e) {
+            throw new DdlException("failed to create security integration, error: " + e.getMessage(), e);
+        }
+        // atomic op
+        SecurityIntegration result = nameToSecurityIntegrationMap.putIfAbsent(name, securityIntegration);
+        if (result != null) {
+            throw new DdlException("security integration '" + name + "' already exists");
+        }
+        if (!isReplay) {
+            EditLog editLog = GlobalStateMgr.getCurrentState().getEditLog();
+            editLog.logCreateSecurityIntegration(name, propertyMap);
+            LOG.info("finished to create security integration '{}'", securityIntegration.toString());
+        }
+    }
+
+    public void alterSecurityIntegration(String name, Map<String, String> alterProps,
+                                         boolean isReplay) throws DdlException {
+        SecurityIntegration securityIntegration = nameToSecurityIntegrationMap.get(name);
+        if (securityIntegration == null) {
+            throw new DdlException("security integration '" + name + "' not found");
+        } else {
+            // COW
+            Map<String, String> newProps = Maps.newHashMap(securityIntegration.getPropertyMap());
+            // update props
+            newProps.putAll(alterProps);
+            SecurityIntegration newSecurityIntegration;
+            try {
+                newSecurityIntegration = SecurityIntegrationFactory.createSecurityIntegration(name, newProps);
+            } catch (DdlException e) {
+                throw new DdlException("failed to alter security integration, error: " + e.getMessage(), e);
+            }
+            // update map
+            nameToSecurityIntegrationMap.put(name, newSecurityIntegration);
+            if (!isReplay) {
+                EditLog editLog = GlobalStateMgr.getCurrentState().getEditLog();
+                editLog.logAlterSecurityIntegration(name, alterProps);
+                LOG.info("finished to alter security integration '{}' with updated properties {}",
+                        name, alterProps);
+            }
+        }
+    }
+
+    public void dropSecurityIntegration(String name, boolean isReplay) throws DdlException {
+        if (!nameToSecurityIntegrationMap.containsKey(name)) {
+            throw new DdlException("security integration '" + name + "' not found");
+        }
+
+        SecurityIntegration result = nameToSecurityIntegrationMap.remove(name);
+        if (!isReplay && result != null) {
+            EditLog editLog = GlobalStateMgr.getCurrentState().getEditLog();
+            editLog.logDropSecurityIntegration(name);
+            LOG.info("finished to drop security integration '{}'", name);
+        }
+    }
+
+    public SecurityIntegration getSecurityIntegration(String name) {
+        return nameToSecurityIntegrationMap.get(name);
+    }
+
+    public Set<SecurityIntegration> getAllSecurityIntegrations() {
+        return new HashSet<>(nameToSecurityIntegrationMap.values());
+    }
+
+    public void replayCreateSecurityIntegration(String name, Map<String, String> propertyMap)
+            throws DdlException {
+        createSecurityIntegration(name, propertyMap, true);
+    }
+
+    public void replayAlterSecurityIntegration(String name, Map<String, String> alterProps)
+            throws DdlException {
+        alterSecurityIntegration(name, alterProps, true);
+    }
+
+    public void replayDropSecurityIntegration(String name)
+            throws DdlException {
+        dropSecurityIntegration(name, true);
+    }
+
+    public void createGroupProviderStatement(CreateGroupProviderStmt stmt, ConnectContext context) {
+        GroupProviderLog groupProviderLog = new GroupProviderLog(stmt.getName(), stmt.getPropertyMap());
+        this.nameToGroupProvider.put(stmt.getName(), groupProviderLog);
+        GlobalStateMgr.getCurrentState().getEditLog().logCreateGroupProvider(groupProviderLog);
+    }
+
+    public void dropGroupProviderStatement(DropGroupProviderStmt stmt, ConnectContext context) {
+        GroupProviderLog groupProviderLog = new GroupProviderLog(stmt.getName(), null);
+        GlobalStateMgr.getCurrentState().getEditLog().logCreateGroupProvider(groupProviderLog);
+    }
+
+    public List<GroupProvider> getAllGroupProviders() {
+        return new ArrayList<>(nameToGroupProviderMap.values());
+    }
+
+    public GroupProvider getGroupProvider(String name) {
+        return nameToGroupProviderMap.get(name);
     }
 }

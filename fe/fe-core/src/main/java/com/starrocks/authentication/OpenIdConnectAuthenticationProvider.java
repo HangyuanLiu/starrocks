@@ -14,50 +14,51 @@
 
 package com.starrocks.authentication;
 
-import com.nimbusds.jose.jwk.JWKSet;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
+import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.MysqlProto;
 import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
-import org.json.JSONObject;
 
 import java.nio.ByteBuffer;
 
 public class OpenIdConnectAuthenticationProvider implements AuthenticationProvider {
     public static final String PLUGIN_NAME = AuthPlugin.AUTHENTICATION_OPENID_CONNECT.name();
 
+    private final String jwksUrl;
+    private final String principalFiled;
+    private final String requireIssuer;
+    private final String requireAudience;
+
+    public OpenIdConnectAuthenticationProvider(String jwksUrl, String principalFiled,
+                                               String requireIssuer, String requireAudience) {
+        this.jwksUrl = jwksUrl;
+        this.principalFiled = principalFiled;
+        this.requireIssuer = requireIssuer;
+        this.requireAudience = requireAudience;
+    }
+
     @Override
     public UserAuthenticationInfo analyzeAuthOption(UserIdentity userIdentity, UserAuthOption userAuthOption)
             throws AuthenticationException {
-        return null;
+        UserAuthenticationInfo info = new UserAuthenticationInfo();
+        info.setAuthPlugin(PLUGIN_NAME);
+        info.setPassword(MysqlPassword.EMPTY_PASSWORD);
+        info.setOrigUserHost(userIdentity.getUser(), userIdentity.getHost());
+        info.setTextForAuthPlugin(userAuthOption == null ? null : userAuthOption.getAuthString());
+        return info;
     }
 
     @Override
     public void authenticate(String user, String host, byte[] authResponse, byte[] randomString,
                              UserAuthenticationInfo authenticationInfo) throws AuthenticationException {
+        ByteBuffer authBuffer = ByteBuffer.wrap(authResponse);
+        int len = MysqlProto.readInt1(authBuffer);
+        byte[] openIdConnect = MysqlProto.readLenEncodedString(authBuffer);
+
         try {
-            JWKSet jwkSet = JWTUtils.getPublicKeyFromJWKS();
-
-            ByteBuffer authBuffer = ByteBuffer.wrap(authResponse);
-            int len = MysqlProto.readInt1(authBuffer);
-            byte[] openIdConnect = MysqlProto.readLenEncodedString(authBuffer);
-            JSONObject openIdConnectJson = new JSONObject(new String(openIdConnect));
-            // 提取不同的 JWT
-            String idToken = openIdConnectJson.getString("id_token");
-            String accessToken = openIdConnectJson.getString("access_token");
-            JWTUtils.verifyJWT(idToken, jwkSet);
-            JWTUtils.verifyJWT(accessToken, jwkSet);
-
-            SignedJWT signedJWT = SignedJWT.parse(idToken);
-
-            // 获取 JWT 声明
-            JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
-            String jwtUserName = claims.getStringClaim("preferred_username");
-            if (!jwtUserName.equalsIgnoreCase(user)) {
-                throw new AuthenticationException("Login name " + user + " is not matched to user " + jwtUserName);
-            }
+            OpenIdConnectVerifier.verify(new String(openIdConnect), user, jwksUrl, principalFiled, requireIssuer,
+                    requireAudience);
         } catch (Exception e) {
             throw new AuthenticationException(e.getMessage());
         }

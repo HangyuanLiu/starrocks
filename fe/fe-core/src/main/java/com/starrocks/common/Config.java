@@ -35,6 +35,7 @@
 package com.starrocks.common;
 
 import com.starrocks.StarRocksFE;
+import com.starrocks.authentication.SecurityIntegration;
 import com.starrocks.catalog.LocalTablet;
 import com.starrocks.catalog.Replica;
 
@@ -1830,6 +1831,24 @@ public class Config extends ConfigBase {
     public static boolean authorization_enable_column_level_privilege = false;
 
     /**
+     * The authentication_chain configuration specifies the sequence of security integrations
+     * that will be used to authenticate a user. Each security integration in the chain will be
+     * tried in the order they are defined until one of them successfully authenticates the user.
+     * The configuration should specify a list of names of the security integrations
+     * that will be used in the chain.
+     * <p>
+     * For example, if user specifies the value with {"ldap", "native"}, SR will first try to authenticate
+     * a user whose authentication info may exist in a ldap server, if failed, SR will continue trying to
+     * authenticate the user to check whether it's a native user in SR,  i.e. it's created by SR and
+     * its authentication info is stored in SR metadata.
+     * <p>
+     * For more information about security integration, you can refer to
+     * {@link SecurityIntegration}
+     */
+    @ConfField(mutable = true)
+    public static String[] authentication_chain = {AUTHENTICATION_CHAIN_MECHANISM_NATIVE};
+
+    /**
      * ldap server host for authentication_ldap_simple
      */
     @ConfField(mutable = true)
@@ -3413,17 +3432,32 @@ public class Config extends ConfigBase {
     public static int max_historical_automated_cluster_snapshot_jobs = 100;
 
     @ConfField(mutable = false)
-    public static String token_server_url = "http://localhost:38080/realms/master/protocol/openid-connect/token";
+    public static String oidc_jwks_url = "http://localhost:38080/realms/master/protocol/openid-connect/certs";
 
     @ConfField(mutable = false)
-    public static String client_id = "12345";
+    public static String oidc_principal_field = "preferred_username";
 
     @ConfField(mutable = false)
-    public static String client_secret = "LsWyD9vPcM3LHxLZfzJsuoBwWQFBLcoR";
+    public static String oidc_required_issuer = "";
 
     @ConfField(mutable = false)
-    public static String redirect_url = "http://localhost:8035/api/callback";
+    public static String oidc_required_audience = "";
 
     @ConfField(mutable = false)
-    public static String jwks_url = "http://localhost:38080/realms/master/protocol/openid-connect/certs";
+    public static String oauth2_token_server_url = "http://localhost:38080/realms/master/protocol/openid-connect/token";
+
+    @ConfField(mutable = false)
+    public static String oauth2_client_id = "12345";
+
+    @ConfField(mutable = false)
+    public static String oauth2_client_secret = "LsWyD9vPcM3LHxLZfzJsuoBwWQFBLcoR";
+
+    @ConfField(mutable = false)
+    public static String oauth2_redirect_url = "http://localhost:8035/api/callback";
+
+    @ConfField(mutable = false)
+    public static Long oauth_connect_wait_timeout = 300L;
+
+    @ConfField(mutable = false)
+    public static String group_provider = "unix";
 }

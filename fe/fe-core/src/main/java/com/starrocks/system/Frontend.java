@@ -80,6 +80,15 @@ public class Frontend extends JsonWriter {
     }
 
     public Frontend(FrontendNodeType role, String nodeName, String host, int editLogPort) {
+        this.gid = 0;
+        this.role = role;
+        this.nodeName = nodeName;
+        this.host = host;
+        this.editLogPort = editLogPort;
+    }
+
+    public Frontend(int gid, FrontendNodeType role, String nodeName, String host, int editLogPort) {
+        this.gid = gid;
         this.role = role;
         this.nodeName = nodeName;
         this.host = host;

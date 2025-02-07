@@ -70,6 +70,9 @@ import com.starrocks.alter.OnlineOptimizeJobV2;
 import com.starrocks.alter.OptimizeJobV2;
 import com.starrocks.alter.RollupJobV2;
 import com.starrocks.alter.SchemaChangeJobV2;
+import com.starrocks.authentication.OAuth2SecurityIntegration;
+import com.starrocks.authentication.OIDCSecurityIntegration;
+import com.starrocks.authentication.SecurityIntegration;
 import com.starrocks.authorization.CatalogPEntryObject;
 import com.starrocks.authorization.DbPEntryObject;
 import com.starrocks.authorization.FunctionPEntryObject;
@@ -342,6 +345,11 @@ public class GsonUtils {
                     .registerSubtype(PipePEntryObject.class, "PipePEntryObject")
                     .registerSubtype(PolicyFCEntryObject.class, "PolicyPEntryObject");
 
+    private static final RuntimeTypeAdapterFactory<SecurityIntegration> SEC_INTEGRATION_RUNTIME_TYPE_ADAPTER_FACTORY =
+            RuntimeTypeAdapterFactory.of(SecurityIntegration.class, "clazz")
+                    .registerSubtype(OIDCSecurityIntegration.class, "OIDCSecurityIntegration")
+                    .registerSubtype(OAuth2SecurityIntegration.class, "OAuth2SecurityIntegration");
+
     private static final RuntimeTypeAdapterFactory<Warehouse> WAREHOUSE_TYPE_ADAPTER_FACTORY = RuntimeTypeAdapterFactory
             .of(Warehouse.class, "clazz")
             .registerSubtype(DefaultWarehouse.class, "DefaultWarehouse");
@@ -450,6 +458,7 @@ public class GsonUtils {
             .registerTypeAdapterFactory(TABLE_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(SNAPSHOT_INFO_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(P_ENTRY_OBJECT_RUNTIME_TYPE_ADAPTER_FACTORY)
+            .registerTypeAdapterFactory(SEC_INTEGRATION_RUNTIME_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(WAREHOUSE_TYPE_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(LOAD_JOB_TYPE_RUNTIME_ADAPTER_FACTORY)
             .registerTypeAdapterFactory(TXN_COMMIT_ATTACHMENT_TYPE_RUNTIME_ADAPTER_FACTORY)

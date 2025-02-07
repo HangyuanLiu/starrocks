@@ -222,6 +222,16 @@ public class NodeMgr {
         return result;
     }
 
+    public Frontend getFrontend(Integer frontendId) {
+        for (Frontend frontend : frontends.values()) {
+            if (frontend.getGid() == frontendId) {
+                return frontend;
+            }
+        }
+
+        return null;
+    }
+
     public List<String> getRemovedFrontendNames() {
         return Lists.newArrayList(removedFrontends);
     }
@@ -348,11 +358,12 @@ public class NodeMgr {
                 isVersionFileChanged = true;
 
                 isFirstTimeStartUp = true;
-                Frontend self = new Frontend(role, nodeName, selfNode.first, selfNode.second);
+                Frontend self = new Frontend(++gid, role, nodeName, selfNode.first, selfNode.second);
                 // We don't need to check if frontends already contains self.
                 // frontends must be empty cause no image is loaded and no journal is replayed yet.
                 // And this frontend will be persisted later after opening bdbje environment.
                 frontends.put(nodeName, self);
+
             } else {
                 clusterId = storage.getClusterID();
                 if (storage.getToken() == null) {
@@ -768,9 +779,7 @@ public class NodeMgr {
                 throw new DdlException("frontend name already exists " + nodeName + ". Try again");
             }
 
-            Frontend fe = new Frontend(role, nodeName, host, editLogPort);
-            gid = gid + 1;
-            fe.setGid(gid);
+            Frontend fe = new Frontend(++gid, role, nodeName, host, editLogPort);
 
             frontends.put(nodeName, fe);
             if (role == FrontendNodeType.FOLLOWER) {
@@ -1047,10 +1056,6 @@ public class NodeMgr {
         return frontends.get(name);
     }
 
-    public Frontend getSelfFe() {
-        return frontends.get(nodeName);
-    }
-
     public int getFollowerCnt() {
         int cnt = 0;
         for (Frontend fe : frontends.values()) {
@@ -1213,7 +1218,7 @@ public class NodeMgr {
 
     public void resetFrontends() {
         frontends.clear();
-        Frontend self = new Frontend(role, nodeName, selfNode.first, selfNode.second);
+        Frontend self = new Frontend(++gid, role, nodeName, selfNode.first, selfNode.second);
         frontends.put(self.getNodeName(), self);
         // reset helper nodes
         helperNodes.clear();

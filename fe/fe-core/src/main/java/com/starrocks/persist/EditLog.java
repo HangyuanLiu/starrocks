@@ -39,6 +39,8 @@ import com.google.common.collect.Lists;
 import com.google.gson.JsonParseException;
 import com.starrocks.alter.AlterJobV2;
 import com.starrocks.alter.BatchAlterJobPersistInfo;
+import com.starrocks.authentication.AuthenticationMgr;
+import com.starrocks.authentication.GroupProviderLog;
 import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.authentication.UserProperty;
 import com.starrocks.authentication.UserPropertyInfo;
@@ -1123,6 +1125,24 @@ public class EditLog {
                     GlobalStateMgr.getCurrentState().getSqlBlackList().delete(deleteBlackListsRequest.ids);
                     break;
                 }
+                case OperationType.OP_CREATE_SECURITY_INTEGRATION: {
+                    SecurityIntegrationPersistInfo info = (SecurityIntegrationPersistInfo) journal.data();
+                    AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+                    authenticationMgr.replayCreateSecurityIntegration(info.name, info.propertyMap);
+                    break;
+                }
+                case OperationType.OP_ALTER_SECURITY_INTEGRATION: {
+                    SecurityIntegrationPersistInfo info = (SecurityIntegrationPersistInfo) journal.data();
+                    AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+                    authenticationMgr.replayAlterSecurityIntegration(info.name, info.propertyMap);
+                    break;
+                }
+                case OperationType.OP_DROP_SECURITY_INTEGRATION: {
+                    SecurityIntegrationPersistInfo info = (SecurityIntegrationPersistInfo) journal.data();
+                    AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+                    authenticationMgr.replayDropSecurityIntegration(info.name);
+                    break;
+                }
                 default: {
                     if (Config.metadata_ignore_unknown_operation_type) {
                         LOG.warn("UNKNOWN Operation Type {}", opCode);
@@ -1981,5 +2001,28 @@ public class EditLog {
 
     public void logClusterSnapshotLog(ClusterSnapshotLog info) {
         logEdit(OperationType.OP_CLUSTER_SNAPSHOT_LOG, info);
+    }
+
+    public void logCreateSecurityIntegration(String name, Map<String, String> propertyMap) {
+        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, propertyMap);
+        logEdit(OperationType.OP_CREATE_SECURITY_INTEGRATION, info);
+    }
+
+    public void logAlterSecurityIntegration(String name, Map<String, String> alterProps) {
+        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, alterProps);
+        logEdit(OperationType.OP_ALTER_SECURITY_INTEGRATION, info);
+    }
+
+    public void logDropSecurityIntegration(String name) {
+        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, null);
+        logEdit(OperationType.OP_DROP_SECURITY_INTEGRATION, info);
+    }
+
+    public void logCreateGroupProvider(GroupProviderLog info) {
+        logEdit(OperationType.OP_CREATE_GROUP_PROVIDER, info);
+    }
+
+    public void logDropGroupProvider(GroupProviderLog info) {
+        logEdit(OperationType.OP_DROP_GROUP_PROVIDER, info);
     }
 }
