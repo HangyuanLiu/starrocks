@@ -136,9 +136,12 @@ void NullableColumn::append_value_multiple_times(const Column& src, uint32_t ind
     DCHECK_EQ(_null_column->size(), _data_column->size());
 }
 
-ColumnPtr NullableColumn::replicate(const Buffer<uint32_t>& offsets) {
-    return NullableColumn::create(this->_data_column->replicate(offsets),
-                                  std::dynamic_pointer_cast<NullColumn>(this->_null_column->replicate(offsets)));
+StatusOr<ColumnPtr> NullableColumn::replicate(const Buffer<uint32_t>& offsets) {
+    ASSIGN_OR_RETURN(auto data_col, this->_data_column->replicate(offsets));
+
+    ASSIGN_OR_RETURN(auto null_col, this->_null_column->replicate(offsets));
+
+    return NullableColumn::create(data_col, std::dynamic_pointer_cast<NullColumn>(null_col));
 }
 
 bool NullableColumn::append_nulls(size_t count) {
@@ -334,9 +337,7 @@ const uint8_t* NullableColumn::deserialize_and_append(const uint8_t* pos) {
 }
 
 void NullableColumn::deserialize_and_append_batch(Buffer<Slice>& srcs, size_t chunk_size) {
-    for (size_t i = 0; i < chunk_size; ++i) {
-        srcs[i].data = (char*)deserialize_and_append((uint8_t*)srcs[i].data);
-    }
+    _data_column->deserialize_and_append_batch_nullable(srcs, chunk_size, null_column_data(), _has_null);
 }
 
 // Note: the hash function should be same with RawValue::get_hash_value_fvn

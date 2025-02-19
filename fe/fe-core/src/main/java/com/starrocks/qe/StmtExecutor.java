@@ -131,7 +131,6 @@ import com.starrocks.qe.feedback.skeleton.SkeletonNode;
 import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.qe.scheduler.FeExecuteCoordinator;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.server.RunMode;
 import com.starrocks.server.WarehouseManager;
 import com.starrocks.service.ExecuteEnv;
 import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
@@ -200,6 +199,7 @@ import com.starrocks.sql.common.ErrorType;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.common.StarRocksPlannerException;
 import com.starrocks.sql.optimizer.OptExpression;
+import com.starrocks.sql.optimizer.cost.feature.CostPredictor;
 import com.starrocks.sql.optimizer.dump.QueryDumpInfo;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalValuesOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
@@ -1228,6 +1228,10 @@ public class StmtExecutor {
         return new DefaultCoordinator.Factory();
     }
 
+    private CostPredictor getCostPredictor() {
+        return CostPredictor.getServiceBasedCostPredictor();
+    }
+
     // Process a select statement.
     private void handleQueryStmt(ExecPlan execPlan) throws Exception {
         // Every time set no send flag and clean all data in buffer
@@ -1290,6 +1294,14 @@ public class StmtExecutor {
             coord = new FeExecuteCoordinator(context, execPlan);
         } else {
             coord = getCoordinatorFactory().createQueryScheduler(context, fragments, scanNodes, descTable);
+        }
+
+        // Predict the cost of this query
+        if (Config.enable_query_cost_prediction) {
+            CostPredictor predictor = getCostPredictor();
+            long memBytes = predictor.predictMemoryBytes(execPlan);
+            coord.setPredictedCost(memBytes);
+            context.getAuditEventBuilder().setPredictMemBytes(memBytes);
         }
 
         QeProcessorImpl.INSTANCE.registerQuery(context.getExecutionId(),
@@ -1529,12 +1541,9 @@ public class StmtExecutor {
         // from current session, may execute analyze stmt
         statsConnectCtx.getSessionVariable().setStatisticCollectParallelism(
                 context.getSessionVariable().getStatisticCollectParallelism());
-        statsConnectCtx.setThreadLocalInfo();
         statsConnectCtx.setStatisticsConnection(true);
-        try {
+        try (var guard = statsConnectCtx.bindScope()) {
             executeAnalyze(statsConnectCtx, analyzeStmt, analyzeStatus, db, table);
-        } finally {
-            ConnectContext.remove();
         }
 
     }
@@ -1799,17 +1808,13 @@ public class StmtExecutor {
     }
 
     // Process use warehouse statement
-    private void handleSetWarehouseStmt() throws AnalysisException {
-        if (RunMode.getCurrentRunMode() == RunMode.SHARED_NOTHING) {
-            ErrorReport.reportAnalysisException(ErrorCode.ERR_NOT_SUPPORTED_STATEMENT_IN_SHARED_NOTHING_MODE);
-        }
-
+    private void handleSetWarehouseStmt() throws StarRocksException {
         SetWarehouseStmt setWarehouseStmt = (SetWarehouseStmt) parsedStmt;
         try {
             WarehouseManager warehouseMgr = GlobalStateMgr.getCurrentState().getWarehouseMgr();
             String newWarehouseName = setWarehouseStmt.getWarehouseName();
             if (!warehouseMgr.warehouseExists(newWarehouseName)) {
-                ErrorReport.reportAnalysisException(ErrorCode.ERR_BAD_WAREHOUSE_ERROR, newWarehouseName);
+                throw new StarRocksException(ErrorCode.ERR_UNKNOWN_WAREHOUSE, newWarehouseName);
             }
             context.setCurrentWarehouse(newWarehouseName);
         } catch (Exception e) {

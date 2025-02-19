@@ -34,10 +34,6 @@ public class ShowSecurityIntegrationStatement extends ShowStmt {
         META_DATA = builder.build();
     }
 
-    public ShowSecurityIntegrationStatement() {
-        this(NodePosition.ZERO);
-    }
-
     public ShowSecurityIntegrationStatement(NodePosition pos) {
         super(pos);
     }
@@ -51,5 +47,4 @@ public class ShowSecurityIntegrationStatement extends ShowStmt {
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
         return visitor.visitShowSecurityIntegrationStatement(this, context);
     }
-
 }

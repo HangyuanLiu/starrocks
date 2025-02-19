@@ -780,23 +780,23 @@ public interface AstVisitor<R, C> {
     // ------------------------------------------- Security Integration Statement ----------------------------------------------------
 
     default R visitCreateSecurityIntegrationStatement(CreateSecurityIntegrationStatement statement, C context) {
-        return visitStatement(statement, context);
+        return visitDDLStatement(statement, context);
     }
 
     default R visitDropSecurityIntegrationStatement(DropSecurityIntegrationStatement statement, C context) {
-        return visitStatement(statement, context);
+        return visitDDLStatement(statement, context);
     }
 
     default R visitAlterSecurityIntegrationStatement(AlterSecurityIntegrationStatement statement, C context) {
-        return visitStatement(statement, context);
+        return visitDDLStatement(statement, context);
     }
 
     default R visitShowCreateSecurityIntegrationStatement(ShowCreateSecurityIntegrationStatement statement, C context) {
-        return visitStatement(statement, context);
+        return visitShowStatement(statement, context);
     }
 
     default R visitShowSecurityIntegrationStatement(ShowSecurityIntegrationStatement statement, C context) {
-        return visitStatement(statement, context);
+        return visitShowStatement(statement, context);
     }
 
     // ------------------------------------------- Group Provider Statement ----------------------------------------------------

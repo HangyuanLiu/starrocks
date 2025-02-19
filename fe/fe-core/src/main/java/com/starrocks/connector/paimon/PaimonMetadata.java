@@ -29,6 +29,7 @@ import com.starrocks.connector.ConnectorProperties;
 import com.starrocks.connector.GetRemoteFilesParams;
 import com.starrocks.connector.HdfsEnvironment;
 import com.starrocks.connector.PartitionInfo;
+import com.starrocks.connector.PredicateSearchKey;
 import com.starrocks.connector.RemoteFileDesc;
 import com.starrocks.connector.RemoteFileInfo;
 import com.starrocks.connector.TableVersionRange;
@@ -78,7 +79,7 @@ public class PaimonMetadata implements ConnectorMetadata {
     private final String catalogName;
     private final Map<Identifier, Table> tables = new ConcurrentHashMap<>();
     private final Map<String, Database> databases = new ConcurrentHashMap<>();
-    private final Map<PaimonFilter, PaimonSplitsInfo> paimonSplits = new ConcurrentHashMap<>();
+    private final Map<PredicateSearchKey, PaimonSplitsInfo> paimonSplits = new ConcurrentHashMap<>();
     private final Map<String, Long> partitionInfos = new ConcurrentHashMap<>();
     private final ConnectorProperties properties;
 
@@ -190,11 +191,13 @@ public class PaimonMetadata implements ConnectorMetadata {
         if (databases.containsKey(dbName)) {
             return databases.get(dbName);
         }
-        if (paimonNativeCatalog.databaseExists(dbName)) {
+        try {
+            // get database from paimon catalog to see if the database exists
+            paimonNativeCatalog.getDatabase(dbName);
             Database db = new Database(CONNECTOR_ID_GENERATOR.getNextId().asInt(), dbName);
             databases.put(dbName, db);
             return db;
-        } else {
+        } catch (Catalog.DatabaseNotExistException e) {
             LOG.error("Paimon database {}.{} does not exist.", catalogName, dbName);
             return null;
         }
@@ -235,16 +238,24 @@ public class PaimonMetadata implements ConnectorMetadata {
 
     @Override
     public boolean tableExists(String dbName, String tableName) {
-        return paimonNativeCatalog.tableExists(Identifier.create(dbName, tableName));
+        try {
+            paimonNativeCatalog.getTable(Identifier.create(dbName, tableName));
+            return true;
+        } catch (Catalog.TableNotExistException e) {
+            return false;
+        }
     }
 
     @Override
     public List<RemoteFileInfo> getRemoteFiles(Table table, GetRemoteFilesParams params) {
         RemoteFileInfo remoteFileInfo = new RemoteFileInfo();
         PaimonTable paimonTable = (PaimonTable) table;
-        PaimonFilter filter =
-                new PaimonFilter(paimonTable.getCatalogDBName(), paimonTable.getCatalogTableName(), params.getPredicate(),
-                        params.getFieldNames());
+        long latestSnapshotId = -1L;
+        if (paimonTable.getNativeTable().latestSnapshotId().isPresent()) {
+            latestSnapshotId = paimonTable.getNativeTable().latestSnapshotId().getAsLong();
+        }
+        PredicateSearchKey filter = PredicateSearchKey.of(paimonTable.getCatalogDBName(),
+                paimonTable.getCatalogTableName(), latestSnapshotId, params.getPredicate());
         if (!paimonSplits.containsKey(filter)) {
             ReadBuilder readBuilder = paimonTable.getNativeTable().newReadBuilder();
             int[] projected =

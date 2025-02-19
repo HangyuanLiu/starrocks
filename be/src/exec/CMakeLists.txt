@@ -214,9 +214,7 @@ set(EXEC_FILES
     pipeline/scan/schema_scan_operator.cpp
     pipeline/scan/schema_scan_context.cpp
     pipeline/sink/connector_sink_operator.cpp
-    pipeline/sink/iceberg_table_sink_operator.cpp
     pipeline/sink/sink_io_buffer.cpp
-    pipeline/sink/hive_table_sink_operator.cpp
     pipeline/sink/table_function_table_sink_operator.cpp
     pipeline/sink/blackhole_table_sink_operator.cpp
     pipeline/scan/morsel.cpp
@@ -240,6 +238,7 @@ set(EXEC_FILES
     pipeline/sort/spillable_partition_sort_sink_operator.cpp
     pipeline/sort/local_parallel_merge_sort_source_operator.cpp
     pipeline/sort/sort_context.cpp
+    pipeline/pipeline_metrics.cpp
     pipeline/pipeline_driver_executor.cpp
     pipeline/pipeline_driver_queue.cpp
     pipeline/pipeline_driver_poller.cpp

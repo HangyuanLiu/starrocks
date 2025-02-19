@@ -17,6 +17,8 @@
 #include <chrono>
 
 #include "exec/pipeline/pipeline_fwd.h"
+#include "exec/pipeline/pipeline_metrics.h"
+#include "runtime/exec_env.h"
 #include "util/time_guard.h"
 
 namespace starrocks::pipeline {
@@ -194,7 +196,7 @@ void PipelineDriverPoller::add_blocked_driver(const DriverRawPtr driver) {
 
     std::unique_lock<std::mutex> lock(_global_mutex);
     _blocked_drivers.push_back(driver);
-    _num_drivers++;
+    _metrics->poller_block_queue_len.increment(1);
     driver->_pending_timer_sw->reset();
     driver->driver_acct().clean_local_queue_infos();
     _cond.notify_one();
@@ -246,7 +248,7 @@ void PipelineDriverPoller::remove_blocked_driver(DriverList& local_blocked_drive
     auto& driver = *driver_it;
     driver->_pending_timer->update(driver->_pending_timer_sw->elapsed_time());
     local_blocked_drivers.erase(driver_it++);
-    _num_drivers--;
+    _metrics->poller_block_queue_len.increment(-1);
 }
 
 void PipelineDriverPoller::on_cancel(DriverRawPtr driver, std::vector<DriverRawPtr>& ready_drivers,
@@ -263,6 +265,17 @@ void PipelineDriverPoller::on_cancel(DriverRawPtr driver, std::vector<DriverRawP
 }
 
 void PipelineDriverPoller::for_each_driver(const ConstDriverConsumer& call) const {
+    auto* env = ExecEnv::GetInstance();
+    env->query_context_mgr()->for_each_active_ctx([&call](const QueryContextPtr& ctx) {
+        ctx->fragment_mgr()->for_each_fragment([&call](const FragmentContextPtr& fragment) {
+            fragment->iterate_drivers([&call](const std::shared_ptr<PipelineDriver>& driver) {
+                if (driver->is_in_blocked()) {
+                    call(driver.get());
+                }
+            });
+        });
+    });
+
     std::shared_lock guard(_local_mutex);
     for (auto* driver : _local_blocked_drivers) {
         call(driver);

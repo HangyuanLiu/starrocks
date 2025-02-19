@@ -23,6 +23,7 @@ import com.starrocks.authentication.AuthenticationMgr;
 import com.starrocks.catalog.Database;
 import com.starrocks.common.AlreadyExistsException;
 import com.starrocks.common.Config;
+import com.starrocks.common.ConfigBase;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
@@ -590,6 +591,53 @@ public class DDLStmtExecutor {
         }
 
         @Override
+        public ShowResultSet visitCreateSecurityIntegrationStatement(CreateSecurityIntegrationStatement stmt,
+                                                                     ConnectContext context) {
+            ErrorReport.wrapWithRuntimeException(() -> {
+                AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+                authenticationMgr.createSecurityIntegration(stmt.getName(), stmt.getPropertyMap(), false);
+            });
+
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitAlterSecurityIntegrationStatement(AlterSecurityIntegrationStatement stmt,
+                                                                    ConnectContext context) {
+            ErrorReport.wrapWithRuntimeException(() -> {
+                AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+                authenticationMgr.alterSecurityIntegration(stmt.getName(), stmt.getProperties(), false);
+            });
+
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitDropSecurityIntegrationStatement(DropSecurityIntegrationStatement stmt,
+                                                                   ConnectContext context) {
+            ErrorReport.wrapWithRuntimeException(() -> {
+                AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+                authenticationMgr.dropSecurityIntegration(stmt.getName(), false);
+            });
+
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitCreateGroupProviderStatement(CreateGroupProviderStmt statement, ConnectContext context) {
+            AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+            authenticationMgr.createGroupProviderStatement(statement, context);
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitDropGroupProviderStatement(DropGroupProviderStmt statement, ConnectContext context) {
+            AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+            authenticationMgr.dropGroupProviderStatement(statement, context);
+            return null;
+        }
+
+        @Override
         public ShowResultSet visitSetUserPropertyStatement(SetUserPropertyStmt stmt, ConnectContext context) {
             ErrorReport.wrapWithRuntimeException(() -> {
                 context.getGlobalStateMgr().getAuthenticationMgr().updateUserProperty(stmt.getUser(),
@@ -740,7 +788,7 @@ public class DDLStmtExecutor {
         @Override
         public ShowResultSet visitAdminSetConfigStatement(AdminSetConfigStmt stmt, ConnectContext context) {
             ErrorReport.wrapWithRuntimeException(() -> {
-                context.getGlobalStateMgr().getNodeMgr().setConfig(stmt);
+                ConfigBase.setConfig(stmt);
                 if (stmt.getConfig().containsKey("mysql_server_version")) {
                     String version = stmt.getConfig().getMap().get("mysql_server_version");
                     if (!Strings.isNullOrEmpty(version)) {
@@ -1196,7 +1244,7 @@ public class DDLStmtExecutor {
 
         @Override
         public ShowResultSet visitAdminSetAutomatedSnapshotOnStatement(AdminSetAutomatedSnapshotOnStmt stmt,
-                                                                     ConnectContext context) {
+                                                                       ConnectContext context) {
             ErrorReport.wrapWithRuntimeException(() -> {
                 context.getGlobalStateMgr().getClusterSnapshotMgr().setAutomatedSnapshotOn(stmt);
             });
@@ -1209,53 +1257,6 @@ public class DDLStmtExecutor {
             ErrorReport.wrapWithRuntimeException(() -> {
                 context.getGlobalStateMgr().getClusterSnapshotMgr().setAutomatedSnapshotOff(stmt);
             });
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitCreateSecurityIntegrationStatement(CreateSecurityIntegrationStatement stmt,
-                                                                     ConnectContext context) {
-            ErrorReport.wrapWithRuntimeException(() -> {
-                AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
-                authenticationMgr.createSecurityIntegration(stmt.getName(), stmt.getPropertyMap(), false);
-            });
-
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitAlterSecurityIntegrationStatement(AlterSecurityIntegrationStatement stmt,
-                                                                    ConnectContext context) {
-            ErrorReport.wrapWithRuntimeException(() -> {
-                AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
-                authenticationMgr.alterSecurityIntegration(stmt.getName(), stmt.getProperties(), false);
-            });
-
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitDropSecurityIntegrationStatement(DropSecurityIntegrationStatement stmt,
-                                                                   ConnectContext context) {
-            ErrorReport.wrapWithRuntimeException(() -> {
-                AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
-                authenticationMgr.dropSecurityIntegration(stmt.getName(), false);
-            });
-
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitCreateGroupProviderStatement(CreateGroupProviderStmt statement, ConnectContext context) {
-            AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
-            authenticationMgr.createGroupProviderStatement(statement, context);
-            return null;
-        }
-
-        @Override
-        public ShowResultSet visitDropGroupProviderStatement(DropGroupProviderStmt statement, ConnectContext context) {
-            AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
-            authenticationMgr.dropGroupProviderStatement(statement, context);
             return null;
         }
     }

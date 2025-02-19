@@ -14,9 +14,11 @@
 
 package com.starrocks.authentication;
 
+import com.nimbusds.jose.jwk.JWKSet;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
 
@@ -27,6 +29,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
 import java.util.Map;
 
 public class OAuth2AuthenticationProvider implements AuthenticationProvider {
@@ -82,7 +85,13 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
         String authorizationCode = getAuthorizationCode();
         String oidcToken = getToken(authorizationCode, connectionId);
         try {
-            OpenIdConnectVerifier.verify(oidcToken, user, jwksUrl, principalFiled, requiredIssuer, requiredAudience);
+            JWKSet jwkSet;
+            try {
+                jwkSet = GlobalStateMgr.getCurrentState().getJwkMgr().getJwkSet(jwksUrl);
+            } catch (IOException | ParseException e) {
+                throw new AuthenticationException(e.getMessage());
+            }
+            OpenIdConnectVerifier.verify(oidcToken, user, jwkSet, principalFiled, requiredIssuer, requiredAudience);
         } catch (Exception e) {
             throw new AuthenticationException(e.getMessage());
         }

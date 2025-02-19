@@ -356,8 +356,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String CBO_ENABLE_REPLICATED_JOIN = "cbo_enable_replicated_join";
     public static final String CBO_USE_CORRELATED_JOIN_ESTIMATE = "cbo_use_correlated_join_estimate";
     public static final String ALWAYS_COLLECT_LOW_CARD_DICT = "always_collect_low_card_dict";
+    public static final String ALWAYS_COLLECT_LOW_CARD_DICT_ON_LAKE = "always_collect_low_card_dict_on_lake";
     public static final String CBO_ENABLE_LOW_CARDINALITY_OPTIMIZE = "cbo_enable_low_cardinality_optimize";
     public static final String LOW_CARDINALITY_OPTIMIZE_V2 = "low_cardinality_optimize_v2";
+    public static final String LOW_CARDINALITY_OPTIMIZE_ON_LAKE = "low_cardinality_optimize_on_lake";
     public static final String ARRAY_LOW_CARDINALITY_OPTIMIZE = "array_low_cardinality_optimize";
     public static final String CBO_USE_NTH_EXEC_PLAN = "cbo_use_nth_exec_plan";
     public static final String CBO_CTE_REUSE = "cbo_cte_reuse";
@@ -764,6 +766,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String CBO_PUSHDOWN_TOPN_LIMIT = "cbo_push_down_topn_limit";
 
+    public static final String CBO_PUSHDOWN_DISTINCT_LIMIT = "cbo_push_down_distinct_limit";
+
     public static final String ENABLE_AGGREGATION_PIPELINE_SHARE_LIMIT = "enable_aggregation_pipeline_share_limit";
 
     public static final String ENABLE_EXPR_PRUNE_PARTITION = "enable_expr_prune_partition";
@@ -850,6 +854,11 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_REWRITE_UNNEST_BITMAP_TO_ARRAY = "enable_rewrite_unnest_bitmap_to_array";
 
     public static final String ENABLE_SCAN_PREDICATE_EXPR_REUSE = "enable_scan_predicate_expr_reuse";
+
+    // 0 for disable, 1 for too many data; 2 for force
+    public static final String TOPN_FILTER_BACK_PRESSURE_MODE = "topn_filter_back_pressure_mode";
+    public static final String BACK_PRESSURE_MAX_ROUNDS = "back_pressure_back_rounds";
+    public static final String BACK_PRESSURE_THROTTLE_TIME_UPPER_BOUND = "back_pressure_throttle_time_upper_bound";
 
     public static final List<String> DEPRECATED_VARIABLES = ImmutableList.<String>builder()
             .add(CODEGEN_LEVEL)
@@ -1389,11 +1398,17 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = ALWAYS_COLLECT_LOW_CARD_DICT, flag = VariableMgr.INVISIBLE)
     private boolean alwaysCollectDict = false;
 
+    @VariableMgr.VarAttr(name = ALWAYS_COLLECT_LOW_CARD_DICT_ON_LAKE, flag = VariableMgr.INVISIBLE)
+    private boolean alwaysCollectDictOnLake = true;
+
     @VariableMgr.VarAttr(name = CBO_ENABLE_LOW_CARDINALITY_OPTIMIZE)
     private boolean enableLowCardinalityOptimize = true;
 
     @VariableMgr.VarAttr(name = LOW_CARDINALITY_OPTIMIZE_V2)
     private boolean useLowCardinalityOptimizeV2 = true;
+
+    @VariableMgr.VarAttr(name = LOW_CARDINALITY_OPTIMIZE_ON_LAKE)
+    private boolean useLowCardinalityOptimizeOnLake = true;
 
     @VarAttr(name = ARRAY_LOW_CARDINALITY_OPTIMIZE)
     private boolean enableArrayLowCardinalityOptimize = true;
@@ -1639,6 +1654,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VarAttr(name = CBO_PUSHDOWN_TOPN_LIMIT)
     private long cboPushDownTopNLimit = 1000;
 
+    @VarAttr(name = CBO_PUSHDOWN_DISTINCT_LIMIT)
+    private long cboPushDownDistinctLimit = 4096;
+
     @VarAttr(name = ENABLE_AGGREGATION_PIPELINE_SHARE_LIMIT, flag = VariableMgr.INVISIBLE)
     private boolean enableAggregationPipelineShareLimit = true;
 
@@ -1665,6 +1683,13 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = ENABLE_SCAN_PREDICATE_EXPR_REUSE, flag = VariableMgr.INVISIBLE)
     private boolean enableScanPredicateExprReuse = true;
+
+    @VarAttr(name = TOPN_FILTER_BACK_PRESSURE_MODE)
+    private int topnFilterBackPressureMode = 0;
+    @VarAttr(name = BACK_PRESSURE_MAX_ROUNDS)
+    private int backPressureMaxRounds = 3;
+    @VarAttr(name = BACK_PRESSURE_THROTTLE_TIME_UPPER_BOUND)
+    private long backPressureThrottleTimeUpperBound = 300;
 
     public int getCboPruneJsonSubfieldDepth() {
         return cboPruneJsonSubfieldDepth;
@@ -1707,6 +1732,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public long getCboPushDownTopNLimit() {
         return cboPushDownTopNLimit;
+    }
+
+    public long cboPushDownDistinctLimit() {
+        return cboPushDownDistinctLimit;
     }
 
     public void setCboPushDownTopNLimit(long cboPushDownTopNLimit) {
@@ -2437,7 +2466,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private boolean enablePhasedScheduler = false;
 
     @VarAttr(name = ENABLE_PIPELINE_EVENT_SCHEDULER)
-    private boolean enablePipelineEventScheduler = false;
+    private boolean enablePipelineEventScheduler = true;
 
     @VarAttr(name = PHASED_SCHEDULER_MAX_CONCURRENCY)
     private int phasedSchedulerMaxConcurrency = 2;
@@ -3540,6 +3569,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return alwaysCollectDict;
     }
 
+    public boolean isAlwaysCollectDictOnLake() {
+        return alwaysCollectDictOnLake;
+    }
+
     public boolean isEnableLowCardinalityOptimize() {
         return enableLowCardinalityOptimize;
     }
@@ -3550,6 +3583,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setUseLowCardinalityOptimizeV2(boolean useLowCardinalityOptimizeV2) {
         this.useLowCardinalityOptimizeV2 = useLowCardinalityOptimizeV2;
+    }
+
+    public boolean isUseLowCardinalityOptimizeOnLake() {
+        return useLowCardinalityOptimizeOnLake;
+    }
+
+    public void setUseLowCardinalityOptimizeOnLake(boolean useLowCardinalityOptimizeOnLake) {
+        this.useLowCardinalityOptimizeOnLake = useLowCardinalityOptimizeOnLake;
     }
 
     public boolean isEnableRewriteGroupingsetsToUnionAll() {
@@ -4402,6 +4443,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return enableArrayDistinctAfterAggOpt;
     }
 
+    public int getIoTasksPerScanOperator() {
+        return ioTasksPerScanOperator;
+    }
+
     public long getConnectorMaxSplitSize() {
         return connectorMaxSplitSize;
     }
@@ -4540,6 +4585,30 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnableRewriteUnnestBitmapToArray() {
         return enableRewriteUnnestBitmapToArray;
+    }
+
+    public int getTopnFilterBackPressureMode() {
+        return topnFilterBackPressureMode;
+    }
+
+    public void setTopnFilterBackPressureMode(int value) {
+        this.topnFilterBackPressureMode = value;
+    }
+
+    public int getBackPressureMaxRounds() {
+        return this.backPressureMaxRounds;
+    }
+
+    public void setBackPressureMaxRounds(int value) {
+        this.backPressureMaxRounds = value;
+    }
+
+    public long getBackPressureThrottleTimeUpperBound() {
+        return this.backPressureThrottleTimeUpperBound;
+    }
+
+    public void setBackPressureThrottleTimeUpperBound(long value) {
+        this.backPressureThrottleTimeUpperBound = value;
     }
 
     // Serialize to thrift object

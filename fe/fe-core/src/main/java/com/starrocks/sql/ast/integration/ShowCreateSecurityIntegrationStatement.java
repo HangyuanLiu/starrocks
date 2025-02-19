@@ -30,10 +30,6 @@ public class ShowCreateSecurityIntegrationStatement extends ShowStmt {
 
     private String name;
 
-    public ShowCreateSecurityIntegrationStatement(String name) {
-        this(name, NodePosition.ZERO);
-    }
-
     public ShowCreateSecurityIntegrationStatement(String name, NodePosition pos) {
         super(pos);
         this.name = name;

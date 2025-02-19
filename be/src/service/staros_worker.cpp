@@ -32,6 +32,7 @@
 #include "util/debug_util.h"
 #include "util/lru_cache.h"
 #include "util/sha.h"
+#include "util/starrocks_metrics.h"
 
 // cachemgr thread pool size
 DECLARE_int32(cachemgr_threadpool_size);
@@ -80,6 +81,23 @@ StarOSWorker::StarOSWorker() : _mtx(), _shards(), _fs_cache(new_lru_cache(1024))
 
 StarOSWorker::~StarOSWorker() = default;
 
+static const uint64_t kUnknownTableId = UINT64_MAX;
+uint64_t StarOSWorker::get_table_id(const ShardInfo& shard) {
+    const auto& properties = shard.properties;
+    auto iter = properties.find("tableId");
+    if (iter == properties.end()) {
+        DCHECK(false) << "tableId doesn't exist in shard properties";
+        return kUnknownTableId;
+    }
+    const auto& tableId = properties.at("tableId");
+    try {
+        return std::stoull(tableId);
+    } catch (const std::exception& e) {
+        DCHECK(false) << "failed to parse tableId: " << tableId << ", " << e.what();
+        return kUnknownTableId;
+    }
+}
+
 absl::Status StarOSWorker::add_shard(const ShardInfo& shard) {
     std::unique_lock l(_mtx);
     auto it = _shards.find(shard.id);
@@ -93,6 +111,9 @@ absl::Status StarOSWorker::add_shard(const ShardInfo& shard) {
     auto ret = _shards.insert_or_assign(shard.id, ShardInfoDetails(shard));
     l.unlock();
     if (ret.second) {
+#ifndef BE_TEST
+        StarRocksMetrics::instance()->table_metrics_mgr()->register_table(get_table_id(shard));
+#endif
         // it is an insert op to the map
         // NOTE:
         //  1. Since the following statement is invoked outside the lock, it is possible that
@@ -122,7 +143,14 @@ absl::Status StarOSWorker::invalidate_fs(const ShardInfo& info) {
 
 absl::Status StarOSWorker::remove_shard(const ShardId id) {
     std::unique_lock l(_mtx);
-    _shards.erase(id);
+    auto iter = _shards.find(id);
+    if (iter != _shards.end()) {
+#ifndef BE_TEST
+        uint64_t table_id = get_table_id(iter->second.shard_info);
+        StarRocksMetrics::instance()->table_metrics_mgr()->unregister_table(table_id);
+#endif
+        _shards.erase(iter);
+    }
     return absl::OkStatus();
 }
 
@@ -317,7 +345,7 @@ absl::StatusOr<std::shared_ptr<StarOSWorker::FileSystem>> StarOSWorker::new_shar
 
     // Put the FileSysatem into LRU cache
     auto value = new CacheValue(fs);
-    handle = _fs_cache->insert(key, value, 1, cache_value_deleter);
+    handle = _fs_cache->insert(key, value, 1, 1, cache_value_deleter);
     if (handle == nullptr) {
         delete value;
     } else {

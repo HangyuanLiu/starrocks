@@ -86,6 +86,7 @@ import com.starrocks.common.AnalysisException;
 import com.starrocks.common.AuthenticationException;
 import com.starrocks.common.CaseSensibility;
 import com.starrocks.common.Config;
+import com.starrocks.common.ConfigBase;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.DuplicatedRequestException;
 import com.starrocks.common.IdGenerator;
@@ -1946,8 +1947,8 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                     }
                 }
             }
-
-            GlobalStateMgr.getCurrentState().getNodeMgr().setFrontendConfig(configs);
+            ConfigBase.setFrontendConfig(configs, request.isIs_persistent(),
+                    request.getUser_identity());
             return new TSetConfigResponse(new TStatus(TStatusCode.OK));
         } catch (DdlException e) {
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
@@ -2991,7 +2992,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         if (options.isSetTemporary_table_only() && options.temporary_table_only) {
             TemporaryTableMgr temporaryTableMgr = GlobalStateMgr.getCurrentState().getTemporaryTableMgr();
             Set<UUID> sessions = ExecuteEnv.getInstance().getScheduler().listAllSessionsId();
-            sessions.retainAll(temporaryTableMgr.listSessions());
+            sessions.retainAll(temporaryTableMgr.listSessions().keySet());
             List<TSessionInfo> sessionInfos = new ArrayList<>();
             for (UUID session : sessions) {
                 TSessionInfo sessionInfo = new TSessionInfo();
@@ -3178,11 +3179,11 @@ public class FrontendServiceImpl implements FrontendService.Iface {
 
     @Override
     public TClusterSnapshotsResponse getClusterSnapshotsInfo(TClusterSnapshotsRequest params) {
-        return GlobalStateMgr.getCurrentState().getClusterSnapshotMgr().getAllInfo();
+        return GlobalStateMgr.getCurrentState().getClusterSnapshotMgr().getAllSnapshotsInfo();
     }
 
     @Override
     public TClusterSnapshotJobsResponse getClusterSnapshotJobsInfo(TClusterSnapshotJobsRequest params) {
-        return GlobalStateMgr.getCurrentState().getClusterSnapshotMgr().getAllJobsInfo();
+        return GlobalStateMgr.getCurrentState().getClusterSnapshotMgr().getAllSnapshotJobsInfo();
     }
 }

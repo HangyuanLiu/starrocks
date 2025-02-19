@@ -47,6 +47,7 @@ import com.starrocks.alter.SystemHandler;
 import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.analysis.TableName;
 import com.starrocks.authentication.AuthenticationMgr;
+import com.starrocks.authentication.JwkMgr;
 import com.starrocks.authentication.OAuth2TokenMgr;
 import com.starrocks.authorization.AccessControlProvider;
 import com.starrocks.authorization.AuthorizationMgr;
@@ -144,6 +145,8 @@ import com.starrocks.lake.compaction.CompactionMgr;
 import com.starrocks.lake.snapshot.ClusterSnapshotMgr;
 import com.starrocks.lake.vacuum.AutovacuumDaemon;
 import com.starrocks.leader.CheckpointController;
+import com.starrocks.leader.ReportHandler;
+import com.starrocks.leader.TabletCollector;
 import com.starrocks.leader.TaskRunStateSynchronizer;
 import com.starrocks.listener.GlobalLoadJobListenerBus;
 import com.starrocks.load.DeleteMgr;
@@ -522,6 +525,10 @@ public class GlobalStateMgr {
     private final ClusterSnapshotMgr clusterSnapshotMgr;
 
     private final SqlBlackList sqlBlackList;
+    private final ReportHandler reportHandler;
+    private final TabletCollector tabletCollector;
+
+    private JwkMgr jwkMgr;
 
     private final OAuth2TokenMgr oAuth2TokenMgr;
 
@@ -830,6 +837,11 @@ public class GlobalStateMgr {
                         "query-deploy", true);
 
         this.warehouseIdleChecker = new WarehouseIdleChecker();
+
+        this.reportHandler = new ReportHandler();
+        this.tabletCollector = new TabletCollector();
+
+        this.jwkMgr = new JwkMgr();
 
         this.oAuth2TokenMgr = new OAuth2TokenMgr();
     }
@@ -1437,12 +1449,11 @@ public class GlobalStateMgr {
         }
         temporaryTableCleaner.start();
 
-        connectorTableTriggerAnalyzeMgr.start();
-
         if (RunMode.isSharedDataMode()) {
-            clusterSnapshotMgr.startCheckpointScheduler(checkpointController,
-                                                        StarMgrServer.getCurrentState().getCheckpointController());
+            clusterSnapshotMgr.start();
         }
+        reportHandler.start();
+        tabletCollector.start();
     }
 
     // start threads that should run on all FE
@@ -1490,6 +1501,8 @@ public class GlobalStateMgr {
 
         // The memory tracker should be placed at the end
         memoryUsageTracker.start();
+
+        connectorTableTriggerAnalyzeMgr.start();
 
         PredicateColumnsMgr.getInstance().startDaemon();
     }
@@ -2719,5 +2732,17 @@ public class GlobalStateMgr {
     public void shutdown() {
         // in a single thread.
         connectorMgr.shutdown();
+    }
+
+    public ReportHandler getReportHandler() {
+        return reportHandler;
+    }
+
+    public JwkMgr getJwkMgr() {
+        return jwkMgr;
+    }
+
+    public void setJwkMgr(JwkMgr jwkMgr) {
+        this.jwkMgr = jwkMgr;
     }
 }

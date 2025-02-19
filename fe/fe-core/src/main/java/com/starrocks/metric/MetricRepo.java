@@ -323,6 +323,19 @@ public final class MetricRepo {
             STARROCKS_METRIC_REGISTER.addMetric(gauge);
         }
 
+        GaugeMetric<Long> routineLoadUnstableJobsGauge = new GaugeMetric<Long>("routine_load_jobs",
+                MetricUnit.NOUNIT, "routine load jobs") {
+            @Override
+            public Long getValue() {
+                if (null == routineLoadManger) {
+                    return 0L;
+                }
+                return routineLoadManger.numUnstableJobs();
+            }
+        };
+        routineLoadUnstableJobsGauge.addLabel(new MetricLabel("state", "UNSTABLE"));
+        STARROCKS_METRIC_REGISTER.addMetric(routineLoadUnstableJobsGauge);
+
         // qps, rps, error rate and query latency
         // these metrics should be set an init value, in case that metric calculator is not running
         GAUGE_QUERY_PER_SECOND = new GaugeMetricImpl<>("qps", MetricUnit.NOUNIT, "query per second");
@@ -413,6 +426,15 @@ public final class MetricRepo {
         GAUGE_SAFE_MODE.addLabel(new MetricLabel("type", "safe_mode"));
         GAUGE_SAFE_MODE.setValue(0);
         STARROCKS_METRIC_REGISTER.addMetric(GAUGE_SAFE_MODE);
+
+        GaugeMetric<Long> gaugeReportQueueSize = new GaugeMetric<Long>(
+                "report_queue_size", MetricUnit.NOUNIT, "report queue size") {
+            @Override
+            public Long getValue() {
+                return (long) GlobalStateMgr.getCurrentState().getReportHandler().getReportQueueSize();
+            }
+        };
+        STARROCKS_METRIC_REGISTER.addMetric(gaugeReportQueueSize);
 
         // 2. counter
         COUNTER_REQUEST_ALL = new LongCounterMetric("request_total", MetricUnit.REQUESTS, "total request");
@@ -909,7 +931,7 @@ public final class MetricRepo {
                     MetricUnit.BYTES, "total size of db in bytes") {
                 @Override
                 public Long getValue() {
-                    return db.getUsedDataQuotaWithLock();
+                    return globalStateMgr.getLocalMetastore().getUsedDataQuotaWithLock(db);
                 }
             };
             dbSizeBytesTotal.addLabel(new MetricLabel("db_name", dbName));

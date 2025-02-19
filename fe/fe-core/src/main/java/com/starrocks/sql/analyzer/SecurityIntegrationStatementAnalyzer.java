@@ -22,8 +22,6 @@ import com.starrocks.sql.ast.integration.CreateSecurityIntegrationStatement;
 import com.starrocks.sql.ast.integration.DropSecurityIntegrationStatement;
 import com.starrocks.sql.ast.integration.ShowCreateSecurityIntegrationStatement;
 
-import java.util.Map;
-
 public class SecurityIntegrationStatementAnalyzer {
 
     public static void analyze(StatementBase statement, ConnectContext context) {
@@ -40,35 +38,6 @@ public class SecurityIntegrationStatementAnalyzer {
         public Void visitCreateSecurityIntegrationStatement(CreateSecurityIntegrationStatement statement,
                                                             ConnectContext context) {
             return null;
-        }
-
-        private void validateIntegerProp(Map<String, String> propertyMap, String key, int min, int max)
-                throws SemanticException {
-            if (propertyMap.containsKey(key)) {
-                String val = propertyMap.get(key);
-                try {
-                    int intVal = Integer.parseInt(val);
-                    if (intVal < min || intVal > max) {
-                        throw new NumberFormatException("current value of '" +
-                                key + "' is invalid, value: " + intVal +
-                                ", should be in range [" + min + ", " + max + "]");
-                    }
-                } catch (NumberFormatException e) {
-                    throw new SemanticException("invalid '" +
-                            key + "' property value: " + val + ", error: " + e.getMessage(), e);
-                }
-            }
-        }
-
-        private void validateBooleanProp(Map<String, String> propertyMap, String key) throws SemanticException {
-            if (propertyMap.containsKey(key)) {
-                String val = propertyMap.get(key);
-                if (!val.equalsIgnoreCase("true") && !val.equalsIgnoreCase("false")) {
-                    throw new SemanticException("invalid '" +
-                            key + "' property value, expected 'true' or 'false'");
-                }
-            }
-
         }
 
         @Override

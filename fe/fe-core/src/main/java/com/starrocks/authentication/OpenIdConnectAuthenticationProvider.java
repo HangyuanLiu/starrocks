@@ -14,13 +14,17 @@
 
 package com.starrocks.authentication;
 
+import com.nimbusds.jose.jwk.JWKSet;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.MysqlProto;
 import com.starrocks.mysql.privilege.AuthPlugin;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.text.ParseException;
 
 public class OpenIdConnectAuthenticationProvider implements AuthenticationProvider {
     public static final String PLUGIN_NAME = AuthPlugin.AUTHENTICATION_OPENID_CONNECT.name();
@@ -53,14 +57,16 @@ public class OpenIdConnectAuthenticationProvider implements AuthenticationProvid
     public void authenticate(String user, String host, byte[] authResponse, byte[] randomString,
                              UserAuthenticationInfo authenticationInfo) throws AuthenticationException {
         ByteBuffer authBuffer = ByteBuffer.wrap(authResponse);
-        int len = MysqlProto.readInt1(authBuffer);
+        //1 Byte for capability mysql client
+        MysqlProto.readInt1(authBuffer);
         byte[] openIdConnect = MysqlProto.readLenEncodedString(authBuffer);
 
+        JWKSet jwkSet;
         try {
-            OpenIdConnectVerifier.verify(new String(openIdConnect), user, jwksUrl, principalFiled, requireIssuer,
-                    requireAudience);
-        } catch (Exception e) {
+            jwkSet = GlobalStateMgr.getCurrentState().getJwkMgr().getJwkSet(jwksUrl);
+        } catch (IOException | ParseException e) {
             throw new AuthenticationException(e.getMessage());
         }
+        OpenIdConnectVerifier.verify(new String(openIdConnect), user, jwkSet, principalFiled, requireIssuer, requireAudience);
     }
 }

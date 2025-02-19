@@ -1750,7 +1750,7 @@ ADMIN SET FRONTEND CONFIG ("key" = "value");
 - 类型：Long
 - 单位：bytes
 - 是否动态：是
-- 描述：自动统计信息采集的最大分区大小。如果超过该值，则放弃全量采集，转为对该表进行抽样采集。
+- 描述：自动统计信息采集的单次任务最大数据量。如果超过该值，则放弃全量采集，转为对该表进行抽样采集。
 - 引入版本：-
 
 ##### statistic_collect_max_row_count_per_query
@@ -2926,16 +2926,16 @@ ADMIN SET FRONTEND CONFIG ("key" = "value");
 - 描述：云原生元数据服务监听端口。
 - 引入版本：-
 
-<!--
+
 ##### enable_load_volume_from_conf
 
-- 默认值：true
+- 默认值：false
 - 类型：Boolean
 - 单位：-
 - 是否动态：否
-- 描述：
-- 引入版本：-
--->
+- 描述：是否允许 StarRocks 使用 FE 配置文件中指定的存储相关属性创建默认存储卷。自 v3.4.1 起，默认值由 `true` 变为 `false`。
+- 引入版本：v3.1.0
+
 
 ##### cloud_native_storage_type
 

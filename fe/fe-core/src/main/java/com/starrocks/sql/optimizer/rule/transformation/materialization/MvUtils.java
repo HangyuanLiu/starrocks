@@ -67,7 +67,6 @@ import com.starrocks.sql.optimizer.ExpressionContext;
 import com.starrocks.sql.optimizer.JoinHelper;
 import com.starrocks.sql.optimizer.MaterializationContext;
 import com.starrocks.sql.optimizer.MaterializedViewOptimizer;
-import com.starrocks.sql.optimizer.MvRewritePreprocessor;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.Optimizer;
@@ -1253,7 +1252,8 @@ public class MvUtils {
      */
     public static MvPlanContext getMVPlanContext(ConnectContext connectContext,
                                                  MaterializedView mv,
-                                                 boolean isInlineView) {
+                                                 boolean isInlineView,
+                                                 boolean isCheckNonDeterministicFunction) {
         // step1: get from mv plan cache
         List<MvPlanContext> mvPlanContexts = CachingMvPlanContextBuilder.getInstance()
                 .getPlanContext(connectContext.getSessionVariable(), mv);
@@ -1262,7 +1262,7 @@ public class MvUtils {
             return mvPlanContexts.get(0);
         }
         // step2: get from optimize
-        return new MaterializedViewOptimizer().optimize(mv, connectContext, isInlineView);
+        return new MaterializedViewOptimizer().optimize(mv, connectContext, isInlineView, isCheckNonDeterministicFunction);
     }
 
     /**
@@ -1275,7 +1275,7 @@ public class MvUtils {
     public static List<ColumnRefOperator> getMvScanOutputColumnRefs(MaterializedView mv,
                                                                     LogicalOlapScanOperator scanMvOp) {
         List<ColumnRefOperator> scanMvOutputColumns = Lists.newArrayList();
-        for (Column column : MvRewritePreprocessor.getMvOutputColumns(mv)) {
+        for (Column column : mv.getOrderedOutputColumns()) {
             scanMvOutputColumns.add(scanMvOp.getColumnReference(column));
         }
         return scanMvOutputColumns;

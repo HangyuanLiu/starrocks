@@ -24,6 +24,7 @@
 #include "exprs/expr_context.h"
 #include "exprs/in_const_predicate.hpp"
 #include "exprs/is_null_predicate.h"
+#include "exprs/runtime_filter.h"
 #include "gutil/map_util.h"
 #include "runtime/descriptors.h"
 #include "storage/column_predicate.h"
@@ -578,16 +579,17 @@ Status ChunkPredicateBuilder<E, Type>::normalize_binary_predicate(const SlotDesc
 
 template <BoxedExprType E, CompoundNodeType Type>
 template <LogicalType SlotType, LogicalType MappingType, template <class> class Decoder, class... Args>
-void ChunkPredicateBuilder<E, Type>::normalized_rf_with_null(const JoinRuntimeFilter* rf,
-                                                             const SlotDescriptor* slot_desc, Args&&... args) {
+void ChunkPredicateBuilder<E, Type>::normalized_rf_with_null(const RuntimeFilter* rf, const SlotDescriptor* slot_desc,
+                                                             Args&&... args) {
     DCHECK(Type == CompoundNodeType::AND);
     using RFColumnPredicateBuilder = detail::RuntimeColumnPredicateBuilder;
     ObjectPool* pool = _opts.obj_pool;
 
-    const auto* filter = down_cast<const RuntimeBloomFilter<MappingType>*>(rf);
+    const auto* filter = down_cast<const MinMaxRuntimeFilter<MappingType>*>(rf->get_min_max_filter());
+    if (filter == nullptr) return;
     using DecoderType = Decoder<typename RunTimeTypeTraits<MappingType>::CppType>;
     DecoderType decoder(std::forward<Args>(args)...);
-    RFColumnPredicateBuilder::MinMaxParser<RuntimeBloomFilter<MappingType>, DecoderType> parser(filter, &decoder);
+    RFColumnPredicateBuilder::MinMaxParser<MinMaxRuntimeFilter<MappingType>, DecoderType> parser(filter, &decoder);
 
     const TypeDescriptor& col_type = slot_desc->type();
     ColumnRef* col_ref = pool->add(new ColumnRef(slot_desc));
@@ -686,7 +688,7 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
     // bloom runtime filter
     for (const auto& it : _opts.runtime_filters->descriptors()) {
         RuntimeFilterProbeDescriptor* desc = it.second;
-        const JoinRuntimeFilter* rf = desc->runtime_filter(_opts.driver_sequence);
+        const RuntimeFilter* rf = desc->runtime_filter(_opts.driver_sequence);
         using RangeType = ColumnValueRange<RangeValueType>;
         using ValueType = typename RunTimeTypeTraits<SlotType>::CppType;
         SlotId slot_id;

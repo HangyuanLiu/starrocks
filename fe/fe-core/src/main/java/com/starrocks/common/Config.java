@@ -1494,6 +1494,12 @@ public class Config extends ConfigBase {
     @ConfField
     public static int tablet_stat_update_interval_second = 300;  // 5 min
 
+    @ConfField(mutable = true, comment = "time interval to collect tablet info from backend")
+    public static long tablet_collect_interval_seconds = 60;
+
+    @ConfField(mutable = true, comment = "Timeout for calling BE get_tablets_info rpc")
+    public static int tablet_collect_timeout_seconds = 60;
+
     /**
      * The tryLock timeout configuration of globalStateMgr lock.
      * Normally it does not need to change, unless you need to test something.
@@ -2069,6 +2075,9 @@ public class Config extends ConfigBase {
     @ConfField
     public static int dict_collect_thread_pool_size = 16;
 
+    @ConfField
+    public static int dict_collect_thread_pool_for_lake_size = 4;
+
     /**
      * The column statistic cache update interval
      */
@@ -2101,19 +2110,28 @@ public class Config extends ConfigBase {
             "the job status but improve the robustness")
     public static double statistic_full_statistics_failure_tolerance_ratio = 0.05;
 
+    @ConfField(mutable = true, comment = "Enable V2 health calculation based on changed rows")
+    public static boolean statistic_partition_healthy_v2 = true;
+
+    @ConfField(mutable = true, comment = "Health threshold for partitions")
+    public static double statistic_partition_health__v2_threshold = 0.95;
+
     @ConfField(mutable = true)
     public static long statistic_auto_collect_small_table_size = 5L * 1024 * 1024 * 1024; // 5G
 
     @ConfField(mutable = true)
     public static long statistic_auto_collect_small_table_rows = 10000000; // 10M
 
-    @ConfField(mutable = true)
+    @ConfField(mutable = true, comment = "If the number of columns of table exceeds it, use predicate-columns strategy")
+    public static int statistic_auto_collect_predicate_columns_threshold = 32;
+
+    @ConfField(mutable = true, comment = "The interval of auto stats for small tables")
     public static long statistic_auto_collect_small_table_interval = 0; // unit: second, default 0
 
     @ConfField(mutable = true, comment = "The interval of auto collecting histogram statistics")
     public static long statistic_auto_collect_histogram_interval = 3600L * 1; // 1h
 
-    @ConfField(mutable = true)
+    @ConfField(mutable = true, comment = "The interval of auto stats for large tables")
     public static long statistic_auto_collect_large_table_interval = 3600L * 12; // unit: second, default 12h
 
     /**
@@ -2121,6 +2139,9 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = true)
     public static long statistic_max_full_collect_data_size = 100L * 1024 * 1024 * 1024; // 100G
+
+    @ConfField(mutable = true, comment = "If full analyze predicate columns instead of sample all columns")
+    public static boolean statistic_auto_collect_use_full_predicate_column_for_sample = true;
 
     /**
      * Max row count in statistics collect per query
@@ -2133,6 +2154,9 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = true)
     public static long statistic_sample_collect_rows = 200000;
+
+    @ConfField(mutable = true)
+    public static double statistics_min_sample_row_ratio = 0.01;
 
     /**
      * The partition size of sample collect, default 1k partitions
@@ -2498,6 +2522,26 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static boolean enable_collect_query_detail_info = false;
 
+    //============================== Plan Feature Extraction BEGIN ========================================//
+    @ConfField(mutable = true, comment = "Collect features of query plan into a log file")
+    public static boolean enable_plan_feature_collection = false;
+    @ConfField(mutable = true)
+    public static boolean enable_query_cost_prediction = false;
+    @ConfField(mutable = true)
+    public static String query_cost_prediction_service_address = "http://localhost:5000";
+
+    @ConfField
+    public static String feature_log_dir = StarRocksFE.STARROCKS_HOME_DIR + "/log";
+    @ConfField
+    public static String feature_log_roll_interval = "DAY";
+    @ConfField
+    public static String feature_log_delete_age = "3d";
+    @ConfField
+    public static int feature_log_roll_num = 5;
+    @ConfField
+    public static int feature_log_roll_size_mb = 1024; // 1 GB in MB
+    //============================== Plan Feature Extraction END ========================================//
+
     @ConfField(mutable = true,
             comment = "Enable the sql digest feature, building a parameterized digest for each sql in the query detail")
     public static boolean enable_sql_digest = false;
@@ -2589,7 +2633,7 @@ public class Config extends ConfigBase {
      * Whether volume can be created from conf. If it is enabled, a builtin storage volume may be created.
      */
     @ConfField
-    public static boolean enable_load_volume_from_conf = true;
+    public static boolean enable_load_volume_from_conf = false;
     // remote storage related configuration
     @ConfField(comment = "storage type for cloud native table. Available options: " +
             "\"S3\", \"HDFS\", \"AZBLOB\", \"ADLS2\". case-insensitive")
@@ -2788,6 +2832,12 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true)
     public static int lake_compaction_history_size = 20;
+
+    @ConfField(mutable = true)
+    public static long lake_min_compaction_interval_ms_on_success = 10000;
+
+    @ConfField(mutable = true)
+    public static long lake_min_compaction_interval_ms_on_failure = 60000;
 
     @ConfField(mutable = true)
     public static String lake_compaction_warehouse = "default_warehouse";
@@ -3426,20 +3476,36 @@ public class Config extends ConfigBase {
     public static int query_deploy_threadpool_size = max(50, getRuntime().availableProcessors() * 10);
 
     @ConfField(mutable = true)
-    public static long automated_cluster_snapshot_interval_seconds = 1800;
+    public static long automated_cluster_snapshot_interval_seconds = 600;
 
     @ConfField(mutable = false)
     public static int max_historical_automated_cluster_snapshot_jobs = 100;
 
+    /**
+     * The URL to a JWKS service or a local file in the conf dir
+     */
     @ConfField(mutable = false)
-    public static String oidc_jwks_url = "http://localhost:38080/realms/master/protocol/openid-connect/certs";
+    public static String oidc_jwks_url = "";
 
+    /**
+     * String to identify the field in the JWT that identifies the subject of the JWT.
+     * The default value is sub.
+     * The value of this field must be the same as the user specified when logging into StarRocks.
+     */
     @ConfField(mutable = false)
-    public static String oidc_principal_field = "preferred_username";
+    public static String oidc_principal_field = "sub";
 
+    /**
+     * Specifies a string that must match the value of the JWT’s issuer (iss) field in order to consider this JWT valid.
+     * The iss field in the JWT identifies the principal that issued the JWT.
+     */
     @ConfField(mutable = false)
     public static String oidc_required_issuer = "";
 
+    /**
+     * Specifies a string that must match the value of the JWT’s Audience (aud) field in order to consider this JWT valid.
+     * The aud field in the JWT identifies the recipients that the JWT is intended for.
+     */
     @ConfField(mutable = false)
     public static String oidc_required_audience = "";
 

@@ -21,10 +21,6 @@ import com.starrocks.sql.parser.NodePosition;
 public class DropSecurityIntegrationStatement extends DdlStmt {
     private final String name;
 
-    public DropSecurityIntegrationStatement(String name) {
-        this(name, NodePosition.ZERO);
-    }
-
     public DropSecurityIntegrationStatement(String name, NodePosition pos) {
         super(pos);
         this.name = name;
