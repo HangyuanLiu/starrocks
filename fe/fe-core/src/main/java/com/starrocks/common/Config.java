@@ -859,12 +859,6 @@ public class Config extends ConfigBase {
     public static int mysql_nio_backlog_num = 1024;
 
     /**
-     * mysql service nio option.
-     */
-    @ConfField
-    public static boolean mysql_service_nio_enabled = true;
-
-    /**
      * num of thread to handle io events in mysql.
      */
     @ConfField
@@ -1262,12 +1256,6 @@ public class Config extends ConfigBase {
      */
     @ConfField
     public static int qe_max_connection = 4096;
-
-    /**
-     * Maximal number of thread in connection-scheduler-pool.
-     */
-    @ConfField
-    public static int max_connection_scheduler_threads_num = 4096;
 
     /**
      * Used to limit element num of InPredicate in delete statement.
@@ -3508,6 +3496,12 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = false)
     public static String oidc_required_audience = "";
+
+    @ConfField(mutable = true)
+    public static boolean transaction_state_print_partition_info = true;
+
+    @ConfField(mutable = true)
+    public static int max_show_proc_transactions_entry = 2000;
 
     @ConfField(mutable = false)
     public static String oauth2_token_server_url = "http://localhost:38080/realms/master/protocol/openid-connect/token";

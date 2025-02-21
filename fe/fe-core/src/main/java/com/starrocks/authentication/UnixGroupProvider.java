@@ -19,8 +19,10 @@ import org.apache.hadoop.security.UserGroupInformation;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class UnixGroupProvider extends GroupProvider {
     public static final String TYPE = "unix";
@@ -30,7 +32,7 @@ public class UnixGroupProvider extends GroupProvider {
     }
 
     @Override
-    public List<String> getGroup(UserIdentity userIdentity) {
+    public Set<String> getGroup(UserIdentity userIdentity) {
         List<String> userGroups = new ArrayList<>();
 
         UserGroupInformation ugi = UserGroupInformation.createRemoteUser(userIdentity.getUser());
@@ -40,6 +42,6 @@ public class UnixGroupProvider extends GroupProvider {
             userGroups = Arrays.asList(groups);
         }
 
-        return userGroups;
+        return new HashSet<>(userGroups);
     }
 }

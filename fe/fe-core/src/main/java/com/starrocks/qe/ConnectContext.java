@@ -91,9 +91,9 @@ import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.xnio.StreamConnection;
 
 import java.io.IOException;
-import java.nio.channels.SocketChannel;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -170,6 +170,7 @@ public class ConnectContext {
     // `execute as` will modify currentRoleIds and assign the active role of the impersonate user to currentRoleIds.
     // For specific logic, please refer to setCurrentRoleIds.
     protected Set<Long> currentRoleIds = new HashSet<>();
+    protected Set<String> groups = new HashSet<>();
     // Serializer used to pack MySQL packet.
     protected MysqlSerializer serializer;
     // Variables belong to this session.
@@ -317,7 +318,7 @@ public class ConnectContext {
         this(null);
     }
 
-    public ConnectContext(SocketChannel channel) {
+    public ConnectContext(StreamConnection connection) {
         closed = false;
         state = new QueryState();
         returnRows = 0;
@@ -329,15 +330,15 @@ public class ConnectContext {
         command = MysqlCommand.COM_SLEEP;
         queryDetail = null;
 
-        mysqlChannel = new MysqlChannel(channel);
-        if (channel != null) {
-            remoteIP = mysqlChannel.getRemoteIp();
-        }
-
         if (shouldDumpQuery()) {
             this.dumpInfo = new QueryDumpInfo(this);
         }
         this.sessionId = UUIDUtil.genUUID();
+
+        mysqlChannel = new MysqlChannel(connection);
+        if (connection != null) {
+            remoteIP = mysqlChannel.getRemoteIp();
+        }
     }
 
     /**
@@ -469,8 +470,12 @@ public class ConnectContext {
         this.currentRoleIds = roleIds;
     }
 
-    public void setGroups(List<String> groups) {
+    public Set<String> getGroups() {
+        return groups;
+    }
 
+    public void setGroups(Set<String> groups) {
+        this.groups = groups;
     }
 
     public void modifySystemVariable(SystemVariable setVar, boolean onlySetSessionVar) throws DdlException {
@@ -983,6 +988,22 @@ public class ConnectContext {
 
     public void setQueryMVContext(QueryMaterializationContext queryMVContext) {
         this.queryMVContext = queryMVContext;
+    }
+
+    public void startAcceptQuery(ConnectProcessor connectProcessor) {
+        mysqlChannel.startAcceptQuery(this, connectProcessor);
+    }
+
+    public void suspendAcceptQuery() {
+        mysqlChannel.suspendAcceptQuery();
+    }
+
+    public void resumeAcceptQuery() {
+        mysqlChannel.resumeAcceptQuery();
+    }
+
+    public void stopAcceptQuery() throws IOException {
+        mysqlChannel.stopAcceptQuery();
     }
 
     // kill operation with no protect.

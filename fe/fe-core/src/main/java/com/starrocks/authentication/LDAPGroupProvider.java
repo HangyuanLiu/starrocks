@@ -17,9 +17,11 @@ package com.starrocks.authentication;
 import com.starrocks.sql.ast.UserIdentity;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.naming.Context;
 import javax.naming.NamingEnumeration;
 import javax.naming.directory.Attribute;
@@ -38,7 +40,7 @@ public class LDAPGroupProvider extends GroupProvider {
     }
 
     @Override
-    public List<String> getGroup(UserIdentity userIdentity) {
+    public Set<String> getGroup(UserIdentity userIdentity) {
         try {
             Hashtable<String, String> environment = new Hashtable<>();
             environment.put(Context.SECURITY_CREDENTIALS, "ldap_bind_root_pwd");
@@ -66,7 +68,8 @@ public class LDAPGroupProvider extends GroupProvider {
                 groups.add(group);
             }
 
-            return groups;
+            Set<String> groupSet = new HashSet<>(groups);
+            return groupSet;
         } catch (Exception e) {
             return null;
         }

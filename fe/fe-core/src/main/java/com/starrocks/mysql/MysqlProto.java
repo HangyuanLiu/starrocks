@@ -35,9 +35,7 @@
 package com.starrocks.mysql;
 
 import com.google.common.base.Strings;
-import com.starrocks.authentication.AuthenticationMgr;
-import com.starrocks.authentication.GroupProvider;
-import com.starrocks.authentication.UnixGroupProvider;
+import com.starrocks.authentication.AuthenticationHandler;
 import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
@@ -53,7 +51,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -61,57 +58,6 @@ import java.util.Set;
 // MySQL protocol util
 public class MysqlProto {
     private static final Logger LOG = LogManager.getLogger(MysqlProto.class);
-
-    // scramble: data receive from server.
-    // randomString: data send by server in plug-in data field
-    // user_name#HIGH@cluster_name
-    private static boolean authenticate(ConnectContext context, byte[] scramble, byte[] randomString, String user) {
-        String usePasswd = scramble.length == 0 ? "NO" : "YES";
-
-        if (user == null || user.isEmpty()) {
-            ErrorReport.report(ErrorCode.ERR_AUTHENTICATION_FAIL, "", usePasswd);
-            return false;
-        }
-
-        String remoteIp = context.getMysqlChannel().getRemoteIp();
-
-        AuthenticationMgr authenticationManager = context.getGlobalStateMgr().getAuthenticationMgr();
-        UserIdentity currentUser = null;
-        if (Config.enable_auth_check) {
-            currentUser = authenticationManager.checkPassword(user, remoteIp, scramble, randomString);
-            if (currentUser == null) {
-                ErrorReport.report(ErrorCode.ERR_AUTHENTICATION_FAIL, user, usePasswd);
-                return false;
-            }
-        } else {
-            Map.Entry<UserIdentity, UserAuthenticationInfo> matchedUserIdentity =
-                    authenticationManager.getBestMatchedUserIdentity(user, remoteIp);
-            if (matchedUserIdentity == null) {
-                LOG.info("enable_auth_check is false, but cannot find user '{}'@'{}'", user, remoteIp);
-                ErrorReport.report(ErrorCode.ERR_AUTHENTICATION_FAIL, user, usePasswd);
-                return false;
-            } else {
-                currentUser = matchedUserIdentity.getKey();
-            }
-        }
-
-        context.setCurrentUserIdentity(currentUser);
-        if (!currentUser.isEphemeral()) {
-            context.setCurrentRoleIds(currentUser);
-            context.setAuthDataSalt(randomString);
-        }
-
-        authenticationManager.getGroupProvider("");
-
-        String groupProviderName = Config.group_provider;
-        GroupProvider groupProvider = new UnixGroupProvider("", new HashMap<>());
-        if (groupProviderName.equals("unix")) {
-            context.setGroups(groupProvider.getGroup(currentUser));
-        }
-
-        context.setQualifiedUser(user);
-        return true;
-    }
 
     // send response packet(OK/EOF/ERR).
     // before call this function, should set information in state of ConnectContext
@@ -228,53 +174,10 @@ public class MysqlProto {
                 Objects.equals(authPluginName, MysqlHandshakePacket.CLEAR_PASSWORD_PLUGIN_NAME) ?
                         null : handshakePacket.getAuthPluginData();
         // check authenticate
-        if (!authenticate(context, authPacket.getAuthResponse(), randomString, authPacket.getUser())) {
+        if (!AuthenticationHandler.authenticate(context, authPacket.getUser(), authPacket.getAuthResponse(), randomString)) {
             sendResponsePacket(context);
             return new NegotiateResult(authPacket, NegotiateState.AUTHENTICATION_FAILED);
         }
-        /*
-        UserIdentity currentUser = null;
-        byte[] remotePasswd = authPacket.getAuthResponse();
-
-        if (authPluginName.equals(AUTHENTICATION_OAUTH2_CLIENT)) {
-            OAuth2AuthenticationProvider provider = new OAuth2AuthenticationProvider();
-            try {
-                provider.authenticate(authPacket.getUser(), "%", remotePasswd, randomString, null);
-                currentUser = new UserIdentity(true, authPacket.getUser(), "%");
-            } catch (Exception e) {
-                LOG.error("OAuth2 Error : ", e);
-                ErrorReport.report(ErrorCode.ERR_AUTHENTICATION_FAIL, authPacket.getUser(), "");
-                sendResponsePacket(context);
-                return new NegotiateResult(authPacket, NegotiateState.AUTHENTICATION_FAILED);
-            }
-        } else if (authPluginName.equals(AUTHENTICATION_OPENID_CONNECT_CLIENT)) {
-            OpenIdConnectAuthenticationProvider openIdConnectAuthenticationProvider = new OpenIdConnectAuthenticationProvider();
-            try {
-                openIdConnectAuthenticationProvider.authenticate(authPacket.getUser(), "%", remotePasswd, randomString, null);
-                currentUser = new UserIdentity(true, authPacket.getUser(), "%");
-            } catch (Exception e) {
-                LOG.error("OpenId Connect Error : ", e);
-                ErrorReport.report(ErrorCode.ERR_AUTHENTICATION_FAIL, authPacket.getUser(), "");
-                sendResponsePacket(context);
-                return new NegotiateResult(authPacket, NegotiateState.AUTHENTICATION_FAILED);
-            }
-        }
-
-        context.setCurrentUserIdentity(currentUser);
-
-        if (currentUser.equals(UserIdentity.ROOT)) {
-            Set<Long> roleids = new HashSet<>();
-            roleids.add(PrivilegeBuiltinConstants.ROOT_ROLE_ID);
-            context.setCurrentRoleIds(roleids);
-        }
-
-        if (!currentUser.isEphemeral()) {
-            context.setCurrentRoleIds(currentUser);
-            context.setAuthDataSalt(randomString);
-        }
-        context.setQualifiedUser(authPacket.getUser());
-
-         */
 
         // set database
         String db = authPacket.getDb();
@@ -365,8 +268,8 @@ public class MysqlProto {
         String previousQualifiedUser = context.getQualifiedUser();
         String previousResourceGroup = context.getSessionVariable().getResourceGroup();
         // do authenticate again
-        if (!authenticate(context, changeUserPacket.getAuthResponse(), context.getAuthDataSalt(),
-                changeUserPacket.getUser())) {
+        if (!AuthenticationHandler.authenticate(context, changeUserPacket.getUser(), changeUserPacket.getAuthResponse(),
+                context.getAuthDataSalt())) {
             LOG.warn("Command `Change user` failed, from [{}] to [{}]. ", previousQualifiedUser,
                     changeUserPacket.getUser());
             sendResponsePacket(context);

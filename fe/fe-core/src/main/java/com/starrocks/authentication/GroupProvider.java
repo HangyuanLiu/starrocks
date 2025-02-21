@@ -16,8 +16,8 @@ package com.starrocks.authentication;
 
 import com.starrocks.sql.ast.UserIdentity;
 
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public abstract class GroupProvider {
     private String name;
@@ -52,5 +52,5 @@ public abstract class GroupProvider {
         return "";
     }
 
-    public abstract List<String> getGroup(UserIdentity userIdentity);
+    public abstract Set<String> getGroup(UserIdentity userIdentity);
 }

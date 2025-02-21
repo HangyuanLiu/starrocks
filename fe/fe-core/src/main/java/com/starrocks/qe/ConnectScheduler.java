@@ -40,14 +40,8 @@ import com.google.common.collect.Maps;
 import com.starrocks.authorization.AccessDeniedException;
 import com.starrocks.authorization.PrivilegeType;
 import com.starrocks.common.CloseableLock;
-import com.starrocks.common.Config;
 import com.starrocks.common.Pair;
 import com.starrocks.common.ThreadPoolManager;
-import com.starrocks.common.util.LogUtil;
-import com.starrocks.http.HttpConnectContext;
-import com.starrocks.mysql.MysqlProto;
-import com.starrocks.mysql.NegotiateState;
-import com.starrocks.mysql.nio.NConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
 import com.starrocks.sql.analyzer.Authorizer;
@@ -62,7 +56,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TimerTask;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -79,8 +72,6 @@ public class ConnectScheduler {
 
     private final Map<String, AtomicInteger> connCountByUser = Maps.newConcurrentMap();
     private final ReentrantLock connStatsLock = new ReentrantLock();
-    private final ExecutorService executor = ThreadPoolManager
-            .newDaemonCacheThreadPool(Config.max_connection_scheduler_threads_num, "connect-scheduler-pool", true);
 
     public ConnectScheduler(int maxConnections) {
         this.maxConnections = new AtomicInteger(maxConnections);
@@ -130,27 +121,11 @@ public class ConnectScheduler {
         }
     }
 
-    // submit one MysqlContext to this scheduler.
-    // return true, if this connection has been successfully submitted, otherwise return false.
-    // Caller should close ConnectContext if return false.
-    public boolean submit(ConnectContext context) {
-        if (context == null) {
-            return false;
-        }
-
+    public int getNextConnectionId() {
+        //return nextConnectionId.getAndAdd(1);
         Frontend frontend = GlobalStateMgr.getCurrentState().getNodeMgr().getMySelf();
         int connectionId = (frontend.getGid() & 0xFF) << 24 | (nextConnectionId.incrementAndGet() & 0xFFFFFF);
-        context.setConnectionId(connectionId);
-        context.resetConnectionStartTime();
-        // no necessary for nio or Http.
-        if (context instanceof NConnectContext || context instanceof HttpConnectContext) {
-            return true;
-        }
-        if (executor.submit(new LoopHandler(context)) == null) {
-            LOG.warn("Submit one thread failed.");
-            return false;
-        }
-        return true;
+        return connectionId;
     }
 
 
@@ -262,10 +237,6 @@ public class ConnectScheduler {
                 (Predicate<ConnectContext>) c -> customQueryId.equals(c.getCustomQueryId())).findFirst().orElse(null);
     }
 
-    public int getConnectionNum() {
-        return numberConnection.get();
-    }
-
     public Map<String, AtomicInteger> getUserConnectionMap() {
         return connCountByUser;
     }
@@ -315,63 +286,7 @@ public class ConnectScheduler {
         return sessionIds;
     }
 
-    private class LoopHandler implements Runnable {
-        ConnectContext context;
-
-        LoopHandler(ConnectContext context) {
-            this.context = context;
-        }
-
-        @Override
-        public void run() {
-            try {
-                // Set thread local info
-                context.setThreadLocalInfo();
-                context.setConnectScheduler(ConnectScheduler.this);
-                // authenticate check failed.
-                MysqlProto.NegotiateResult result = null;
-                try {
-                    putConnectContext(context);
-
-                    result = MysqlProto.negotiate(context);
-                    if (result.getState() != NegotiateState.OK) {
-                        return;
-                    }
-
-                    Pair<Boolean, String> registerResult = registerConnection(context);
-                    if (registerResult.first) {
-                        MysqlProto.sendResponsePacket(context);
-                    } else {
-                        context.getState().setError(registerResult.second);
-                        MysqlProto.sendResponsePacket(context);
-                        return;
-                    }
-                } finally {
-                    // Ignore the NegotiateState.READ_FIRST_AUTH_PKG_FAILED connections,
-                    // because this maybe caused by port probe.
-                    if (result != null && result.getState() != NegotiateState.READ_FIRST_AUTH_PKG_FAILED) {
-                        LogUtil.logConnectionInfoToAuditLogAndQueryQueue(context, result.getAuthPacket());
-                    }
-                }
-
-                context.setStartTime();
-                ConnectProcessor processor = new ConnectProcessor(context);
-                processor.loop();
-            } catch (Exception e) {
-                // for unauthorized access such lvs probe request, may cause exception, just log it in debug level
-                if (context.getCurrentUserIdentity() != null) {
-                    LOG.warn("connect processor exception because ", e);
-                } else {
-                    LOG.debug("connect processor exception because ", e);
-                }
-            } finally {
-                unregisterConnection(context);
-                context.cleanup();
-            }
-        }
-    }
-
-    public class AtomicResetCounter {
+    public static class AtomicResetCounter {
         private final AtomicInteger counter;
         private final int threshold;
 

@@ -852,9 +852,17 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         if (context.functionCall() != null) {
             FunctionCallExpr functionCallExpr = (FunctionCallExpr) visit(context.functionCall());
             String functionName = functionCallExpr.getFnName().getFunction();
-            // except date_trunc, time_slice, str_to_date use generated column as partition column
+            // except date_trunc, time_slice use generated column as partition column
             if (!FunctionSet.DATE_TRUNC.equals(functionName) && !FunctionSet.TIME_SLICE.equals(functionName)
                     && !FunctionSet.STR2DATE.equals(functionName)) {
+                return generateMulitListPartitionDesc(context, Lists.newArrayList(functionCallExpr));
+            }
+            // If simple single expression partitioning is not supported,
+            // use the more general expression partitioning based on generated columns.
+            List<String> columnList = null;
+            try {
+                columnList = AnalyzerUtils.checkAndExtractPartitionCol(functionCallExpr, columnDefs);
+            } catch (Exception e) {
                 return generateMulitListPartitionDesc(context, Lists.newArrayList(functionCallExpr));
             }
             String currentGranularity = null;
@@ -874,7 +882,6 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 }
                 partitionDescList.add(rangePartitionDesc);
             }
-            List<String> columnList = AnalyzerUtils.checkAndExtractPartitionCol(functionCallExpr, columnDefs);
             AnalyzerUtils.checkAutoPartitionTableLimit(functionCallExpr, currentGranularity);
             RangePartitionDesc rangePartitionDesc = new RangePartitionDesc(columnList, partitionDescList);
             rangePartitionDesc.setAutoPartitionTable(true);
@@ -1655,6 +1662,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         }
 
         boolean isSecurity = false;
+        Map<String, String> properties = new HashMap<>();
         if (context.SECURITY() != null) {
             if (context.NONE() != null) {
                 isSecurity = false;
@@ -1662,12 +1670,21 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 isSecurity = true;
             }
 
-            return new AlterViewStmt(targetTableName, isSecurity, null, createPos(context));
+            return new AlterViewStmt(targetTableName, isSecurity, AlterViewStmt.AlterDialectType.NONE, properties,
+                    null, createPos(context));
+        } else if (context.properties() != null) {
+            List<Property> propertyList = visit(context.properties().property(), Property.class);
+            for (Property property : propertyList) {
+                properties.put(property.getKey(), property.getValue());
+            }
+            return new AlterViewStmt(targetTableName, isSecurity, AlterViewStmt.AlterDialectType.NONE, properties,
+                    null, createPos(context));
         } else {
+            AlterViewStmt.AlterDialectType alterDialectType = context.ADD() != null ? AlterViewStmt.AlterDialectType.ADD :
+                    context.MODIFY() != null ? AlterViewStmt.AlterDialectType.MODIFY : AlterViewStmt.AlterDialectType.NONE;
             QueryStatement queryStatement = (QueryStatement) visit(context.queryStatement());
-            AlterClause alterClause = new AlterViewClause(colWithComments, queryStatement, createPos(context));
-
-            return new AlterViewStmt(targetTableName, isSecurity, alterClause, createPos(context));
+            AlterViewClause alterClause = new AlterViewClause(colWithComments, queryStatement, createPos(context));
+            return new AlterViewStmt(targetTableName, isSecurity, alterDialectType, properties, alterClause, createPos(context));
         }
     }
 
@@ -2054,11 +2071,13 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             throw new ParsingException(PARSER_ERROR_MSG.feConfigDisable("enable_experimental_mv"), NodePosition.ZERO);
         }
 
+        String currentDBName = ConnectContext.get() == null ? null : ConnectContext.get().getDatabase();
         return new CreateMaterializedViewStatement(tableName, ifNotExist, colWithComments,
                 context.indexDesc() == null ? null : getIndexDefs(context.indexDesc()),
                 comment,
                 refreshSchemeDesc,
                 partitionByExprs, distributionDesc, sortKeys, properties, queryStatement, queryStartIndex,
+                currentDBName,
                 createPos(context));
     }
 

@@ -16,8 +16,9 @@ package com.starrocks.authentication;
 
 import com.starrocks.sql.ast.UserIdentity;
 
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class LdapSearchGroupProvider extends GroupProvider {
     public static final String TYPE = "ldap_search";
@@ -54,7 +55,9 @@ public class LdapSearchGroupProvider extends GroupProvider {
     }
 
     @Override
-    public List<String> getGroup(UserIdentity userIdentity) {
-        return ldapGroupCacheMgr.getGroups(userIdentity.getUser());
+    public Set<String> getGroup(UserIdentity userIdentity) {
+        Set<String> groups = new HashSet<>();
+        groups.addAll(ldapGroupCacheMgr.getGroups(userIdentity.getUser()));
+        return groups;
     }
 }

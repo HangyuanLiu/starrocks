@@ -16,8 +16,8 @@ package com.starrocks.authentication;
 
 import com.starrocks.sql.ast.UserIdentity;
 
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class FileGroupProvider extends GroupProvider {
     public static final String TYPE = "file";
@@ -27,7 +27,7 @@ public class FileGroupProvider extends GroupProvider {
     }
 
     @Override
-    public List<String> getGroup(UserIdentity userIdentity) {
-        return List.of();
+    public Set<String> getGroup(UserIdentity userIdentity) {
+        return Set.of();
     }
 }
