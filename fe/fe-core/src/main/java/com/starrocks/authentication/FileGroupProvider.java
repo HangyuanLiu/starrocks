@@ -14,20 +14,67 @@
 
 package com.starrocks.authentication;
 
+import com.starrocks.StarRocksFE;
+import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.UserIdentity;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
 public class FileGroupProvider extends GroupProvider {
     public static final String TYPE = "file";
+    private Map<String, Set<String>> userGroups;
 
     public FileGroupProvider(String name, Map<String, String> properties) {
         super(name, properties);
     }
 
     @Override
+    public void init() {
+        String groupFile = getProperties().get("group_file");
+        userGroups = parseGroupFile(groupFile);
+    }
+
+    @Override
     public Set<String> getGroup(UserIdentity userIdentity) {
-        return Set.of();
+        return userGroups.getOrDefault(userIdentity.getUser(), new HashSet<>());
+    }
+
+    @Override
+    public void checkProperty() throws SemanticException {
+    }
+
+    public Map<String, Set<String>> parseGroupFile(String fileName) {
+        String filePath = StarRocksFE.STARROCKS_HOME_DIR + "/conf/" + fileName;
+
+        Map<String, Set<String>> userGroups = new HashMap<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+
+                String[] parts = line.split(":");
+                String groupName = parts[0];
+                String[] users = parts[1].split(",");
+
+                for (String user : users) {
+                    user = user.trim();
+                    userGroups.putIfAbsent(user, new HashSet<>());
+                    userGroups.get(user).add(groupName);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return userGroups;
     }
 }

@@ -14,13 +14,19 @@
 
 package com.starrocks.authentication;
 
+import com.google.gson.annotations.SerializedName;
+import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.UserIdentity;
 
 import java.util.Map;
 import java.util.Set;
 
 public abstract class GroupProvider {
+    public static final String GROUP_PROVIDER_PROPERTY_TYPE_KEY = "type";
+
+    @SerializedName(value = "n")
     private String name;
+    @SerializedName(value = "m")
     private Map<String, String> properties;
 
     public GroupProvider(String name, Map<String, String> properties) {
@@ -53,4 +59,6 @@ public abstract class GroupProvider {
     }
 
     public abstract Set<String> getGroup(UserIdentity userIdentity);
+
+    public abstract void checkProperty() throws SemanticException;
 }

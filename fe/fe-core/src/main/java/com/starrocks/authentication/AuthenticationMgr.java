@@ -28,7 +28,9 @@ import com.starrocks.common.Pair;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.persist.EditLog;
+import com.starrocks.persist.GroupProviderLog;
 import com.starrocks.persist.ImageWriter;
+import com.starrocks.persist.OperationType;
 import com.starrocks.persist.metablock.MapEntryConsumer;
 import com.starrocks.persist.metablock.SRMetaBlockEOFException;
 import com.starrocks.persist.metablock.SRMetaBlockException;
@@ -71,6 +73,81 @@ public class AuthenticationMgr {
     // will be manually serialized one by one
     protected Map<UserIdentity, UserAuthenticationInfo> userToAuthenticationInfo;
 
+    // For legacy reason, user property are set by username instead of full user identity.
+    @SerializedName(value = "m")
+    private Map<String, UserProperty> userNameToProperty = new HashMap<>();
+
+    @SerializedName("gp")
+    protected Map<String, GroupProvider> nameToGroupProviderMap = new ConcurrentHashMap<>();
+
+    @SerializedName("sim")
+    protected Map<String, SecurityIntegration> nameToSecurityIntegrationMap = new ConcurrentHashMap<>();
+
+    // resolve hostname to ip
+    private Map<String, Set<String>> hostnameToIpSet = new HashMap<>();
+    private final ReentrantReadWriteLock hostnameToIpLock = new ReentrantReadWriteLock();
+
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
+    // set by load() to distinguish brand-new environment with upgraded environment
+    private boolean isLoaded = false;
+
+    public AuthenticationMgr() {
+        // default plugin
+        AuthenticationProviderFactory.installPlugin(
+                PlainPasswordAuthenticationProvider.PLUGIN_NAME, new PlainPasswordAuthenticationProvider());
+
+        AuthenticationProviderFactory.installPlugin(
+                LDAPAuthProviderForNative.PLUGIN_NAME, new LDAPAuthProviderForNative());
+
+        AuthenticationProviderFactory.installPlugin(
+                KerberosAuthenticationProvider.PLUGIN_NAME, new KerberosAuthenticationProvider());
+
+        AuthenticationProviderFactory.installPlugin(OpenIdConnectAuthenticationProvider.PLUGIN_NAME,
+                new OpenIdConnectAuthenticationProvider(
+                        Config.oidc_jwks_url,
+                        Config.oidc_principal_field,
+                        Config.oidc_required_issuer,
+                        Config.oidc_required_audience));
+
+        AuthenticationProviderFactory.installPlugin(OAuth2AuthenticationProvider.PLUGIN_NAME,
+                new OAuth2AuthenticationProvider(
+                        Config.oauth2_token_server_url,
+                        Config.oauth2_redirect_url,
+                        Config.oauth2_client_id,
+                        Config.oauth2_client_secret,
+                        Config.oidc_jwks_url,
+                        Config.oidc_principal_field,
+                        Config.oidc_required_issuer,
+                        Config.oidc_required_audience,
+                        Config.oauth_connect_wait_timeout));
+
+        String groupProviderType = Config.group_provider;
+        if (!groupProviderType.isEmpty()) {
+            Map<String, String> groupProviderProperties = new HashMap<>();
+            groupProviderProperties.put("type", groupProviderType);
+            if (groupProviderType.equalsIgnoreCase("file")) {
+                groupProviderProperties.put("file_group_provider_path", Config.file_group_provider_path);
+            }
+
+            GroupProvider groupProvider = GroupProviderFactory.createGroupProvider(groupProviderType, groupProviderProperties);
+            nameToGroupProviderMap.put(groupProviderType, groupProvider);
+        }
+
+        // default user
+        userToAuthenticationInfo = new UserAuthInfoTreeMap();
+        UserAuthenticationInfo info = new UserAuthenticationInfo();
+        try {
+            info.setOrigUserHost(ROOT_USER, UserAuthenticationInfo.ANY_HOST);
+        } catch (AuthenticationException e) {
+            throw new RuntimeException("should not happened!", e);
+        }
+        info.setAuthPlugin(PlainPasswordAuthenticationProvider.PLUGIN_NAME);
+        info.setPassword(MysqlPassword.EMPTY_PASSWORD);
+        userToAuthenticationInfo.put(UserIdentity.ROOT, info);
+        userNameToProperty.put(UserIdentity.ROOT.getUser(), new UserProperty());
+    }
+
     private static class UserAuthInfoTreeMap extends TreeMap<UserIdentity, UserAuthenticationInfo> {
         public UserAuthInfoTreeMap() {
             super((o1, o2) -> {
@@ -107,70 +184,6 @@ public class AuthenticationMgr {
             }
             return 1;
         }
-    }
-
-    // For legacy reason, user property are set by username instead of full user identity.
-    @SerializedName(value = "m")
-    private Map<String, UserProperty> userNameToProperty = new HashMap<>();
-
-    // resolve hostname to ip
-    private Map<String, Set<String>> hostnameToIpSet = new HashMap<>();
-    private final ReentrantReadWriteLock hostnameToIpLock = new ReentrantReadWriteLock();
-
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-
-    // set by load() to distinguish brand-new environment with upgraded environment
-    private boolean isLoaded = false;
-
-    @SerializedName("sim")
-    protected Map<String, SecurityIntegration> nameToSecurityIntegrationMap = new ConcurrentHashMap<>();
-
-    @SerializedName("gp")
-    protected Map<String, GroupProviderLog> nameToGroupProvider = new ConcurrentHashMap<>();
-    protected Map<String, GroupProvider> nameToGroupProviderMap = new ConcurrentHashMap<>();
-
-    public AuthenticationMgr() {
-        // default plugin
-        AuthenticationProviderFactory.installPlugin(
-                PlainPasswordAuthenticationProvider.PLUGIN_NAME, new PlainPasswordAuthenticationProvider());
-
-        AuthenticationProviderFactory.installPlugin(
-                LDAPAuthProviderForNative.PLUGIN_NAME, new LDAPAuthProviderForNative());
-
-        AuthenticationProviderFactory.installPlugin(
-                KerberosAuthenticationProvider.PLUGIN_NAME, new KerberosAuthenticationProvider());
-
-        AuthenticationProviderFactory.installPlugin(OpenIdConnectAuthenticationProvider.PLUGIN_NAME,
-                new OpenIdConnectAuthenticationProvider(
-                        Config.oidc_jwks_url,
-                        Config.oidc_principal_field,
-                        Config.oidc_required_issuer,
-                        Config.oidc_required_audience));
-
-        AuthenticationProviderFactory.installPlugin(OAuth2AuthenticationProvider.PLUGIN_NAME,
-                new OAuth2AuthenticationProvider(
-                        Config.oauth2_token_server_url,
-                        Config.oauth2_redirect_url,
-                        Config.oauth2_client_id,
-                        Config.oauth2_client_secret,
-                        Config.oidc_jwks_url,
-                        Config.oidc_principal_field,
-                        Config.oidc_required_issuer,
-                        Config.oidc_required_audience,
-                        Config.oauth_connect_wait_timeout));
-
-        // default user
-        userToAuthenticationInfo = new UserAuthInfoTreeMap();
-        UserAuthenticationInfo info = new UserAuthenticationInfo();
-        try {
-            info.setOrigUserHost(ROOT_USER, UserAuthenticationInfo.ANY_HOST);
-        } catch (AuthenticationException e) {
-            throw new RuntimeException("should not happened!", e);
-        }
-        info.setAuthPlugin(PlainPasswordAuthenticationProvider.PLUGIN_NAME);
-        info.setPassword(MysqlPassword.EMPTY_PASSWORD);
-        userToAuthenticationInfo.put(UserIdentity.ROOT, info);
-        userNameToProperty.put(UserIdentity.ROOT.getUser(), new UserProperty());
     }
 
     private void readLock() {
@@ -286,31 +299,31 @@ public class AuthenticationMgr {
         return null;
     }
 
-    /*
-    public UserIdentity checkPassword(String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString) {
-        if (remotePasswd != null && remotePasswd.length > 10) {
-            OpenIdConnectAuthenticationProvider openIdConnectAuthenticationProvider = new OpenIdConnectAuthenticationProvider();
-            try {
-                openIdConnectAuthenticationProvider.authenticate(remoteUser, remoteHost, remotePasswd, randomString, null);
-                return new UserIdentity(remoteUser, "%");
-            } catch (Exception e) {
-                LOG.error("OAuth2 Error : ", e);
-            }
-            return null;
+    protected UserIdentity checkPasswordForNonNative(
+            String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString, String authMechanism) {
+        SecurityIntegration securityIntegration =
+                nameToSecurityIntegrationMap.getOrDefault(authMechanism, null);
+        if (securityIntegration == null) {
+            LOG.info("'{}' authentication mechanism not found", authMechanism);
         } else {
-            OAuth2AuthenticationProvider provider = new OAuth2AuthenticationProvider();
             try {
-                provider.authenticate(remoteUser, remoteHost, remotePasswd, randomString, null);
-                return new UserIdentity(remoteUser, "%");
-            } catch (Exception e) {
-                LOG.error("OAuth2 Error : ", e);
+                AuthenticationProvider provider = securityIntegration.getAuthenticationProvider();
+                UserAuthenticationInfo userAuthenticationInfo = new UserAuthenticationInfo();
+                userAuthenticationInfo.extraInfo.put(AuthPlugin.AUTHENTICATION_LDAP_SIMPLE_FOR_EXTERNAL.name(),
+                        securityIntegration);
+                provider.authenticate(remoteUser, remoteHost, remotePasswd, randomString,
+                        userAuthenticationInfo);
+                // the ephemeral user is identified as 'username'@'auth_mechanism'
+                UserIdentity authenticatedUser = UserIdentity.createEphemeralUserIdent(remoteUser, authMechanism);
+                return authenticatedUser;
+            } catch (AuthenticationException e) {
+                LOG.debug("failed to authenticate, user: {}@{}, security integration: {}, error: {}",
+                        remoteUser, remoteHost, securityIntegration, e.getMessage());
             }
-            return null;
         }
 
-        //return checkPasswordForNative(remoteUser, remoteHost, remotePasswd, randomString);
+        return null;
     }
-     */
 
     public UserIdentity checkPassword(String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString) {
         String[] authChain = Config.authentication_chain;
@@ -334,39 +347,6 @@ public class AuthenticationMgr {
     public UserIdentity checkPlainPassword(String remoteUser, String remoteHost, String remotePasswd) {
         return checkPassword(remoteUser, remoteHost,
                 remotePasswd.getBytes(StandardCharsets.UTF_8), null);
-    }
-
-    protected UserIdentity checkPasswordForNonNative(
-            String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString, String authMechanism) {
-        SecurityIntegration securityIntegration =
-                nameToSecurityIntegrationMap.getOrDefault(authMechanism, null);
-        if (securityIntegration == null) {
-            LOG.info("'{}' authentication mechanism not found", authMechanism);
-        } else {
-            try {
-                AuthenticationProvider provider = securityIntegration.getAuthenticationProvider();
-                UserAuthenticationInfo userAuthenticationInfo = new UserAuthenticationInfo();
-                userAuthenticationInfo.extraInfo.put(AuthPlugin.AUTHENTICATION_LDAP_SIMPLE_FOR_EXTERNAL.name(),
-                        securityIntegration);
-                provider.authenticate(remoteUser, remoteHost, remotePasswd, randomString,
-                        userAuthenticationInfo);
-                // the ephemeral user is identified as 'username'@'auth_mechanism'
-                UserIdentity authenticatedUser = UserIdentity.createEphemeralUserIdent(remoteUser, authMechanism);
-                /*
-                ConnectContext currentContext = ConnectContext.get();
-                if (currentContext != null) {
-                    currentContext.setCurrentRoleIds(new HashSet<>(
-                            Collections.singletonList(PrivilegeBuiltinConstants.ROOT_ROLE_ID)));
-                }
-                 */
-                return authenticatedUser;
-            } catch (AuthenticationException e) {
-                LOG.debug("failed to authenticate, user: {}@{}, security integration: {}, error: {}",
-                        remoteUser, remoteHost, securityIntegration, e.getMessage());
-            }
-        }
-
-        return null;
     }
 
     public void createUser(CreateUserStmt stmt) throws DdlException {
@@ -718,10 +698,15 @@ public class AuthenticationMgr {
         this.userNameToProperty = ret.userNameToProperty;
         this.userToAuthenticationInfo = ret.userToAuthenticationInfo;
 
-        for (Map.Entry<String, GroupProviderLog> entry : nameToGroupProvider.entrySet()) {
-            GroupProvider groupProvider = GroupProviderFactory.createGroupProvider(entry.getKey(), entry.getValue().propertyMap);
-            groupProvider.init();
-            nameToGroupProviderMap.put(entry.getKey(), groupProvider);
+        this.nameToSecurityIntegrationMap = ret.nameToSecurityIntegrationMap;
+        this.nameToGroupProviderMap = ret.nameToGroupProviderMap;
+
+        for (Map.Entry<String, GroupProvider> entry : nameToGroupProviderMap.entrySet()) {
+            try {
+                entry.getValue().init();
+            } catch (Exception e) {
+                LOG.error("failed to init group provider", e);
+            }
         }
     }
 
@@ -745,16 +730,13 @@ public class AuthenticationMgr {
         return matchedUserIdentity.getKey();
     }
 
+    //=========================================== Security Integration ==================================================
+
     public void createSecurityIntegration(String name,
                                           Map<String, String> propertyMap,
                                           boolean isReplay) throws DdlException {
         SecurityIntegration securityIntegration;
-        try {
-            securityIntegration =
-                    SecurityIntegrationFactory.createSecurityIntegration(name, propertyMap);
-        } catch (DdlException e) {
-            throw new DdlException("failed to create security integration, error: " + e.getMessage(), e);
-        }
+        securityIntegration = SecurityIntegrationFactory.createSecurityIntegration(name, propertyMap);
         // atomic op
         SecurityIntegration result = nameToSecurityIntegrationMap.putIfAbsent(name, securityIntegration);
         if (result != null) {
@@ -778,11 +760,7 @@ public class AuthenticationMgr {
             // update props
             newProps.putAll(alterProps);
             SecurityIntegration newSecurityIntegration;
-            try {
-                newSecurityIntegration = SecurityIntegrationFactory.createSecurityIntegration(name, newProps);
-            } catch (DdlException e) {
-                throw new DdlException("failed to alter security integration, error: " + e.getMessage(), e);
-            }
+            newSecurityIntegration = SecurityIntegrationFactory.createSecurityIntegration(name, newProps);
             // update map
             nameToSecurityIntegrationMap.put(name, newSecurityIntegration);
             if (!isReplay) {
@@ -830,15 +808,32 @@ public class AuthenticationMgr {
         dropSecurityIntegration(name, true);
     }
 
+    // ---------------------------------------- Group Provider Statement --------------------------------------
+
     public void createGroupProviderStatement(CreateGroupProviderStmt stmt, ConnectContext context) {
-        GroupProviderLog groupProviderLog = new GroupProviderLog(stmt.getName(), stmt.getPropertyMap());
-        this.nameToGroupProvider.put(stmt.getName(), groupProviderLog);
-        GlobalStateMgr.getCurrentState().getEditLog().logCreateGroupProvider(groupProviderLog);
+        GroupProvider groupProvider = GroupProviderFactory.createGroupProvider(stmt.getName(), stmt.getPropertyMap());
+        groupProvider.init();
+        this.nameToGroupProviderMap.put(stmt.getName(), groupProvider);
+
+        GlobalStateMgr.getCurrentState().getEditLog().logEdit(OperationType.OP_CREATE_GROUP_PROVIDER,
+                new GroupProviderLog(stmt.getName(), stmt.getPropertyMap()));
+    }
+
+    public void replayCreateGroupProvider(String name, Map<String, String> properties) {
+        GroupProvider groupProvider = GroupProviderFactory.createGroupProvider(name, properties);
+        groupProvider.init();
+        this.nameToGroupProviderMap.put(name, groupProvider);
     }
 
     public void dropGroupProviderStatement(DropGroupProviderStmt stmt, ConnectContext context) {
-        GroupProviderLog groupProviderLog = new GroupProviderLog(stmt.getName(), null);
-        GlobalStateMgr.getCurrentState().getEditLog().logCreateGroupProvider(groupProviderLog);
+        this.nameToGroupProviderMap.remove(stmt.getName());
+
+        GlobalStateMgr.getCurrentState().getEditLog().logEdit(OperationType.OP_DROP_GROUP_PROVIDER,
+                new GroupProviderLog(stmt.getName(), null));
+    }
+
+    public void replayDropGroupProvider(String name) {
+        this.nameToGroupProviderMap.remove(name);
     }
 
     public List<GroupProvider> getAllGroupProviders() {

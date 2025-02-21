@@ -63,14 +63,14 @@ public class OAuth2SecurityIntegration extends SecurityIntegration {
     }
 
     @Override
-    public void analyzeProperties(Map<String, String> properties) {
+    public void checkProperty() {
         requiredProperties.forEach(s -> {
             if (!propertyMap.containsKey(s)) {
                 throw new SemanticException("missing required property: " + s);
             }
         });
 
-        validateIntegerProp(properties, OAUTH2_CONNECT_WAIT_TIMEOUT, 0, Integer.MAX_VALUE);
+        validateIntegerProp(propertyMap, OAUTH2_CONNECT_WAIT_TIMEOUT, 0, Integer.MAX_VALUE);
     }
 
     private void validateIntegerProp(Map<String, String> propertyMap, String key, int min, int max)

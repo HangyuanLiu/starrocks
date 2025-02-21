@@ -35,7 +35,6 @@
 package com.starrocks.common;
 
 import com.starrocks.StarRocksFE;
-import com.starrocks.authentication.SecurityIntegration;
 import com.starrocks.catalog.LocalTablet;
 import com.starrocks.catalog.Replica;
 
@@ -843,6 +842,21 @@ public class Config extends ConfigBase {
     // BRPC idle wait time (ms)
     @ConfField
     public static int brpc_idle_wait_max_time = 10000;
+
+    @ConfField(mutable = true)
+    public static int brpc_send_plan_fragment_timeout_ms = 60000;
+
+    @ConfField
+    public static boolean brpc_reuse_addr = true;
+
+    @ConfField
+    public static int brpc_min_evictable_idle_time_ms = 120000;
+
+    @ConfField
+    public static boolean brpc_short_connection = false;
+
+    @ConfField
+    public static boolean brpc_inner_reuse_pool = true;
 
     /**
      * FE mysql server port
@@ -1837,7 +1851,7 @@ public class Config extends ConfigBase {
      * its authentication info is stored in SR metadata.
      * <p>
      * For more information about security integration, you can refer to
-     * {@link SecurityIntegration}
+     * {@link com.starrocks.authentication.SecurityIntegration}
      */
     @ConfField(mutable = true)
     public static String[] authentication_chain = {AUTHENTICATION_CHAIN_MECHANISM_NATIVE};
@@ -3518,6 +3532,12 @@ public class Config extends ConfigBase {
     @ConfField(mutable = false)
     public static Long oauth_connect_wait_timeout = 300L;
 
+    @ConfField(mutable = true)
+    public static String[] authenticated_group_list = {};
+
     @ConfField(mutable = false)
     public static String group_provider = "unix";
+
+    @ConfField(mutable = false)
+    public static String file_group_provider_path = "";
 }

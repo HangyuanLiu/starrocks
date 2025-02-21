@@ -25,6 +25,8 @@ import com.starrocks.sql.ast.UserIdentity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -40,8 +42,9 @@ public class AuthenticationHandler {
 
         UserIdentity authenticatedUser = null;
         String groupProviderName = null;
+        List<String> authenticatedGroupList = null;
 
-        if (Config.enable_auth_check) {
+        if (!Config.enable_auth_check) {
             Map.Entry<UserIdentity, UserAuthenticationInfo> matchedUserIdentity =
                     authenticationMgr.getBestMatchedUserIdentity(remoteUser, remoteHost);
             if (matchedUserIdentity == null) {
@@ -52,6 +55,7 @@ public class AuthenticationHandler {
             } else {
                 authenticatedUser = matchedUserIdentity.getKey();
                 groupProviderName = Config.group_provider;
+                authenticatedGroupList = List.of(Config.authenticated_group_list);
             }
         } else {
             String[] authChain = Config.authentication_chain;
@@ -64,18 +68,29 @@ public class AuthenticationHandler {
                 if (authMechanism.equals(ConfigBase.AUTHENTICATION_CHAIN_MECHANISM_NATIVE)) {
                     authenticatedUser = checkPasswordForNative(remoteUser, remoteHost, remotePasswd, randomString);
                     groupProviderName = Config.group_provider;
+                    authenticatedGroupList = List.of(Config.authenticated_group_list);
                 } else {
                     SecurityIntegration securityIntegration = authenticationMgr.getSecurityIntegration(authMechanism);
+                    if (securityIntegration == null) {
+                        continue;
+                    }
+
                     authenticatedUser = checkPasswordForNonNative(
                             remoteUser, remoteHost, remotePasswd, randomString, securityIntegration);
-                    groupProviderName = securityIntegration.getPropertyMap().get("group_provider");
+                    groupProviderName = securityIntegration.getGroupProviderName();
+                    if (groupProviderName == null) {
+                        groupProviderName = Config.group_provider;
+                    }
+
+                    authenticatedGroupList = securityIntegration.getAuthenticatedGroupList();
                 }
             }
         }
 
         if (authenticatedUser == null) {
-            ErrorReport.report(ErrorCode.ERR_AUTHENTICATION_FAIL, authenticatedUser, remotePasswd);
+            //ErrorReport.report(ErrorCode.ERR_AUTHENTICATION_FAIL, authenticatedUser, remotePasswd);
             //throw new AuthenticationException("");
+            ErrorReport.report(ErrorCode.ERR_GROUP_ACCESS_DENY);
             return false;
         }
 
@@ -88,6 +103,16 @@ public class AuthenticationHandler {
 
         Set<String> groups = getGroups(authenticatedUser, groupProviderName);
         context.setGroups(groups);
+
+        if (!authenticatedGroupList.isEmpty()) {
+            Set<String> intersection = new HashSet<>(groups);
+            intersection.retainAll(authenticatedGroupList);
+            if (intersection.isEmpty()) {
+                ErrorReport.report(ErrorCode.ERR_GROUP_ACCESS_DENY);
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -151,6 +176,9 @@ public class AuthenticationHandler {
     public static Set<String> getGroups(UserIdentity userIdentity, String groupProviderName) {
         AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
         GroupProvider groupProvider = authenticationMgr.getGroupProvider(groupProviderName);
+        if (groupProvider == null) {
+            return new HashSet<>();
+        }
         return groupProvider.getGroup(userIdentity);
     }
 }

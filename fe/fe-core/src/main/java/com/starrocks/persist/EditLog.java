@@ -1143,6 +1143,15 @@ public class EditLog {
                     authenticationMgr.replayDropSecurityIntegration(info.name);
                     break;
                 }
+                case OperationType.OP_CREATE_GROUP_PROVIDER: {
+                    GroupProviderLog groupProviderLog = (GroupProviderLog) journal.data();
+                    GlobalStateMgr.getCurrentState().getAuthenticationMgr().replayCreateGroupProvider(
+                            groupProviderLog.getName(), groupProviderLog.getPropertyMap());
+                }
+                case OperationType.OP_DROP_GROUP_PROVIDER: {
+                    GroupProviderLog groupProviderLog = (GroupProviderLog) journal.data();
+                    GlobalStateMgr.getCurrentState().getAuthenticationMgr().replayDropGroupProvider(groupProviderLog.getName());
+                }
                 default: {
                     if (Config.metadata_ignore_unknown_operation_type) {
                         LOG.warn("UNKNOWN Operation Type {}", opCode);
@@ -2016,13 +2025,5 @@ public class EditLog {
     public void logDropSecurityIntegration(String name) {
         SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, null);
         logEdit(OperationType.OP_DROP_SECURITY_INTEGRATION, info);
-    }
-
-    public void logCreateGroupProvider(GroupProviderLog info) {
-        logEdit(OperationType.OP_CREATE_GROUP_PROVIDER, info);
-    }
-
-    public void logDropGroupProvider(GroupProviderLog info) {
-        logEdit(OperationType.OP_DROP_GROUP_PROVIDER, info);
     }
 }

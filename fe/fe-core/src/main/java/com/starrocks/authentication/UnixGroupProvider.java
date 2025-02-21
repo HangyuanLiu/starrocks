@@ -14,13 +14,10 @@
 
 package com.starrocks.authentication;
 
+import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.UserIdentity;
 import org.apache.hadoop.security.UserGroupInformation;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -33,15 +30,20 @@ public class UnixGroupProvider extends GroupProvider {
 
     @Override
     public Set<String> getGroup(UserIdentity userIdentity) {
-        List<String> userGroups = new ArrayList<>();
+        Set<String> userGroups = Set.of();
 
         UserGroupInformation ugi = UserGroupInformation.createRemoteUser(userIdentity.getUser());
         String[] groups = ugi.getGroupNames();
 
         if (groups != null && groups.length > 0) {
-            userGroups = Arrays.asList(groups);
+            userGroups = Set.of(groups);
         }
 
-        return new HashSet<>(userGroups);
+        return userGroups;
+    }
+
+    @Override
+    public void checkProperty() throws SemanticException {
+
     }
 }

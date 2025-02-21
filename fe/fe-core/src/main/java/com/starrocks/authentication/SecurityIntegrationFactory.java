@@ -14,21 +14,36 @@
 
 package com.starrocks.authentication;
 
-import com.starrocks.common.DdlException;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSortedSet;
+import com.starrocks.sql.analyzer.SemanticException;
 
 import java.util.Map;
 
 public class SecurityIntegrationFactory {
-    public static SecurityIntegration createSecurityIntegration(String name, Map<String, String> propertyMap)
-            throws DdlException {
+    private static final ImmutableSortedSet<String> SUPPORTED_AUTH_MECHANISM =
+            ImmutableSortedSet.orderedBy(String.CASE_INSENSITIVE_ORDER)
+                    .add(OIDCSecurityIntegration.TYPE)
+                    .build();
+
+    public static void checkSecurityIntegrationIsSupported(String securityIntegrationType) {
+        if (!SUPPORTED_AUTH_MECHANISM.contains(securityIntegrationType)) {
+            throw new SemanticException("unsupported security integration type '" + securityIntegrationType + "'");
+        }
+    }
+
+    public static SecurityIntegration createSecurityIntegration(String name, Map<String, String> propertyMap) {
         String type = propertyMap.get(SecurityIntegration.SECURITY_INTEGRATION_PROPERTY_TYPE_KEY);
 
-        if (type.equals(OIDCSecurityIntegration.SECURITY_INTEGRATION_TYPE_OIDC)) {
-            return new OIDCSecurityIntegration(name, propertyMap);
+        checkSecurityIntegrationIsSupported(type);
+
+        SecurityIntegration securityIntegration = null;
+        if (type.equalsIgnoreCase(OIDCSecurityIntegration.TYPE)) {
+            securityIntegration = new OIDCSecurityIntegration(name, propertyMap);
         } else if (type.equals(OAuth2SecurityIntegration.SECURITY_INTEGRATION_TYPE_OAUTH2)) {
             return new OAuth2SecurityIntegration(name, propertyMap);
         }
-
-        throw new DdlException("unsupported '" + type + "' type security integration");
+        Preconditions.checkArgument(securityIntegration != null);
+        return securityIntegration;
     }
 }

@@ -14,6 +14,7 @@
 
 package com.starrocks.authentication;
 
+import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.UserIdentity;
 
 import java.util.HashSet;
@@ -59,5 +60,10 @@ public class LdapSearchGroupProvider extends GroupProvider {
         Set<String> groups = new HashSet<>();
         groups.addAll(ldapGroupCacheMgr.getGroups(userIdentity.getUser()));
         return groups;
+    }
+
+    @Override
+    public void checkProperty() throws SemanticException {
+
     }
 }

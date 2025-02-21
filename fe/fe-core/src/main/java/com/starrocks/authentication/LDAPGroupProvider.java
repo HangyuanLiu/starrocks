@@ -14,6 +14,7 @@
 
 package com.starrocks.authentication;
 
+import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.UserIdentity;
 
 import java.util.ArrayList;
@@ -73,5 +74,10 @@ public class LDAPGroupProvider extends GroupProvider {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    @Override
+    public void checkProperty() throws SemanticException {
+
     }
 }

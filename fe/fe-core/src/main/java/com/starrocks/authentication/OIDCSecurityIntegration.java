@@ -22,13 +22,14 @@ import java.util.Map;
 import java.util.Set;
 
 public class OIDCSecurityIntegration extends SecurityIntegration {
-    public static final String SECURITY_INTEGRATION_TYPE_OIDC = "oidc";
+    public static final String TYPE = "oidc";
+
     public static final String OIDC_JWKS_URL = "oidc_jwks_url";
     public static final String OIDC_PRINCIPAL_FIELD = "oidc_principal_field";
     public static final String OIDC_REQUIRED_ISSUER = "oidc_required_issuer";
     public static final String OIDC_REQUIRED_AUDIENCE = "oidc_required_audience";
 
-    final Set<String> requiredProperties = new HashSet<>(Arrays.asList(
+    public static final Set<String> REQUIRED_PROPERTIES = new HashSet<>(Arrays.asList(
             SecurityIntegration.SECURITY_INTEGRATION_PROPERTY_TYPE_KEY,
             OIDCSecurityIntegration.OIDC_JWKS_URL,
             OIDCSecurityIntegration.OIDC_PRINCIPAL_FIELD));
@@ -47,8 +48,8 @@ public class OIDCSecurityIntegration extends SecurityIntegration {
     }
 
     @Override
-    public void analyzeProperties(Map<String, String> properties) {
-        requiredProperties.forEach(s -> {
+    public void checkProperty() throws SemanticException {
+        REQUIRED_PROPERTIES.forEach(s -> {
             if (!propertyMap.containsKey(s)) {
                 throw new SemanticException("missing required property: " + s);
             }

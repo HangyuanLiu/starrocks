@@ -36,8 +36,6 @@ package com.starrocks.mysql;
 
 import com.google.common.base.Strings;
 import com.starrocks.authentication.AuthenticationHandler;
-import com.starrocks.authentication.UserAuthenticationInfo;
-import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
@@ -51,7 +49,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -224,11 +221,14 @@ public class MysqlProto {
     }
 
     private static boolean isLDAPUser(String user, ConnectContext context) {
+        /*
         Map.Entry<UserIdentity, UserAuthenticationInfo> localUser = context.getGlobalStateMgr().getAuthenticationMgr()
                 .getBestMatchedUserIdentity(user, context.getMysqlChannel().getRemoteIp());
         // If the user can not be found in local, and there is more than 1 auth type in authentication_chain.
         // It is speculated that the user may be a ldap user.
         return localUser == null && Config.authentication_chain.length > 1;
+         */
+        return false;
     }
 
     private static MysqlAuthPacket readAuthPacket(ConnectContext context) throws IOException {

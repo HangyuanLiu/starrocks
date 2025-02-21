@@ -14,13 +14,20 @@
 
 package com.starrocks.sql.analyzer;
 
+import com.google.common.base.Preconditions;
+import com.starrocks.authentication.AuthenticationMgr;
+import com.starrocks.authentication.GroupProvider;
+import com.starrocks.authentication.GroupProviderFactory;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.group.CreateGroupProviderStmt;
 import com.starrocks.sql.ast.group.DropGroupProviderStmt;
 import com.starrocks.sql.ast.group.ShowCreateGroupProviderStmt;
 import com.starrocks.sql.ast.group.ShowGroupProvidersStmt;
+
+import java.util.Map;
 
 public class GroupProviderStatementAnalyzer {
     public static void analyze(StatementBase statement, ConnectContext context) {
@@ -35,6 +42,20 @@ public class GroupProviderStatementAnalyzer {
 
         @Override
         public Void visitCreateGroupProviderStatement(CreateGroupProviderStmt statement, ConnectContext context) {
+            Map<String, String> properties = statement.getPropertyMap();
+            String groupProviderType = properties.get("type");
+            if (groupProviderType == null) {
+                throw new SemanticException("missing required property: type");
+            }
+
+            GroupProvider groupProvider = GroupProviderFactory.createGroupProvider(statement.getName(), properties);
+            Preconditions.checkNotNull(groupProvider);
+            groupProvider.checkProperty();
+
+            AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+            if (authenticationMgr.getGroupProvider(statement.getName()) != null) {
+                throw new SemanticException("Group Provider '" + statement.getName() + "' already exists");
+            }
             return null;
         }
 
