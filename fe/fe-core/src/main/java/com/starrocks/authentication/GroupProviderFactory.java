@@ -14,17 +14,37 @@
 
 package com.starrocks.authentication;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSortedSet;
+import com.starrocks.sql.analyzer.SemanticException;
+
 import java.util.Map;
 
 public class GroupProviderFactory {
+
+    private static final ImmutableSortedSet<String> SUPPORT_GROUP_PROVIDER =
+            ImmutableSortedSet.orderedBy(String.CASE_INSENSITIVE_ORDER)
+                    .add(UnixGroupProvider.TYPE)
+                    .add(FileGroupProvider.TYPE)
+                    .build();
+
+    public static void checkGroupProviderIsSupported(String groupProviderType) {
+        if (!SUPPORT_GROUP_PROVIDER.contains(groupProviderType)) {
+            throw new SemanticException("unsupported group provider type '" + groupProviderType + "'");
+        }
+    }
     public static GroupProvider createGroupProvider(String name, Map<String, String> propertyMap) {
-        String type = propertyMap.get("type");
-        return switch (type) {
-            case FileGroupProvider.TYPE -> new FileGroupProvider(name, propertyMap);
-            case UnixGroupProvider.TYPE -> new UnixGroupProvider(name, propertyMap);
-            case LDAPGroupProvider.TYPE -> new LDAPGroupProvider(name, propertyMap);
-            case LdapSearchGroupProvider.TYPE -> new LdapSearchGroupProvider(name, propertyMap);
-            default -> throw new RuntimeException("unsupported '" + type + "' type group provider");
-        };
+        String type = propertyMap.get(GroupProvider.GROUP_PROVIDER_PROPERTY_TYPE_KEY);
+        checkGroupProviderIsSupported(type);
+
+        GroupProvider groupProvider = null;
+        if (type.equalsIgnoreCase(FileGroupProvider.TYPE)) {
+            groupProvider = new FileGroupProvider(name, propertyMap);
+        } else if (type.equalsIgnoreCase(UnixGroupProvider.TYPE)) {
+            groupProvider = new UnixGroupProvider(name, propertyMap);
+        }
+
+        Preconditions.checkNotNull(groupProvider);
+        return groupProvider;
     }
 }

@@ -15,29 +15,81 @@
 package com.starrocks.authentication;
 
 import com.starrocks.StarRocksFE;
+import com.starrocks.common.DdlException;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.UserIdentity;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 public class FileGroupProvider extends GroupProvider {
+    private static final Logger LOG = LogManager.getLogger(FileGroupProvider.class);
+
     public static final String TYPE = "file";
-    private Map<String, Set<String>> userGroups;
+
+    public static final String GROUP_FILE_URL = "group_file_url";
+
+    public static final Set<String> REQUIRED_PROPERTIES = new HashSet<>(List.of(
+            FileGroupProvider.GROUP_FILE_URL));
+
+    private final Map<String, Set<String>> userGroups;
 
     public FileGroupProvider(String name, Map<String, String> properties) {
         super(name, properties);
+        this.userGroups = new HashMap<>();
     }
 
     @Override
-    public void init() {
-        String groupFile = getProperties().get("group_file");
-        userGroups = parseGroupFile(groupFile);
+    public void init() throws DdlException {
+        String groupFileUrl = properties.get(GROUP_FILE_URL);
+
+        try {
+            InputStream fileInputStream = null;
+            try {
+                if (groupFileUrl.startsWith("http://") || groupFileUrl.startsWith("https://")) {
+                    fileInputStream = new URL(groupFileUrl).openStream();
+                } else {
+                    String filePath = StarRocksFE.STARROCKS_HOME_DIR + "/conf/" + groupFileUrl;
+                    fileInputStream = new FileInputStream(filePath);
+                }
+
+                String s = readInputStreamToString(fileInputStream, StandardCharsets.UTF_8);
+                for (String line : s.split("\r?\n")) {
+                    if (line.trim().isEmpty()) {
+                        continue;
+                    }
+
+                    String[] parts = line.split(":");
+                    String groupName = parts[0];
+                    String[] users = parts[1].split(",");
+
+                    for (String user : users) {
+                        user = user.trim();
+                        userGroups.putIfAbsent(user, new HashSet<>());
+                        userGroups.get(user).add(groupName);
+                    }
+                }
+            } finally {
+                if (fileInputStream != null) {
+                    fileInputStream.close();
+                }
+            }
+        } catch (IOException e) {
+            throw new DdlException(e.getMessage());
+        }
     }
 
     @Override
@@ -47,34 +99,27 @@ public class FileGroupProvider extends GroupProvider {
 
     @Override
     public void checkProperty() throws SemanticException {
+        REQUIRED_PROPERTIES.forEach(s -> {
+            if (!properties.containsKey(s)) {
+                throw new SemanticException("missing required property: " + s);
+            }
+        });
     }
 
-    public Map<String, Set<String>> parseGroupFile(String fileName) {
-        String filePath = StarRocksFE.STARROCKS_HOME_DIR + "/conf/" + fileName;
+    public static String readInputStreamToString(final InputStream stream, final Charset charset) throws IOException {
+        final int bufferSize = 1024;
+        final char[] buffer = new char[bufferSize];
+        final StringBuilder out = new StringBuilder();
 
-        Map<String, Set<String>> userGroups = new HashMap<>();
-
-        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (line.trim().isEmpty()) {
-                    continue;
+        try (Reader in = new InputStreamReader(stream, charset)) {
+            while (true) {
+                int rsz = in.read(buffer, 0, buffer.length);
+                if (rsz < 0) {
+                    break;
                 }
-
-                String[] parts = line.split(":");
-                String groupName = parts[0];
-                String[] users = parts[1].split(",");
-
-                for (String user : users) {
-                    user = user.trim();
-                    userGroups.putIfAbsent(user, new HashSet<>());
-                    userGroups.get(user).add(groupName);
-                }
+                out.append(buffer, 0, rsz);
             }
-        } catch (IOException e) {
-            e.printStackTrace();
+            return out.toString();
         }
-
-        return userGroups;
     }
 }

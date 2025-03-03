@@ -313,7 +313,14 @@ public class ShowExecutor {
         @Override
         public ShowResultSet visitShowMaterializedViewStatement(ShowMaterializedViewsStmt statement, ConnectContext context) {
             String dbName = statement.getDb();
-            Database db = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb(dbName);
+            String catalogName = statement.getCatalogName();
+            Database db;
+            if (catalogName == null) {
+                db = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb(dbName);
+            } else {
+                db = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(catalogName, dbName);
+            }
+
             MetaUtils.checkDbNullAndReport(db, dbName);
 
             List<MaterializedView> materializedViews = Lists.newArrayList();
@@ -2153,7 +2160,7 @@ public class ShowExecutor {
                         .map(entry -> "\"" + entry.getKey() + "\" = \"" + entry.getValue() + "\"")
                         .collect(Collectors.joining(",\n"));
                 infos.add(Lists.newArrayList(name,
-                        "CREATE SECURITY INTEGRATION `" + name +
+                        "CREATE GROUP PROVIDER `" + name +
                                 "` PROPERTIES (\n" + propString + "\n)"));
             }
             return new ShowResultSet(statement.getMetaData(), infos);

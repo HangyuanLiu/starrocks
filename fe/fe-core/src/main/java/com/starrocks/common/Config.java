@@ -2145,6 +2145,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true, comment = "If full analyze predicate columns instead of sample all columns")
     public static boolean statistic_auto_collect_use_full_predicate_column_for_sample = true;
 
+    @ConfField(mutable = true, comment = "max columns size of full analyze predicate columns instead of sample all columns")
+    public static int statistic_auto_collect_max_predicate_column_size_on_sample_strategy = 16;
+
     /**
      * Max row count in statistics collect per query
      */
@@ -2908,6 +2911,10 @@ public class Config extends ConfigBase {
     public static long lake_autovacuum_stale_partition_threshold = 12;
 
     @ConfField(mutable = true, comment =
+            "Determine whether a vacuum operation needs to be initiated based on the vacuum version.\n")
+    public static boolean lake_autovacuum_detect_vaccumed_version = true;
+
+    @ConfField(mutable = true, comment =
             "Whether enable throttling ingestion speed when compaction score exceeds the threshold.\n" +
                     "Only takes effect for tables in clusters with run_mode=shared_data.")
     public static boolean lake_enable_ingest_slowdown = true;
@@ -3480,7 +3487,7 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static long automated_cluster_snapshot_interval_seconds = 600;
 
-    @ConfField(mutable = false)
+    @ConfField(mutable = true)
     public static int max_historical_automated_cluster_snapshot_jobs = 100;
 
     /**
@@ -3540,4 +3547,11 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = false)
     public static String file_group_provider_path = "";
+
+    /**
+     *  max partition meta count will be returned when BE/CN call GetPartitionsMeta
+     *  if one table's partition count exceeds this, it will return all partitions for this table
+     */
+    @ConfField(mutable = true)
+    public static int max_get_partitions_meta_result_count = 100000;
 }

@@ -61,11 +61,21 @@ public class GroupProviderStatementAnalyzer {
 
         @Override
         public Void visitDropGroupProviderStatement(DropGroupProviderStmt statement, ConnectContext context) {
+            AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+            if (authenticationMgr.getGroupProvider(statement.getName()) == null) {
+                throw new SemanticException("Group Provider '" + statement.getName() + "' not found");
+            }
+
             return null;
         }
 
         @Override
         public Void visitShowCreateGroupProviderStatement(ShowCreateGroupProviderStmt statement, ConnectContext context) {
+            AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+            if (authenticationMgr.getGroupProvider(statement.getName()) == null) {
+                throw new SemanticException("Group Provider '" + statement.getName() + "' not found");
+            }
+
             return null;
         }
 

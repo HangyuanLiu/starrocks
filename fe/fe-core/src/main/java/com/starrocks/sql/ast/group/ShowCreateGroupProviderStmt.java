@@ -30,7 +30,7 @@ public class ShowCreateGroupProviderStmt extends ShowStmt {
 
     private final String groupName;
 
-    protected ShowCreateGroupProviderStmt(String groupName, NodePosition pos) {
+    public ShowCreateGroupProviderStmt(String groupName, NodePosition pos) {
         super(pos);
         this.groupName = groupName;
     }

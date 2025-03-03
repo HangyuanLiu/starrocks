@@ -1147,10 +1147,12 @@ public class EditLog {
                     GroupProviderLog groupProviderLog = (GroupProviderLog) journal.data();
                     GlobalStateMgr.getCurrentState().getAuthenticationMgr().replayCreateGroupProvider(
                             groupProviderLog.getName(), groupProviderLog.getPropertyMap());
+                    break;
                 }
                 case OperationType.OP_DROP_GROUP_PROVIDER: {
                     GroupProviderLog groupProviderLog = (GroupProviderLog) journal.data();
                     GlobalStateMgr.getCurrentState().getAuthenticationMgr().replayDropGroupProvider(groupProviderLog.getName());
+                    break;
                 }
                 default: {
                     if (Config.metadata_ignore_unknown_operation_type) {

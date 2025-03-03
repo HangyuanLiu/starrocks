@@ -15,6 +15,7 @@
 package com.starrocks.authentication;
 
 import com.google.gson.annotations.SerializedName;
+import com.starrocks.common.DdlException;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.UserIdentity;
 
@@ -25,16 +26,16 @@ public abstract class GroupProvider {
     public static final String GROUP_PROVIDER_PROPERTY_TYPE_KEY = "type";
 
     @SerializedName(value = "n")
-    private String name;
+    protected String name;
     @SerializedName(value = "m")
-    private Map<String, String> properties;
+    protected Map<String, String> properties;
 
     public GroupProvider(String name, Map<String, String> properties) {
         this.name = name;
         this.properties = properties;
     }
 
-    public void init() {
+    public void init() throws DdlException {
 
     }
 
