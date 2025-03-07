@@ -691,8 +691,10 @@ Status TabletUpdates::rowset_commit(int64_t version, const RowsetSharedPtr& rows
         st = _rowset_commit_unlocked(version, rowset);
         if (st.ok()) {
             if (rowset->num_segments() > 0 || rowset->num_delete_files() > 0 || rowset->num_update_files() > 0) {
-                VLOG(1) << "commit rowset tablet:" << _tablet.tablet_id() << " version:" << version
-                        << " txn_id: " << rowset->txn_id() << " " << rowset->rowset_id().to_string()
+                std::string msg = strings::Substitute("commit rowset tablet:$0 version:$1 txn_id:$2 ",
+                                                      _tablet.tablet_id(), version, rowset->txn_id());
+                LOG(INFO) << msg;
+                VLOG(1) << msg << rowset->rowset_id().to_string()
                         << " rowset:" << rowset->rowset_meta()->get_rowset_seg_id()
                         << " #seg:" << rowset->num_segments() << " #delfile:" << rowset->num_delete_files()
                         << " #uptfile:" << rowset->num_update_files() << " #row:" << rowset->num_rows()
@@ -1430,7 +1432,7 @@ Status TabletUpdates::_apply_normal_rowset_commit(const EditVersionInfo& version
             auto& upserts = state.upserts();
             if (upserts[i] != nullptr) {
                 // used for auto increment delete-partial update conflict
-                std::unique_ptr<Column> delete_pks = nullptr;
+                MutableColumnPtr delete_pks = nullptr;
                 // apply partial rowset segment
                 st = state.apply(&_tablet, apply_tschema, rowset.get(), rowset_id, i, latest_applied_version, index,
                                  delete_pks, &full_row_size);
@@ -1512,7 +1514,7 @@ Status TabletUpdates::_apply_normal_rowset_commit(const EditVersionInfo& version
                 auto& upserts = state.upserts();
                 if (upserts[loaded_upsert] != nullptr) {
                     // used for auto increment delete-partial update conflict
-                    std::unique_ptr<Column> delete_pks = nullptr;
+                    MutableColumnPtr delete_pks = nullptr;
                     // apply partial rowset segment
                     st = state.apply(&_tablet, apply_tschema, rowset.get(), rowset_id, loaded_upsert,
                                      latest_applied_version, index, delete_pks, &full_row_size);
@@ -1821,20 +1823,21 @@ Status TabletUpdates::_apply_normal_rowset_commit(const EditVersionInfo& version
     int64_t t_write = MonotonicMillis();
 
     size_t del_percent = _cur_total_rows == 0 ? 0 : (_cur_total_dels * 100) / _cur_total_rows;
-    std::string msg_part1 = strings::Substitute(
-            "apply_rowset_commit finish. tablet:$0 version:$1 txn_id: $2 total del/row:$3/$4 $5% rowset:$6 #seg:$7 ",
-            tablet_id, version_info.version.to_string(), rowset->txn_id(), _cur_total_dels, _cur_total_rows,
-            del_percent, rowset_id, rowset->num_segments());
-    std::string msg_part2 = strings::Substitute("#op(upsert:$0 del:$1) #del:$2+$3=$4 #dv:$5", rowset->num_rows(),
+    std::string msg_part1 = strings::Substitute("apply_rowset_commit finish. tablet:$0 version:$1 txn_id: $2 ",
+                                                tablet_id, version_info.version.to_string(), rowset->txn_id());
+    std::string msg_part2 = strings::Substitute(" total del/row:$0/$1 $2% rowset:$3 #seg:$4 ", _cur_total_dels,
+                                                _cur_total_rows, del_percent, rowset_id, rowset->num_segments());
+    std::string msg_part3 = strings::Substitute("#op(upsert:$0 del:$1) #del:$2+$3=$4 #dv:$5", rowset->num_rows(),
                                                 delete_op, old_total_del, new_del, total_del, ndelvec);
-    std::string msg_part3 = strings::Substitute("duration:$0ms($1/$2/$3/$4)", t_write - t_start, t_apply - t_start,
+    std::string msg_part4 = strings::Substitute("duration:$0ms($1/$2/$3/$4)", t_write - t_start, t_apply - t_start,
                                                 t_index - t_apply, t_delvec - t_index, t_write - t_delvec);
 
     bool is_slow = t_write - t_start > config::apply_version_slow_log_sec * 1000;
     if (is_slow) {
-        LOG(INFO) << msg_part1 << msg_part2 << msg_part3;
+        LOG(INFO) << msg_part1 << msg_part2 << msg_part3 << msg_part4;
     } else {
-        VLOG(1) << msg_part1 << msg_part2 << msg_part3;
+        LOG(INFO) << msg_part1 << msg_part4;
+        VLOG(1) << msg_part1 << msg_part2 << msg_part3 << msg_part4;
     }
     VLOG(2) << "rowset commit apply " << delvec_change_info << " " << _debug_string(true, true);
     return apply_st;
@@ -1903,7 +1906,7 @@ Status TabletUpdates::_wait_for_version(const EditVersion& version, int64_t time
 }
 
 Status TabletUpdates::_do_update(uint32_t rowset_id, int32_t upsert_idx, int32_t condition_column, int64_t read_version,
-                                 const std::vector<ColumnUniquePtr>& upserts, PrimaryIndex& index, int64_t tablet_id,
+                                 const std::vector<MutableColumnPtr>& upserts, PrimaryIndex& index, int64_t tablet_id,
                                  DeletesMap* new_deletes, const TabletSchemaCSPtr& tablet_schema) {
     TEST_SYNC_POINT_CALLBACK("TabletUpdates::_do_update", &rowset_id);
     RETURN_IF_ERROR(breakpoint_check());
@@ -1920,7 +1923,7 @@ Status TabletUpdates::_do_update(uint32_t rowset_id, int32_t upsert_idx, int32_t
             size_t num_default = 0;
             vector<uint32_t> idxes;
             RowsetUpdateState::plan_read_by_rssid(old_rowids, &num_default, &old_rowids_by_rssid, &idxes);
-            std::vector<std::unique_ptr<Column>> old_columns(1);
+            MutableColumns old_columns(1);
             auto old_unordered_column =
                     ChunkHelper::column_from_field_type(tablet_column.type(), tablet_column.is_nullable());
             old_columns[0] = old_unordered_column->clone_empty();
@@ -1935,7 +1938,7 @@ Status TabletUpdates::_do_update(uint32_t rowset_id, int32_t upsert_idx, int32_t
                 rowids.push_back(j);
             }
             new_rowids_by_rssid[rowset_id + upsert_idx] = rowids;
-            std::vector<std::unique_ptr<Column>> new_columns(1);
+            MutableColumns new_columns(1);
             auto new_column = ChunkHelper::column_from_field_type(tablet_column.type(), tablet_column.is_nullable());
             new_columns[0] = new_column->clone_empty();
             RETURN_IF_ERROR(get_column_values(read_column_ids, read_version, false, new_rowids_by_rssid, &new_columns,
@@ -2095,6 +2098,18 @@ Status TabletUpdates::_do_compaction(std::unique_ptr<CompactionInfo>* pinfo, con
 // at last, we will commit this compaction in version (3.1). But this compaction will miss the partial update.
 // So we need `_check_conflict_with_partial_update` to detect this conflict and cancel this compaction.
 Status TabletUpdates::_check_conflict_with_partial_update(CompactionInfo* info) {
+    TEST_SYNC_POINT_CALLBACK("TabletUpdates::_check_conflict_with_partial_update", &info->start_version);
+    // check if compaction's start version is too old to decide whether conflict happens
+    if (info->start_version < _edit_version_infos[0]->version) {
+        std::string msg = strings::Substitute(
+                "compaction's start version is too old to decide whether conflict happens, so abort it, "
+                "tabletid:$0 ver:$1-$2",
+                _tablet.tablet_id(), info->start_version.major_number(),
+                _edit_version_infos[0]->version.major_number());
+        LOG(WARNING) << msg;
+        _compaction_state.reset();
+        return Status::Cancelled(msg);
+    }
     // check edit version info from latest to info->start_version
     for (auto i = _edit_version_infos.rbegin(); i != _edit_version_infos.rend() && info->start_version < (*i)->version;
          i++) {
@@ -2235,6 +2250,8 @@ Status TabletUpdates::_commit_compaction(std::unique_ptr<CompactionInfo>* pinfo,
         std::lock_guard lg(_rowset_stats_lock);
         _rowset_stats.emplace(rowsetid, std::move(rowset_stats));
     }
+    LOG(INFO) << "commit compaction tablet:" << _tablet.tablet_id() << " gtid:" << edit_version_info_ptr->gtid
+              << " version:" << edit_version_info_ptr->version.to_string();
     VLOG(1) << "commit compaction tablet:" << _tablet.tablet_id() << " gtid:" << edit_version_info_ptr->gtid
             << " version:" << edit_version_info_ptr->version.to_string() << " rowset:" << rowsetid
             << " #seg:" << rowset->num_segments() << " #row:" << rowset->num_rows()
@@ -2554,18 +2571,21 @@ Status TabletUpdates::_apply_compaction_commit(const EditVersionInfo& version_in
     int64_t t_write = MonotonicMillis();
     size_t del_percent = _cur_total_rows == 0 ? 0 : (_cur_total_dels * 100) / _cur_total_rows;
 
-    std::string msg_part1 = strings::Substitute(
-            "apply_compaction_commit finish tablet:$0 version:$1 total del/row:$2/$3 $4% rowset:$5 #row:$6 ", tablet_id,
-            version_info.version.to_string(), _cur_total_dels, _cur_total_rows, del_percent, rowset_id, total_rows);
+    std::string msg_part1 = strings::Substitute("apply_compaction_commit finish tablet:$0 version:$1 ", tablet_id,
+                                                version_info.version.to_string());
 
     std::string msg_part2 =
-            strings::Substitute("#del:$0 #delvec:$1 duration:$2ms($3/$4/$5)", total_deletes, delvecs.size(),
-                                t_write - t_start, t_load - t_start, t_index_delvec - t_load, t_write - t_index_delvec);
-    bool is_slow = t_write - t_start > (config::apply_version_slow_log_sec * 2) * 1000;
+            strings::Substitute("total del/row:$0/$1 $2% rowset:$3 #row:$4 #del:$5 #delvec:$6", _cur_total_dels,
+                                _cur_total_rows, del_percent, rowset_id, total_rows, total_deletes, delvecs.size());
+
+    std::string msg_part3 = strings::Substitute(" duration:$0ms($1/$2/$3)", t_write - t_start, t_load - t_start,
+                                                t_index_delvec - t_load, t_write - t_index_delvec);
+    bool is_slow = t_write - t_start > config::apply_version_slow_log_sec * 1000;
     if (is_slow) {
-        LOG(INFO) << msg_part1 << msg_part2;
+        LOG(INFO) << msg_part1 << msg_part2 << msg_part3;
     } else {
-        VLOG(1) << msg_part1 << msg_part2;
+        LOG(INFO) << msg_part1 << msg_part3;
+        VLOG(1) << msg_part1 << msg_part2 << msg_part3;
     }
     VLOG(2) << "update compaction apply " << _debug_string(true, true);
     if (row_before != row_after) {
@@ -2756,7 +2776,10 @@ void TabletUpdates::remove_expired_versions(int64_t expire_time) {
         } else {
             dcg_deleted = res.value();
         }
-        VLOG(2) << strings::Substitute(
+        std::string msg = strings::Substitute("remove_expired_versions $0 time:$1 min_readable_version:$2",
+                                              _debug_version_info(true), expire_time, min_readable_version);
+        LOG(INFO) << msg;
+        VLOG(1) << strings::Substitute(
                 "remove_expired_versions $0 time:$1 min_readable_version:$2 deletes: #version:$3 #rowset:$4 "
                 "#delvec:$5 #dcgs:$6",
                 _debug_version_info(true), expire_time, min_readable_version, num_version_removed, num_rowset_removed,
@@ -5267,7 +5290,7 @@ static StatusOr<std::unique_ptr<ColumnIterator>> new_dcg_column_iterator(GetDelt
 
 Status TabletUpdates::get_column_values(const std::vector<uint32_t>& column_ids, int64_t read_version,
                                         bool with_default, std::map<uint32_t, std::vector<uint32_t>>& rowids_by_rssid,
-                                        vector<std::unique_ptr<Column>>* columns, void* state,
+                                        vector<MutableColumnPtr>* columns, void* state,
                                         const TabletSchemaCSPtr& read_tablet_schema,
                                         const std::map<string, string>* column_to_expr_value) {
     std::vector<uint32_t> unique_column_ids;
@@ -5316,11 +5339,11 @@ Status TabletUpdates::get_column_values(const std::vector<uint32_t>& column_ids,
             }
         }
     }
-    std::unique_ptr<BinaryColumn> full_row_column;
+    BinaryColumn::MutablePtr full_row_column;
     // if we are getting multiple(>2) columns, and full row column is available,
     // get values from full row column as an optimization
     if (_tablet.is_column_with_row_store() && column_ids.size() > 2) {
-        full_row_column = std::make_unique<BinaryColumn>();
+        full_row_column = BinaryColumn::create();
     }
     std::shared_ptr<FileSystem> fs;
     for (const auto& [rssid, rowids] : rowids_by_rssid) {
@@ -5750,6 +5773,11 @@ void TabletUpdates::_reset_apply_status(const EditVersionInfo& version_info_appl
                 strings::Substitute("$0_$1", _tablet.tablet_id(), rowset->rowset_id().to_string()));
         if (state_entry != nullptr) {
             manager->update_state_cache().remove(state_entry);
+        }
+        auto column_state_entry = manager->update_column_state_cache().get(
+                strings::Substitute("$0_$1", _tablet.tablet_id(), rowset->rowset_id().to_string()));
+        if (column_state_entry != nullptr) {
+            manager->update_column_state_cache().remove(column_state_entry);
         }
     } else if (version_info_apply.compaction) {
         // reset compaction state

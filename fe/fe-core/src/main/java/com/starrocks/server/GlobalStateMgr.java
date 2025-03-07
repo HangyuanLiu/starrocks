@@ -219,6 +219,7 @@ import com.starrocks.sql.optimizer.statistics.CachedStatisticStorage;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
 import com.starrocks.sql.parser.AstBuilder;
 import com.starrocks.sql.parser.SqlParser;
+import com.starrocks.sql.spm.SQLPlanManager;
 import com.starrocks.staros.StarMgrServer;
 import com.starrocks.statistic.AnalyzeMgr;
 import com.starrocks.statistic.StatisticAutoCollector;
@@ -242,7 +243,6 @@ import com.starrocks.thrift.TStatusCode;
 import com.starrocks.transaction.GlobalTransactionMgr;
 import com.starrocks.transaction.GtidGenerator;
 import com.starrocks.transaction.PublishVersionDaemon;
-import com.starrocks.transaction.UpdateDbUsedDataQuotaDaemon;
 import com.starrocks.warehouse.WarehouseIdleChecker;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -322,7 +322,7 @@ public class GlobalStateMgr {
     private final BackupHandler backupHandler;
     private final PublishVersionDaemon publishVersionDaemon;
     private final DeleteMgr deleteMgr;
-    private final UpdateDbUsedDataQuotaDaemon updateDbUsedDataQuotaDaemon;
+    private final DatabaseQuotaRefresher updateDbUsedDataQuotaDaemon;
 
     private FrontendDaemon labelCleaner; // To clean old LabelInfo, ExportJobInfos
     private FrontendDaemon txnTimeoutChecker; // To abort timeout txns
@@ -529,6 +529,7 @@ public class GlobalStateMgr {
     private final SqlBlackList sqlBlackList;
     private final ReportHandler reportHandler;
     private final TabletCollector tabletCollector;
+    private final SQLPlanManager sqlPlanManager;
 
     private JwkMgr jwkMgr;
 
@@ -672,11 +673,12 @@ public class GlobalStateMgr {
         this.backupHandler = new BackupHandler(this);
         this.publishVersionDaemon = new PublishVersionDaemon();
         this.deleteMgr = new DeleteMgr();
-        this.updateDbUsedDataQuotaDaemon = new UpdateDbUsedDataQuotaDaemon();
+        this.updateDbUsedDataQuotaDaemon = new DatabaseQuotaRefresher();
         this.statisticsMetaManager = new StatisticsMetaManager();
         this.statisticAutoCollector = new StatisticAutoCollector();
         this.safeModeChecker = new SafeModeChecker();
         this.statisticStorage = new CachedStatisticStorage();
+        this.sqlPlanManager = new SQLPlanManager();
 
         this.replayedJournalId = new AtomicLong(0L);
         this.synchronizedTimeMs = 0;
@@ -963,6 +965,10 @@ public class GlobalStateMgr {
     // Only used in UT
     public void setStatisticStorage(StatisticStorage statisticStorage) {
         this.statisticStorage = statisticStorage;
+    }
+
+    public SQLPlanManager getSqlPlanManager() {
+        return sqlPlanManager;
     }
 
     public StarOSAgent getStarOSAgent() {

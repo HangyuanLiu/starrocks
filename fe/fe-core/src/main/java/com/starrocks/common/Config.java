@@ -2080,6 +2080,9 @@ public class Config extends ConfigBase {
     @ConfField
     public static int dict_collect_thread_pool_for_lake_size = 4;
 
+    @ConfField
+    public static int low_cardinality_threshold = 255;
+
     /**
      * The column statistic cache update interval
      */
@@ -2175,6 +2178,9 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true)
     public static boolean statistic_use_meta_statistics = true;
+
+    @ConfField(mutable = true, comment = "collect multi-column combined statistics max column nums")
+    public static int statistics_max_multi_column_combined_num = 10;
 
     /**
      * default bucket size of histogram statistics
@@ -3061,6 +3067,12 @@ public class Config extends ConfigBase {
      */
     @ConfField
     public static String ssl_truststore_password = "";
+
+    /**
+     * Allow only secure transport from clients
+     **/
+    @ConfField
+    public static boolean ssl_force_secure_transport = false;
 
     /**
      * ignore check db status when show proc '/catalog/catalog_name'

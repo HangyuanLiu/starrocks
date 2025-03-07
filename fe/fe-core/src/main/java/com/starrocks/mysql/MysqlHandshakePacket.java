@@ -79,7 +79,7 @@ public class MysqlHandshakePacket extends MysqlPacket {
 
     public MysqlHandshakePacket(int connectionId, boolean supportSSL) {
         this.connectionId = connectionId;
-        authPluginData = MysqlPassword.createRandomString(SCRAMBLE_LENGTH);
+        this.authPluginData = MysqlPassword.createRandomString(SCRAMBLE_LENGTH);
         this.supportSSL = supportSSL;
     }
 

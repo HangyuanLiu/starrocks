@@ -939,6 +939,7 @@ CONF_Bool(parquet_late_materialization_enable, "true");
 CONF_Bool(parquet_page_index_enable, "true");
 CONF_mBool(parquet_statistics_process_more_filter_enable, "true");
 CONF_mBool(parquet_fast_timezone_conversion, "false");
+CONF_mBool(parquet_push_down_filter_to_decoder_enable, "true");
 
 CONF_Int32(io_coalesce_read_max_buffer_size, "8388608");
 CONF_Int32(io_coalesce_read_max_distance_size, "1048576");
@@ -1113,7 +1114,7 @@ CONF_String(dependency_librdkafka_debug, "all");
 CONF_mInt16(pulsar_client_log_level, "2");
 
 // max loop count when be waiting its fragments finish. It has no effect if the var is configured with value <= 0.
-CONF_Int64(loop_count_wait_fragments_finish, "0");
+CONF_mInt64(loop_count_wait_fragments_finish, "2");
 
 // the maximum number of connections in the connection pool for a single jdbc url
 CONF_Int16(jdbc_connection_pool_size, "8");
@@ -1588,4 +1589,6 @@ CONF_mBool(enable_collect_table_metrics, "true");
 CONF_mInt64(rf_sample_rows, "1024");
 CONF_mInt64(rf_sample_ratio, "32");
 CONF_mInt64(rf_branchless_ratio, "8");
+
+CONF_mInt32(big_query_sec, "1");
 } // namespace starrocks::config
