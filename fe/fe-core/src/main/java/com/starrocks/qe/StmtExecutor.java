@@ -105,6 +105,7 @@ import com.starrocks.metric.MetricRepo;
 import com.starrocks.metric.TableMetricsEntity;
 import com.starrocks.metric.TableMetricsRegistry;
 import com.starrocks.mysql.MysqlChannel;
+import com.starrocks.mysql.MysqlCodec;
 import com.starrocks.mysql.MysqlCommand;
 import com.starrocks.mysql.MysqlEofPacket;
 import com.starrocks.mysql.MysqlSerializer;
@@ -205,6 +206,7 @@ import com.starrocks.sql.optimizer.cost.feature.CostPredictor;
 import com.starrocks.sql.optimizer.dump.QueryDumpInfo;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalValuesOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
+import com.starrocks.sql.optimizer.statistics.StatisticStorage;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.statistic.AnalyzeJob;
 import com.starrocks.statistic.AnalyzeMgr;
@@ -246,6 +248,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.thrift.transport.TTransportException;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
@@ -1633,19 +1636,19 @@ public class StmtExecutor {
             throw new SemanticException("Table %s is not found", tableName.toString());
         }
 
+        AnalyzeMgr analyzeMgr = GlobalStateMgr.getCurrentState().getAnalyzeMgr();
+        StatisticStorage statisticStorage = GlobalStateMgr.getCurrentState().getStatisticStorage();
         if (dropStatsStmt.isExternal()) {
-            GlobalStateMgr.getCurrentState().getAnalyzeMgr().dropExternalAnalyzeStatus(table.getUUID());
-            GlobalStateMgr.getCurrentState().getAnalyzeMgr().dropExternalBasicStatsData(table.getUUID());
-
-            GlobalStateMgr.getCurrentState().getAnalyzeMgr().removeExternalBasicStatsMeta(tableName.getCatalog(),
-                    tableName.getDb(), tableName.getTbl());
+            analyzeMgr.dropExternalAnalyzeStatus(table.getUUID());
+            analyzeMgr.dropExternalBasicStatsData(table.getUUID());
+            analyzeMgr.removeExternalBasicStatsMeta(tableName.getCatalog(), tableName.getDb(), tableName.getTbl());
             List<String> columns = table.getBaseSchema().stream().map(Column::getName).collect(Collectors.toList());
-            GlobalStateMgr.getCurrentState().getStatisticStorage().expireConnectorTableColumnStatistics(table, columns);
+            statisticStorage.expireConnectorTableColumnStatistics(table, columns);
         } else {
             List<String> columns = table.getBaseSchema().stream().filter(d -> !d.isAggregated()).map(Column::getName)
                     .collect(Collectors.toList());
-            GlobalStateMgr.getCurrentState().getAnalyzeMgr().dropMultiColumnStatsMetaAndData(
-                    StatisticUtils.buildConnectContext(), Sets.newHashSet(table.getId()));
+            analyzeMgr.dropMultiColumnStatsMetaAndData(StatisticUtils.buildConnectContext(), Sets.newHashSet(table.getId()));
+            statisticStorage.expireMultiColumnStatistics(table.getId());
 
             if (!dropStatsStmt.isMultiColumn()) {
                 GlobalStateMgr.getCurrentState().getAnalyzeMgr().dropAnalyzeStatus(table.getId());
@@ -1859,18 +1862,17 @@ public class StmtExecutor {
 
     private void sendMetaData(ShowResultSetMetaData metaData) throws IOException {
         // sends how many columns
-        serializer.reset();
-        serializer.writeVInt(metaData.getColumnCount());
-        context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        MysqlCodec.writeVInt(outputStream, metaData.getColumnCount());
+        context.getMysqlChannel().sendOnePacket(ByteBuffer.wrap(outputStream.toByteArray()));
         // send field one by one
         for (Column col : metaData.getColumns()) {
-            serializer.reset();
-            // TODO(zhaochun): only support varchar type
-            serializer.writeField(col.getName(), col.getType());
+            outputStream.reset();
+            MysqlCodec.writeField(outputStream, col.getName(), col.getType());
             context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
         }
         // send EOF
-        serializer.reset();
+        outputStream.reset();
         MysqlEofPacket eofPacket = new MysqlEofPacket(context.getState());
         eofPacket.writeTo(serializer);
         context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());

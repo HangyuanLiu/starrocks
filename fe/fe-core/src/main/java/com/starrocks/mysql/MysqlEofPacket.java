@@ -33,7 +33,7 @@ public class MysqlEofPacket extends MysqlPacket {
 
     @Override
     public void writeTo(MysqlSerializer serializer) {
-        MysqlCapability capability = serializer.getCapability();
+        MysqlCapability capability = MysqlCapability.DEFAULT_CAPABILITY;
 
         serializer.writeInt1(EOF_INDICATOR);
         if (capability.isProtocol41()) {

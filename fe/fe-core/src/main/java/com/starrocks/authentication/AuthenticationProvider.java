@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.authentication;
 
 import com.starrocks.sql.ast.UserAuthOption;
@@ -36,4 +35,8 @@ public interface AuthenticationProvider {
             byte[] password,
             byte[] randomString,
             UserAuthenticationInfo authenticationInfo) throws AuthenticationException;
+
+    default byte[] sendAuthMoreData(String user, String host) throws AuthenticationException {
+        return null;
+    }
 }

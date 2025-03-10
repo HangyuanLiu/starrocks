@@ -14,7 +14,6 @@
 
 package com.starrocks.authentication;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.StarRocksFE;
@@ -170,7 +169,6 @@ public class AuthenticationMgr {
     /**
      * Get max connection number of the user, if the user is ephemeral, i.e. the user is saved in SR,
      * but some external system, like LDAP, return default max connection number
-     *
      * @param currUserIdentity user identity of current connection
      * @return max connection number of the user
      */
@@ -186,7 +184,6 @@ public class AuthenticationMgr {
     /**
      * Get max connection number based on plain username, the user should be an internal user,
      * if the user doesn't exist in SR, it will throw an exception.
-     *
      * @param userName plain username saved in SR
      * @return max connection number of the user
      */
@@ -236,8 +233,6 @@ public class AuthenticationMgr {
     public void createUser(CreateUserStmt stmt) throws DdlException {
         UserIdentity userIdentity = stmt.getUserIdentity();
         UserAuthenticationInfo info = stmt.getAuthenticationInfo();
-        Preconditions.checkNotNull(userIdentity);
-
         writeLock();
         try {
             if (userToAuthenticationInfo.containsKey(userIdentity)) {
@@ -558,7 +553,7 @@ public class AuthenticationMgr {
         }
     }
 
-    public void loadV2(SRMetaBlockReader reader) throws IOException, SRMetaBlockEOFException {
+    public void loadV2(SRMetaBlockReader reader) throws IOException, SRMetaBlockException, SRMetaBlockEOFException {
         // 1 json for myself
         AuthenticationMgr ret = reader.readJson(AuthenticationMgr.class);
         ret.userToAuthenticationInfo = new UserAuthInfoTreeMap();

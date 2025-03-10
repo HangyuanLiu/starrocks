@@ -38,6 +38,11 @@ import com.google.common.base.Strings;
 import com.starrocks.authentication.AuthenticationException;
 import com.starrocks.authentication.AuthenticationHandler;
 import com.starrocks.authentication.AuthenticationMgr;
+import com.starrocks.authentication.AuthenticationProvider;
+import com.starrocks.authentication.AuthenticationProviderFactory;
+import com.starrocks.authentication.KerberosAuthenticationProvider;
+import com.starrocks.authentication.OAuth2AuthenticationProvider;
+import com.starrocks.authentication.OAuth2SecurityIntegration;
 import com.starrocks.authentication.OIDCSecurityIntegration;
 import com.starrocks.authentication.OpenIdConnectAuthenticationProvider;
 import com.starrocks.authentication.SecurityIntegration;
@@ -56,6 +61,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -142,28 +148,36 @@ public class MysqlProto {
         // StarRocks support the Protocol::AuthSwitchRequest to tell client which auth plugin is using
         String user = authPacket.getUser();
         String authPluginName = authPacket.getPluginName();
+
         String switchAuthPlugin = switchAuthPlugin(user, authPluginName, context);
-        if (switchAuthPlugin != null && !switchAuthPlugin.equals(authPluginName)) {
-            // 1. clear the serializer
-            serializer.reset();
-            // 2. build the auth switch request and send to the client
-            if (switchAuthPlugin.equals(MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT)) {
-                if (GlobalStateMgr.getCurrentState().getAuthenticationMgr().isSupportKerberosAuth()) {
-                    try {
-                        handshakePacket.buildKrb5AuthRequest(serializer, context.getRemoteIP(), authPacket.getUser());
-                    } catch (Exception e) {
-                        ErrorReport.report("Building handshake with kerberos error, msg: %s", e.getMessage());
-                        sendResponsePacket(context);
-                        return new NegotiateResult(authPacket, NegotiateState.KERBEROS_HANDSHAKE_FAILED);
-                    }
-                } else {
-                    ErrorReport.report(ErrorCode.ERR_AUTH_PLUGIN_NOT_LOADED, "authentication_kerberos");
-                    sendResponsePacket(context);
-                    return new NegotiateResult(authPacket, NegotiateState.KERBEROS_PLUGIN_NOT_LOADED);
-                }
+
+        if (switchAuthPlugin.equalsIgnoreCase(MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT)
+                && !GlobalStateMgr.getCurrentState().getAuthenticationMgr().isSupportKerberosAuth()) {
+            ErrorReport.report(ErrorCode.ERR_AUTH_PLUGIN_NOT_LOADED, "authentication_kerberos");
+            sendResponsePacket(context);
+            return new NegotiateResult(authPacket, NegotiateState.KERBEROS_PLUGIN_NOT_LOADED);
+        }
+
+        byte[] moreData;
+        try {
+            moreData = authMoreData(switchAuthPlugin, user, context);
+        } catch (AuthenticationException e) {
+            ErrorReport.report("Building handshake with kerberos error, msg: %s", e.getMessage());
+            sendResponsePacket(context);
+            return new NegotiateResult(authPacket, NegotiateState.KERBEROS_HANDSHAKE_FAILED);
+        }
+
+        if (moreData != null || !authPluginName.equalsIgnoreCase(switchAuthPlugin)) {
+            if (!switchAuthPlugin.equals(authPluginName)) {
+                serializer.writeInt1((byte) 0xfe);
+                serializer.writeNulTerminateString(authPluginName);
+                serializer.writeBytes(moreData);
+                serializer.writeInt1(0);
             } else {
-                handshakePacket.buildAuthSwitchRequest(serializer, switchAuthPlugin);
+                serializer.writeInt1((byte) 0x01);
+                serializer.writeBytes(moreData);
             }
+
             authPluginName = switchAuthPlugin;
             channel.sendAndFlush(serializer.toByteBuffer());
             // Server receive auth switch response packet from client.
@@ -175,7 +189,7 @@ public class MysqlProto {
             }
             // 3. the client use default password plugin of StarRocks to dispose
             // password
-            authPacket.setAuthResponse(readEofString(authSwitchResponse));
+            authPacket.setAuthResponse(MysqlCodec.readEofString(authSwitchResponse));
         }
 
         // change the capability of serializer
@@ -213,17 +227,16 @@ public class MysqlProto {
         if (localUser != null) {
             // Older version mysql client does not send auth plugin info, like 5.1 version.
             if (authPluginName == null) {
-                return null;
-            }
-
-            // kerberos
-            if (authPluginName.equals(MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT)) {
-                return MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT;
+                return MysqlHandshakePacket.NATIVE_AUTH_PLUGIN_NAME;
             }
 
             UserAuthenticationInfo authInfo = localUser.getValue();
             if (authInfo.getAuthPlugin().equalsIgnoreCase(OpenIdConnectAuthenticationProvider.PLUGIN_NAME)) {
                 return MysqlHandshakePacket.AUTHENTICATION_OPENID_CONNECT_CLIENT;
+            } else if (authInfo.getAuthPlugin().equalsIgnoreCase(KerberosAuthenticationProvider.PLUGIN_NAME)) {
+                return MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT;
+            } else if (authInfo.getAuthPlugin().equalsIgnoreCase(OAuth2AuthenticationProvider.PLUGIN_NAME)) {
+                return MysqlHandshakePacket.AUTHENTICATION_OAUTH2_CLIENT;
             }
 
             // Starting with MySQL 8.0.4, MySQL changed the default authentication plugin for MySQL client
@@ -234,7 +247,7 @@ public class MysqlProto {
                 return MysqlHandshakePacket.NATIVE_AUTH_PLUGIN_NAME;
             }
 
-            return null;
+            return authPluginName;
         } else {
             String[] authChain = Config.authentication_chain;
 
@@ -255,17 +268,55 @@ public class MysqlProto {
                 } else if (!securityType.equalsIgnoreCase(securityIntegration.getType())) {
                     // There are multiple different types of security integration,
                     // abandon switch authPlugin and use the type specified by the client.
-                    return null;
+                    return authPluginName;
                 }
             }
 
             if (securityType == null) {
-                return null;
+                return authPluginName;
             }
 
             if (securityType.equalsIgnoreCase(OIDCSecurityIntegration.TYPE)) {
                 return MysqlHandshakePacket.AUTHENTICATION_OPENID_CONNECT_CLIENT;
+            } else if (securityType.equalsIgnoreCase(OAuth2SecurityIntegration.TYPE)) {
+                return MysqlHandshakePacket.AUTHENTICATION_OAUTH2_CLIENT;
             }
+        }
+
+        return authPluginName;
+    }
+
+    private static byte[] authMoreData(String switchAuthPlugin, String user, ConnectContext context)
+            throws AuthenticationException {
+        if (switchAuthPlugin.equalsIgnoreCase(MysqlHandshakePacket.AUTHENTICATION_OAUTH2_CLIENT)) {
+            Map.Entry<UserIdentity, UserAuthenticationInfo> localUser = context.getGlobalStateMgr().getAuthenticationMgr()
+                    .getBestMatchedUserIdentity(user, context.getMysqlChannel().getRemoteIp());
+
+            OAuth2AuthenticationProvider provider = null;
+            if (localUser != null) {
+                provider = (OAuth2AuthenticationProvider) AuthenticationProviderFactory.create(
+                        OAuth2AuthenticationProvider.PLUGIN_NAME);
+            } else {
+                String[] authChain = Config.authentication_chain;
+                AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
+                for (String authMechanism : authChain) {
+                    SecurityIntegration securityIntegration = authenticationMgr.getSecurityIntegration(authMechanism);
+                    if (securityIntegration == null) {
+                        continue;
+                    }
+
+                    if (securityIntegration.getType().equalsIgnoreCase(OAuth2SecurityIntegration.TYPE)) {
+                        provider = (OAuth2AuthenticationProvider) securityIntegration.getAuthenticationProvider();
+                    }
+                }
+            }
+
+            return provider.sendAuthMoreData(user, context.getRemoteIP());
+        } else if (switchAuthPlugin.equals(MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT)) {
+            AuthenticationProvider provider = AuthenticationProviderFactory.create(KerberosAuthenticationProvider.PLUGIN_NAME);
+            provider.sendAuthMoreData(user, context.getRemoteIP());
+        } else {
+            return null;
         }
 
         return null;
@@ -344,91 +395,6 @@ public class MysqlProto {
         LOG.info("Command `Change user` succeeded, from [{}] to [{}]. ", previousQualifiedUser,
                 context.getQualifiedUser());
         return true;
-    }
-
-    public static byte readByte(ByteBuffer buffer) {
-        return buffer.get();
-    }
-
-    public static int readInt1(ByteBuffer buffer) {
-        return readByte(buffer) & 0XFF;
-    }
-
-    public static int readInt2(ByteBuffer buffer) {
-        return (readByte(buffer) & 0xFF) | ((readByte(buffer) & 0xFF) << 8);
-    }
-
-    public static int readInt3(ByteBuffer buffer) {
-        return (readByte(buffer) & 0xFF) | ((readByte(buffer) & 0xFF) << 8) | ((readByte(
-                buffer) & 0xFF) << 16);
-    }
-
-    public static int readInt4(ByteBuffer buffer) {
-        return (readByte(buffer) & 0xFF) | ((readByte(buffer) & 0xFF) << 8) | ((readByte(
-                buffer) & 0xFF) << 16) | ((readByte(buffer) & 0XFF) << 24);
-    }
-
-    public static long readInt6(ByteBuffer buffer) {
-        return (readInt4(buffer) & 0XFFFFFFFFL) | (((long) readInt2(buffer)) << 32);
-    }
-
-    public static long readInt8(ByteBuffer buffer) {
-        return (readInt4(buffer) & 0XFFFFFFFFL) | (((long) readInt4(buffer)) << 32);
-    }
-
-    public static long readVInt(ByteBuffer buffer) {
-        int b = readInt1(buffer);
-
-        if (b < 251) {
-            return b;
-        }
-        if (b == 252) {
-            return readInt2(buffer);
-        }
-        if (b == 253) {
-            return readInt3(buffer);
-        }
-        if (b == 254) {
-            return readInt8(buffer);
-        }
-        if (b == 251) {
-            throw new NullPointerException();
-        }
-        return 0;
-    }
-
-    public static byte[] readFixedString(ByteBuffer buffer, int len) {
-        byte[] buf = new byte[len];
-        buffer.get(buf);
-        return buf;
-    }
-
-    public static byte[] readEofString(ByteBuffer buffer) {
-        byte[] buf = new byte[buffer.remaining()];
-        buffer.get(buf);
-        return buf;
-    }
-
-    public static byte[] readLenEncodedString(ByteBuffer buffer) {
-        long length = readVInt(buffer);
-        byte[] buf = new byte[(int) length];
-        buffer.get(buf);
-        return buf;
-    }
-
-    public static byte[] readNulTerminateString(ByteBuffer buffer) {
-        int oldPos = buffer.position();
-        int nullPos;
-        for (nullPos = oldPos; nullPos < buffer.limit(); ++nullPos) {
-            if (buffer.get(nullPos) == 0) {
-                break;
-            }
-        }
-        byte[] buf = new byte[nullPos - oldPos];
-        buffer.get(buf);
-        // skip null byte.
-        buffer.get();
-        return buf;
     }
 
     public static boolean isRemoteIPLocalhost(String remoteIP) {

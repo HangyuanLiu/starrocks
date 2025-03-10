@@ -35,6 +35,8 @@ import com.starrocks.common.util.DebugUtil;
 import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.connector.RemoteFilesSampleStrategy;
 import com.starrocks.connector.statistics.StatisticsUtils;
+import com.starrocks.metric.LongCounterMetric;
+import com.starrocks.metric.MetricRepo;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.StmtExecutor;
@@ -70,6 +72,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -120,6 +123,21 @@ public class StatisticExecutor {
         }
 
         return queryColumnStats(context, dbId, tableId, columnStatsMetaList, table);
+    }
+
+    public List<TStatisticData> queryMultiColumnCombinedStats(ConnectContext context, List<Long> tableIds) {
+        List<Long> queryTableIds = tableIds.stream()
+                .map(tableId -> lookupTable(null, tableId))
+                .filter(Objects::nonNull)
+                .map(Table::getId)
+                .collect(Collectors.toList());
+
+        if (queryTableIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        String sql = StatisticSQLBuilder.buildMultiColumnCombinedStatisticsSQL(queryTableIds);
+        return executeStatisticDQL(context, sql);
     }
 
     private static Table lookupTable(Long dbId, Long tableId) {
@@ -447,6 +465,11 @@ public class StatisticExecutor {
         Database db = statsJob.getDb();
         Table table = statsJob.getTable();
 
+        LongCounterMetric runningJobs = MetricRepo.COUNTER_RUNNING_STATS_COLLECT_JOB.getMetric(statsJob.getName());
+        LongCounterMetric totalJobs = MetricRepo.COUNTER_TOTAL_STATS_COLLECT_JOB.getMetric(statsJob.getName());
+        runningJobs.increase(1L);
+        totalJobs.increase(1L);
+
         try {
             Stopwatch watch = Stopwatch.createStarted();
             statsConnectCtx.getSessionVariable().setEnableProfile(Config.enable_statistics_collect_profile);
@@ -464,8 +487,10 @@ public class StatisticExecutor {
             analyzeStatus.setEndTime(LocalDateTime.now());
             analyzeStatus.setReason(e.getMessage());
             GlobalStateMgr.getCurrentState().getAnalyzeMgr().addAnalyzeStatus(analyzeStatus);
+            MetricRepo.COUNTER_FAILED_STATS_COLLECT_JOB.getMetric(statsJob.getName()).increase(1L);
             return analyzeStatus;
         } finally {
+            runningJobs.increase(-1L);
             GlobalStateMgr.getCurrentState().getAnalyzeMgr().unregisterConnection(analyzeStatus.getId(), false);
         }
 
@@ -512,6 +537,7 @@ public class StatisticExecutor {
                         MultiColumnStatsMeta meta = new MultiColumnStatsMeta(db.getId(), table.getId(), columnIds,
                                 statsJob.getAnalyzeType(), type, analyzeStatus.getEndTime(), statsJob.getProperties());
                         GlobalStateMgr.getCurrentState().getAnalyzeMgr().addMultiColumnStatsMeta(meta);
+                        GlobalStateMgr.getCurrentState().getAnalyzeMgr().refreshMultiColumnStatisticsCache(meta.getTableId());
                     }
                 } else {
                     BasicStatsMeta basicStatsMeta = analyzeMgr.getTableBasicStatsMeta(table.getId());

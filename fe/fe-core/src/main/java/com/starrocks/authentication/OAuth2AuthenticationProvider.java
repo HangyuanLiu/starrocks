@@ -15,6 +15,7 @@
 package com.starrocks.authentication;
 
 import com.nimbusds.jose.jwk.JWKSet;
+import com.starrocks.mysql.MysqlCodec;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.qe.ConnectContext;
@@ -22,6 +23,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -197,5 +199,25 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
         } else {
             return null;
         }
+    }
+
+    @Override
+    public byte[] sendAuthMoreData(String user, String host) {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        MysqlCodec.writeInt1(outputStream, (byte) 0x01);
+        byte[] bytes = "http://localhost:38080/realms/master/protocol/openid-connect/auth"
+                .getBytes(StandardCharsets.UTF_8);
+        MysqlCodec.writeInt2(outputStream, bytes.length);
+        MysqlCodec.writeBytes(outputStream, bytes);
+
+        bytes = clientId.getBytes(StandardCharsets.UTF_8);
+        MysqlCodec.writeInt2(outputStream, bytes.length);
+        MysqlCodec.writeBytes(outputStream, bytes);
+
+        bytes = oauthRedirectUrl.getBytes(StandardCharsets.UTF_8);
+        MysqlCodec.writeInt2(outputStream, bytes.length);
+        MysqlCodec.writeBytes(outputStream, bytes);
+
+        return outputStream.toByteArray();
     }
 }

@@ -40,7 +40,6 @@ import com.google.gson.JsonParseException;
 import com.starrocks.alter.AlterJobV2;
 import com.starrocks.alter.BatchAlterJobPersistInfo;
 import com.starrocks.authentication.AuthenticationMgr;
-import com.starrocks.authentication.GroupProviderLog;
 import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.authentication.UserProperty;
 import com.starrocks.authentication.UserPropertyInfo;
@@ -96,6 +95,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.LocalMetastore;
 import com.starrocks.server.WarehouseManager;
 import com.starrocks.sql.ast.UserIdentity;
+import com.starrocks.sql.spm.BaselinePlan;
 import com.starrocks.staros.StarMgrJournal;
 import com.starrocks.staros.StarMgrServer;
 import com.starrocks.statistic.AnalyzeJob;
@@ -1170,6 +1170,16 @@ public class EditLog {
                     GlobalStateMgr.getCurrentState().getAuthenticationMgr().replayDropGroupProvider(groupProviderLog.getName());
                     break;
                 }
+                case OperationType.OP_CREATE_SPM_BASELINE_LOG: {
+                    BaselinePlan bp = (BaselinePlan) journal.data();
+                    globalStateMgr.getSqlPlanStorage().replayBaselinePlan(bp, true);
+                    break;
+                }
+                case OperationType.OP_DROP_SPM_BASELINE_LOG: {
+                    BaselinePlan bp = (BaselinePlan) journal.data();
+                    globalStateMgr.getSqlPlanStorage().replayBaselinePlan(bp, false);
+                    break;
+                }
                 default: {
                     if (Config.metadata_ignore_unknown_operation_type) {
                         LOG.warn("UNKNOWN Operation Type {}", opCode);
@@ -1935,6 +1945,21 @@ public class EditLog {
         logEdit(OperationType.OP_DROP_ROLE_V2, info);
     }
 
+    public void logCreateSecurityIntegration(String name, Map<String, String> propertyMap) {
+        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, propertyMap);
+        logEdit(OperationType.OP_CREATE_SECURITY_INTEGRATION, info);
+    }
+
+    public void logAlterSecurityIntegration(String name, Map<String, String> alterProps) {
+        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, alterProps);
+        logEdit(OperationType.OP_ALTER_SECURITY_INTEGRATION, info);
+    }
+
+    public void logDropSecurityIntegration(String name) {
+        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, null);
+        logEdit(OperationType.OP_DROP_SECURITY_INTEGRATION, info);
+    }
+
     public void logModifyBinlogConfig(ModifyTablePropertyOperationLog log) {
         logEdit(OperationType.OP_MODIFY_BINLOG_CONFIG, log);
     }
@@ -2038,18 +2063,11 @@ public class EditLog {
         logEdit(OperationType.OP_CLUSTER_SNAPSHOT_LOG, info);
     }
 
-    public void logCreateSecurityIntegration(String name, Map<String, String> propertyMap) {
-        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, propertyMap);
-        logEdit(OperationType.OP_CREATE_SECURITY_INTEGRATION, info);
+    public void logCreateSPMBaseline(BaselinePlan info) {
+        logEdit(OperationType.OP_CREATE_SPM_BASELINE_LOG, info);
     }
 
-    public void logAlterSecurityIntegration(String name, Map<String, String> alterProps) {
-        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, alterProps);
-        logEdit(OperationType.OP_ALTER_SECURITY_INTEGRATION, info);
-    }
-
-    public void logDropSecurityIntegration(String name) {
-        SecurityIntegrationPersistInfo info = new SecurityIntegrationPersistInfo(name, null);
-        logEdit(OperationType.OP_DROP_SECURITY_INTEGRATION, info);
+    public void logDropSPMBaseline(BaselinePlan info) {
+        logEdit(OperationType.OP_DROP_SPM_BASELINE_LOG, info);
     }
 }

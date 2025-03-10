@@ -39,7 +39,7 @@ public class SecurityIntegrationFactory {
         SecurityIntegration securityIntegration = null;
         if (type.equalsIgnoreCase(OIDCSecurityIntegration.TYPE)) {
             securityIntegration = new OIDCSecurityIntegration(name, propertyMap);
-        } else if (type.equals(OAuth2SecurityIntegration.SECURITY_INTEGRATION_TYPE_OAUTH2)) {
+        } else if (type.equals(OAuth2SecurityIntegration.TYPE)) {
             return new OAuth2SecurityIntegration(name, propertyMap);
         }
         Preconditions.checkArgument(securityIntegration != null);

@@ -36,6 +36,8 @@ public class StatsConstants {
     public static final int STATISTIC_BATCH_VERSION_V5 = 9;
     public static final int STATISTIC_DATA_VERSION_V2 = 10;
     public static final int STATISTIC_MULTI_COLUMN_VERSION = 12;
+    public static final int STATISTIC_QUERY_MULTI_COLUMN_VERSION = 13;
+
 
 
     public static final ImmutableSet<Integer> STATISTIC_SUPPORTED_VERSION =
@@ -53,6 +55,7 @@ public class StatsConstants {
                     .add(STATISTIC_BATCH_VERSION_V5)
                     .add(STATISTIC_DATA_VERSION_V2)
                     .add(STATISTIC_MULTI_COLUMN_VERSION)
+                    .add(STATISTIC_QUERY_MULTI_COLUMN_VERSION)
                     .build();
 
     public static final int STATISTICS_PARTITION_UPDATED_THRESHOLD = 10;
@@ -90,6 +93,9 @@ public class StatsConstants {
     public static final String HISTOGRAM_BUCKET_NUM = "histogram_bucket_num";
     public static final String HISTOGRAM_MCV_SIZE = "histogram_mcv_size";
     public static final String HISTOGRAM_SAMPLE_RATIO = "histogram_sample_ratio";
+
+    // SQL plan manager table
+    public static final String SPM_BASELINE_TABLE_NAME = "spm_baselines";
 
     /**
      * Deprecated stats properties

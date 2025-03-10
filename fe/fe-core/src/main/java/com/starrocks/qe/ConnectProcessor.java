@@ -57,6 +57,7 @@ import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.metric.MetricRepo;
 import com.starrocks.metric.ResourceGroupMetricMgr;
 import com.starrocks.mysql.MysqlChannel;
+import com.starrocks.mysql.MysqlCodec;
 import com.starrocks.mysql.MysqlCommand;
 import com.starrocks.mysql.MysqlPacket;
 import com.starrocks.mysql.MysqlProto;
@@ -91,6 +92,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -177,7 +179,6 @@ public class ConnectProcessor {
     private void resetConnectionSession() {
         // reconstruct serializer
         ctx.getSerializer().reset();
-        ctx.getSerializer().setCapability(ctx.getCapability());
         // reset session variable
         ctx.resetSessionVariable();
     }
@@ -412,7 +413,7 @@ public class ConnectProcessor {
     // Get the column definitions of a table
     private void handleFieldList() throws IOException {
         // Already get command code.
-        String tableName = new String(MysqlProto.readNulTerminateString(packetBuf), StandardCharsets.UTF_8);
+        String tableName = new String(MysqlCodec.readNulTerminateString(packetBuf), StandardCharsets.UTF_8);
         if (Strings.isNullOrEmpty(tableName)) {
             ctx.getState().setError("Empty tableName");
             return;
@@ -433,16 +434,15 @@ public class ConnectProcessor {
                 return;
             }
 
-            MysqlSerializer serializer = ctx.getSerializer();
             MysqlChannel channel = ctx.getMysqlChannel();
-
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
             // Send fields
             // NOTE: Field list doesn't send number of fields
             List<Column> baseSchema = table.getBaseSchema();
             for (Column column : baseSchema) {
-                serializer.reset();
-                serializer.writeField(db.getOriginName(), table.getName(), column, true);
-                channel.sendOnePacket(serializer.toByteBuffer());
+                out.reset();
+                MysqlCodec.writeField(out, db.getOriginName(), table.getName(), column, true);
+                channel.sendOnePacket(ByteBuffer.wrap(out.toByteArray()));
             }
         } catch (StarRocksConnectorException e) {
             LOG.error("errors happened when getting table {}", tableName, e);
