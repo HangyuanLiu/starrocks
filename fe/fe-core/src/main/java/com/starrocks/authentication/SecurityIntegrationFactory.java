@@ -24,6 +24,7 @@ public class SecurityIntegrationFactory {
     private static final ImmutableSortedSet<String> SUPPORTED_AUTH_MECHANISM =
             ImmutableSortedSet.orderedBy(String.CASE_INSENSITIVE_ORDER)
                     .add(OIDCSecurityIntegration.TYPE)
+                    .add(OAuth2SecurityIntegration.TYPE)
                     .build();
 
     public static void checkSecurityIntegrationIsSupported(String securityIntegrationType) {
@@ -39,7 +40,7 @@ public class SecurityIntegrationFactory {
         SecurityIntegration securityIntegration = null;
         if (type.equalsIgnoreCase(OIDCSecurityIntegration.TYPE)) {
             securityIntegration = new OIDCSecurityIntegration(name, propertyMap);
-        } else if (type.equals(OAuth2SecurityIntegration.TYPE)) {
+        } else if (type.equalsIgnoreCase(OAuth2SecurityIntegration.TYPE)) {
             return new OAuth2SecurityIntegration(name, propertyMap);
         }
         Preconditions.checkArgument(securityIntegration != null);

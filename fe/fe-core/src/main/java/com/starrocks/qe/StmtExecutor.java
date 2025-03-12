@@ -105,7 +105,6 @@ import com.starrocks.metric.MetricRepo;
 import com.starrocks.metric.TableMetricsEntity;
 import com.starrocks.metric.TableMetricsRegistry;
 import com.starrocks.mysql.MysqlChannel;
-import com.starrocks.mysql.MysqlCodec;
 import com.starrocks.mysql.MysqlCommand;
 import com.starrocks.mysql.MysqlEofPacket;
 import com.starrocks.mysql.MysqlSerializer;
@@ -134,6 +133,7 @@ import com.starrocks.qe.feedback.skeleton.SkeletonNode;
 import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.qe.scheduler.FeExecuteCoordinator;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.server.GracefulExitFlag;
 import com.starrocks.server.WarehouseManager;
 import com.starrocks.service.ExecuteEnv;
 import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
@@ -248,7 +248,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.thrift.transport.TTransportException;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
@@ -523,6 +522,7 @@ public class StmtExecutor {
         long beginTimeInNanoSecond = TimeUtils.getStartTime();
         context.setStmtId(STMT_ID_GENERATOR.incrementAndGet());
         context.setIsForward(false);
+        context.setIsLeaderTransferred(false);
 
         // set execution id.
         // Try to use query id as execution id when execute first time.
@@ -860,6 +860,12 @@ public class StmtExecutor {
             }
 
             recordExecStatsIntoContext();
+
+            if (GracefulExitFlag.isGracefulExit() && context.isLeaderTransferred() && !isInternalStmt) {
+                LOG.info("leader is transferred during executing, forward to new leader");
+                isForwardToLeaderOpt = Optional.of(true);
+                forwardToLeader();
+            }
         }
     }
 
@@ -1862,17 +1868,18 @@ public class StmtExecutor {
 
     private void sendMetaData(ShowResultSetMetaData metaData) throws IOException {
         // sends how many columns
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        MysqlCodec.writeVInt(outputStream, metaData.getColumnCount());
-        context.getMysqlChannel().sendOnePacket(ByteBuffer.wrap(outputStream.toByteArray()));
+        serializer.reset();
+        serializer.writeVInt(metaData.getColumnCount());
+        context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
         // send field one by one
         for (Column col : metaData.getColumns()) {
-            outputStream.reset();
-            MysqlCodec.writeField(outputStream, col.getName(), col.getType());
+            serializer.reset();
+            // TODO(zhaochun): only support varchar type
+            serializer.writeField(col.getName(), col.getType());
             context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
         }
         // send EOF
-        outputStream.reset();
+        serializer.reset();
         MysqlEofPacket eofPacket = new MysqlEofPacket(context.getState());
         eofPacket.writeTo(serializer);
         context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());

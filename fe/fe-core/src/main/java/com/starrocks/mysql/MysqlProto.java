@@ -150,14 +150,6 @@ public class MysqlProto {
         String authPluginName = authPacket.getPluginName();
 
         String switchAuthPlugin = switchAuthPlugin(user, authPluginName, context);
-
-        if (switchAuthPlugin.equalsIgnoreCase(MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT)
-                && !GlobalStateMgr.getCurrentState().getAuthenticationMgr().isSupportKerberosAuth()) {
-            ErrorReport.report(ErrorCode.ERR_AUTH_PLUGIN_NOT_LOADED, "authentication_kerberos");
-            sendResponsePacket(context);
-            return new NegotiateResult(authPacket, NegotiateState.KERBEROS_PLUGIN_NOT_LOADED);
-        }
-
         byte[] moreData;
         try {
             moreData = authMoreData(switchAuthPlugin, user, context);
@@ -168,6 +160,7 @@ public class MysqlProto {
         }
 
         if (moreData != null || !authPluginName.equalsIgnoreCase(switchAuthPlugin)) {
+            serializer.reset();
             if (!switchAuthPlugin.equals(authPluginName)) {
                 serializer.writeInt1((byte) 0xfe);
                 serializer.writeNulTerminateString(authPluginName);
@@ -314,12 +307,10 @@ public class MysqlProto {
             return provider.sendAuthMoreData(user, context.getRemoteIP());
         } else if (switchAuthPlugin.equals(MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT)) {
             AuthenticationProvider provider = AuthenticationProviderFactory.create(KerberosAuthenticationProvider.PLUGIN_NAME);
-            provider.sendAuthMoreData(user, context.getRemoteIP());
+            return provider.sendAuthMoreData(user, context.getRemoteIP());
         } else {
             return null;
         }
-
-        return null;
     }
 
     private static MysqlAuthPacket readAuthPacket(ConnectContext context) throws IOException {

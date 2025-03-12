@@ -92,7 +92,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -179,6 +178,7 @@ public class ConnectProcessor {
     private void resetConnectionSession() {
         // reconstruct serializer
         ctx.getSerializer().reset();
+        ctx.getSerializer().setCapability(ctx.getCapability());
         // reset session variable
         ctx.resetSessionVariable();
     }
@@ -434,15 +434,16 @@ public class ConnectProcessor {
                 return;
             }
 
+            MysqlSerializer serializer = ctx.getSerializer();
             MysqlChannel channel = ctx.getMysqlChannel();
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
+
             // Send fields
             // NOTE: Field list doesn't send number of fields
             List<Column> baseSchema = table.getBaseSchema();
             for (Column column : baseSchema) {
-                out.reset();
-                MysqlCodec.writeField(out, db.getOriginName(), table.getName(), column, true);
-                channel.sendOnePacket(ByteBuffer.wrap(out.toByteArray()));
+                serializer.reset();
+                serializer.writeField(db.getOriginName(), table.getName(), column, true);
+                channel.sendOnePacket(serializer.toByteBuffer());
             }
         } catch (StarRocksConnectorException e) {
             LOG.error("errors happened when getting table {}", tableName, e);
@@ -917,7 +918,7 @@ public class ConnectProcessor {
         ctx.setCommand(MysqlCommand.COM_SLEEP);
     }
 
-    public void loop() {
+    protected void loopForTest() {
         while (!ctx.isKilled()) {
             try {
                 processOnce();

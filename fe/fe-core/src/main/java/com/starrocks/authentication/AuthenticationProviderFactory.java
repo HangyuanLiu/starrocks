@@ -31,6 +31,7 @@ public class AuthenticationProviderFactory {
                             Config.oidc_required_issuer,
                             Config.oidc_required_audience))
                     .put(OAuth2AuthenticationProvider.PLUGIN_NAME, new OAuth2AuthenticationProvider(
+                            Config.oauth2_auth_server_uri,
                             Config.oauth2_token_server_url,
                             Config.oauth2_redirect_url,
                             Config.oauth2_client_id,

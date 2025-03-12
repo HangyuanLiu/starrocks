@@ -25,6 +25,7 @@ import java.util.Set;
 public class OAuth2SecurityIntegration extends SecurityIntegration {
     public static final String TYPE = AuthPlugin.AUTHENTICATION_OAUTH2.name();
 
+    public static final String OAUTH2_AUTH_SERVER_URL = "oauth2_auth_server_url";
     public static final String OAUTH2_TOKEN_SERVER_URL = "oauth2_token_server_url";
     public static final String OAUTH2_REDIRECT_URL = "oauth2_redirect_url";
     public static final String OAUTH2_CLIENT_ID = "oauth2_client_id";
@@ -50,6 +51,7 @@ public class OAuth2SecurityIntegration extends SecurityIntegration {
 
     @Override
     public AuthenticationProvider getAuthenticationProvider() {
+        String authServerUrl = propertyMap.get(OAUTH2_AUTH_SERVER_URL);
         String tokenServerUrl = propertyMap.get(OAUTH2_TOKEN_SERVER_URL);
         String oauthRedirectUrl = propertyMap.get(OAUTH2_REDIRECT_URL);
         String clientId = propertyMap.get(OAUTH2_CLIENT_ID);
@@ -60,8 +62,8 @@ public class OAuth2SecurityIntegration extends SecurityIntegration {
         String requireAudience = propertyMap.get(OIDC_REQUIRED_AUDIENCE);
         Long connectWaitTimeout = Long.valueOf(propertyMap.getOrDefault(OAUTH2_CONNECT_WAIT_TIMEOUT, "300"));
 
-        return new OAuth2AuthenticationProvider(tokenServerUrl, oauthRedirectUrl, clientId, clientSecret, jwkSetUri,
-                principalField, requireIssuer, requireAudience, connectWaitTimeout);
+        return new OAuth2AuthenticationProvider(authServerUrl, tokenServerUrl, oauthRedirectUrl, clientId, clientSecret,
+                jwkSetUri, principalField, requireIssuer, requireAudience, connectWaitTimeout);
     }
 
     @Override

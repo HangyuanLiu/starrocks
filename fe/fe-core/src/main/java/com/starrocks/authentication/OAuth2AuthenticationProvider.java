@@ -22,6 +22,7 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
+import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -37,6 +38,7 @@ import java.util.Map;
 public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     public static final String PLUGIN_NAME = AuthPlugin.AUTHENTICATION_OAUTH2.name();
 
+    private final String authServerUrl;
     private final String tokenServerUrl;
     private final String oauthRedirectUrl;
     private final String clientId;
@@ -47,7 +49,8 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     private final String requiredAudience;
     private final Long connectWaitTimeout;
 
-    public OAuth2AuthenticationProvider(String tokenServerUrl,
+    public OAuth2AuthenticationProvider(String authServerUrl,
+                                        String tokenServerUrl,
                                         String oauthRedirectUrl,
                                         String clientId,
                                         String clientSecret,
@@ -56,6 +59,7 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
                                         String requiredIssuer,
                                         String requiredAudience,
                                         Long connectWaitTimeout) {
+        this.authServerUrl = authServerUrl;
         this.tokenServerUrl = tokenServerUrl;
         this.oauthRedirectUrl = oauthRedirectUrl;
         this.clientId = clientId;
@@ -93,7 +97,13 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
             } catch (IOException | ParseException e) {
                 throw new AuthenticationException(e.getMessage());
             }
-            OpenIdConnectVerifier.verify(oidcToken, user, jwkSet, principalFiled, requiredIssuer, requiredAudience);
+
+            JSONObject authResponse = new JSONObject(oidcToken);
+            String accessToken = authResponse.getString("access_token");
+
+            String idToken = authResponse.getString("id_token");
+
+            OpenIdConnectVerifier.verify(idToken, user, jwkSet, principalFiled, requiredIssuer, requiredAudience);
         } catch (Exception e) {
             throw new AuthenticationException(e.getMessage());
         }
@@ -204,9 +214,7 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     @Override
     public byte[] sendAuthMoreData(String user, String host) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        MysqlCodec.writeInt1(outputStream, (byte) 0x01);
-        byte[] bytes = "http://localhost:38080/realms/master/protocol/openid-connect/auth"
-                .getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = authServerUrl.getBytes(StandardCharsets.UTF_8);
         MysqlCodec.writeInt2(outputStream, bytes.length);
         MysqlCodec.writeBytes(outputStream, bytes);
 

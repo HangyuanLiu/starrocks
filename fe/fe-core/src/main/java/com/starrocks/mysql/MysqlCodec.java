@@ -108,6 +108,10 @@ public class MysqlCodec {
         return buf;
     }
 
+    public static void writeNull(ByteArrayOutputStream out) {
+        writeByte(out, (byte) (251 & 0xff));
+    }
+
     public static void writeByte(ByteArrayOutputStream out, byte value) {
         out.write(value);
     }

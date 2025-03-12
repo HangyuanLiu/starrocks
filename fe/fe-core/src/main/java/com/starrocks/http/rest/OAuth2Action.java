@@ -75,7 +75,7 @@ public class OAuth2Action extends RestBaseAction {
         OAuth2TokenMgr oAuth2TokenMgr = GlobalStateMgr.getCurrentState().getoAuth2TokenMgr();
         OAuth2TokenMgr.Resource resource = new OAuth2TokenMgr.Resource();
         resource.authorizationCode = authorizationCode;
-        oAuth2TokenMgr.oAuth2WaitCallbackList.put(connectionId, resource);
+        oAuth2TokenMgr.oAuth2WaitCallbackList.put(connection    Id, resource);
 
          */
 
