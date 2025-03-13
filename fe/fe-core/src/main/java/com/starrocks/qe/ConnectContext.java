@@ -171,6 +171,7 @@ public class ConnectContext {
     // `execute as` will modify currentRoleIds and assign the active role of the impersonate user to currentRoleIds.
     // For specific logic, please refer to setCurrentRoleIds.
     protected Set<Long> currentRoleIds = new HashSet<>();
+    // groups of current user
     protected Set<String> groups = new HashSet<>();
     // Serializer used to pack MySQL packet.
     protected MysqlSerializer serializer;

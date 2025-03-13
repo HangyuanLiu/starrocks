@@ -107,23 +107,14 @@ public class MysqlAuthPacket extends MysqlPacket {
         }
         // user name
         userName = new String(MysqlCodec.readNulTerminateString(buffer));
-
         if (capability.isPluginAuthDataLengthEncoded()) {
             authResponse = MysqlCodec.readLenEncodedString(buffer);
-            /*
-            ByteBuffer authBuffer = ByteBuffer.wrap(authResponse);
-            int len = MysqlProto.readInt1(authBuffer);
-            byte[] jwt =  MysqlProto.readLenEncodedString(authBuffer);
-            System.out.println(new String(jwt));
-
-             */
         } else if (capability.isSecureConnection()) {
             int len = MysqlCodec.readInt1(buffer);
             authResponse = MysqlCodec.readFixedString(buffer, len);
         } else {
             authResponse = MysqlCodec.readNulTerminateString(buffer);
         }
-
         // DB to use
         if (buffer.remaining() > 0 && capability.isConnectedWithDb()) {
             database = new String(MysqlCodec.readNulTerminateString(buffer));

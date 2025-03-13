@@ -14,6 +14,7 @@
 
 package com.starrocks.authentication;
 
+import com.google.common.base.Joiner;
 import com.starrocks.common.Config;
 import com.starrocks.common.ConfigBase;
 import com.starrocks.common.ErrorCode;
@@ -41,7 +42,7 @@ public class AuthenticationHandler {
         AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
 
         UserIdentity authenticatedUser = null;
-        String groupProviderName = null;
+        List<String> groupProviderName = null;
         List<String> authenticatedGroupList = null;
 
         if (Config.enable_auth_check) {
@@ -65,8 +66,7 @@ public class AuthenticationHandler {
                             provider.authenticate(user, remoteHost, authResponse, randomString, matchedUserIdentity.getValue());
                             authenticatedUser = matchedUserIdentity.getKey();
 
-                            groupProviderName = Config.group_provider;
-                            authenticatedGroupList = List.of(Config.authenticated_group_list);
+                            groupProviderName = List.of(Config.group_provider);
                         } catch (AuthenticationException e) {
                             LOG.debug("failed to authenticate for native, user: {}@{}, error: {}",
                                     user, remoteHost, e.getMessage());
@@ -87,10 +87,10 @@ public class AuthenticationHandler {
 
                         groupProviderName = securityIntegration.getGroupProviderName();
                         if (groupProviderName == null) {
-                            groupProviderName = Config.group_provider;
+                            groupProviderName = List.of(Config.group_provider);
                         }
 
-                        authenticatedGroupList = securityIntegration.getAuthenticatedGroupList();
+                        authenticatedGroupList = securityIntegration.getGroupAllowedLoginList();
                     } catch (AuthenticationException e) {
                         LOG.debug("failed to authenticate, user: {}@{}, security integration: {}, error: {}",
                                 user, remoteHost, securityIntegration, e.getMessage());
@@ -105,8 +105,7 @@ public class AuthenticationHandler {
                 throw new AuthenticationException(ErrorCode.ERR_AUTHENTICATION_FAIL, user, usePasswd);
             } else {
                 authenticatedUser = matchedUserIdentity.getKey();
-                groupProviderName = Config.group_provider;
-                authenticatedGroupList = List.of(Config.authenticated_group_list);
+                groupProviderName = List.of(Config.group_provider);
             }
         }
 
@@ -124,23 +123,29 @@ public class AuthenticationHandler {
         Set<String> groups = getGroups(authenticatedUser, groupProviderName);
         context.setGroups(groups);
 
-        if (!authenticatedGroupList.isEmpty()) {
+        if (authenticatedGroupList != null && !authenticatedGroupList.isEmpty()) {
             Set<String> intersection = new HashSet<>(groups);
             intersection.retainAll(authenticatedGroupList);
             if (intersection.isEmpty()) {
-                throw new AuthenticationException(ErrorCode.ERR_GROUP_ACCESS_DENY);
+                throw new AuthenticationException(ErrorCode.ERR_GROUP_ACCESS_DENY, user, Joiner.on(",").join(groups));
             }
         }
 
         return authenticatedUser;
     }
 
-    public static Set<String> getGroups(UserIdentity userIdentity, String groupProviderName) {
+    public static Set<String> getGroups(UserIdentity userIdentity, List<String> groupProviderList) {
         AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
-        GroupProvider groupProvider = authenticationMgr.getGroupProvider(groupProviderName);
-        if (groupProvider == null) {
-            return new HashSet<>();
+
+        HashSet<String> groups = new HashSet<>();
+        for (String groupProviderName : groupProviderList) {
+            GroupProvider groupProvider = authenticationMgr.getGroupProvider(groupProviderName);
+            if (groupProvider == null) {
+                continue;
+            }
+            groups.addAll(groupProvider.getGroup(userIdentity));
         }
-        return groupProvider.getGroup(userIdentity);
+
+        return groups;
     }
 }
