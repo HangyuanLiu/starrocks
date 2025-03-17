@@ -36,8 +36,6 @@ import java.text.ParseException;
 import java.util.Map;
 
 public class OAuth2AuthenticationProvider implements AuthenticationProvider {
-    public static final String PLUGIN_NAME = AuthPlugin.AUTHENTICATION_OAUTH2.name();
-
     private final String authServerUrl;
     private final String tokenServerUrl;
     private final String oauthRedirectUrl;
@@ -75,7 +73,7 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     public UserAuthenticationInfo analyzeAuthOption(UserIdentity userIdentity, UserAuthOption userAuthOption)
             throws AuthenticationException {
         UserAuthenticationInfo info = new UserAuthenticationInfo();
-        info.setAuthPlugin(PLUGIN_NAME);
+        info.setAuthPlugin(AuthPlugin.Server.AUTHENTICATION_OAUTH2.name());
         info.setPassword(MysqlPassword.EMPTY_PASSWORD);
         info.setOrigUserHost(userIdentity.getUser(), userIdentity.getHost());
         info.setTextForAuthPlugin(userAuthOption == null ? null : userAuthOption.getAuthString());
@@ -212,7 +210,7 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     }
 
     @Override
-    public byte[] sendAuthMoreData(String user, String host) {
+    public byte[] authMoreDataPacket(String user, String host) throws AuthenticationException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         byte[] bytes = authServerUrl.getBytes(StandardCharsets.UTF_8);
         MysqlCodec.writeInt2(outputStream, bytes.length);

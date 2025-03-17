@@ -34,8 +34,8 @@
 
 package com.starrocks.mysql;
 
-import com.google.common.collect.ImmutableMap;
 import com.starrocks.common.Config;
+import com.starrocks.mysql.privilege.AuthPlugin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -53,18 +53,6 @@ public class MysqlHandshakePacket extends MysqlPacket {
     private static final MysqlCapability CAPABILITY = MysqlCapability.DEFAULT_CAPABILITY;
     // status flags not supported in StarRocks
     private static final int STATUS_FLAGS = 0;
-    public static final String NATIVE_AUTH_PLUGIN_NAME = "mysql_native_password";
-    public static final String CLEAR_PASSWORD_PLUGIN_NAME = "mysql_clear_password";
-    public static final String AUTHENTICATION_KERBEROS_CLIENT = "authentication_kerberos_client";
-    public static final String AUTHENTICATION_OPENID_CONNECT_CLIENT = "authentication_openid_connect_client";
-    public static final String AUTHENTICATION_OAUTH2_CLIENT = "authentication_oauth2_client";
-
-    private static final ImmutableMap<String, Boolean> SUPPORTED_PLUGINS = new ImmutableMap.Builder<String, Boolean>()
-            .put(NATIVE_AUTH_PLUGIN_NAME, true)
-            .put(CLEAR_PASSWORD_PLUGIN_NAME, true)
-            .put(AUTHENTICATION_OPENID_CONNECT_CLIENT, true)
-            .put(AUTHENTICATION_OAUTH2_CLIENT, true)
-            .build();
 
     // connection id used in KILL statement.
     private final int connectionId;
@@ -118,11 +106,7 @@ public class MysqlHandshakePacket extends MysqlPacket {
             serializer.writeInt1(0);
         }
         if (capability.isPluginAuth()) {
-            serializer.writeNulTerminateString(NATIVE_AUTH_PLUGIN_NAME);
+            serializer.writeNulTerminateString(AuthPlugin.Client.MYSQL_NATIVE_PASSWORD.toString());
         }
-    }
-
-    public static boolean checkAuthPluginSameAsStarRocks(String pluginName) {
-        return SUPPORTED_PLUGINS.containsKey(pluginName) && Boolean.TRUE.equals(SUPPORTED_PLUGINS.get(pluginName));
     }
 }

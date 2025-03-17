@@ -36,7 +36,11 @@ public interface AuthenticationProvider {
             byte[] randomString,
             UserAuthenticationInfo authenticationInfo) throws AuthenticationException;
 
-    default byte[] sendAuthMoreData(String user, String host) throws AuthenticationException {
+    /**
+     * Some special Authentication Methods need to pass more information, and authMoreDataPacket is a unified interface.
+     * <a href="https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_auth_more_data.html">...</a>
+     */
+    default byte[] authMoreDataPacket(String user, String host) throws AuthenticationException {
         return null;
     }
 }

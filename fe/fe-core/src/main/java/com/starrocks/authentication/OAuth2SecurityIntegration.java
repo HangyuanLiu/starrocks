@@ -14,7 +14,6 @@
 
 package com.starrocks.authentication;
 
-import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.sql.analyzer.SemanticException;
 
 import java.util.Arrays;
@@ -23,8 +22,6 @@ import java.util.Map;
 import java.util.Set;
 
 public class OAuth2SecurityIntegration extends SecurityIntegration {
-    public static final String TYPE = AuthPlugin.AUTHENTICATION_OAUTH2.name();
-
     public static final String OAUTH2_AUTH_SERVER_URL = "oauth2_auth_server_url";
     public static final String OAUTH2_TOKEN_SERVER_URL = "oauth2_token_server_url";
     public static final String OAUTH2_REDIRECT_URL = "oauth2_redirect_url";

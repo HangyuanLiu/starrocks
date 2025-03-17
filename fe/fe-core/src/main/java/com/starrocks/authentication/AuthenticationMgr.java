@@ -22,6 +22,7 @@ import com.starrocks.authorization.UserPrivilegeCollectionV2;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.Pair;
 import com.starrocks.mysql.MysqlPassword;
+import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.persist.EditLog;
 import com.starrocks.persist.GroupProviderLog;
 import com.starrocks.persist.ImageWriter;
@@ -92,7 +93,7 @@ public class AuthenticationMgr {
         } catch (AuthenticationException e) {
             throw new RuntimeException("should not happened!", e);
         }
-        info.setAuthPlugin(PlainPasswordAuthenticationProvider.PLUGIN_NAME);
+        info.setAuthPlugin(AuthPlugin.Server.MYSQL_NATIVE_PASSWORD.toString());
         info.setPassword(MysqlPassword.EMPTY_PASSWORD);
         userToAuthenticationInfo.put(UserIdentity.ROOT, info);
         userNameToProperty.put(UserIdentity.ROOT.getUser(), new UserProperty());
