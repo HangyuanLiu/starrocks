@@ -123,7 +123,7 @@ CONF_Int32(clone_worker_count, "3");
 // The count of thread to clone.
 CONF_Int32(storage_medium_migrate_count, "3");
 // The count of thread to check consistency.
-CONF_Int32(check_consistency_worker_count, "1");
+CONF_mInt32(check_consistency_worker_count, "1");
 // The count of thread to update scheam
 CONF_Int32(update_schema_worker_count, "3");
 // The count of thread to upload.
@@ -408,6 +408,15 @@ CONF_Int32(arrow_flight_port, "-1");
 CONF_Int64(load_data_reserve_hours, "4");
 // log error log will be removed after this time
 CONF_mInt64(load_error_log_reserve_hours, "48");
+// Whether to execute load channel RPC requests asynchronously, that is,
+// to run RPCs in a separate thread pool instead of within BRPC workers
+CONF_mBool(enable_load_channel_rpc_async, "true");
+// Maximum threads in load channel RPC thread pool. Default: -1 (auto-set to CPU cores),
+// aligning with brpc workers' default (brpc_num_threads) to keep compatible after
+// switching from sync to async mode
+CONF_mInt32(load_channel_rpc_thread_pool_num, "-1");
+// The queue size for Load channel rpc thread pool
+CONF_Int32(load_channel_rpc_thread_pool_queue_size, "1024000");
 CONF_mInt32(number_tablet_writer_threads, "16");
 CONF_mInt64(max_queueing_memtable_per_tablet, "2");
 // when memory limit exceed and memtable last update time exceed this time, memtable will be flushed
@@ -476,16 +485,24 @@ CONF_mInt32(load_rpc_slow_log_frequency_threshold_seconds, "60");
 // Whether to enable load diagnose. The diagnosis is initiated by OlapTableSink when meeting brpc timeout
 // from LoadChannel. It will send rpc to LoadChannel to check the status.
 CONF_mBool(enable_load_diagnose, "true");
-// If the rpc timeout exceeds this threshold, then diagnostics will be performed every time a timeout occurs;
-// if it is below this threshold, diagnostics will be performed once every 20 timeouts. This is used to avoid
-// frequent diagnostics for real-time loads which have a smaller brpc timeout.
-CONF_mInt32(load_diagnose_small_rpc_timeout_threshold_ms, "60000");
 // The timeout of the diagnosis rpc sent from OlapTableSink to LoadChannel
 CONF_mInt32(load_diagnose_send_rpc_timeout_ms, "2000");
+// If the rpc timeout exceeds this threshold, then profile diagnostics will be performed every time
+// a timeout occurs; if it is below this threshold, diagnostics will be performed once every 20 timeouts.
+// This is used to avoid frequent diagnostics for real-time loads which have a smaller brpc timeout.
+CONF_mInt32(load_diagnose_rpc_timeout_profile_threshold_ms, "60000");
+// If the rpc timeout exceeds this threshold, then stack trace diagnostics will be enabled.
+// OlapTableSink will send stack trace request to the target BE.
+CONF_mInt32(load_diagnose_rpc_timeout_stack_trace_threshold_ms, "600000");
 // Used in load fail point. The brpc timeout used to simulate brpc exception "[E1008]Reached timeout"
 CONF_mInt32(load_fp_brpc_timeout_ms, "-1");
 // Used in load fail point. The block time to simulate TabletsChannel::add_chunk spends much time
 CONF_mInt32(load_fp_tablets_channel_add_chunk_block_ms, "-1");
+// Used in load fail point. The block time to simulate waiting secondary replica spends much time
+CONF_mInt32(load_fp_tablets_channel_wait_secondary_replica_block_ms, "-1");
+
+// The interval for performing stack trace to control the frequency.
+CONF_mInt64(diagnose_stack_trace_interval_ms, "1800000");
 
 CONF_Bool(enable_load_segment_parallel, "false");
 CONF_Int32(load_segment_thread_pool_num_max, "128");

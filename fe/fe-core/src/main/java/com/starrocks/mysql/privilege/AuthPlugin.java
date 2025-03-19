@@ -73,13 +73,13 @@ public class AuthPlugin {
     }
 
     public static String covertFromServerToClient(String serverPluginName) {
-        if (serverPluginName.equals(Server.MYSQL_NATIVE_PASSWORD.toString())) {
+        if (serverPluginName.equalsIgnoreCase(Server.MYSQL_NATIVE_PASSWORD.toString())) {
             return Client.MYSQL_NATIVE_PASSWORD.toString();
-        } else if (serverPluginName.equals(Server.AUTHENTICATION_LDAP_SIMPLE.toString())) {
+        } else if (serverPluginName.equalsIgnoreCase(Server.AUTHENTICATION_LDAP_SIMPLE.toString())) {
             return Client.MYSQL_CLEAR_PASSWORD.toString();
-        } else if (serverPluginName.equals(Server.AUTHENTICATION_OPENID_CONNECT.toString())) {
+        } else if (serverPluginName.equalsIgnoreCase(Server.AUTHENTICATION_OPENID_CONNECT.toString())) {
             return Client.AUTHENTICATION_OPENID_CONNECT_CLIENT.toString();
-        } else if (serverPluginName.equals(Server.AUTHENTICATION_OAUTH2.toString())) {
+        } else if (serverPluginName.equalsIgnoreCase(Server.AUTHENTICATION_OAUTH2.toString())) {
             return Client.AUTHENTICATION_OAUTH2_CLIENT.toString();
         }
         return null;
