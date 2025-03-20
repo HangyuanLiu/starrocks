@@ -151,6 +151,7 @@ public class MysqlProto {
             return new NegotiateResult(authPacket, NegotiateState.READ_AUTH_SWITCH_PKG_FAILED);
         }
 
+        context.setAuthPlugin(authPacket.getPluginName());
         // change the capability of serializer
         context.setCapability(context.getServerCapability());
         serializer.setCapability(context.getCapability());
@@ -283,7 +284,7 @@ public class MysqlProto {
         if (localUser != null) {
             UserAuthenticationInfo authInfo = localUser.getValue();
             switchAuthPlugin = AuthPlugin.covertFromServerToClient(authInfo.getAuthPlugin());
-            provider = AuthenticationProviderFactory.create(authInfo.getAuthPlugin());
+            provider = AuthenticationProviderFactory.create(authInfo.getAuthPlugin(), localUser.getValue().getAuthString());
         } else {
             for (String authMechanism : Config.authentication_chain) {
                 if (authMechanism.equals(ConfigBase.AUTHENTICATION_CHAIN_MECHANISM_NATIVE)) {
@@ -314,7 +315,15 @@ public class MysqlProto {
 
         if (authMoreDataPacket != null || !authPluginName.equalsIgnoreCase(switchAuthPlugin)) {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            if (!authPluginName.equalsIgnoreCase(switchAuthPlugin)) {
+            if (authPluginName.equalsIgnoreCase(switchAuthPlugin)) {
+                // AuthMoreData Packet
+                MysqlCodec.writeInt1(outputStream, (byte) 0x01);
+                MysqlCodec.writeBytes(outputStream, authMoreDataPacket);
+            } else {
+                if (AuthPlugin.Client.AUTHENTICATION_OAUTH2_CLIENT.toString().equalsIgnoreCase(switchAuthPlugin)) {
+                    return;
+                }
+
                 // AuthSwitchRequest Packet
                 MysqlCodec.writeInt1(outputStream, (byte) 0xfe);
                 MysqlCodec.writeNulTerminateString(outputStream, switchAuthPlugin);
@@ -324,10 +333,6 @@ public class MysqlProto {
                 MysqlCodec.writeInt1(outputStream, 0);
 
                 mysqlAuthPacket.setPluginName(switchAuthPlugin);
-            } else {
-                // AuthMoreData Packet
-                MysqlCodec.writeInt1(outputStream, (byte) 0x01);
-                MysqlCodec.writeBytes(outputStream, authMoreDataPacket);
             }
 
             MysqlChannel channel = context.getMysqlChannel();

@@ -27,7 +27,6 @@ import com.starrocks.qe.ConnectScheduler;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.NodeMgr;
 import com.starrocks.service.ExecuteEnv;
-import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.system.Frontend;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -83,8 +82,14 @@ public class OAuth2Action extends RestBaseAction {
 
         ConnectScheduler connectScheduler = ExecuteEnv.getInstance().getScheduler();
         ConnectContext context = connectScheduler.getContext(connectionId);
+        if (context == null) {
+            response.appendContent(
+                    "<h1><div style=\"text-align: center;\">" + "Not found connect context " + connectionId + "</div></h1>");
+            //response.appendContent("Not found connect context " + connectionId);
+            sendResult(request, response);
+            return;
+        }
 
-        UserIdentity userIdentity = context.getCurrentUserIdentity();
         OAuth2Context oAuth2Context = context.getOAuth2Context();
         String oidcToken = getToken(authorizationCode, oAuth2Context, connectionId);
 
@@ -100,7 +105,7 @@ public class OAuth2Action extends RestBaseAction {
             String accessToken = authResponse.getString("access_token");
             String idToken = authResponse.getString("id_token");
 
-            OpenIdConnectVerifier.verify(idToken, userIdentity.getUser(), jwkSet,
+            OpenIdConnectVerifier.verify(idToken, context.getQualifiedUser(), jwkSet,
                     oAuth2Context.principalFiled(),
                     oAuth2Context.requiredIssuer(),
                     oAuth2Context.requiredAudience());
@@ -108,6 +113,9 @@ public class OAuth2Action extends RestBaseAction {
             context.setToken(idToken);
         } catch (Exception e) {
             //throw new AuthenticationException(e.getMessage());
+            response.appendContent(e.getMessage());
+            sendResult(request, response);
+            return;
         }
 
         /*
@@ -195,7 +203,7 @@ public class OAuth2Action extends RestBaseAction {
         Map<Object, Object> body = Map.of(
                 "grant_type", "authorization_code",
                 "code", authorizationCode,
-                "redirect_uri", oAuth2Context.oauthRedirectUrl() + "?connectionId=" + connectionId,
+                "redirect_uri", oAuth2Context.redirectUrl() + "?connectionId=" + connectionId,
                 "client_id", oAuth2Context.clientId(),
                 "client_secret", oAuth2Context.clientSecret()
         );

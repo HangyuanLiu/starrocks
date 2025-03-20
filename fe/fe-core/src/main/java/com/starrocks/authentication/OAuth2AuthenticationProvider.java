@@ -17,6 +17,7 @@ package com.starrocks.authentication;
 import com.starrocks.mysql.MysqlCodec;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.AuthPlugin;
+import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
 
@@ -26,27 +27,8 @@ import java.nio.charset.StandardCharsets;
 public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     private final OAuth2Context oAuth2Context;
 
-    public OAuth2AuthenticationProvider(String authServerUrl,
-                                        String tokenServerUrl,
-                                        String oauthRedirectUrl,
-                                        String clientId,
-                                        String clientSecret,
-                                        String jwksUrl,
-                                        String principalFiled,
-                                        String requiredIssuer,
-                                        String requiredAudience,
-                                        Long connectWaitTimeout) {
-        oAuth2Context = new OAuth2Context(
-                authServerUrl,
-                tokenServerUrl,
-                oauthRedirectUrl,
-                clientId,
-                clientSecret,
-                jwksUrl,
-                principalFiled,
-                requiredIssuer,
-                requiredAudience,
-                connectWaitTimeout);
+    public OAuth2AuthenticationProvider(OAuth2Context oAuth2Context) {
+        this.oAuth2Context = oAuth2Context;
     }
 
     @Override
@@ -56,13 +38,36 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
         info.setAuthPlugin(AuthPlugin.Server.AUTHENTICATION_OAUTH2.name());
         info.setPassword(MysqlPassword.EMPTY_PASSWORD);
         info.setOrigUserHost(userIdentity.getUser(), userIdentity.getHost());
-        info.setTextForAuthPlugin(userAuthOption == null ? null : userAuthOption.getAuthString());
+        info.setAuthString(userAuthOption == null ? null : userAuthOption.getAuthString());
         return info;
     }
 
     @Override
     public void authenticate(String user, String host, byte[] password, byte[] randomString,
                              UserAuthenticationInfo authenticationInfo) throws AuthenticationException {
+        ConnectContext context = ConnectContext.get();
+        long startTime = System.currentTimeMillis();
+        String token = null;
+        while (true) {
+            token = context.getToken();
+            if (token != null)  {
+                break;
+            }
+
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+
+            if (System.currentTimeMillis() - startTime > oAuth2Context.connectWaitTimeout() * 1000) {
+                break;
+            }
+        }
+
+        if (token == null) {
+            throw new AuthenticationException("OIDC wait callback timeout");
+        }
     }
 
     @Override
@@ -76,7 +81,7 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
         MysqlCodec.writeInt2(outputStream, bytes.length);
         MysqlCodec.writeBytes(outputStream, bytes);
 
-        bytes = oAuth2Context.oauthRedirectUrl().getBytes(StandardCharsets.UTF_8);
+        bytes = oAuth2Context.redirectUrl().getBytes(StandardCharsets.UTF_8);
         MysqlCodec.writeInt2(outputStream, bytes.length);
         MysqlCodec.writeBytes(outputStream, bytes);
 

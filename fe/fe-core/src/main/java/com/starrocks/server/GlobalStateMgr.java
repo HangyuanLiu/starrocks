@@ -48,7 +48,6 @@ import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.analysis.TableName;
 import com.starrocks.authentication.AuthenticationMgr;
 import com.starrocks.authentication.JwkMgr;
-import com.starrocks.authentication.OAuth2TokenMgr;
 import com.starrocks.authorization.AccessControlProvider;
 import com.starrocks.authorization.AuthorizationMgr;
 import com.starrocks.authorization.DefaultAuthorizationProvider;
@@ -68,7 +67,6 @@ import com.starrocks.catalog.DomainResolver;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.GlobalFunctionMgr;
-import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.MetaReplayState;
 import com.starrocks.catalog.PrimitiveType;
@@ -455,7 +453,7 @@ public class GlobalStateMgr {
     private final TaskManager taskManager;
     private final InsertOverwriteJobMgr insertOverwriteJobMgr;
 
-    private final LocalMetastore localMetastore;
+    private LocalMetastore localMetastore;
     private final GlobalFunctionMgr globalFunctionMgr;
 
     @Deprecated
@@ -533,8 +531,6 @@ public class GlobalStateMgr {
 
     private JwkMgr jwkMgr;
 
-    private final OAuth2TokenMgr oAuth2TokenMgr;
-
     public NodeMgr getNodeMgr() {
         return nodeMgr;
     }
@@ -597,6 +593,10 @@ public class GlobalStateMgr {
 
     public LocalMetastore getLocalMetastore() {
         return localMetastore;
+    }
+
+    public void setLocalMetastore(LocalMetastore localMetastore) {
+        this.localMetastore = localMetastore;
     }
 
     public TemporaryTableMgr getTemporaryTableMgr() {
@@ -700,7 +700,7 @@ public class GlobalStateMgr {
         this.tabletStatMgr = new TabletStatMgr();
         this.authenticationMgr = new AuthenticationMgr();
         this.domainResolver = new DomainResolver(authenticationMgr);
-        this.authorizationMgr = new AuthorizationMgr(this, new DefaultAuthorizationProvider());
+        this.authorizationMgr = new AuthorizationMgr(new DefaultAuthorizationProvider());
 
         this.resourceGroupMgr = new ResourceGroupMgr();
 
@@ -848,8 +848,6 @@ public class GlobalStateMgr {
         this.tabletCollector = new TabletCollector();
 
         this.jwkMgr = new JwkMgr();
-
-        this.oAuth2TokenMgr = new OAuth2TokenMgr();
     }
 
     public static void destroyCheckpoint() {
@@ -1103,10 +1101,6 @@ public class GlobalStateMgr {
 
     public ClusterSnapshotMgr getClusterSnapshotMgr() {
         return clusterSnapshotMgr;
-    }
-
-    public OAuth2TokenMgr getoAuth2TokenMgr() {
-        return oAuth2TokenMgr;
     }
 
     // Use tryLock to avoid potential deadlock
@@ -1678,12 +1672,7 @@ public class GlobalStateMgr {
      */
     private void onReloadTables() {
         TemporaryTableMgr temporaryTableMgr = GlobalStateMgr.getCurrentState().getTemporaryTableMgr();
-        List<String> dbNames = metadataMgr.listDbNames(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME);
-        for (String dbName : dbNames) {
-            Database db = metadataMgr.getDb(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName);
-            if (db == null) {
-                continue;
-            }
+        for (Database db : localMetastore.getIdToDb().values()) {
             for (Table table : db.getTables()) {
                 try {
                     table.onReload();
@@ -1700,11 +1689,8 @@ public class GlobalStateMgr {
     }
 
     private void processMvRelatedMeta() {
-        List<String> dbNames = metadataMgr.listDbNames(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME);
-
         long startMillis = System.currentTimeMillis();
-        for (String dbName : dbNames) {
-            Database db = metadataMgr.getDb(InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME, dbName);
+        for (Database db : localMetastore.getIdToDb().values()) {
             for (MaterializedView mv : db.getMaterializedViews()) {
                 mv.onReload();
             }
@@ -2460,10 +2446,10 @@ public class GlobalStateMgr {
         return functionSet.isNotAlwaysNullResultWithNullParamFunctions(funcName);
     }
 
-    public void refreshExternalTable(RefreshTableStmt stmt) throws DdlException {
+    public void refreshExternalTable(ConnectContext context, RefreshTableStmt stmt) throws DdlException {
         TableName tableName = stmt.getTableName();
         List<String> partitionNames = stmt.getPartitions();
-        refreshExternalTable(tableName, partitionNames);
+        refreshExternalTable(context, tableName, partitionNames);
         refreshOthersFeTable(tableName, partitionNames, true);
     }
 
@@ -2544,17 +2530,17 @@ public class GlobalStateMgr {
                 || table.isJDBCTable() || table.isDeltalakeTable() || table.isPaimonTable();
     }
 
-    public void refreshExternalTable(TableName tableName, List<String> partitions) {
+    public void refreshExternalTable(ConnectContext context, TableName tableName, List<String> partitions) {
         String catalogName = tableName.getCatalog();
         String dbName = tableName.getDb();
         String tblName = tableName.getTbl();
-        Database db = metadataMgr.getDb(catalogName, tableName.getDb());
+        Database db = metadataMgr.getDb(context, catalogName, tableName.getDb());
         if (db == null) {
             throw new StarRocksConnectorException("db: " + tableName.getDb() + " not exists");
         }
 
         Table table;
-        table = metadataMgr.getTable(catalogName, dbName, tblName);
+        table = metadataMgr.getTable(context, catalogName, dbName, tblName);
         if (table == null) {
             throw new StarRocksConnectorException("table %s.%s.%s not exists", catalogName, dbName,
                     tblName);

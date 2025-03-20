@@ -272,6 +272,7 @@ public class ConnectContext {
 
     private volatile String token = null;
     private volatile OAuth2Context oAuth2Context = null;
+    private String authPlugin = null;
 
     public void setToken(String token) {
         this.token = token;
@@ -287,6 +288,14 @@ public class ConnectContext {
 
     public OAuth2Context getOAuth2Context() {
         return oAuth2Context;
+    }
+
+    public void setAuthPlugin(String authPlugin) {
+        this.authPlugin = authPlugin;
+    }
+
+    public String getAuthPlugin() {
+        return authPlugin;
     }
 
     public void setExplicitTxnState(ExplicitTxnState explicitTxnState) {
@@ -1241,7 +1250,7 @@ public class ConnectContext {
             dbName = parts[1];
         }
 
-        if (!Strings.isNullOrEmpty(dbName) && metadataMgr.getDb(this.getCurrentCatalog(), dbName) == null) {
+        if (!Strings.isNullOrEmpty(dbName) && metadataMgr.getDb(this, this.getCurrentCatalog(), dbName) == null) {
             LOG.debug("Unknown catalog {} and db {}", this.getCurrentCatalog(), dbName);
             ErrorReport.reportDdlException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
         }

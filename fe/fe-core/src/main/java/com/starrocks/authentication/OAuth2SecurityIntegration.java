@@ -53,14 +53,23 @@ public class OAuth2SecurityIntegration extends SecurityIntegration {
         String oauthRedirectUrl = propertyMap.get(OAUTH2_REDIRECT_URL);
         String clientId = propertyMap.get(OAUTH2_CLIENT_ID);
         String clientSecret = propertyMap.get(OAUTH2_CLIENT_SECRET);
-        String jwkSetUri = propertyMap.get(OIDC_JWKS_URL);
+        String jwksUrl = propertyMap.get(OIDC_JWKS_URL);
         String principalField = propertyMap.get(OIDC_PRINCIPAL_FIELD);
-        String requireIssuer = propertyMap.get(OIDC_REQUIRED_ISSUER);
-        String requireAudience = propertyMap.get(OIDC_REQUIRED_AUDIENCE);
+        String requiredIssuer = propertyMap.get(OIDC_REQUIRED_ISSUER);
+        String requiredAudience = propertyMap.get(OIDC_REQUIRED_AUDIENCE);
         Long connectWaitTimeout = Long.valueOf(propertyMap.getOrDefault(OAUTH2_CONNECT_WAIT_TIMEOUT, "300"));
 
-        return new OAuth2AuthenticationProvider(authServerUrl, tokenServerUrl, oauthRedirectUrl, clientId, clientSecret,
-                jwkSetUri, principalField, requireIssuer, requireAudience, connectWaitTimeout);
+        return new OAuth2AuthenticationProvider(new OAuth2Context(
+                authServerUrl,
+                tokenServerUrl,
+                oauthRedirectUrl,
+                clientId,
+                clientSecret,
+                jwksUrl,
+                principalField,
+                requiredIssuer,
+                requiredAudience,
+                connectWaitTimeout));
     }
 
     @Override

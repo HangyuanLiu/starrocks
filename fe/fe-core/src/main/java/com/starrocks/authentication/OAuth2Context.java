@@ -16,7 +16,7 @@ package com.starrocks.authentication;
 
 public record OAuth2Context(String authServerUrl,
                             String tokenServerUrl,
-                            String oauthRedirectUrl,
+                            String redirectUrl,
                             String clientId,
                             String clientSecret,
                             String jwksUrl,

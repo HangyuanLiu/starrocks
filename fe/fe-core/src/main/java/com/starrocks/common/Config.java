@@ -3534,7 +3534,7 @@ public class Config extends ConfigBase {
     public static int max_show_proc_transactions_entry = 2000;
 
     @ConfField(mutable = false)
-    public static String oauth2_auth_server_uri = "";
+    public static String oauth2_auth_server_url = "http://localhost:38080/realms/master/protocol/openid-connect/auth";
 
     @ConfField(mutable = false)
     public static String oauth2_token_server_url = "http://localhost:38080/realms/master/protocol/openid-connect/token";

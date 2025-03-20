@@ -129,11 +129,6 @@ public class ConnectScheduler {
         return connectionId;
     }
 
-
-    public void putConnectContext(ConnectContext ctx) {
-        connectionMap.put((long) ctx.getConnectionId(), ctx);
-    }
-
     /**
      * Register one connection with its connection id.
      *
@@ -144,8 +139,6 @@ public class ConnectScheduler {
         try {
             connStatsLock.lock();
             if (numberConnection.get() >= maxConnections.get()) {
-                connectionMap.remove((long) ctx.getConnectionId());
-
                 return new Pair<>(false, "Reach cluster-wide connection limit, qe_max_connection=" + maxConnections +
                         ", connectionMap.size=" + connectionMap.size() +
                         ", node=" + ctx.getGlobalStateMgr().getNodeMgr().getSelfNode());
@@ -165,12 +158,11 @@ public class ConnectScheduler {
                         ", node=" + ctx.getGlobalStateMgr().getNodeMgr().getSelfNode();
                 LOG.info(userErrMsg + ", details: connectionId={}, connByUser={}",
                         ctx.getConnectionId(), connCountByUser);
-                connectionMap.remove((long) ctx.getConnectionId());
                 return new Pair<>(false, userErrMsg);
             }
             numberConnection.incrementAndGet();
             currentConnAtomic.incrementAndGet();
-            //connectionMap.put((long) ctx.getConnectionId(), ctx);
+            connectionMap.put((long) ctx.getConnectionId(), ctx);
 
             if (ctx instanceof ArrowFlightSqlConnectContext) {
                 ArrowFlightSqlConnectContext context = (ArrowFlightSqlConnectContext) ctx;

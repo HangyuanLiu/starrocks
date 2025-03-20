@@ -249,7 +249,6 @@ public class ExecuteSqlAction extends RestBaseAction {
 
         context.setConnectScheduler(connectScheduler);
 
-        connectScheduler.putConnectContext(context);
         // mark as registered
         Pair<Boolean, String> result = connectScheduler.registerConnection(context);
         if (!result.first) {

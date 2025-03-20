@@ -14,49 +14,13 @@
 
 package com.starrocks.mysql.privilege;
 
-import com.google.common.collect.ImmutableMap;
-import com.starrocks.authentication.AuthenticationProvider;
-import com.starrocks.authentication.LDAPAuthProviderForNative;
-import com.starrocks.authentication.OAuth2AuthenticationProvider;
-import com.starrocks.authentication.OpenIdConnectAuthenticationProvider;
-import com.starrocks.authentication.PlainPasswordAuthenticationProvider;
-import com.starrocks.common.Config;
-
-import java.util.Map;
-
 public class AuthPlugin {
 
     public enum Server {
         MYSQL_NATIVE_PASSWORD,
         AUTHENTICATION_LDAP_SIMPLE,
         AUTHENTICATION_OPENID_CONNECT,
-        AUTHENTICATION_OAUTH2;
-
-        private static final Map<String, AuthenticationProvider> PLUGIN_NAME_TO_AUTHENTICATION_PROVIDER =
-                ImmutableMap.<String, AuthenticationProvider>builder()
-                        .put(AuthPlugin.Server.MYSQL_NATIVE_PASSWORD.name(), new PlainPasswordAuthenticationProvider())
-                        .put(AuthPlugin.Server.AUTHENTICATION_LDAP_SIMPLE.name(), new LDAPAuthProviderForNative())
-                        .put(AuthPlugin.Server.AUTHENTICATION_OPENID_CONNECT.name(), new OpenIdConnectAuthenticationProvider(
-                                Config.oidc_jwks_url,
-                                Config.oidc_principal_field,
-                                Config.oidc_required_issuer,
-                                Config.oidc_required_audience))
-                        .put(AuthPlugin.Server.AUTHENTICATION_OAUTH2.name(), new OAuth2AuthenticationProvider(
-                                Config.oauth2_auth_server_uri,
-                                Config.oauth2_token_server_url,
-                                Config.oauth2_redirect_url,
-                                Config.oauth2_client_id,
-                                Config.oauth2_client_secret,
-                                Config.oidc_jwks_url,
-                                Config.oidc_principal_field,
-                                Config.oidc_required_issuer,
-                                Config.oidc_required_audience,
-                                Config.oauth_connect_wait_timeout))
-                        .build();
-
-        public AuthenticationProvider getProvider() {
-            return PLUGIN_NAME_TO_AUTHENTICATION_PROVIDER.getOrDefault(name(), null);
-        }
+        AUTHENTICATION_OAUTH2
     }
 
     public enum Client {

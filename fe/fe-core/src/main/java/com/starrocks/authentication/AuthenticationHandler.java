@@ -19,6 +19,7 @@ import com.google.common.base.Preconditions;
 import com.starrocks.common.Config;
 import com.starrocks.common.ConfigBase;
 import com.starrocks.common.ErrorCode;
+import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserIdentity;
@@ -39,6 +40,7 @@ public class AuthenticationHandler {
         if (user == null || user.isEmpty()) {
             throw new AuthenticationException(ErrorCode.ERR_AUTHENTICATION_FAIL, "", usePasswd);
         }
+        context.setQualifiedUser(user);
 
         AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
 
@@ -46,7 +48,13 @@ public class AuthenticationHandler {
         List<String> groupProviderName = null;
         List<String> authenticatedGroupList = null;
 
-        if (Config.enable_auth_check) {
+        boolean enableAuthCheck = Config.enable_auth_check;
+        if (context.getOAuth2Context() != null &&
+                !AuthPlugin.Client.AUTHENTICATION_OAUTH2_CLIENT.toString().equals(context.getAuthPlugin())) {
+            enableAuthCheck = false;
+        }
+
+        if (enableAuthCheck) {
             String[] authChain = Config.authentication_chain;
 
             for (String authMechanism : authChain) {
@@ -62,8 +70,9 @@ public class AuthenticationHandler {
                         LOG.debug("cannot find user {}@{}", user, remoteHost);
                     } else {
                         try {
-                            AuthenticationProvider provider =
-                                    AuthenticationProviderFactory.create(matchedUserIdentity.getValue().getAuthPlugin());
+                            AuthenticationProvider provider = AuthenticationProviderFactory.create(
+                                    matchedUserIdentity.getValue().getAuthPlugin(),
+                                    matchedUserIdentity.getValue().getAuthString());
                             Preconditions.checkState(provider != null);
                             provider.authenticate(user, remoteHost, authResponse, randomString, matchedUserIdentity.getValue());
                             authenticatedUser = matchedUserIdentity.getKey();

@@ -21,21 +21,22 @@ import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
+import org.json.JSONObject;
 
 import java.nio.ByteBuffer;
 
 public class OpenIdConnectAuthenticationProvider implements AuthenticationProvider {
     private final String jwksUrl;
     private final String principalFiled;
-    private final String requireIssuer;
-    private final String requireAudience;
+    private final String requiredIssuer;
+    private final String requiredAudience;
 
     public OpenIdConnectAuthenticationProvider(String jwksUrl, String principalFiled,
-                                               String requireIssuer, String requireAudience) {
+                                               String requiredIssuer, String requiredAudience) {
         this.jwksUrl = jwksUrl;
         this.principalFiled = principalFiled;
-        this.requireIssuer = requireIssuer;
-        this.requireAudience = requireAudience;
+        this.requiredIssuer = requiredIssuer;
+        this.requiredAudience = requiredAudience;
     }
 
     @Override
@@ -45,7 +46,13 @@ public class OpenIdConnectAuthenticationProvider implements AuthenticationProvid
         info.setAuthPlugin(AuthPlugin.Server.AUTHENTICATION_OPENID_CONNECT.name());
         info.setPassword(MysqlPassword.EMPTY_PASSWORD);
         info.setOrigUserHost(userIdentity.getUser(), userIdentity.getHost());
-        info.setTextForAuthPlugin(userAuthOption == null ? null : userAuthOption.getAuthString());
+
+        String authString = userAuthOption.getAuthString();
+        if (authString != null) {
+            JSONObject authResponse = new JSONObject(authString);
+        }
+
+        info.setAuthString(userAuthOption == null ? null : userAuthOption.getAuthString());
         return info;
     }
 
@@ -58,7 +65,7 @@ public class OpenIdConnectAuthenticationProvider implements AuthenticationProvid
             MysqlCodec.readInt1(authBuffer);
             byte[] idToken = MysqlCodec.readLenEncodedString(authBuffer);
             JWKSet jwkSet = GlobalStateMgr.getCurrentState().getJwkMgr().getJwkSet(jwksUrl);
-            OpenIdConnectVerifier.verify(new String(idToken), user, jwkSet, principalFiled, requireIssuer, requireAudience);
+            OpenIdConnectVerifier.verify(new String(idToken), user, jwkSet, principalFiled, requiredIssuer, requiredAudience);
         } catch (Exception e) {
             throw new AuthenticationException(e.getMessage());
         }
