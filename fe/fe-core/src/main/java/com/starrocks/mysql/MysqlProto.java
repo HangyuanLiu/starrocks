@@ -39,6 +39,7 @@ import com.starrocks.authentication.AuthenticationException;
 import com.starrocks.authentication.AuthenticationHandler;
 import com.starrocks.authentication.AuthenticationProvider;
 import com.starrocks.authentication.AuthenticationProviderFactory;
+import com.starrocks.authentication.OAuth2AuthenticationProvider;
 import com.starrocks.authentication.SecurityIntegration;
 import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.common.Config;
@@ -305,6 +306,10 @@ public class MysqlProto {
         byte[] authMoreDataPacket = null;
         if (provider != null) {
             authMoreDataPacket = provider.authMoreDataPacket(user, context.getMysqlChannel().getRemoteIp());
+
+            if (provider instanceof OAuth2AuthenticationProvider oAuth2AuthenticationProvider) {
+                context.setOAuth2Context(oAuth2AuthenticationProvider.getoAuth2Context());
+            }
         }
 
         if (authMoreDataPacket != null || !authPluginName.equalsIgnoreCase(switchAuthPlugin)) {

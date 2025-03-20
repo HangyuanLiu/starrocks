@@ -14,38 +14,17 @@
 
 package com.starrocks.authentication;
 
-import com.nimbusds.jose.jwk.JWKSet;
 import com.starrocks.mysql.MysqlCodec;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.AuthPlugin;
-import com.starrocks.qe.ConnectContext;
-import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
-import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.text.ParseException;
-import java.util.Map;
 
 public class OAuth2AuthenticationProvider implements AuthenticationProvider {
-    private final String authServerUrl;
-    private final String tokenServerUrl;
-    private final String oauthRedirectUrl;
-    private final String clientId;
-    private final String clientSecret;
-    private final String jwksUrl;
-    private final String principalFiled;
-    private final String requiredIssuer;
-    private final String requiredAudience;
-    private final Long connectWaitTimeout;
+    private final OAuth2Context oAuth2Context;
 
     public OAuth2AuthenticationProvider(String authServerUrl,
                                         String tokenServerUrl,
@@ -57,16 +36,17 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
                                         String requiredIssuer,
                                         String requiredAudience,
                                         Long connectWaitTimeout) {
-        this.authServerUrl = authServerUrl;
-        this.tokenServerUrl = tokenServerUrl;
-        this.oauthRedirectUrl = oauthRedirectUrl;
-        this.clientId = clientId;
-        this.clientSecret = clientSecret;
-        this.jwksUrl = jwksUrl;
-        this.principalFiled = principalFiled;
-        this.requiredIssuer = requiredIssuer;
-        this.requiredAudience = requiredAudience;
-        this.connectWaitTimeout = connectWaitTimeout;
+        oAuth2Context = new OAuth2Context(
+                authServerUrl,
+                tokenServerUrl,
+                oauthRedirectUrl,
+                clientId,
+                clientSecret,
+                jwksUrl,
+                principalFiled,
+                requiredIssuer,
+                requiredAudience,
+                connectWaitTimeout);
     }
 
     @Override
@@ -83,147 +63,27 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     @Override
     public void authenticate(String user, String host, byte[] password, byte[] randomString,
                              UserAuthenticationInfo authenticationInfo) throws AuthenticationException {
-        ConnectContext context = ConnectContext.get();
-        long connectionId = context.getConnectionId();
-
-        String authorizationCode = getAuthorizationCode();
-        String oidcToken = getToken(authorizationCode, connectionId);
-        try {
-            JWKSet jwkSet;
-            try {
-                jwkSet = GlobalStateMgr.getCurrentState().getJwkMgr().getJwkSet(jwksUrl);
-            } catch (IOException | ParseException e) {
-                throw new AuthenticationException(e.getMessage());
-            }
-
-            JSONObject authResponse = new JSONObject(oidcToken);
-            String accessToken = authResponse.getString("access_token");
-
-            String idToken = authResponse.getString("id_token");
-
-            OpenIdConnectVerifier.verify(idToken, user, jwkSet, principalFiled, requiredIssuer, requiredAudience);
-        } catch (Exception e) {
-            throw new AuthenticationException(e.getMessage());
-        }
-    }
-
-    public String getAuthorizationCode() throws AuthenticationException {
-        ConnectContext context = ConnectContext.get();
-        long startTime = System.currentTimeMillis();
-
-        String authorizationCode;
-        while (true) {
-            authorizationCode = context.getAuthorizationCode();
-
-            if (authorizationCode != null) {
-                break;
-            }
-
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-
-            if (System.currentTimeMillis() - startTime > connectWaitTimeout * 1000) {
-                break;
-            }
-        }
-
-        if (authorizationCode == null) {
-            throw new AuthenticationException("OIDC wait callback timeout");
-        }
-
-        return authorizationCode;
-    }
-
-    /*
-    OAuth2TokenMgr.Resource getResource() throws AuthenticationException {
-        ConnectContext context = ConnectContext.get();
-        long connectionId = context.getConnectionId();
-        OAuth2TokenMgr oAuth2TokenMgr = GlobalStateMgr.getCurrentState().getoAuth2TokenMgr();
-
-        long startTime = System.currentTimeMillis();
-        OAuth2TokenMgr.Resource resource;
-        while (true) {
-            resource = oAuth2TokenMgr.oAuth2WaitCallbackList.remove(connectionId);
-
-            if (resource != null) {
-                break;
-            }
-
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-
-            if (System.currentTimeMillis() - startTime > connectWaitTimeout * 1000) {
-                break;
-            }
-        }
-
-        if (resource == null) {
-            throw new AuthenticationException("OIDC wait callback timeout");
-        }
-
-        return resource;
-    }
-     */
-
-    private String getToken(String authorizationCode, Long connectionId) {
-        // Step 3: 通过授权码获取令牌
-        Map<Object, Object> body = Map.of(
-                "grant_type", "authorization_code",
-                "code", authorizationCode,
-                "redirect_uri", oauthRedirectUrl + "?connectionId=" + connectionId,
-                "client_id", clientId,
-                "client_secret", clientSecret
-        );
-
-        String requestBody = body.entrySet().stream()
-                .map(entry -> URLEncoder.encode(entry.getKey().toString(), StandardCharsets.UTF_8) + "=" +
-                        URLEncoder.encode(entry.getValue().toString(), StandardCharsets.UTF_8))
-                .reduce((a, b) -> a + "&" + b)
-                .orElse("");
-
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(tokenServerUrl))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .build();
-
-        HttpResponse<String> response;
-        try {
-            response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        } catch (InterruptedException | IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        // Step 4: 处理响应
-        if (response.statusCode() == 200) {
-            return response.body();
-        } else {
-            return null;
-        }
     }
 
     @Override
     public byte[] authMoreDataPacket(String user, String host) throws AuthenticationException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        byte[] bytes = authServerUrl.getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = oAuth2Context.authServerUrl().getBytes(StandardCharsets.UTF_8);
         MysqlCodec.writeInt2(outputStream, bytes.length);
         MysqlCodec.writeBytes(outputStream, bytes);
 
-        bytes = clientId.getBytes(StandardCharsets.UTF_8);
+        bytes = oAuth2Context.clientId().getBytes(StandardCharsets.UTF_8);
         MysqlCodec.writeInt2(outputStream, bytes.length);
         MysqlCodec.writeBytes(outputStream, bytes);
 
-        bytes = oauthRedirectUrl.getBytes(StandardCharsets.UTF_8);
+        bytes = oAuth2Context.oauthRedirectUrl().getBytes(StandardCharsets.UTF_8);
         MysqlCodec.writeInt2(outputStream, bytes.length);
         MysqlCodec.writeBytes(outputStream, bytes);
 
         return outputStream.toByteArray();
+    }
+
+    public OAuth2Context getoAuth2Context() {
+        return oAuth2Context;
     }
 }

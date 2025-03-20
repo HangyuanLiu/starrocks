@@ -14,6 +14,10 @@
 
 package com.starrocks.http.rest;
 
+import com.nimbusds.jose.jwk.JWKSet;
+import com.starrocks.authentication.AuthenticationException;
+import com.starrocks.authentication.OAuth2Context;
+import com.starrocks.authentication.OpenIdConnectVerifier;
 import com.starrocks.http.ActionController;
 import com.starrocks.http.BaseRequest;
 import com.starrocks.http.BaseResponse;
@@ -23,6 +27,7 @@ import com.starrocks.qe.ConnectScheduler;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.NodeMgr;
 import com.starrocks.service.ExecuteEnv;
+import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.system.Frontend;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -40,8 +45,17 @@ import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseDecoder;
+import org.json.JSONObject;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
+import java.util.Map;
 
 public class OAuth2Action extends RestBaseAction {
     public OAuth2Action(ActionController controller) {
@@ -69,7 +83,32 @@ public class OAuth2Action extends RestBaseAction {
 
         ConnectScheduler connectScheduler = ExecuteEnv.getInstance().getScheduler();
         ConnectContext context = connectScheduler.getContext(connectionId);
-        context.setAuthorizationCode(authorizationCode);
+
+        UserIdentity userIdentity = context.getCurrentUserIdentity();
+        OAuth2Context oAuth2Context = context.getOAuth2Context();
+        String oidcToken = getToken(authorizationCode, oAuth2Context, connectionId);
+
+        try {
+            JWKSet jwkSet;
+            try {
+                jwkSet = GlobalStateMgr.getCurrentState().getJwkMgr().getJwkSet(oAuth2Context.jwksUrl());
+            } catch (IOException | ParseException e) {
+                throw new AuthenticationException(e.getMessage());
+            }
+
+            JSONObject authResponse = new JSONObject(oidcToken);
+            String accessToken = authResponse.getString("access_token");
+            String idToken = authResponse.getString("id_token");
+
+            OpenIdConnectVerifier.verify(idToken, userIdentity.getUser(), jwkSet,
+                    oAuth2Context.principalFiled(),
+                    oAuth2Context.requiredIssuer(),
+                    oAuth2Context.requiredAudience());
+
+            context.setToken(idToken);
+        } catch (Exception e) {
+            //throw new AuthenticationException(e.getMessage());
+        }
 
         /*
         OAuth2TokenMgr oAuth2TokenMgr = GlobalStateMgr.getCurrentState().getoAuth2TokenMgr();
@@ -147,6 +186,45 @@ public class OAuth2Action extends RestBaseAction {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             cause.printStackTrace();
             ctx.close();
+        }
+    }
+
+    private String getToken(String authorizationCode, OAuth2Context oAuth2Context,
+                            Long connectionId) {
+        // Step 3: 通过授权码获取令牌
+        Map<Object, Object> body = Map.of(
+                "grant_type", "authorization_code",
+                "code", authorizationCode,
+                "redirect_uri", oAuth2Context.oauthRedirectUrl() + "?connectionId=" + connectionId,
+                "client_id", oAuth2Context.clientId(),
+                "client_secret", oAuth2Context.clientSecret()
+        );
+
+        String requestBody = body.entrySet().stream()
+                .map(entry -> URLEncoder.encode(entry.getKey().toString(), StandardCharsets.UTF_8) + "=" +
+                        URLEncoder.encode(entry.getValue().toString(), StandardCharsets.UTF_8))
+                .reduce((a, b) -> a + "&" + b)
+                .orElse("");
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(oAuth2Context.tokenServerUrl()))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        java.net.http.HttpResponse<String> response;
+        try {
+            response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+        } catch (InterruptedException | IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        // Step 4: 处理响应
+        if (response.statusCode() == 200) {
+            return response.body();
+        } else {
+            return null;
         }
     }
 }

@@ -41,6 +41,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.starrocks.analysis.StringLiteral;
 import com.starrocks.analysis.VariableExpr;
+import com.starrocks.authentication.OAuth2Context;
 import com.starrocks.authentication.UserProperty;
 import com.starrocks.authorization.AccessDeniedException;
 import com.starrocks.authorization.ObjectType;
@@ -269,14 +270,23 @@ public class ConnectContext {
     // Whether leader is transferred during executing stmt
     private boolean isLeaderTransferred = false;
 
-    public volatile String authorizationCode;
+    private volatile String token = null;
+    private volatile OAuth2Context oAuth2Context = null;
 
-    public void setAuthorizationCode(String authorizationCode) {
-        this.authorizationCode = authorizationCode;
+    public void setToken(String token) {
+        this.token = token;
     }
 
-    public String getAuthorizationCode() {
-        return authorizationCode;
+    public String getToken() {
+        return token;
+    }
+
+    public void setOAuth2Context(OAuth2Context oAuth2Context) {
+        this.oAuth2Context = oAuth2Context;
+    }
+
+    public OAuth2Context getOAuth2Context() {
+        return oAuth2Context;
     }
 
     public void setExplicitTxnState(ExplicitTxnState explicitTxnState) {

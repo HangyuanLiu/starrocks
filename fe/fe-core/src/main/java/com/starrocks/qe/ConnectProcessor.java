@@ -344,6 +344,12 @@ public class ConnectProcessor {
                 parsedStmt.setOrigStmt(new OriginStatement(originStmt, i));
                 Tracers.init(ctx, parsedStmt.getTraceMode(), parsedStmt.getTraceModule());
 
+                if (ctx.getOAuth2Context() != null && ctx.getToken() == null) {
+                    ErrorReport.report(ErrorCode.ERR_SECURE_TRANSPORT_REQUIRED);
+                    ctx.getState().setErrType(QueryState.ErrType.ANALYSIS_ERR);
+                    return;
+                }
+
                 executor = new StmtExecutor(ctx, parsedStmt);
                 ctx.setExecutor(executor);
 
