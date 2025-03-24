@@ -387,6 +387,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String CBO_PRUNE_SUBFIELD = "cbo_prune_subfield";
     public static final String CBO_PRUNE_JSON_SUBFIELD = "cbo_prune_json_subfield";
     public static final String CBO_PRUNE_JSON_SUBFIELD_DEPTH = "cbo_prune_json_subfield_depth";
+    public static final String CBO_PUSH_DOWN_AGG_WITH_MULTI_COLUMN_STATS = "cbo_push_down_aggregate_with_multi_column_stats";
     public static final String ENABLE_OPTIMIZER_REWRITE_GROUPINGSETS_TO_UNION_ALL =
             "enable_rewrite_groupingsets_to_union_all";
     public static final String ENABLE_PARTITION_LEVEL_CARDINALITY_ESTIMATION =
@@ -881,6 +882,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String BACK_PRESSURE_MAX_ROUNDS = "back_pressure_back_rounds";
     public static final String BACK_PRESSURE_THROTTLE_TIME_UPPER_BOUND = "back_pressure_throttle_time_upper_bound";
 
+    public static final String LOWER_UPPER_SUPPORT_UTF8 = "lower_upper_support_utf8";
+
     public static final List<String> DEPRECATED_VARIABLES = ImmutableList.<String>builder()
             .add(CODEGEN_LEVEL)
             .add(MAX_EXECUTION_TIME)
@@ -1225,7 +1228,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private boolean enableAsyncProfile = true;
 
     @VariableMgr.VarAttr(name = BIG_QUERY_PROFILE_THRESHOLD)
-    private String bigQueryProfileThreshold = "0s";
+    private String bigQueryProfileThreshold = "30s";
 
     @VariableMgr.VarAttr(name = RESOURCE_GROUP_ID, alias = RESOURCE_GROUP_ID_V2,
             show = RESOURCE_GROUP_ID_V2, flag = VariableMgr.INVISIBLE)
@@ -1621,6 +1624,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VarAttr(name = CBO_PUSH_DOWN_GROUPINGSET_RESHUFFLE, flag = VariableMgr.INVISIBLE)
     private boolean cboPushDownGroupingSetReshuffle = true;
 
+    @VarAttr(name = CBO_PUSH_DOWN_AGG_WITH_MULTI_COLUMN_STATS)
+    private boolean cboPushDownAggWithMultiColumnStats = true;
+
     @VariableMgr.VarAttr(name = PARSE_TOKENS_LIMIT)
     private int parseTokensLimit = 3500000;
 
@@ -1733,6 +1739,17 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private int backPressureMaxRounds = 3;
     @VarAttr(name = BACK_PRESSURE_THROTTLE_TIME_UPPER_BOUND)
     private long backPressureThrottleTimeUpperBound = 300;
+
+    // Determines whether the upper/lower function supports utf8,
+    // introduced by https://github.com/StarRocks/starrocks/pull/56192
+    // Before this, the upper/lower function only supports ascii characters, and SR has made special optimizations in performance.
+    // After this change, the upper/lower function is able to handle utf8 characters,
+    // but the performance will be slightly reduced in the scenario of only ascii characters.
+    // This variable is added to give the user the right to choose. 
+    // If the user does not use utf8 characters, turning off the switch can avoid performance degradation.
+    // In order to be compatible with the previous behavior, the default value is false.
+    @VarAttr(name = LOWER_UPPER_SUPPORT_UTF8)
+    private boolean lowerUpperSupportUTF8 = false;
 
     public int getCboPruneJsonSubfieldDepth() {
         return cboPruneJsonSubfieldDepth;
@@ -3005,6 +3022,11 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         this.consistentHashVirtualNodeNum = consistentHashVirtualNodeNum;
     }
 
+    public void setBigQueryProfileThreshold(String bigQueryProfileThreshold) {
+        this.bigQueryProfileThreshold = bigQueryProfileThreshold;
+    }
+
+
     // when pipeline engine is enabled
     // in case of pipeline_dop > 0: return pipeline_dop * parallelExecInstanceNum;
     // in case of pipeline_dop <= 0 and avgNumCores < 2: return 1;
@@ -3813,6 +3835,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setCboPushDownGroupingSetReshuffle(boolean cboPushDownGroupingSetReshuffle) {
         this.cboPushDownGroupingSetReshuffle = cboPushDownGroupingSetReshuffle;
+    }
+
+    public boolean isCboPushDownAggWithMultiColumnStats() {
+        return cboPushDownAggWithMultiColumnStats;
+    }
+
+    public void setCboPushDownAggWithMultiColumnStats(boolean cboPushDownAggWithMultiColumnStats) {
+        this.cboPushDownAggWithMultiColumnStats = cboPushDownAggWithMultiColumnStats;
     }
 
     public void setCboPushDownDistinctBelowWindow(boolean flag) {
@@ -4824,6 +4854,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         tResult.setRuntime_filter_scan_wait_time_ms(runtimeFilterScanWaitTime);
         tResult.setRuntime_filter_rpc_http_min_size(globalRuntimeFilterRpcHttpMinSize);
         tResult.setEnable_join_runtime_filter_pushdown(enableJoinRuntimeFilterPushDown);
+        tResult.setLower_upper_support_utf8(lowerUpperSupportUTF8);
         tResult.setPipeline_dop(pipelineDop);
         if (pipelineProfileLevel == 2) {
             tResult.setPipeline_profile_level(TPipelineProfileLevel.DETAIL);

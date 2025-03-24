@@ -38,6 +38,7 @@ import com.starrocks.StarRocksFE;
 import com.starrocks.catalog.LocalTablet;
 import com.starrocks.catalog.Replica;
 import com.starrocks.qe.scheduler.slot.QueryQueueOptions;
+import com.starrocks.statistic.sample.NDVEstimator;
 
 import static java.lang.Math.max;
 import static java.lang.Runtime.getRuntime;
@@ -2142,6 +2143,10 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static double statistics_min_sample_row_ratio = 0.01;
 
+    @ConfField(mutable = true, comment = "The NDV estimator: DUJ1/GEE/LINEAR/POLYNOMIAL")
+    public static String statistics_sample_ndv_estimator =
+            NDVEstimator.NDVEstimatorDesc.defaultConfig().name();
+
     /**
      * The partition size of sample collect, default 1k partitions
      */
@@ -2522,6 +2527,8 @@ public class Config extends ConfigBase {
     public static boolean enable_query_cost_prediction = false;
     @ConfField(mutable = true)
     public static String query_cost_prediction_service_address = "http://localhost:5000";
+    @ConfField(mutable = false)
+    public static int query_cost_predictor_healthchk_interval = 30;
 
     @ConfField
     public static String feature_log_dir = StarRocksFE.STARROCKS_HOME_DIR + "/log";
