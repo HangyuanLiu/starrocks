@@ -43,11 +43,10 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     }
 
     @Override
-    public void authenticate(String user, String host, byte[] password, byte[] randomString,
+    public void authenticate(ConnectContext context, String user, String host, byte[] password, byte[] randomString,
                              UserAuthenticationInfo authenticationInfo) throws AuthenticationException {
-        ConnectContext context = ConnectContext.get();
         long startTime = System.currentTimeMillis();
-        String token = null;
+        String token;
         while (true) {
             token = context.getToken();
             if (token != null)  {
@@ -71,7 +70,7 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     }
 
     @Override
-    public byte[] authMoreDataPacket(String user, String host) throws AuthenticationException {
+    public byte[] authMoreDataPacket(String user, String host) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         byte[] bytes = oAuth2Context.authServerUrl().getBytes(StandardCharsets.UTF_8);
         MysqlCodec.writeInt2(outputStream, bytes.length);

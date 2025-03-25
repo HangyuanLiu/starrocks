@@ -58,8 +58,8 @@ public class Frontend extends JsonWriter {
     private String host;
     @SerializedName(value = "e")
     private int editLogPort;
-    @SerializedName(value = "gid")
-    private int gid;
+    @SerializedName(value = "fid")
+    private int fid = -1;
 
     private int queryPort;
     private int rpcPort;
@@ -80,15 +80,14 @@ public class Frontend extends JsonWriter {
     }
 
     public Frontend(FrontendNodeType role, String nodeName, String host, int editLogPort) {
-        this.gid = 0;
         this.role = role;
         this.nodeName = nodeName;
         this.host = host;
         this.editLogPort = editLogPort;
     }
 
-    public Frontend(int gid, FrontendNodeType role, String nodeName, String host, int editLogPort) {
-        this.gid = gid;
+    public Frontend(int fid, FrontendNodeType role, String nodeName, String host, int editLogPort) {
+        this.fid = fid;
         this.role = role;
         this.nodeName = nodeName;
         this.host = host;
@@ -162,12 +161,12 @@ public class Frontend extends JsonWriter {
         this.isAlive = isAlive;
     }
 
-    public int getGid() {
-        return gid;
+    public int getFid() {
+        return fid;
     }
 
-    public void setGid(int gid) {
-        this.gid = gid;
+    public void setFid(int fid) {
+        this.fid = fid;
     }
 
     /**
@@ -200,7 +199,7 @@ public class Frontend extends JsonWriter {
 
         if (!isReplay) {
             hbResponse.aliveStatus = isAlive ?
-                HeartbeatResponse.AliveStatus.ALIVE : HeartbeatResponse.AliveStatus.NOT_ALIVE;
+                    HeartbeatResponse.AliveStatus.ALIVE : HeartbeatResponse.AliveStatus.NOT_ALIVE;
         } else {
             if (hbResponse.aliveStatus != null) {
                 // The metadata before the upgrade does not contain hbResponse.aliveStatus,

@@ -17,6 +17,7 @@ import com.google.common.base.Strings;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.mysql.security.LdapSecurity;
+import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
 
@@ -36,7 +37,7 @@ public class LDAPAuthProviderForNative implements AuthenticationProvider {
     }
 
     @Override
-    public void authenticate(String user, String host, byte[] remotePassword, byte[] randomString,
+    public void authenticate(ConnectContext context, String user, String host, byte[] remotePassword, byte[] randomString,
                              UserAuthenticationInfo authenticationInfo) throws AuthenticationException {
         String userForAuthPlugin = authenticationInfo.getAuthString();
         //clear password terminate string

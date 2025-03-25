@@ -74,7 +74,8 @@ public class AuthenticationHandler {
                                     matchedUserIdentity.getValue().getAuthPlugin(),
                                     matchedUserIdentity.getValue().getAuthString());
                             Preconditions.checkState(provider != null);
-                            provider.authenticate(user, remoteHost, authResponse, randomString, matchedUserIdentity.getValue());
+                            provider.authenticate(context, user, remoteHost, authResponse, randomString,
+                                    matchedUserIdentity.getValue());
                             authenticatedUser = matchedUserIdentity.getKey();
 
                             groupProviderName = List.of(Config.group_provider);
@@ -92,7 +93,7 @@ public class AuthenticationHandler {
                     try {
                         AuthenticationProvider provider = securityIntegration.getAuthenticationProvider();
                         UserAuthenticationInfo userAuthenticationInfo = new UserAuthenticationInfo();
-                        provider.authenticate(user, remoteHost, authResponse, randomString, userAuthenticationInfo);
+                        provider.authenticate(context, user, remoteHost, authResponse, randomString, userAuthenticationInfo);
                         // the ephemeral user is identified as 'username'@'auth_mechanism'
                         authenticatedUser = UserIdentity.createEphemeralUserIdent(user, securityIntegration.getName());
 
@@ -129,7 +130,6 @@ public class AuthenticationHandler {
             context.setCurrentRoleIds(authenticatedUser);
             context.setAuthDataSalt(randomString);
         }
-        context.setQualifiedUser(user);
 
         Set<String> groups = getGroups(authenticatedUser, groupProviderName);
         context.setGroups(groups);

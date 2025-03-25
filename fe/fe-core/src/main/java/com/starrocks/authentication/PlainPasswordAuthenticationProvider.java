@@ -90,6 +90,7 @@ public class PlainPasswordAuthenticationProvider implements AuthenticationProvid
 
     @Override
     public void authenticate(
+            ConnectContext context,
             String user,
             String host,
             byte[] remotePassword,

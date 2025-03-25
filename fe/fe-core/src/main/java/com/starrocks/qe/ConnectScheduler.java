@@ -65,7 +65,7 @@ public class ConnectScheduler {
     private static final Logger LOG = LogManager.getLogger(ConnectScheduler.class);
     private final AtomicInteger maxConnections;
     private final AtomicInteger numberConnection;
-    private final AtomicResetCounter nextConnectionId;
+    private final ConnectionIdGenerator connectionIdGenerator;
 
     private final Map<Long, ConnectContext> connectionMap = Maps.newConcurrentMap();
     private final Map<String, ArrowFlightSqlConnectContext> arrowFlightSqlConnectContextMap = Maps.newConcurrentMap();
@@ -76,7 +76,7 @@ public class ConnectScheduler {
     public ConnectScheduler(int maxConnections) {
         this.maxConnections = new AtomicInteger(maxConnections);
         numberConnection = new AtomicInteger(0);
-        nextConnectionId = new AtomicResetCounter(1 << 23);
+        connectionIdGenerator = new ConnectionIdGenerator();
         // Use a thread to check whether connection is timeout. Because
         // 1. If use a scheduler, the task maybe a huge number when query is messy.
         //    Let timeout is 10m, and 5000 qps, then there are up to 3000000 tasks in scheduler.
@@ -119,13 +119,6 @@ public class ConnectScheduler {
                 LOG.warn("Timeout checker exception, Internal error:", e);
             }
         }
-    }
-
-    public int getNextConnectionId() {
-        //return nextConnectionId.getAndAdd(1);
-        Frontend frontend = GlobalStateMgr.getCurrentState().getNodeMgr().getMySelf();
-        int connectionId = (frontend.getGid() & 0xFF) << 24 | (nextConnectionId.incrementAndGet() & 0xFFFFFF);
-        return connectionId;
     }
 
     /**
@@ -291,30 +284,44 @@ public class ConnectScheduler {
         }
     }
 
-    public static class AtomicResetCounter {
+    /**
+     * Generates a unique connection ID by combining the frontend node's GID and an atomic counter.
+     * <p>
+     * The connection ID structure:
+     * - The higher 8 bits (bits 24-31) represent the frontend node's GID (masked to 8 bits).
+     * - The lower 24 bits (bits 0-23) represent an incrementing counter that resets at 2^24.
+     *
+     * @return a unique connection ID
+     */
+    public int getNextConnectionId() {
+        Frontend frontend = GlobalStateMgr.getCurrentState().getNodeMgr().getMySelf();
+        return (frontend.getFid() & 0xFF) << 24 | (connectionIdGenerator.incrementAndGet() & 0xFFFFFF);
+    }
+
+    public static class ConnectionIdGenerator {
+        // Atomic counter to ensure thread-safe increments
         private final AtomicInteger counter;
+        // Threshold value at which the counter resets
         private final int threshold;
 
-        public AtomicResetCounter(int threshold) {
+        /**
+         * Default constructor, setting the threshold to 2^24 (16,777,216).
+         * This ensures that the counter cycles within 24-bit range.
+         */
+        public ConnectionIdGenerator() {
             this.counter = new AtomicInteger(0);
-            this.threshold = threshold;
+            this.threshold = 1 << 24;
         }
 
+        /**
+         * Atomically increments the counter and resets it when the threshold is reached.
+         * Ensures the counter remains within the valid 24-bit range.
+         *
+         * @return the updated counter value after incrementing
+         */
         public int incrementAndGet() {
-            while (true) {
-                int currentValue = counter.get();
-                if (currentValue == threshold) {
-                    // 达到阈值时，重置为 0
-                    if (counter.compareAndSet(currentValue, 0)) {
-                        return 0;
-                    }
-                } else {
-                    // 否则正常自增
-                    if (counter.compareAndSet(currentValue, currentValue + 1)) {
-                        return currentValue + 1;
-                    }
-                }
-            }
+            return counter.updateAndGet(currentValue -> (currentValue + 1 >= threshold) ? 0 : currentValue + 1
+            );
         }
     }
 }

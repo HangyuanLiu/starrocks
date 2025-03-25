@@ -358,6 +358,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String CBO_MAX_REORDER_NODE_USE_GREEDY = "cbo_max_reorder_node_use_greedy";
     public static final String CBO_ENABLE_REPLICATED_JOIN = "cbo_enable_replicated_join";
     public static final String CBO_USE_CORRELATED_JOIN_ESTIMATE = "cbo_use_correlated_join_estimate";
+    public static final String CBO_USE_CORRELATED_PREDICATE_ESTIMATE = "cbo_use_correlated_predicate_estimate";
     public static final String ALWAYS_COLLECT_LOW_CARD_DICT = "always_collect_low_card_dict";
     public static final String ALWAYS_COLLECT_LOW_CARD_DICT_ON_LAKE = "always_collect_low_card_dict_on_lake";
     public static final String CBO_ENABLE_LOW_CARDINALITY_OPTIMIZE = "cbo_enable_low_cardinality_optimize";
@@ -388,6 +389,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String CBO_PRUNE_JSON_SUBFIELD = "cbo_prune_json_subfield";
     public static final String CBO_PRUNE_JSON_SUBFIELD_DEPTH = "cbo_prune_json_subfield_depth";
     public static final String CBO_PUSH_DOWN_AGG_WITH_MULTI_COLUMN_STATS = "cbo_push_down_aggregate_with_multi_column_stats";
+    public static final String CBO_USE_HISTOGRAM_EVALUDATE_LIST_PARTITION =  "cbo_use_histogram_evaluate_list_partition";
     public static final String ENABLE_OPTIMIZER_REWRITE_GROUPINGSETS_TO_UNION_ALL =
             "enable_rewrite_groupingsets_to_union_all";
     public static final String ENABLE_PARTITION_LEVEL_CARDINALITY_ESTIMATION =
@@ -1145,6 +1147,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = CBO_USE_CORRELATED_JOIN_ESTIMATE, flag = VariableMgr.INVISIBLE)
     private boolean useCorrelatedJoinEstimate = true;
 
+    @VariableMgr.VarAttr(name = CBO_USE_CORRELATED_PREDICATE_ESTIMATE)
+    private boolean useCorrelatedPredicateEstimate = true;
+
     @VariableMgr.VarAttr(name = CBO_USE_NTH_EXEC_PLAN, flag = VariableMgr.INVISIBLE)
     private int useNthExecPlan = 0;
 
@@ -1171,6 +1176,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = CBO_PRUNE_JSON_SUBFIELD_DEPTH, flag = VariableMgr.INVISIBLE)
     private int cboPruneJsonSubfieldDepth = 20;
+
+    @VarAttr(name = CBO_USE_HISTOGRAM_EVALUDATE_LIST_PARTITION, flag = VariableMgr.INVISIBLE)
+    private boolean cboUseHistogramEvaluateListPartition = false;
 
     @VarAttr(name = ENABLE_SQL_DIGEST, flag = VariableMgr.INVISIBLE)
     private boolean enableSQLDigest = false;
@@ -1757,6 +1765,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setCboPruneJsonSubfieldDepth(int cboPruneJsonSubfieldDepth) {
         this.cboPruneJsonSubfieldDepth = cboPruneJsonSubfieldDepth;
+    }
+
+    public boolean isCboUseHistogramEvaluateListPartition() {
+        return cboUseHistogramEvaluateListPartition;
+    }
+
+    public void setCboUseHistogramEvaluateListPartition(boolean cboUseHistogramEvaluateListPartition) {
+        this.cboUseHistogramEvaluateListPartition = cboUseHistogramEvaluateListPartition;
     }
 
     public boolean isEnableExecutionOnly() {
@@ -3663,6 +3679,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setUseCorrelatedJoinEstimate(boolean useCorrelatedJoinEstimate) {
         this.useCorrelatedJoinEstimate = useCorrelatedJoinEstimate;
+    }
+
+    public boolean isUseCorrelatedPredicateEstimate() {
+        return useCorrelatedPredicateEstimate;
+    }
+
+    public void setUseCorrelatedPredicateEstimate(boolean useCorrelatedPredicateEstimate) {
+        this.useCorrelatedPredicateEstimate = useCorrelatedPredicateEstimate;
     }
 
     public boolean isAlwaysCollectDict() {
