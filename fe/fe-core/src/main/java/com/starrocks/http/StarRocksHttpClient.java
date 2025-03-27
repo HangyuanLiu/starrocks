@@ -14,6 +14,7 @@
 
 package com.starrocks.http;
 
+import com.google.common.base.Preconditions;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -34,32 +35,33 @@ import io.netty.handler.codec.http.LastHttpContent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
-public class HttpClient extends SimpleChannelInboundHandler<HttpObject> {
-    private static final Logger LOG = LogManager.getLogger(HttpClient.class);
+public class StarRocksHttpClient extends SimpleChannelInboundHandler<HttpObject> {
+    private static final Logger LOG = LogManager.getLogger(StarRocksHttpClient.class);
     private static final EventLoopGroup GROUP = new NioEventLoopGroup();
 
     private final HttpRequest request;
-    private final BaseResponse response;
+    private final StringBuilder responseContent;
     private HttpResponseStatus status;
 
-    public HttpClient(HttpRequest request, BaseResponse response) {
+    public StarRocksHttpClient(HttpRequest request, StringBuilder responseContent) {
         this.request = request;
-        this.response = response;
+        this.responseContent = responseContent;
     }
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) {
         if (msg instanceof HttpResponse httpResponse) {
             this.status = httpResponse.status();
-            LOG.info("Received HTTP Response: Status = {}", httpResponse.status());
+            if (status != HttpResponseStatus.OK) {
+                LOG.warn("Received HTTP Response: Status = {}", httpResponse.status());
+            }
         }
 
         if (msg instanceof HttpContent httpContent) {
             String content = httpContent.content().toString(StandardCharsets.UTF_8);
-            response.appendContent(content);
+            responseContent.append(content);
 
             if (msg instanceof LastHttpContent) {
                 ctx.close();
@@ -90,25 +92,11 @@ public class HttpClient extends SimpleChannelInboundHandler<HttpObject> {
         ctx.close();
     }
 
-    public HttpResponseStatus getStatus() {
-        return status;
-    }
-
-    public static HttpResponseStatus send(HttpRequest request, BaseResponse response) {
+    public static String redirect(String host, int port, HttpRequest request) {
+        Preconditions.checkNotNull(request);
+        StringBuilder responseContent = new StringBuilder();
         try {
-            URI uri = new URI(request.uri());
-            String host = uri.getHost();
-            int port = (uri.getPort() != -1) ? uri.getPort() : (uri.getScheme().equalsIgnoreCase("https") ? 443 : 80);
-            return redirect(host, port, request, response);
-        } catch (Exception e) {
-            LOG.error(e.getMessage(), e);
-            return HttpResponseStatus.INTERNAL_SERVER_ERROR;
-        }
-    }
-
-    public static HttpResponseStatus redirect(String host, int port, HttpRequest request, BaseResponse response) {
-        try {
-            HttpClient client = new HttpClient(request, response);
+            StarRocksHttpClient client = new StarRocksHttpClient(request, responseContent);
             Bootstrap bootstrap = new Bootstrap();
             bootstrap.group(GROUP)
                     .channel(NioSocketChannel.class)
@@ -123,10 +111,9 @@ public class HttpClient extends SimpleChannelInboundHandler<HttpObject> {
 
             ChannelFuture future = bootstrap.connect(host, port).sync();
             future.channel().closeFuture().sync();
-            return client.status;
         } catch (Exception e) {
-            LOG.error(e.getMessage(), e);
-            return HttpResponseStatus.INTERNAL_SERVER_ERROR;
+            responseContent.append(e.getMessage());
         }
+        return responseContent.toString();
     }
 }

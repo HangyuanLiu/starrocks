@@ -19,7 +19,6 @@ import com.google.common.base.Preconditions;
 import com.starrocks.common.Config;
 import com.starrocks.common.ConfigBase;
 import com.starrocks.common.ErrorCode;
-import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserIdentity;
@@ -48,13 +47,7 @@ public class AuthenticationHandler {
         List<String> groupProviderName = null;
         List<String> authenticatedGroupList = null;
 
-        boolean enableAuthCheck = Config.enable_auth_check;
-        if (context.getOAuth2Context() != null &&
-                !AuthPlugin.Client.AUTHENTICATION_OAUTH2_CLIENT.toString().equals(context.getAuthPlugin())) {
-            enableAuthCheck = false;
-        }
-
-        if (enableAuthCheck) {
+        if (Config.enable_auth_check) {
             String[] authChain = Config.authentication_chain;
 
             for (String authMechanism : authChain) {
@@ -76,6 +69,7 @@ public class AuthenticationHandler {
                             Preconditions.checkState(provider != null);
                             provider.authenticate(context, user, remoteHost, authResponse, randomString,
                                     matchedUserIdentity.getValue());
+
                             authenticatedUser = matchedUserIdentity.getKey();
 
                             groupProviderName = List.of(Config.group_provider);
@@ -129,6 +123,10 @@ public class AuthenticationHandler {
         if (!authenticatedUser.isEphemeral()) {
             context.setCurrentRoleIds(authenticatedUser);
             context.setAuthDataSalt(randomString);
+
+            UserProperty userProperty = context.getGlobalStateMgr().getAuthenticationMgr()
+                    .getUserProperty(authenticatedUser.getUser());
+            context.updateByUserProperty(userProperty);
         }
 
         Set<String> groups = getGroups(authenticatedUser, groupProviderName);

@@ -49,7 +49,7 @@ public class AuthenticationProviderFactory {
             }
 
             case AUTHENTICATION_OAUTH2 -> {
-                JSONObject authStringJSON = new JSONObject(authString);
+                JSONObject authStringJSON = new JSONObject(authString == null ? "{}" : authString);
 
                 String oauth2AuthServerUrl = authStringJSON.optString("oauth2_auth_server_url", Config.oauth2_auth_server_url);
                 String oauth2TokenServerUrl = authStringJSON.optString("oauth2_token_server_url", Config.oauth2_token_server_url);

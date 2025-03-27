@@ -45,6 +45,11 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
     @Override
     public void authenticate(ConnectContext context, String user, String host, byte[] password, byte[] randomString,
                              UserAuthenticationInfo authenticationInfo) throws AuthenticationException {
+        context.setOAuth2Context(oAuth2Context);
+        if (!AuthPlugin.Client.AUTHENTICATION_OAUTH2_CLIENT.toString().equals(context.getAuthPlugin())) {
+            return;
+        }
+
         long startTime = System.currentTimeMillis();
         String token;
         while (true) {
