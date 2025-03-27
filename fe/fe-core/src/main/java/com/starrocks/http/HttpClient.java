@@ -29,6 +29,7 @@ import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.LastHttpContent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -42,6 +43,7 @@ public class HttpClient extends SimpleChannelInboundHandler<HttpObject> {
 
     private final HttpRequest request;
     private final BaseResponse response;
+    private HttpResponseStatus status;
 
     public HttpClient(HttpRequest request, BaseResponse response) {
         this.request = request;
@@ -51,6 +53,7 @@ public class HttpClient extends SimpleChannelInboundHandler<HttpObject> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) {
         if (msg instanceof HttpResponse httpResponse) {
+            this.status = httpResponse.status();
             LOG.info("Received HTTP Response: Status = {}", httpResponse.status());
         }
 
@@ -87,19 +90,25 @@ public class HttpClient extends SimpleChannelInboundHandler<HttpObject> {
         ctx.close();
     }
 
-    public static void send(HttpRequest request, BaseResponse response) {
+    public HttpResponseStatus getStatus() {
+        return status;
+    }
+
+    public static HttpResponseStatus send(HttpRequest request, BaseResponse response) {
         try {
             URI uri = new URI(request.uri());
             String host = uri.getHost();
             int port = (uri.getPort() != -1) ? uri.getPort() : (uri.getScheme().equalsIgnoreCase("https") ? 443 : 80);
-            redirect(host, port, request, response);
+            return redirect(host, port, request, response);
         } catch (Exception e) {
             LOG.error(e.getMessage(), e);
+            return HttpResponseStatus.INTERNAL_SERVER_ERROR;
         }
     }
 
-    public static void redirect(String host, int port, HttpRequest request, BaseResponse response) {
+    public static HttpResponseStatus redirect(String host, int port, HttpRequest request, BaseResponse response) {
         try {
+            HttpClient client = new HttpClient(request, response);
             Bootstrap bootstrap = new Bootstrap();
             bootstrap.group(GROUP)
                     .channel(NioSocketChannel.class)
@@ -108,14 +117,16 @@ public class HttpClient extends SimpleChannelInboundHandler<HttpObject> {
                         protected void initChannel(Channel ch) {
                             ch.pipeline().addLast(new HttpClientCodec())
                                     .addLast(new HttpObjectAggregator(8192))
-                                    .addLast(new HttpClient(request, response));
+                                    .addLast(client);
                         }
                     });
 
             ChannelFuture future = bootstrap.connect(host, port).sync();
             future.channel().closeFuture().sync();
+            return client.status;
         } catch (Exception e) {
             LOG.error(e.getMessage(), e);
+            return HttpResponseStatus.INTERNAL_SERVER_ERROR;
         }
     }
 }

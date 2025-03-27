@@ -88,9 +88,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -776,7 +774,7 @@ public class NodeMgr {
             }
 
             int fid = allocateNextFrontendId();
-            if (fid == -1) {
+            if (fid == 0) {
                 throw new DdlException("No available frontend ID can allocate to new frontend");
             }
             Frontend fe = new Frontend(fid, role, nodeName, host, editLogPort);
@@ -806,14 +804,14 @@ public class NodeMgr {
     }
 
     /**
-     * Allocates the next available ID, ensuring it stays within the range [0, 255].
-     * If the ID reaches 255, it wraps around and searches from 0.
+     * Allocates the next available ID, ensuring it stays within the range [1, 255].
+     * If the ID reaches 255, it wraps around and searches from 1.
      *
-     * @return the allocated ID, or -1 if all IDs are occupied.
+     * @return the allocated ID, or 0 if all IDs are occupied.
      */
     public int allocateNextFrontendId() {
         if (frontendIds.isEmpty()) {
-            return 0; // Start from 0 if no IDs are assigned yet
+            return 1; // Start from 0 if no IDs are assigned yet
         }
 
         // Find the max key in the current map
@@ -821,13 +819,13 @@ public class NodeMgr {
 
         // Try to allocate the next available ID
         for (int i = 0; i <= 255; i++) {
-            int candidateId = (maxKey + 1 + i) % (256);
+            int candidateId = ((maxKey + i) % 255) + 1;
             if (!frontendIds.containsKey(candidateId)) {
                 return candidateId; // Found an available ID
             }
         }
 
-        return -1; //No available frontend ID can allocate to new frontend
+        return 0; //No available frontend ID can allocate to new frontend
     }
 
     public void modifyFrontendHost(ModifyFrontendAddressClause modifyFrontendAddressClause) throws DdlException {
@@ -1258,11 +1256,14 @@ public class NodeMgr {
         systemInfo = nodeMgr.systemInfo;
         brokerMgr = nodeMgr.brokerMgr;
 
+        //Sort by frontend name to ensure the order of assigned IDs is consistent
         List<Frontend> sortedList = frontends.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey()).map(Map.Entry::getValue).collect(Collectors.toList());
         for (Frontend fe : sortedList) {
-            if (fe.getFid() == -1) {
-                fe.setFid(allocateNextFrontendId());
+            if (fe.getFid() == 0) {
+                int frontendId = allocateNextFrontendId();
+                LOG.info("Frontend has no ID assigned, newly assigned ID {} to {}", frontendId, fe.getNodeName());
+                fe.setFid(frontendId);
             }
             frontendIds.put(fe.getFid(), fe);
         }

@@ -34,6 +34,7 @@ import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import org.json.JSONObject;
 
@@ -135,7 +136,6 @@ public class OAuth2Action extends RestBaseAction {
                         URLEncoder.encode(entry.getValue().toString(), StandardCharsets.UTF_8))
                 .collect(Collectors.joining("&"));
 
-        // 构造 HTTP 请求
         FullHttpRequest httpRequest = new DefaultFullHttpRequest(
                 HttpVersion.HTTP_1_1, HttpMethod.POST, oAuth2Context.tokenServerUrl(),
                 Unpooled.copiedBuffer(requestBody, StandardCharsets.UTF_8)
@@ -143,48 +143,11 @@ public class OAuth2Action extends RestBaseAction {
         httpRequest.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/x-www-form-urlencoded");
         httpRequest.headers().set(HttpHeaderNames.CONTENT_LENGTH, httpRequest.content().readableBytes());
 
-        // 发送请求
-        HttpClient.send(httpRequest, response);
-
-        // 返回 Token
-        return response.getContent().toString();
-    }
-
-    /*
-    private String getToken(String authorizationCode, OAuth2Context oAuth2Context, Long connectionId) {
-        Map<Object, Object> body = Map.of(
-                "grant_type", "authorization_code",
-                "code", authorizationCode,
-                "redirect_uri", oAuth2Context.redirectUrl() + "?connectionId=" + connectionId,
-                "client_id", oAuth2Context.clientId(),
-                "client_secret", oAuth2Context.clientSecret()
-        );
-
-        String requestBody = body.entrySet().stream()
-                .map(entry -> URLEncoder.encode(entry.getKey().toString(), StandardCharsets.UTF_8) + "=" +
-                        URLEncoder.encode(entry.getValue().toString(), StandardCharsets.UTF_8))
-                .reduce((a, b) -> a + "&" + b)
-                .orElse("");
-
-        java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(oAuth2Context.tokenServerUrl()))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .build();
-
-        java.net.http.HttpResponse<String> response;
-        try {
-            response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-        } catch (InterruptedException | IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        if (response.statusCode() == 200) {
-            return response.body();
+        HttpResponseStatus status = HttpClient.send(httpRequest, response);
+        if (status.equals(HttpResponseStatus.OK)) {
+            return response.getContent().toString();
         } else {
             return null;
         }
     }
-     */
 }

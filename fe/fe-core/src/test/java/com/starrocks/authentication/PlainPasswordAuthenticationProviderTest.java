@@ -17,6 +17,7 @@ package com.starrocks.authentication;
 
 import com.starrocks.common.Config;
 import com.starrocks.mysql.MysqlPassword;
+import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.sql.parser.NodePosition;
@@ -27,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 
 public class PlainPasswordAuthenticationProviderTest {
     protected PlainPasswordAuthenticationProvider provider = new PlainPasswordAuthenticationProvider();
+    private ConnectContext ctx = new ConnectContext();
 
     @Test
     public void testValidPassword() throws Exception {
@@ -66,14 +68,15 @@ public class PlainPasswordAuthenticationProviderTest {
             UserAuthOption userAuthOption = new UserAuthOption(password, null, null, true, NodePosition.ZERO);
             UserAuthenticationInfo info = provider.analyzeAuthOption(testUser, userAuthOption);
             byte[] scramble = MysqlPassword.scramble(seed, password);
-            provider.authenticate(testUser.getUser(), "10.1.1.1", scramble, seed, info);
+            provider.authenticate(ctx, testUser.getUser(), "10.1.1.1", scramble, seed, info);
         }
 
         // no password
         UserAuthenticationInfo info = provider.analyzeAuthOption(testUser, null);
-        provider.authenticate(testUser.getUser(), "10.1.1.1", new byte[0], new byte[0], info);
+        provider.authenticate(ctx, testUser.getUser(), "10.1.1.1", new byte[0], new byte[0], info);
         try {
             provider.authenticate(
+                    ctx,
                     testUser.getUser(),
                     "10.1.1.1",
                     "xx".getBytes(StandardCharsets.UTF_8),
@@ -92,6 +95,7 @@ public class PlainPasswordAuthenticationProviderTest {
         info = provider.analyzeAuthOption(testUser, userAuthOption);
         try {
             provider.authenticate(
+                    ctx,
                     testUser.getUser(),
                     "10.1.1.1",
                     MysqlPassword.scramble(seed, "xx"),
@@ -104,6 +108,7 @@ public class PlainPasswordAuthenticationProviderTest {
 
         try {
             provider.authenticate(
+                    ctx,
                     testUser.getUser(),
                     "10.1.1.1",
                     MysqlPassword.scramble(seed, "bb"),
@@ -117,6 +122,7 @@ public class PlainPasswordAuthenticationProviderTest {
         try {
             byte[] remotePassword = "bb".getBytes(StandardCharsets.UTF_8);
             provider.authenticate(
+                    ctx,
                     testUser.getUser(),
                     "10.1.1.1",
                     remotePassword,
