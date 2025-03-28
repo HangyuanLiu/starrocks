@@ -124,9 +124,6 @@ public class NodeMgr {
     @SerializedName(value = "rf")
     private ConcurrentLinkedQueue<String> removedFrontends = new ConcurrentLinkedQueue<>();
 
-    @SerializedName(value = "gid")
-    private int gid;
-
     /**
      * Backends and Compute Node
      */
