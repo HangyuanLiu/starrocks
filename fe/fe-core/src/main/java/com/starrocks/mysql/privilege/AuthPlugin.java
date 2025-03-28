@@ -14,13 +14,84 @@
 
 package com.starrocks.mysql.privilege;
 
+import com.starrocks.authentication.AuthenticationProvider;
+import com.starrocks.authentication.LDAPAuthProviderForNative;
+import com.starrocks.authentication.OAuth2AuthenticationProvider;
+import com.starrocks.authentication.OAuth2Context;
+import com.starrocks.authentication.OpenIdConnectAuthenticationProvider;
+import com.starrocks.authentication.PlainPasswordAuthenticationProvider;
+import com.starrocks.common.Config;
+import org.json.JSONObject;
+
 public class AuthPlugin {
+    private static final PlainPasswordAuthenticationProvider PLAIN_PASSWORD_AUTHENTICATION_PROVIDER =
+            new PlainPasswordAuthenticationProvider();
+    private static final LDAPAuthProviderForNative LDAP_AUTH_PROVIDER = new LDAPAuthProviderForNative();
 
     public enum Server {
         MYSQL_NATIVE_PASSWORD,
         AUTHENTICATION_LDAP_SIMPLE,
         AUTHENTICATION_OPENID_CONNECT,
-        AUTHENTICATION_OAUTH2
+        AUTHENTICATION_OAUTH2;
+
+        public AuthenticationProvider getProvider(String authString) {
+            AuthPlugin.Server authPlugin = this;
+            switch (authPlugin) {
+                case MYSQL_NATIVE_PASSWORD -> {
+                    return PLAIN_PASSWORD_AUTHENTICATION_PROVIDER;
+                }
+
+                case AUTHENTICATION_LDAP_SIMPLE -> {
+                    return LDAP_AUTH_PROVIDER;
+                }
+
+                case AUTHENTICATION_OPENID_CONNECT -> {
+                    if (authString == null) {
+                        authString = "{}";
+                    }
+                    JSONObject authStringJSON = new JSONObject(authString);
+                    String jwksUrl = authStringJSON.optString("jwks_url", Config.oidc_jwks_url);
+                    String principalFiled = authStringJSON.optString("principal_field", Config.oidc_principal_field);
+                    String requiredIssuer = authStringJSON.optString("required_issuer", Config.oidc_required_issuer);
+                    String requiredAudience = authStringJSON.optString("required_audience", Config.oidc_required_audience);
+
+                    return new OpenIdConnectAuthenticationProvider(jwksUrl, principalFiled, requiredIssuer, requiredAudience);
+                }
+
+                case AUTHENTICATION_OAUTH2 -> {
+                    JSONObject authStringJSON = new JSONObject(authString == null ? "{}" : authString);
+
+                    String oauth2AuthServerUrl =
+                            authStringJSON.optString("oauth2_auth_server_url", Config.oauth2_auth_server_url);
+                    String oauth2TokenServerUrl =
+                            authStringJSON.optString("oauth2_token_server_url", Config.oauth2_token_server_url);
+                    String oauth2RedirectUrl = authStringJSON.optString("oauth2_redirect_url", Config.oauth2_redirect_url);
+                    String oauth2ClientId = authStringJSON.optString("oauth2_client_id", Config.oauth2_client_id);
+                    String oauth2ClientSecret = authStringJSON.optString("oauth2_client_secret", Config.oauth2_client_secret);
+                    String oidcJwksUrl = authStringJSON.optString("oidc_jwks_url", Config.oidc_jwks_url);
+                    String oidcPrincipalField = authStringJSON.optString("oidc_principal_field", Config.oidc_principal_field);
+                    String oidcRequiredIssuer = authStringJSON.optString("oidc_required_issuer", Config.oidc_required_issuer);
+                    String oidcRequiredAudience =
+                            authStringJSON.optString("oidc_required_audience", Config.oidc_required_audience);
+                    Long oauthConnectWaitTimeout =
+                            authStringJSON.optLong("oauth_connect_wait_timeout", Config.oauth_connect_wait_timeout);
+
+                    return new OAuth2AuthenticationProvider(new OAuth2Context(
+                            oauth2AuthServerUrl,
+                            oauth2TokenServerUrl,
+                            oauth2RedirectUrl,
+                            oauth2ClientId,
+                            oauth2ClientSecret,
+                            oidcJwksUrl,
+                            oidcPrincipalField,
+                            oidcRequiredIssuer,
+                            oidcRequiredAudience,
+                            oauthConnectWaitTimeout));
+                }
+            }
+
+            return null;
+        }
     }
 
     public enum Client {

@@ -50,7 +50,7 @@ public class OAuth2Action extends RestBaseAction {
     }
 
     public static void registerAction(ActionController controller) throws IllegalArgException {
-        controller.registerHandler(HttpMethod.GET, "/api/callback", new OAuth2Action(controller));
+        controller.registerHandler(HttpMethod.GET, "/api/oauth2", new OAuth2Action(controller));
     }
 
     @Override
@@ -96,7 +96,7 @@ public class OAuth2Action extends RestBaseAction {
                     oAuth2Context.requiredIssuer(),
                     oAuth2Context.requiredAudience());
 
-            context.setToken(idToken);
+            context.setAuthToken(idToken);
 
             response.appendContent(OAuth2ResultMessage.generateLoginSuccessPage(
                     "OK",

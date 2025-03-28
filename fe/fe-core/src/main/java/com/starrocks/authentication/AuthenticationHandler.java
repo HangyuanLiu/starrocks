@@ -39,7 +39,6 @@ public class AuthenticationHandler {
         if (user == null || user.isEmpty()) {
             throw new AuthenticationException(ErrorCode.ERR_AUTHENTICATION_FAIL, "", usePasswd);
         }
-        context.setQualifiedUser(user);
 
         AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
 
@@ -69,7 +68,6 @@ public class AuthenticationHandler {
                             Preconditions.checkState(provider != null);
                             provider.authenticate(context, user, remoteHost, authResponse, randomString,
                                     matchedUserIdentity.getValue());
-
                             authenticatedUser = matchedUserIdentity.getKey();
 
                             groupProviderName = List.of(Config.group_provider);
@@ -124,10 +122,11 @@ public class AuthenticationHandler {
             context.setCurrentRoleIds(authenticatedUser);
             context.setAuthDataSalt(randomString);
 
-            UserProperty userProperty = context.getGlobalStateMgr().getAuthenticationMgr()
-                    .getUserProperty(authenticatedUser.getUser());
+            UserProperty userProperty =
+                    GlobalStateMgr.getCurrentState().getAuthenticationMgr().getUserProperty(authenticatedUser.getUser());
             context.updateByUserProperty(userProperty);
         }
+        context.setQualifiedUser(user);
 
         Set<String> groups = getGroups(authenticatedUser, groupProviderName);
         context.setGroups(groups);

@@ -157,7 +157,8 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        LOG.warn("[remote={}] Exception caught: {}", ctx.channel().remoteAddress(), cause.getMessage(), cause);
+        LOG.warn(String.format("[remote=%s] Exception caught: %s",
+                ctx.channel().remoteAddress(), cause.getMessage()), cause);
         ctx.close();
     }
 

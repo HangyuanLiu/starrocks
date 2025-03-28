@@ -22,7 +22,6 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
-import org.json.JSONObject;
 
 import java.nio.ByteBuffer;
 
@@ -47,12 +46,6 @@ public class OpenIdConnectAuthenticationProvider implements AuthenticationProvid
         info.setAuthPlugin(AuthPlugin.Server.AUTHENTICATION_OPENID_CONNECT.name());
         info.setPassword(MysqlPassword.EMPTY_PASSWORD);
         info.setOrigUserHost(userIdentity.getUser(), userIdentity.getHost());
-
-        String authString = userAuthOption.getAuthString();
-        if (authString != null) {
-            JSONObject authResponse = new JSONObject(authString);
-        }
-
         info.setAuthString(userAuthOption == null ? null : userAuthOption.getAuthString());
         return info;
     }
@@ -67,8 +60,7 @@ public class OpenIdConnectAuthenticationProvider implements AuthenticationProvid
             byte[] idToken = MysqlCodec.readLenEncodedString(authBuffer);
             JWKSet jwkSet = GlobalStateMgr.getCurrentState().getJwkMgr().getJwkSet(jwksUrl);
             OpenIdConnectVerifier.verify(new String(idToken), user, jwkSet, principalFiled, requiredIssuer, requiredAudience);
-
-            context.setToken(new String(idToken));
+            context.setAuthToken(new String(idToken));
         } catch (Exception e) {
             throw new AuthenticationException(e.getMessage());
         }

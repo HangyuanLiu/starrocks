@@ -64,33 +64,33 @@ public class UserAuthenticationInfo implements Writable {
         return password;
     }
 
-    public void setPassword(byte[] password) {
-        this.password = password;
+    public String getAuthPlugin() {
+        return authPlugin;
     }
 
     public String getOrigHost() {
         return origHost;
     }
 
-    public void setOrigUserHost(String origUser, String origHost) throws AuthenticationException {
-        this.origUser = origUser;
-        this.origHost = origHost;
-        analyze();
+    public String getAuthString() {
+        return authString;
     }
 
-    public String getAuthPlugin() {
-        return authPlugin;
+    public void setPassword(byte[] password) {
+        this.password = password;
     }
 
     public void setAuthPlugin(String authPlugin) {
         this.authPlugin = authPlugin;
     }
 
-    public String getAuthString() {
-        return authString;
-    }
-
     public void setAuthString(String authString) {
         this.authString = authString;
+    }
+
+    public void setOrigUserHost(String origUser, String origHost) throws AuthenticationException {
+        this.origUser = origUser;
+        this.origHost = origHost;
+        analyze();
     }
 }

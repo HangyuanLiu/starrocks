@@ -345,7 +345,7 @@ public class ConnectProcessor {
                 parsedStmt.setOrigStmt(new OriginStatement(originStmt, i));
                 Tracers.init(ctx, parsedStmt.getTraceMode(), parsedStmt.getTraceModule());
 
-                if (ctx.getOAuth2Context() != null && ctx.getToken() == null) {
+                if (ctx.getOAuth2Context() != null && ctx.getAuthToken() == null) {
                     OAuth2Context oAuth2Context = ctx.getOAuth2Context();
                     String authUrl = oAuth2Context.authServerUrl() +
                             "?response_type=code" +

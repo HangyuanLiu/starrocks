@@ -53,7 +53,7 @@ public class OAuth2AuthenticationProvider implements AuthenticationProvider {
         long startTime = System.currentTimeMillis();
         String token;
         while (true) {
-            token = context.getToken();
+            token = context.getAuthToken();
             if (token != null)  {
                 break;
             }

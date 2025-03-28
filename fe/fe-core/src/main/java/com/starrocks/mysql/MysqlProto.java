@@ -152,8 +152,10 @@ public class MysqlProto {
             return new NegotiateResult(authPacket, NegotiateState.READ_AUTH_SWITCH_PKG_FAILED);
         }
 
+        // Set the real user used for this connection.
         context.setQualifiedUser(authPacket.getUser());
         context.setAuthPlugin(authPacket.getPluginName());
+
         // change the capability of serializer
         context.setCapability(context.getServerCapability());
         serializer.setCapability(context.getCapability());
@@ -288,7 +290,7 @@ public class MysqlProto {
         if (localUser != null) {
             UserAuthenticationInfo authInfo = localUser.getValue();
             switchAuthPlugin = AuthPlugin.covertFromServerToClient(authInfo.getAuthPlugin());
-            provider = AuthenticationProviderFactory.create(authInfo.getAuthPlugin(), localUser.getValue().getAuthString());
+            provider = AuthenticationProviderFactory.create(authInfo.getAuthPlugin(), authInfo.getAuthString());
         } else {
             for (String authMechanism : Config.authentication_chain) {
                 if (authMechanism.equals(ConfigBase.AUTHENTICATION_CHAIN_MECHANISM_NATIVE)) {

@@ -174,6 +174,12 @@ public class ConnectContext {
     protected Set<Long> currentRoleIds = new HashSet<>();
     // groups of current user
     protected Set<String> groups = new HashSet<>();
+
+    // The Token in the OpenIDConnect authentication method is obtained
+    // from the authentication logic and stored in the ConnectContext.
+    // If the downstream system needs it, it needs to be obtained from the ConnectContext.
+    protected String authToken = null;
+
     // Serializer used to pack MySQL packet.
     protected MysqlSerializer serializer;
     // Variables belong to this session.
@@ -272,17 +278,8 @@ public class ConnectContext {
     // Whether leader is transferred during executing stmt
     private boolean isLeaderTransferred = false;
 
-    private volatile String token = null;
     private volatile OAuth2Context oAuth2Context = null;
     private String authPlugin = null;
-
-    public void setToken(String token) {
-        this.token = token;
-    }
-
-    public String getToken() {
-        return token;
-    }
 
     public void setOAuth2Context(OAuth2Context oAuth2Context) {
         this.oAuth2Context = oAuth2Context;
@@ -508,6 +505,14 @@ public class ConnectContext {
 
     public void setGroups(Set<String> groups) {
         this.groups = groups;
+    }
+
+    public String getAuthToken() {
+        return authToken;
+    }
+
+    public void setAuthToken(String authToken) {
+        this.authToken = authToken;
     }
 
     public void modifySystemVariable(SystemVariable setVar, boolean onlySetSessionVar) throws DdlException {

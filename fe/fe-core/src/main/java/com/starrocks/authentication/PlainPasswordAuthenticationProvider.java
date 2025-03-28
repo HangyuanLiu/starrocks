@@ -68,7 +68,7 @@ public class PlainPasswordAuthenticationProvider implements AuthenticationProvid
                     authenticationMgr.getBestMatchedUserIdentity(userIdentity.getUser(), userIdentity.getHost());
             if (userAuthenticationInfoEntry != null) {
                 try {
-                    authenticate(new ConnectContext(), userIdentity.getUser(), userIdentity.getHost(),
+                    authenticate(null, userIdentity.getUser(), userIdentity.getHost(),
                             password.getBytes(StandardCharsets.UTF_8), null, userAuthenticationInfoEntry.getValue());
                 } catch (AuthenticationException e) {
                     return;

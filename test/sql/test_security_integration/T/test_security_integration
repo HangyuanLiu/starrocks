@@ -11,6 +11,3 @@ alter security integration oidc set ("oidc_principal_field"="preferred_name");
 show create security integration oidc;
 drop security integration oidc;
 show security integrations;
-
-
-create security integration oidc properties("type"="oidc", "oidc_jwks_url"="jwks.json", "oidc_principal_field"="preferred_name");
