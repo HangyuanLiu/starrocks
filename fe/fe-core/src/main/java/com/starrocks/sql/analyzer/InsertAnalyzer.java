@@ -623,16 +623,18 @@ public class InsertAnalyzer {
 
         if (insertStmt.getTargetBranch() != null) {
             if (!table.isIcebergTable()) {
-                throw unsupportedException("Only support insert iceberg table with branch");
+                //throw unsupportedException("Only support insert iceberg table with branch");
             }
             String targetBranch = insertStmt.getTargetBranch();
-            SnapshotRef snapshotRef = ((IcebergTable) table).getNativeTable().refs().get(targetBranch);
-            if (snapshotRef == null) {
-                throw unsupportedException("Cannot find snapshot with reference name: " + targetBranch);
-            }
+            if (table instanceof IcebergTable) {
+                SnapshotRef snapshotRef = ((IcebergTable) table).getNativeTable().refs().get(targetBranch);
+                if (snapshotRef == null) {
+                    throw unsupportedException("Cannot find snapshot with reference name: " + targetBranch);
+                }
 
-            if (!snapshotRef.isBranch()) {
-                throw unsupportedException(String.format("%s is a tag, not a branch", targetBranch));
+                if (!snapshotRef.isBranch()) {
+                    throw unsupportedException(String.format("%s is a tag, not a branch", targetBranch));
+                }
             }
         }
 

@@ -46,6 +46,7 @@ import com.starrocks.catalog.Tablet;
 import com.starrocks.catalog.TabletInvertedIndex;
 import com.starrocks.catalog.TabletMeta;
 import com.starrocks.catalog.Type;
+import com.starrocks.catalog.branching.SchemaSnapshot;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
 import com.starrocks.common.FeConstants;
@@ -55,6 +56,7 @@ import com.starrocks.common.io.Text;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.common.util.concurrent.MarkedCountDownLatch;
 import com.starrocks.journal.JournalTask;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.lake.LakeTableHelper;
 import com.starrocks.lake.LakeTablet;
 import com.starrocks.lake.Utils;
@@ -404,7 +406,7 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
                             .setSortKeyIndexes(originIndexId == baseIndexId ? sortKeyIdxes : null)
                             .setSortKeyUniqueIds(originIndexId == baseIndexId ? sortKeyUniqueIds : null)
                             .setIndexes(originIndexId == baseIndexId ?
-                                        indexes : OlapTable.getIndexesBySchema(indexes, shadowSchema))
+                                    indexes : OlapTable.getIndexesBySchema(indexes, shadowSchema))
                             .setBloomFilterColumnNames(bfColumns)
                             .setBloomFilterFpp(bfFpp)
                             .setStorageType(TStorageType.COLUMN)
@@ -460,7 +462,7 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
         }
 
         sendAgentTaskAndWait(batchTask, countDownLatch, Config.tablet_create_timeout_second * numTablets,
-                             waitingCreatingReplica, isCancelling);
+                waitingCreatingReplica, isCancelling);
 
         // Add shadow indexes to table.
         try (WriteLockedDatabase db = getWriteLockedDatabase(dbId)) {
@@ -764,6 +766,10 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
             // inactivate related mv
             inactiveRelatedMv(modifiedColumns, table);
             table.onReload();
+
+            if (table instanceof LakeTable lakeTable) {
+                SchemaSnapshot.create(lakeTable);
+            }
             this.jobState = JobState.FINISHED;
             this.finishedTimeMs = System.currentTimeMillis();
 
@@ -853,7 +859,7 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
         Database db = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb(dbId);
         for (MvId mvId : tbl.getRelatedMaterializedViews()) {
             MaterializedView mv = (MaterializedView) GlobalStateMgr.getCurrentState().getLocalMetastore()
-                        .getTable(db.getId(), mvId.getId());
+                    .getTable(db.getId(), mvId.getId());
             if (mv == null) {
                 LOG.warn("Ignore materialized view {} does not exists", mvId);
                 continue;
@@ -962,7 +968,8 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
             assert shadowIndexId != null;
             assert shadowIndex != null;
             TStorageMedium medium = table.getPartitionInfo().getDataProperty(physicalPartition.getParentId()).getStorageMedium();
-            TabletMeta shadowTabletMeta = new TabletMeta(dbId, tableId, partitionId, shadowIndexId, 0, medium, true);
+            TabletMeta shadowTabletMeta = new TabletMeta(dbId, tableId, partitionId, shadowIndexId,
+                    0, medium, true);
             for (Tablet shadowTablet : shadowIndex.getTablets()) {
                 invertedIndex.addTablet(shadowTablet.getId(), shadowTabletMeta);
             }
@@ -1037,8 +1044,8 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
                 Preconditions.checkNotNull(droppedIdx, originIdxId + " vs. " + shadowIdxId);
 
                 // Add Tablet to TabletInvertedIndex.
-                TabletMeta shadowTabletMeta =
-                        new TabletMeta(dbId, tableId, partition.getId(), shadowIdxId, 0, medium, true);
+                TabletMeta shadowTabletMeta = new TabletMeta(dbId, tableId, partition.getId(), shadowIdxId,
+                        0, medium, true);
                 for (Tablet tablet : shadowIdx.getTablets()) {
                     invertedIndex.addTablet(tablet.getId(), shadowTabletMeta);
                 }

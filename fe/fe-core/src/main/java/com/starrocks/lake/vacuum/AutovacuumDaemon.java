@@ -31,6 +31,7 @@ import com.starrocks.common.util.FrontendDaemon;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.lake.LakeAggregator;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.lake.LakeTablet;
 import com.starrocks.lake.snapshot.ClusterSnapshotMgr;
 import com.starrocks.proto.TabletInfoPB;
@@ -110,7 +111,7 @@ public class AutovacuumDaemon extends FrontendDaemon {
         if (partition.getVisibleVersionTime() <= staleTime && partition.getMetadataSwitchVersion() == 0) {
             return false;
         }
-        // empty parition
+        // empty partition
         if (partition.getVisibleVersion() <= 1) {
             return false;
         }
@@ -187,6 +188,10 @@ public class AutovacuumDaemon extends FrontendDaemon {
             }
             visibleVersion = partition.getVisibleVersion();
             minRetainVersion = partition.getMinRetainVersion();
+            if (minRetainVersion <= 0) {
+                minRetainVersion = ((LakeTable) table).getMinVersion(partition.getId());
+            }
+
             if (minRetainVersion <= 0) {
                 minRetainVersion = Math.max(1, visibleVersion - Config.lake_autovacuum_max_previous_versions);
             } else {

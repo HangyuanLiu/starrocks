@@ -160,6 +160,7 @@ import static com.starrocks.connector.PartitionUtil.createPartitionKeyWithType;
 import static com.starrocks.connector.iceberg.IcebergApiConverter.filterManifests;
 import static com.starrocks.connector.iceberg.IcebergApiConverter.mayHaveEqualityDeletes;
 import static com.starrocks.connector.iceberg.IcebergApiConverter.parsePartitionFields;
+import static com.starrocks.connector.iceberg.IcebergApiConverter.toFullSchemas;
 import static com.starrocks.connector.iceberg.IcebergApiConverter.toIcebergApiSchema;
 import static com.starrocks.connector.iceberg.IcebergCatalogType.GLUE_CATALOG;
 import static com.starrocks.connector.iceberg.IcebergCatalogType.HIVE_CATALOG;
@@ -426,6 +427,35 @@ public class IcebergMetadata implements ConnectorMetadata {
         } catch (NoSuchTableException e) {
             return getView(context, dbName, tblName);
         }
+    }
+
+    @Override
+    public Table getTable(ConnectContext context, String dbName, String tblName,
+                          Optional<ConnectorTableVersion> startVersion,
+                          Optional<ConnectorTableVersion> endVersion) {
+        Table table = this.getTable(context, dbName, tblName);
+        TableVersionRange range = getTableVersionRange(dbName, table, startVersion, endVersion);
+        IcebergTable icebergTable = (IcebergTable) table;
+
+        long snapshotId = range.end().get();
+        Snapshot snapshot = icebergTable.getNativeTable().snapshot(snapshotId);
+        Schema schema = icebergTable.getNativeTable().schemas().get(snapshot.schemaId());
+
+        icebergTable.getNativeTable();
+        IcebergTable newIcebergTable = IcebergTable.builder()
+                .setId(icebergTable.getId())
+                .setSrTableName(icebergTable.getName())
+                .setCatalogName(icebergTable.getCatalogName())
+                .setResourceName(icebergTable.getResourceName())
+                .setCatalogDBName(icebergTable.getCatalogDBName())
+                .setCatalogTableName(icebergTable.getCatalogTableName())
+                .setComment(icebergTable.getComment())
+                .setNativeTable(icebergTable.getNativeTable())
+                .setFullSchema(toFullSchemas(schema))
+                .setIcebergProperties(icebergTable.getProperties())
+                .build();
+
+        return newIcebergTable;
     }
 
     public static long getSnapshotIdFromVersion(org.apache.iceberg.Table table, ConnectorTableVersion version) {

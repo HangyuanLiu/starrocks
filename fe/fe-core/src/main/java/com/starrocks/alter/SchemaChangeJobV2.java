@@ -69,6 +69,7 @@ import com.starrocks.catalog.SchemaInfo;
 import com.starrocks.catalog.Tablet;
 import com.starrocks.catalog.TabletInvertedIndex;
 import com.starrocks.catalog.TabletMeta;
+import com.starrocks.catalog.branching.SchemaSnapshot;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
 import com.starrocks.common.FeConstants;
@@ -80,6 +81,7 @@ import com.starrocks.common.util.concurrent.MarkedCountDownLatch;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.journal.JournalTask;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.persist.EditLog;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.qe.ConnectContext;
@@ -799,6 +801,11 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
 
             pruneMeta();
             tbl.onReload();
+
+            if (tbl instanceof LakeTable lakeTable) {
+                SchemaSnapshot.create(lakeTable);
+            }
+
             this.jobState = JobState.FINISHED;
             this.finishedTimeMs = System.currentTimeMillis();
 

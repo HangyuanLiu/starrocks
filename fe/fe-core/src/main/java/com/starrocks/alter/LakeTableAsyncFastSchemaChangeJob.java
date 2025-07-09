@@ -24,6 +24,7 @@ import com.starrocks.catalog.MaterializedIndex;
 import com.starrocks.catalog.MaterializedIndexMeta;
 import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.SchemaInfo;
+import com.starrocks.catalog.branching.SchemaSnapshot;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.lake.LakeTable;
@@ -36,8 +37,10 @@ import org.apache.commons.collections4.ListUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -118,6 +121,8 @@ public class LakeTableAsyncFastSchemaChangeJob extends LakeTableAlterMetaJobBase
     private void updateCatalogUnprotected(Database db, LakeTable table) {
         Set<String> droppedOrModifiedColumns = Sets.newHashSet();
         boolean hasMv = !table.getRelatedMaterializedViews().isEmpty();
+
+        Map<Long, Long> materializedIndexIdToSchemaId = new HashMap<>();
         for (IndexSchemaInfo indexSchemaInfo : schemaInfos) {
             SchemaInfo schemaInfo = indexSchemaInfo.schemaInfo;
             long indexId = indexSchemaInfo.indexId;
@@ -139,12 +144,17 @@ public class LakeTableAsyncFastSchemaChangeJob extends LakeTableAlterMetaJobBase
             indexMeta.setSchemaId(schemaInfo.getId());
             indexMeta.setSortKeyIdxes(schemaInfo.getSortKeyIndexes());
 
+            table.addSchema(schemaInfo.getId(), indexMeta);
             // update the indexIdToMeta
             table.getIndexIdToMeta().put(indexId, indexMeta);
             table.setIndexes(schemaInfo.getIndexes());
             table.renameColumnNamePrefix(indexId);
+
+            materializedIndexIdToSchemaId.put(indexId, indexMeta.getSchemaId());
         }
         table.rebuildFullSchema();
+
+        SchemaSnapshot.create(table);
 
         // If modified columns are already done, inactive related mv
         AlterMVJobExecutor.inactiveRelatedMaterializedViews(db, table, droppedOrModifiedColumns);

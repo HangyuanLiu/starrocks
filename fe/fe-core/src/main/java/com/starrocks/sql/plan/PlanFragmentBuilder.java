@@ -982,6 +982,7 @@ public class PlanFragmentBuilder {
             scanNode.setGtid(node.getGtid());
             scanNode.setVectorSearchOptions(node.getVectorSearchOptions());
             scanNode.setSample(node.getSample());
+            scanNode.setTableVersionRange(node.getTableVersionRange());
             currentExecGroup.add(scanNode);
             // set tablet
             try {
@@ -1040,6 +1041,33 @@ public class PlanFragmentBuilder {
                 throw new StarRocksPlannerException(
                         "Build Exec OlapScanNode fail, scan info is invalid", INTERNAL_ERROR, e);
             }
+
+            //FIXME
+            /*
+            if (referenceTable instanceof LakeTable) {
+                LakeTable lakeTable = (LakeTable) referenceTable;
+                TableVersionRange tableVersionRange = scanNode.getTableVersionRange();
+                MaterializedIndexMeta materializedIndexMeta = lakeTable.getSchema(tableVersionRange.getTimestamp());
+                List<Column> columns = materializedIndexMeta.getSchema();
+
+                for (Map.Entry<ColumnRefOperator, Column> entry : node.getColRefToColumnMetaMap().entrySet()) {
+                    if (!columns.contains(entry.getValue())) {
+                        continue;
+                    }
+
+                    SlotDescriptor slotDescriptor =
+                            context.getDescTbl().addSlotDescriptor(tupleDescriptor, new SlotId(entry.getKey().getId()));
+                    slotDescriptor.setColumn(entry.getValue());
+                    slotDescriptor.setIsNullable(entry.getValue().isAllowNull());
+                    slotDescriptor.setIsMaterialized(true);
+                    if (slotDescriptor.getOriginType().isComplexType()) {
+                        slotDescriptor.setOriginType(entry.getKey().getType());
+                        slotDescriptor.setType(entry.getKey().getType());
+                    }
+                    context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                }
+            }
+             */
 
             // set slot
             for (Map.Entry<ColumnRefOperator, Column> entry : node.getColRefToColumnMetaMap().entrySet()) {

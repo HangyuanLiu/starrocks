@@ -36,6 +36,7 @@ import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.SinglePartitionInfo;
 import com.starrocks.catalog.Table;
 import com.starrocks.catalog.Tablet;
+import com.starrocks.catalog.branching.SchemaSnapshot;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.io.Text;
@@ -46,6 +47,7 @@ import com.starrocks.common.util.Util;
 import com.starrocks.common.util.concurrent.lock.AutoCloseableLock;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.persist.ReplacePartitionOperationLog;
 import com.starrocks.persist.gson.GsonPostProcessable;
 import com.starrocks.persist.gson.GsonUtils;
@@ -696,6 +698,10 @@ public class MergePartitionJob extends AlterJobV2 implements GsonPostProcessable
                             new ArrayList<>(sourcePartitionNames), 
                             Collections.singletonList(tmpPartitionName), 
                             false, true);
+
+                    if (targetTable instanceof LakeTable lakeTable) {
+                        SchemaSnapshot.create(lakeTable);
+                    }
 
                     // write log
                     ReplacePartitionOperationLog info = new ReplacePartitionOperationLog(

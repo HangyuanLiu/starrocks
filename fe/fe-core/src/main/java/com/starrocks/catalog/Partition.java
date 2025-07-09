@@ -84,6 +84,10 @@ public class Partition extends MetaObject implements GsonPostProcessable {
     @SerializedName(value = "distributionInfo")
     private DistributionInfo distributionInfo;
 
+    //FIXME:
+    //@SerializedName(value = "gid")
+    private Long gid = 0L;
+
     public Partition(long id, String name, DistributionInfo distributionInfo) {
         this.id = id;
         this.name = name;
@@ -248,6 +252,10 @@ public class Partition extends MetaObject implements GsonPostProcessable {
         return replicaCount;
     }
 
+    public Long getGid() {
+        return gid;
+    }
+
     @Override
     public int hashCode() {
         return Objects.hashCode(id, distributionInfo);
@@ -317,6 +325,10 @@ public class Partition extends MetaObject implements GsonPostProcessable {
             }
 
             nameToSubPartition.put(subPartition.getName(), subPartition);
+        }
+
+        if (gid == 0) {
+            gid = GlobalStateMgr.getCurrentState().getGtidGenerator().nextGtid();
         }
     }
 

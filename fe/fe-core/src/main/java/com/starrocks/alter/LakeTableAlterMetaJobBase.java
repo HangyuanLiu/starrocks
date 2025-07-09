@@ -28,6 +28,7 @@ import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.Tablet;
+import com.starrocks.catalog.branching.SchemaSnapshot;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.util.concurrent.MarkedCountDownLatch;
@@ -215,6 +216,9 @@ public abstract class LakeTableAlterMetaJobBase extends AlterJobV2 {
             updateCatalog(db, table);
             this.jobState = JobState.FINISHED;
             this.finishedTimeMs = System.currentTimeMillis();
+
+            SchemaSnapshot.create(table);
+
             GlobalStateMgr.getCurrentState().getEditLog().logAlterJob(this);
             // set visible version
             updateVisibleVersion(table);
@@ -287,8 +291,8 @@ public abstract class LakeTableAlterMetaJobBase extends AlterJobV2 {
                     }
                 }
                 if (useAggregatePublish) {
-                    Utils.aggregatePublishVersion(tablets, Lists.newArrayList(txnInfo), commitVersion - 1, commitVersion, 
-                                null, null, computeResource, null);
+                    Utils.aggregatePublishVersion(tablets, Lists.newArrayList(txnInfo), commitVersion - 1, commitVersion,
+                            null, null, computeResource, null);
                 }
             }
             return true;
@@ -429,6 +433,13 @@ public abstract class LakeTableAlterMetaJobBase extends AlterJobV2 {
             if (enableFileBundling() || disableFileBundling()) {
                 partition.setMetadataSwitchVersion(commitVersion);
             }
+
+            //FIXME: set min retain version more early, maybe at the end of runWaitingTxnJob
+            partition.setMinRetainVersion(commitVersion);
+            table.addVersion(
+                    "main",
+                    partitionId,
+                    finishedTimeMs, commitVersion);
             LOG.info("partitionVisibleVersion=" + partition.getVisibleVersion() + " commitVersion=" + commitVersion);
             LOG.info("LakeTableAlterMetaJob id: {} update visible version of partition: {}, visible Version: {}",
                     jobId, partition.getId(), commitVersion);
@@ -575,7 +586,7 @@ public abstract class LakeTableAlterMetaJobBase extends AlterJobV2 {
                 // TODO(fixme): last version/version time is not kept in transaction state, use version - 1 for last commit
                 //  version.
                 // TODO: we may add last version time to check mv's version map with base table's version time.
-                PartitionRepairInfo partitionRepairInfo = new PartitionRepairInfo(partition.getId(),  partition.getName(),
+                PartitionRepairInfo partitionRepairInfo = new PartitionRepairInfo(partition.getId(), partition.getName(),
                         partitionVersion.getValue() - 1, partitionVersion.getValue(), finishedTimeMs);
                 partitionRepairInfos.add(partitionRepairInfo);
             }

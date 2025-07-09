@@ -97,6 +97,7 @@ public class MaterializedIndex extends MetaObject implements Writable, GsonPostP
 
     @SerializedName(value = "id")
     private long id;
+
     @SerializedName(value = "state")
     private IndexState state;
     @SerializedName(value = "rowCount")

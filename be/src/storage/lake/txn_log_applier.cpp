@@ -452,6 +452,8 @@ private:
             auto rowset = _metadata->add_rowsets();
             rowset->CopyFrom(op_write.rowset());
             rowset->set_id(_metadata->next_rowset_id());
+            rowset->set_version(_new_version);
+
             _metadata->set_next_rowset_id(_metadata->next_rowset_id() + std::max(1, rowset->segments_size()));
             if (!_metadata->rowset_to_schema().empty()) {
                 auto schema_id = _metadata->schema().id();

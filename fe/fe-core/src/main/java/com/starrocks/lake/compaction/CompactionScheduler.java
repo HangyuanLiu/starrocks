@@ -33,6 +33,7 @@ import com.starrocks.common.util.Daemon;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.lake.LakeAggregator;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.lake.LakeTablet;
 import com.starrocks.proto.AggregateCompactRequest;
 import com.starrocks.proto.CompactRequest;
@@ -300,7 +301,7 @@ public class CompactionScheduler extends Daemon {
         long txnId;
         long currentVersion;
         OlapTable table;
-        PhysicalPartition partition;
+        PhysicalPartition physicalPartition;
         Map<Long, List<Long>> beToTablets;
 
         Locker locker = new Locker();
@@ -317,15 +318,18 @@ public class CompactionScheduler extends Daemon {
                 compactionManager.enableCompactionAfter(partitionIdentifier, Config.lake_compaction_interval_ms_on_failure);
                 return null;
             }
-            partition = (table != null) ? table.getPhysicalPartition(partitionIdentifier.getPartitionId()) : null;
-            if (partition == null) {
+            physicalPartition = (table != null) ? table.getPhysicalPartition(partitionIdentifier.getPartitionId()) : null;
+            if (physicalPartition == null) {
                 compactionManager.removePartition(partitionIdentifier);
                 return null;
             }
 
-            currentVersion = partition.getVisibleVersion();
+            currentVersion = physicalPartition.getVisibleVersion();
 
-            beToTablets = collectPartitionTablets(partition, info.computeResource);
+            LakeTable lakeTable = (LakeTable) table;
+            currentVersion = lakeTable.getMinVersion(physicalPartition.getId());
+
+            beToTablets = collectPartitionTablets(physicalPartition, info.computeResource);
             if (beToTablets.isEmpty()) {
                 compactionManager.enableCompactionAfter(partitionIdentifier, Config.lake_compaction_interval_ms_on_failure);
                 return null;
@@ -335,7 +339,7 @@ public class CompactionScheduler extends Daemon {
             // be added to this table(i.e., no schema change) before calling `beginTransaction()`.
             txnId = beginTransaction(partitionIdentifier, info.computeResource);
 
-            partition.setMinRetainVersion(currentVersion);
+            physicalPartition.setMinRetainVersion(currentVersion);
 
         } catch (RunningTxnExceedException | AnalysisException | LabelAlreadyUsedException | DuplicatedRequestException e) {
             LOG.error("Fail to create transaction for compaction job. {}", e.getMessage());
@@ -348,12 +352,12 @@ public class CompactionScheduler extends Daemon {
         }
 
         long nextCompactionInterval = Config.lake_compaction_interval_ms_on_success;
-        CompactionJob job = new CompactionJob(db, table, partition, txnId, Config.lake_compaction_allow_partial_success,
+        CompactionJob job = new CompactionJob(db, table, physicalPartition, txnId, Config.lake_compaction_allow_partial_success,
                                               info.computeResource, info.warehouseName);
         try {
             if (table.isFileBundling()) {
                 CompactionTask task = createAggregateCompactionTask(currentVersion, beToTablets, txnId,
-                        partitionStatisticsSnapshot.getPriority(), info.computeResource);
+                        partitionStatisticsSnapshot.getPriority(), info.computeResource, physicalPartition.getId());
                 task.sendRequest();
                 job.setAggregateTask(task);
                 LOG.debug("Create aggregate compaction task. {}", job.getDebugString());
@@ -368,7 +372,7 @@ public class CompactionScheduler extends Daemon {
             return job;
         } catch (Exception e) {
             LOG.error(e.getMessage(), e);
-            partition.setMinRetainVersion(0);
+            physicalPartition.setMinRetainVersion(0);
             nextCompactionInterval = Config.lake_compaction_interval_ms_on_failure;
             abortTransactionIgnoreError(job, e.getMessage());
             job.finish();
@@ -409,7 +413,7 @@ public class CompactionScheduler extends Daemon {
 
     @NotNull
     private CompactionTask createAggregateCompactionTask(long currentVersion, Map<Long, List<Long>> beToTablets, long txnId,
-            PartitionStatistics.CompactionPriority priority, ComputeResource computeResource)
+            PartitionStatistics.CompactionPriority priority, ComputeResource computeResource, long partitionId)
             throws StarRocksException, RpcException {
         // 1. build AggregateCompactRequest
         AggregateCompactRequest aggRequest = new AggregateCompactRequest();
@@ -438,6 +442,7 @@ public class CompactionScheduler extends Daemon {
 
             aggRequest.requests.add(request);
             aggRequest.computeNodes.add(nodePB);
+            aggRequest.partitionId = partitionId;
         }
 
         // 2. pick aggregator node and build lake serivce

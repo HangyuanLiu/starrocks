@@ -52,6 +52,7 @@ import com.starrocks.common.util.TimeUtils;
 import com.starrocks.common.util.concurrent.lock.AutoCloseableLock;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.persist.AlterViewInfo;
 import com.starrocks.persist.BatchModifyPartitionsInfo;
 import com.starrocks.persist.ModifyPartitionInfo;
@@ -74,6 +75,8 @@ import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.ColumnRenameClause;
 import com.starrocks.sql.ast.CompactionClause;
 import com.starrocks.sql.ast.CreateIndexClause;
+import com.starrocks.sql.ast.CreateOrReplaceBranchClause;
+import com.starrocks.sql.ast.CreateOrReplaceTagClause;
 import com.starrocks.sql.ast.DropColumnClause;
 import com.starrocks.sql.ast.DropFieldClause;
 import com.starrocks.sql.ast.DropIndexClause;
@@ -643,7 +646,7 @@ public class AlterJobExecutor implements AstVisitor<Void, ConnectContext> {
     @Override
     public Void visitRollupRenameClause(RollupRenameClause clause, ConnectContext context) {
         try (AutoCloseableLock ignore =
-                    new AutoCloseableLock(new Locker(), db.getId(), Lists.newArrayList(table.getId()), LockType.WRITE)) {
+                     new AutoCloseableLock(new Locker(), db.getId(), Lists.newArrayList(table.getId()), LockType.WRITE)) {
             ErrorReport.wrapWithRuntimeException(() ->
                     GlobalStateMgr.getCurrentState().getLocalMetastore().renameRollup(db, (OlapTable) table, clause));
         }
@@ -707,7 +710,7 @@ public class AlterJobExecutor implements AstVisitor<Void, ConnectContext> {
         }
 
         try (AutoCloseableLock ignore =
-                    new AutoCloseableLock(new Locker(), db.getId(), Lists.newArrayList(table.getId()), LockType.WRITE)) {
+                     new AutoCloseableLock(new Locker(), db.getId(), Lists.newArrayList(table.getId()), LockType.WRITE)) {
             ErrorReport.wrapWithRuntimeException(() ->
                     GlobalStateMgr.getCurrentState().getLocalMetastore().dropPartition(db, table, clause));
         }
@@ -912,6 +915,34 @@ public class AlterJobExecutor implements AstVisitor<Void, ConnectContext> {
 
         GlobalStateMgr.getCurrentState().getAlterJobMgr().alterView(alterViewInfo, false);
         GlobalStateMgr.getCurrentState().getEditLog().logModifyViewDef(alterViewInfo);
+        return null;
+    }
+
+    @Override
+    public Void visitCreateOrReplaceBranchClause(CreateOrReplaceBranchClause clause, ConnectContext context) {
+        String branchName = clause.getBranchName();
+        try (AutoCloseableLock ignore =
+                     new AutoCloseableLock(db.getId(), Lists.newArrayList(table.getId()), LockType.READ)) {
+            LakeTable lakeTable = (LakeTable) table;
+            LakeTable.Branch branch = lakeTable.getBranch(table.getId(), "main");
+
+            LakeTable.Branch newBranch = (LakeTable.Branch) branch.clone();
+            lakeTable.addBranch(table.getId(), branchName, newBranch);
+        }
+
+        return null;
+    }
+
+    @Override
+    public Void visitCreateOrReplaceTagClause(CreateOrReplaceTagClause clause, ConnectContext context) {
+        String tagName = clause.getTagName();
+        try (AutoCloseableLock ignore =
+                     new AutoCloseableLock(db.getId(), Lists.newArrayList(table.getId()), LockType.READ)) {
+            LakeTable lakeTable = (LakeTable) table;
+            long gtid = GlobalStateMgr.getCurrentState().getGtidGenerator().nextGtid();
+            lakeTable.addTag(gtid, tagName, "main");
+        }
+
         return null;
     }
 }

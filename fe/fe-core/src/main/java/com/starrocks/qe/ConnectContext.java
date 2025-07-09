@@ -284,6 +284,8 @@ public class ConnectContext {
     // GlobalTransactionMgr#ExplicitTxnState, and the transaction state is recorded in TransactionState.
     private long txnId;
 
+    public Long gTxnId = 0L;
+
     // session level SPM storage
     private SQLPlanStorage sqlPlanStorage = SQLPlanStorage.create(false);
 
@@ -865,6 +867,7 @@ public class ConnectContext {
 
     public void setQueryId(UUID queryId) {
         this.queryId = queryId;
+        this.gTxnId = 0L;
     }
 
     public UUID getLastQueryId() {
@@ -1173,7 +1176,8 @@ public class ConnectContext {
     /**
      * NOTE: The ExecTimeout should not contain the pending time which may be caused by QueryQueue's scheduler.
      * </p>
-     * @return  Get the timeout for this session, unit: second
+     *
+     * @return Get the timeout for this session, unit: second
      */
     public int getExecTimeout() {
         return pendingTimeSecond + getExecTimeoutWithoutPendingTime();
@@ -1185,6 +1189,7 @@ public class ConnectContext {
 
     /**
      * update the pending time for this session, unit: second
+     *
      * @param pendingTimeSecond: the pending time for this session
      */
     public void setPendingTimeSecond(int pendingTimeSecond) {
@@ -1205,6 +1210,7 @@ public class ConnectContext {
 
     /**
      * Check the connect context is timeout or not. If true, kill the connection, otherwise, return false.
+     *
      * @param now : current time in milliseconds
      * @return true if timeout, false otherwise
      */

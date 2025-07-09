@@ -834,6 +834,14 @@ public class PublishVersionDaemon extends FrontendDaemon {
                 return false;
             }
             baseVersion = partition.getVisibleVersion();
+            /*
+            LakeTable lakeTable = (LakeTable) table;
+            baseVersion = lakeTable.getVersion(
+                    txnState.branchName,
+                    partitionId,
+                    System.currentTimeMillis());
+             */
+
             List<MaterializedIndex> indexes = txnState.getPartitionLoadedTblIndexes(table.getId(), partition);
             for (MaterializedIndex index : indexes) {
                 if (!index.visibleForTransaction(txnId)) {

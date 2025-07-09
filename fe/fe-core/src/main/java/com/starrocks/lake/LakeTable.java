@@ -33,6 +33,7 @@ import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.PartitionInfo;
 import com.starrocks.catalog.PartitionKey;
+import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.RangePartitionInfo;
 import com.starrocks.catalog.RecyclePartitionInfo;
 import com.starrocks.catalog.TableIndexes;
@@ -43,7 +44,6 @@ import com.starrocks.common.InvalidOlapTableStateException;
 import com.starrocks.common.io.DeepCopy;
 import com.starrocks.common.io.Text;
 import com.starrocks.common.util.PropertyAnalyzer;
-import com.starrocks.lake.LakeTableHelper;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.StorageVolumeMgr;
@@ -271,6 +271,15 @@ public class LakeTable extends OlapTable {
         // And the max unique id will be reset while rebuilding full schema.
         LakeTableHelper.restoreColumnUniqueIdIfNeeded(this);
         super.gsonPostProcess();
+
+        LakeTable.Branch mainBranch = new LakeTable.Branch();
+        nameToBranch.put("main", mainBranch);
+        for (PhysicalPartition physicalPartition : getAllPhysicalPartitions()) {
+            mainBranch.partitionIdToVersion.putIfAbsent(physicalPartition.getId(), new LakeTable.PartitionVersion());
+            LakeTable.PartitionVersion partitionVersion =
+                    mainBranch.partitionIdToVersion.get(physicalPartition.getId());
+            partitionVersion.addVersion(physicalPartition.getVisibleVersionTime(), physicalPartition.getVisibleVersion());
+        }
     }
 
     @Override
@@ -287,29 +296,204 @@ public class LakeTable extends OlapTable {
 
     public boolean checkLakeRollupAllowFileBundling() {
         return getPartitions().stream()
-            .flatMap(partition -> partition.getSubPartitions().stream())
-            .allMatch(physicalPartition -> {
-                long physicalPartitionId = physicalPartition.getId();
-                List<Long> shardIds = physicalPartition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL).stream()
-                        .flatMap(index -> index.getTablets().stream())
-                        .map(tablet -> ((LakeTablet) tablet).getShardId())
-                        .collect(Collectors.toList());
-            
-                if (shardIds.isEmpty()) {
-                    return true;
+                .flatMap(partition -> partition.getSubPartitions().stream())
+                .allMatch(physicalPartition -> {
+                    long physicalPartitionId = physicalPartition.getId();
+                    List<Long> shardIds = physicalPartition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL).stream()
+                            .flatMap(index -> index.getTablets().stream())
+                            .map(tablet -> ((LakeTablet) tablet).getShardId())
+                            .collect(Collectors.toList());
+
+                    if (shardIds.isEmpty()) {
+                        return true;
+                    }
+                    List<ShardInfo> shardInfos = new ArrayList<>();
+                    try {
+                        shardInfos = GlobalStateMgr.getCurrentState().getStarOSAgent()
+                                .getShardInfo(shardIds, StarOSAgent.DEFAULT_WORKER_GROUP_ID);
+                    } catch (Exception e) {
+                        LOG.warn("checkLakeRollupAllowFileBundling got exception: {}", e.getMessage());
+                        return false;
+                    }
+                    return shardInfos.stream()
+                            .allMatch(shardInfo -> LakeTableHelper.extractIdFromPath(shardInfo.getFilePath().getFullPath())
+                                    .map(id -> id == physicalPartitionId)
+                                    .orElse(false));
+                });
+    }
+
+    private Map<String, Branch> nameToBranch = new HashMap<>();
+    private Map<String, Tag> nameToTag = new HashMap<>();
+
+    public static class Branch {
+        Map<Long, PartitionVersion> partitionIdToVersion = new HashMap<>();
+
+        @Override
+        public Object clone() {
+            Branch branch = new Branch();
+
+            for (Map.Entry<Long, PartitionVersion> entry : partitionIdToVersion.entrySet()) {
+                PartitionVersion thisPartitionVersion = entry.getValue();
+
+                PartitionVersion newPartitionVersion = new PartitionVersion();
+                newPartitionVersion.gtidToVersion = new HashMap<>(thisPartitionVersion.gtidToVersion);
+                branch.partitionIdToVersion.put(entry.getKey(), newPartitionVersion);
+            }
+
+            return branch;
+        }
+    }
+
+    public static class Tag {
+        private final Long gtid;
+        private final String tagName;
+        private final String branchName;
+
+        public Tag(Long gtid, String tagName, String branchName) {
+            this.gtid = gtid;
+            this.tagName = tagName;
+            this.branchName = branchName;
+        }
+
+        public Long getGtid() {
+            return gtid;
+        }
+
+        public String getTagName() {
+            return tagName;
+        }
+
+        public String getBranchName() {
+            return branchName;
+        }
+    }
+
+    static class PartitionVersion {
+        Map<Long, Long> gtidToVersion = new HashMap<>();
+
+        public void addVersion(Long timestamp, Long version) {
+            gtidToVersion.put(timestamp, version);
+        }
+    }
+
+    public Branch getBranch(long tableId, String branchName) {
+        Branch branch = nameToBranch.get(branchName);
+        return branch;
+    }
+
+    public void addBranch(long tableId, String branchName, Branch branch) {
+        nameToBranch.put(branchName, branch);
+    }
+
+    public void addTag(long gtid, String tagName, String branchName) {
+        Tag tag = new Tag(gtid, tagName, branchName);
+        nameToTag.put(tagName, tag);
+    }
+
+    public Tag getTag(String tagName) {
+        return nameToTag.get(tagName);
+    }
+
+    public void addVersion(String branchName,
+                           Long physicalPartitionId,
+                           Long gtid,
+                           Long version) {
+        if (branchName == null) {
+            branchName = "main";
+        }
+
+        Branch branch = nameToBranch.get(branchName);
+
+        branch.partitionIdToVersion.putIfAbsent(physicalPartitionId, new PartitionVersion());
+        PartitionVersion partitionVersion = branch.partitionIdToVersion.get(physicalPartitionId);
+        partitionVersion.addVersion(gtid, version);
+    }
+
+    public Long getVersion(String branchName,
+                           Long physicalPartitionId,
+                           Long gtid) {
+        if (branchName == null) {
+            branchName = "main";
+        }
+
+        Branch branch = nameToBranch.get(branchName);
+
+
+        PartitionVersion partitionVersion = branch.partitionIdToVersion.get(physicalPartitionId);
+
+        long finalGtid = 0;
+        for (Map.Entry<Long, Long> entry : partitionVersion.gtidToVersion.entrySet()) {
+            if (entry.getKey() < gtid) {
+                if (entry.getKey() > finalGtid) {
+                    finalGtid = entry.getKey();
                 }
-                List<ShardInfo> shardInfos = new ArrayList<>();
-                try {
-                    shardInfos = GlobalStateMgr.getCurrentState().getStarOSAgent()
-                            .getShardInfo(shardIds, StarOSAgent.DEFAULT_WORKER_GROUP_ID);
-                } catch (Exception e) {
-                    LOG.warn("checkLakeRollupAllowFileBundling got exception: {}", e.getMessage());
-                    return false;
-                }
-                return shardInfos.stream()
-                    .allMatch(shardInfo -> LakeTableHelper.extractIdFromPath(shardInfo.getFilePath().getFullPath())
-                        .map(id -> id == physicalPartitionId)
-                        .orElse(false));
-            });
+            }
+        }
+
+        if (partitionVersion.gtidToVersion.containsKey(finalGtid)) {
+            return partitionVersion.gtidToVersion.get(finalGtid);
+        } else {
+            PhysicalPartition partition = getPhysicalPartition(physicalPartitionId);
+            return partition.getVisibleVersion();
+        }
+    }
+
+    public long getMinVersion(Long physicalPartitionId) {
+        long version = Long.MAX_VALUE;
+        for (Branch branch : nameToBranch.values()) {
+            branch.partitionIdToVersion.putIfAbsent(physicalPartitionId, new PartitionVersion());
+
+            PartitionVersion partitionVersion = branch.partitionIdToVersion.get(physicalPartitionId);
+            long pv = retainTop5MaxKeys(partitionVersion.gtidToVersion);
+
+            if (pv < version) {
+                version = pv;
+            }
+        }
+
+        /*
+        for (TableVersion tableVersion : snapshot.tagToTableVersionMap.values()) {
+            tableVersion.partitionIdToVersion.putIfAbsent(physicalPartitionId, new PartitionVersion());
+
+            PartitionVersion partitionVersion = tableVersion.partitionIdToVersion.get(physicalPartitionId);
+            long pv = retainTop5MaxKeys(partitionVersion.timestampToVersion);
+
+            if (pv < version) {
+                version = pv;
+            }
+        }
+
+         */
+
+        if (version < Long.MAX_VALUE) {
+            return version;
+        } else {
+            PhysicalPartition physicalPartition = getPhysicalPartition(physicalPartitionId);
+            return physicalPartition.getVisibleVersion();
+        }
+    }
+
+    public Long retainTop5MaxKeys(Map<Long, Long> map) {
+        if (map.isEmpty()) {
+            return Long.MAX_VALUE;
+        }
+
+        int limit = Math.min(map.size(), 5);
+
+        // 获取按照key降序排序的前5个entry
+        List<Map.Entry<Long, Long>> top5Entries = map.entrySet().stream()
+                .sorted(Map.Entry.<Long, Long>comparingByKey().reversed())
+                .limit(limit)
+                .collect(Collectors.toList());
+
+        return top5Entries.get(limit - 1).getValue();
+    }
+
+    @Override
+    public void copyOnlyForQuery(OlapTable olapTable) {
+        super.copyOnlyForQuery(olapTable);
+        LakeTable lakeTable = (LakeTable) olapTable;
+        lakeTable.nameToTag = this.nameToTag;
+        lakeTable.nameToBranch = this.nameToBranch;
     }
 }

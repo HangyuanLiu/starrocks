@@ -153,6 +153,11 @@ public class IcebergTable extends Table {
     }
 
     public List<Column> getPartitionColumnsIncludeTransformed() {
+
+        getNativeTable().snapshot(1).schemaId();
+
+        getNativeTable().schemas();
+
         List<Column> allPartitionColumns = new ArrayList<>();
         for (PartitionField field : getNativeTable().spec().fields()) {
             if (!field.transform().isIdentity() && hasPartitionTransformedEvolution()) {

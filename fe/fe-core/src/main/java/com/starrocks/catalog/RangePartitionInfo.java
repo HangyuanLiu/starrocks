@@ -572,7 +572,7 @@ public class RangePartitionInfo extends PartitionInfo {
     }
 
     @Override
-    protected Object clone() {
+    public Object clone() {
         RangePartitionInfo info = (RangePartitionInfo) super.clone();
         info.deprecatedColumns = Lists.newArrayList(this.deprecatedColumns);
         info.partitionColumnIds = Lists.newArrayList(this.partitionColumnIds);

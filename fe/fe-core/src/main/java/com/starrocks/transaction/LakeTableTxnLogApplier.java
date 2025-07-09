@@ -19,6 +19,7 @@ import com.starrocks.catalog.ColumnId;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.PhysicalPartition;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.lake.compaction.CompactionMgr;
 import com.starrocks.lake.compaction.CompactionTxnCommitAttachment;
 import com.starrocks.lake.compaction.PartitionIdentifier;
@@ -96,6 +97,9 @@ public class LakeTableTxnLogApplier implements TransactionLogApplier {
                 }
                 partition.setVersionTxnType(txnState.getTransactionType());
             }
+
+            long gtid = txnState.getGlobalTransactionId();
+            ((LakeTable) table).addVersion(txnState.branchName, partitionId, gtid, version);
 
             PartitionIdentifier partitionIdentifier =
                     new PartitionIdentifier(txnState.getDbId(), table.getId(), partition.getId());

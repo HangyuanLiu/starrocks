@@ -39,6 +39,7 @@ import com.starrocks.catalog.RangePartitionInfo;
 import com.starrocks.catalog.SinglePartitionInfo;
 import com.starrocks.catalog.Table;
 import com.starrocks.catalog.TableIndexes;
+import com.starrocks.catalog.branching.SchemaSnapshot;
 import com.starrocks.catalog.constraint.ForeignKeyConstraint;
 import com.starrocks.catalog.constraint.UniqueConstraint;
 import com.starrocks.common.AnalysisException;
@@ -838,6 +839,11 @@ public class OlapTableFactory implements AbstractTableFactory {
 
             // process lake table colocation properties, after partition and tablet creation
             colocateTableIndex.addTableToGroup(db, table, colocateGroup, true /* expectLakeTable */);
+
+            if (table instanceof LakeTable lakeTable) {
+                SchemaSnapshot.create(lakeTable);
+                SchemaSnapshot.initMainBranch(lakeTable);
+            }
         } catch (DdlException e) {
             GlobalStateMgr.getCurrentState().getStorageVolumeMgr().unbindTableToStorageVolume(tableId);
             throw e;

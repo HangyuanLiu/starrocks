@@ -15,12 +15,15 @@
 package com.starrocks.catalog;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Range;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.io.JsonWriter;
 import com.starrocks.lake.DataCacheInfo;
 import com.starrocks.server.GlobalStateMgr;
+
+import java.util.Map;
 
 public abstract class RecyclePartitionInfo extends JsonWriter {
     @SerializedName(value = "dbId")
@@ -37,6 +40,10 @@ public abstract class RecyclePartitionInfo extends JsonWriter {
     protected boolean isInMemory;
     @SerializedName(value = "recoverable")
     protected boolean recoverable;
+
+    @SerializedName(value = "partitionTxnHistory")
+    //partition snapshot id -> partition
+    protected Map<Long, Partition> partitionTxnHistory = Maps.newHashMap();
 
     public RecyclePartitionInfo() {
         recoverable = true;

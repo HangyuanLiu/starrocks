@@ -90,6 +90,7 @@ public class LakeTableAlterJobV2Builder extends AlterJobV2Builder {
                 Preconditions.checkState(originTablets.size() == shadowTabletIds.size());
 
                 TStorageMedium medium = table.getPartitionInfo().getDataProperty(partitionId).getStorageMedium();
+
                 TabletMeta shadowTabletMeta =
                         new TabletMeta(dbId, tableId, physicalPartitionId, shadowIndexId, 0, medium, true);
                 MaterializedIndex shadowIndex =

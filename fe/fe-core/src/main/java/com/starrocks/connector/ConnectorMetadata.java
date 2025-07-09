@@ -127,6 +127,12 @@ public interface ConnectorMetadata {
         return null;
     }
 
+    default Table getTable(ConnectContext context, String dbName, String tblName,
+                           Optional<ConnectorTableVersion> startVersion,
+                           Optional<ConnectorTableVersion> endVersion) {
+        return null;
+    }
+
     default TableVersionRange getTableVersionRange(String dbName, Table table,
                                                    Optional<ConnectorTableVersion> startVersion,
                                                    Optional<ConnectorTableVersion> endVersion) {
