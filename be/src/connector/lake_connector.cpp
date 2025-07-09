@@ -173,8 +173,11 @@ Status LakeDataSource::get_next(RuntimeState* state, ChunkPtr* chunk) {
 Status LakeDataSource::get_tablet(const TInternalScanRange& scan_range) {
     int64_t tablet_id = scan_range.tablet_id;
     int64_t version = strtoul(scan_range.version.c_str(), nullptr, 10);
+    int64_t schema_id = scan_range.schema_id;
     ASSIGN_OR_RETURN(_tablet, ExecEnv::GetInstance()->lake_tablet_manager()->get_tablet(tablet_id, version));
-    _tablet_schema = _tablet.get_schema();
+    //_tablet_schema = _tablet.get_schema();
+    ASSIGN_OR_RETURN(_tablet_schema, ExecEnv::GetInstance()->lake_tablet_manager()->
+                             get_tablet_schema_by_id(tablet_id, schema_id));
     return Status::OK();
 }
 
@@ -356,8 +359,9 @@ Status LakeDataSource::init_tablet_reader(RuntimeState* runtime_state) {
         _params.plan_node_id = _morsel->get_plan_node_id();
         _params.scan_range = _morsel->get_scan_range();
     }
+
     ASSIGN_OR_RETURN(_reader, _tablet.new_reader(std::move(child_schema), need_split,
-                                                 _provider->could_split_physically(), _morsel->rowsets()));
+                                                 _provider->could_split_physically(), _morsel->rowsets(), _tablet_schema));
     if (reader_columns.size() == scanner_columns.size()) {
         _prj_iter = _reader;
     } else {
@@ -564,9 +568,6 @@ void LakeDataSource::init_counter(RuntimeState* state) {
     _segments_read_count = ADD_CHILD_COUNTER(_runtime_profile, "SegmentsReadCount", TUnit::UNIT, segment_read_name);
     _total_columns_data_page_count =
             ADD_CHILD_COUNTER(_runtime_profile, "TotalColumnsDataPageCount", TUnit::UNIT, segment_read_name);
-    _record_predicate_filter_timer = ADD_CHILD_TIMER(_runtime_profile, "RecPredFilter", segment_read_name);
-    _record_predicate_filter_counter =
-            ADD_CHILD_COUNTER(_runtime_profile, "RecPredFilterRows", TUnit::UNIT, segment_read_name);
 
     // IO statistics
     // IOTime
@@ -652,9 +653,6 @@ void LakeDataSource::update_counter() {
     COUNTER_UPDATE(_pred_filter_timer, cond_evaluate_ns);
     COUNTER_UPDATE(_pred_filter_counter, _reader->stats().rows_vec_cond_filtered);
     COUNTER_UPDATE(_del_vec_filter_counter, _reader->stats().rows_del_vec_filtered);
-
-    COUNTER_UPDATE(_record_predicate_filter_timer, _reader->stats().record_predicate_evaluate_ns);
-    COUNTER_UPDATE(_record_predicate_filter_counter, _reader->stats().rows_record_predicate_filtered);
 
     COUNTER_UPDATE(_seg_zm_filtered_counter, _reader->stats().segment_stats_filtered);
     COUNTER_UPDATE(_seg_rt_filtered_counter, _reader->stats().runtime_stats_filtered);

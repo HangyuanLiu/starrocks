@@ -48,6 +48,7 @@ import com.starrocks.common.ThreadPoolManager;
 import com.starrocks.common.util.FrontendDaemon;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.lake.PartitionPublishVersionData;
 import com.starrocks.lake.TxnInfoHelper;
 import com.starrocks.lake.Utils;
@@ -834,6 +835,13 @@ public class PublishVersionDaemon extends FrontendDaemon {
                 return false;
             }
             baseVersion = partition.getVisibleVersion();
+
+            LakeTable lakeTable = (LakeTable) table;
+            baseVersion = lakeTable.getVersion(
+                    txnState.branchName,
+                    db.getId(), tableId, partition.getParentId(), partitionId,
+                    System.currentTimeMillis());
+
             List<MaterializedIndex> indexes = txnState.getPartitionLoadedTblIndexes(table.getId(), partition);
             for (MaterializedIndex index : indexes) {
                 if (!index.visibleForTransaction(txnId)) {

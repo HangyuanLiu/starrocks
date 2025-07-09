@@ -333,6 +333,8 @@ public class TransactionState implements Writable, GsonPreProcessable {
 
     private final ReentrantReadWriteLock txnLock = new ReentrantReadWriteLock(true);
 
+    public String branchName = "main";
+
     public void writeLock() {
         txnLock.writeLock().lock();
     }

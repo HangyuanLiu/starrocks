@@ -80,6 +80,9 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
     @SerializedName(value = "idToShadowIndex")
     private Map<Long, MaterializedIndex> idToShadowIndex = Maps.newHashMap();
 
+    @SerializedName(value = "idToIndex")
+    public Map<Long, MaterializedIndex> idToIndex = Maps.newHashMap();
+
     /**
      * committed version(hash): after txn is committed, set committed version(hash)
      * visible version(hash): after txn is published, set visible version
@@ -108,12 +111,12 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
      * metadataSwitchVersion is non-zero: The metadata format differs before and after this version.
      * Therefore, vacuum operations cannot be executed across `metadataSwitchVersion`
      * e.g.
-     *  the tablet under this partition has five versions: 1, 2, 3, 4, 5 and the metadataSwitchVersion is 3
-     *  the vacuum is run as the following:
-     *      1. Set minRetainVersion to 3 in the vacuumRequest.
-     *      2. The BE will delete tablet metadata where the version is less than 3.
-     *      3. If all tablets execute successfully and there are no metadata entries in two different formats, 
-     *      set metadataSwitchVersion to 0.
+     * the tablet under this partition has five versions: 1, 2, 3, 4, 5 and the metadataSwitchVersion is 3
+     * the vacuum is run as the following:
+     * 1. Set minRetainVersion to 3 in the vacuumRequest.
+     * 2. The BE will delete tablet metadata where the version is less than 3.
+     * 3. If all tablets execute successfully and there are no metadata entries in two different formats,
+     * set metadataSwitchVersion to 0.
      */
     @SerializedName(value = "metadataSwitchVersion")
     private long metadataSwitchVersion;
@@ -131,7 +134,7 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
 
     @SerializedName(value = "bucketNum")
     private int bucketNum = 0;
-    
+
     private final AtomicLong extraFileSize = new AtomicLong(0);
 
     private PhysicalPartition() {
@@ -143,6 +146,7 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
         this.name = name;
         this.parentId = parentId;
         this.baseIndex = baseIndex;
+        this.idToIndex.put(baseIndex.getId(), baseIndex);
         this.visibleVersion = PARTITION_INIT_VERSION;
         this.visibleVersionTime = System.currentTimeMillis();
         this.nextVersion = this.visibleVersion + 1;
@@ -297,14 +301,21 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
         } else {
             this.idToShadowIndex.put(mIndex.getId(), mIndex);
         }
+
+        this.idToIndex.put(mIndex.getId(), mIndex);
     }
 
     public MaterializedIndex deleteRollupIndex(long indexId) {
+        MaterializedIndex materializedIndex;
         if (this.idToVisibleRollupIndex.containsKey(indexId)) {
-            return idToVisibleRollupIndex.remove(indexId);
+            materializedIndex = idToVisibleRollupIndex.remove(indexId);
         } else {
-            return idToShadowIndex.remove(indexId);
+            materializedIndex = idToShadowIndex.remove(indexId);
         }
+
+        this.idToIndex.remove(indexId);
+
+        return materializedIndex;
     }
 
     public void setBaseIndex(MaterializedIndex baseIndex) {
@@ -477,6 +488,7 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
         } else {
             idToVisibleRollupIndex.put(shadowIndexId, shadowIdx);
         }
+
         LOG.info("visualise the shadow index: {}", shadowIndexId);
         return true;
     }
@@ -570,6 +582,18 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
         }
         if (versionTxnType == null) {
             versionTxnType = TransactionType.TXN_NORMAL;
+        }
+
+        if (idToIndex.isEmpty()) {
+            idToIndex.put(baseIndex.getId(), baseIndex);
+
+            for (MaterializedIndex index : idToVisibleRollupIndex.values()) {
+                this.idToIndex.put(index.getId(), index);
+            }
+
+            for (MaterializedIndex index : idToShadowIndex.values()) {
+                this.idToIndex.put(index.getId(), index);
+            }
         }
     }
 }

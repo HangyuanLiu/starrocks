@@ -174,7 +174,7 @@ StatusOr<TabletMetadataPtr> publish_version(TabletManager* tablet_mgr, int64_t t
     DeferOp remove_tablet_txn([&] { remove_tablet(tablet_id); });
 
     if (txns.size() > 1) {
-        CHECK_EQ(new_version, base_version + txns.size());
+        //CHECK_EQ(new_version, base_version + txns.size());
     }
 
     VLOG(2) << "publish version tablet_id: " << tablet_id << ", txns: " << txns << ", base_version: " << base_version

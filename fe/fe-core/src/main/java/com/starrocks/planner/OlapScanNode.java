@@ -72,6 +72,7 @@ import com.starrocks.catalog.RangePartitionInfo;
 import com.starrocks.catalog.Replica;
 import com.starrocks.catalog.Tablet;
 import com.starrocks.catalog.Type;
+import com.starrocks.catalog.branching.SchemaSnapshot;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
 import com.starrocks.common.ErrorCode;
@@ -81,6 +82,8 @@ import com.starrocks.common.FeConstants;
 import com.starrocks.common.Pair;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.common.VectorSearchOptions;
+import com.starrocks.connector.TableVersionRange;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.lake.LakeTablet;
 import com.starrocks.persist.ColumnIdExpr;
 import com.starrocks.qe.ConnectContext;
@@ -109,6 +112,7 @@ import com.starrocks.thrift.TScanRange;
 import com.starrocks.thrift.TScanRangeLocation;
 import com.starrocks.thrift.TScanRangeLocations;
 import com.starrocks.thrift.TTableSampleOptions;
+import com.starrocks.transaction.GtidGenerator;
 import com.starrocks.warehouse.cngroup.ComputeResource;
 import com.starrocks.warehouse.Warehouse;
 import org.apache.commons.collections4.CollectionUtils;
@@ -189,6 +193,8 @@ public class OlapScanNode extends ScanNode {
 
     private boolean usePkIndex = false;
     private TableSampleClause sample;
+
+    private TableVersionRange tableVersionRange;
 
     private long gtid = 0;
 
@@ -550,12 +556,36 @@ public class OlapScanNode extends ScanNode {
         int logNum = 0;
         int schemaHash = olapTable.getSchemaHashByIndexId(index.getId());
         String schemaHashStr = String.valueOf(schemaHash);
+
         long visibleVersion = physicalPartition.getVisibleVersion();
+        if (olapTable instanceof LakeTable lakeTable && tableVersionRange != null && !tableVersionRange.isEmpty()) {
+            long gtid = tableVersionRange.end().get();
+            long timestamp = GtidGenerator.extractTimestampFromGtid(gtid);
+
+            visibleVersion = lakeTable.getVersion(
+                    tableVersionRange.tagName,
+                    0L,
+                    lakeTable.getId(),
+                    partition.getId(),
+                    physicalPartition.getId(),
+                    timestamp);
+        }
+
         scanPartitionVersions.put(physicalPartition.getId(), visibleVersion);
         String visibleVersionStr = String.valueOf(visibleVersion);
         boolean fillDataCache = olapTable.isEnableFillDataCache(partition);
         selectedPartitionNames.add(partition.getName());
         selectedPartitionVersions.add(visibleVersion);
+
+        MaterializedIndexMeta materializedIndexMeta = olapTable.getIndexMetaByIndexId(selectedIndexId);
+        long schemaId = materializedIndexMeta.getSchemaId();
+
+        if (!tableVersionRange.isEmpty() && olapTable instanceof LakeTable lakeTable) {
+            long gtid = tableVersionRange.end().get();
+            long timestamp = GtidGenerator.extractTimestampFromGtid(gtid);
+            SchemaSnapshot schemaSnapshot = lakeTable.getSchemaSnapshot(timestamp);
+            schemaId = schemaSnapshot.getSchemaId(selectedIndexId);
+        }
 
         checkSomeAliveComputeNode();
         for (Tablet tablet : tablets) {
@@ -571,6 +601,7 @@ public class OlapScanNode extends ScanNode {
             internalRange.setTablet_id(tabletId);
             internalRange.setPartition_id(physicalPartition.getId());
             internalRange.setRow_count(tablet.getRowCount(0));
+            internalRange.setSchema_id(schemaId);
             if (isOutputChunkByBucket) {
                 if (withoutColocateRequirement) {
                     internalRange.setBucket_sequence((int) tabletId);
@@ -986,9 +1017,17 @@ public class OlapScanNode extends ScanNode {
 
         if (selectedIndexId != -1) {
             MaterializedIndexMeta indexMeta = olapTable.getIndexMetaByIndexId(selectedIndexId);
+
             if (indexMeta != null) {
                 schemaId = indexMeta.getSchemaId();
-                for (Column col : olapTable.getSchemaByIndexId(selectedIndexId)) {
+                if (olapTable instanceof LakeTable lakeTable && !tableVersionRange.isEmpty()) {
+                    long timestamp = GtidGenerator.extractTimestampFromGtid(tableVersionRange.end().get());
+                    SchemaSnapshot schemaSnapshot = lakeTable.getSchemaSnapshot(timestamp);
+                    schemaId = schemaSnapshot.getSchemaId(selectedIndexId);
+                    indexMeta = lakeTable.getSchema(schemaId);
+                }
+
+                for (Column col : indexMeta.getSchema()) {
                     TColumn tColumn = col.toThrift();
                     tColumn.setColumn_name(col.getColumnId().getId());
                     col.setIndexFlag(tColumn, olapTable.getIndexes(), bfColumns);
@@ -1002,7 +1041,7 @@ public class OlapScanNode extends ScanNode {
                         keyColumnTypes.add(col.getPrimitiveType().toThrift());
                     }
                 } else {
-                    for (Column col : olapTable.getSchemaByIndexId(selectedIndexId)) {
+                    for (Column col : indexMeta.getSchema()) {
                         if (!col.isKey()) {
                             continue;
                         }
@@ -1182,6 +1221,14 @@ public class OlapScanNode extends ScanNode {
 
     public void setSample(TableSampleClause sample) {
         this.sample = sample;
+    }
+
+    public void setTableVersionRange(TableVersionRange tableVersionRange) {
+        this.tableVersionRange = tableVersionRange;
+    }
+
+    public TableVersionRange getTableVersionRange() {
+        return tableVersionRange;
     }
 
     @Override

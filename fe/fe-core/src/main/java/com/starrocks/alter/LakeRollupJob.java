@@ -32,12 +32,14 @@ import com.starrocks.catalog.SchemaInfo;
 import com.starrocks.catalog.Tablet;
 import com.starrocks.catalog.TabletInvertedIndex;
 import com.starrocks.catalog.TabletMeta;
+import com.starrocks.catalog.branching.SchemaSnapshot;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
 import com.starrocks.common.ErrorReportException;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.common.util.concurrent.MarkedCountDownLatch;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.lake.LakeTableHelper;
 import com.starrocks.lake.LakeTablet;
 import com.starrocks.lake.Utils;
@@ -769,6 +771,10 @@ public class LakeRollupJob extends LakeTableSchemaChangeJobBase {
         }
         table.rebuildFullSchema();
         table.lastSchemaUpdateTime.set(System.nanoTime());
+
+        if (table instanceof LakeTable lakeTable) {
+            SchemaSnapshot.create(lakeTable);
+        }
     }
 
     private void addTabletToInvertedIndex(OlapTable tbl) {

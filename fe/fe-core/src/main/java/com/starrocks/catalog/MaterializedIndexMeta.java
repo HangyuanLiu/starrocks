@@ -116,7 +116,7 @@ public class MaterializedIndexMeta implements Writable, GsonPostProcessable {
                                  short shortKeyColumnCount, TStorageType storageType, KeysType keysType,
                                  OriginStatement defineStmt, List<Integer> sortKeyIdxes) {
         this(indexId, schema, schemaVersion, schemaHash, shortKeyColumnCount, storageType, keysType, defineStmt,
-                sortKeyIdxes, null);        
+                sortKeyIdxes, null);
     }
 
     public MaterializedIndexMeta(long indexId, List<Column> schema, int schemaVersion, int schemaHash,
@@ -285,6 +285,7 @@ public class MaterializedIndexMeta implements Writable, GsonPostProcessable {
         indexMeta.sortKeyUniqueIds = sortKeyUniqueIds == null ? null : Lists.newArrayList(sortKeyUniqueIds);
         indexMeta.schemaVersion = this.schemaVersion;
         indexMeta.schemaHash = this.schemaHash;
+        indexMeta.schemaId = this.schemaId;
         indexMeta.shortKeyColumnCount = this.shortKeyColumnCount;
         indexMeta.storageType = this.storageType;
         indexMeta.keysType = this.keysType;
@@ -293,7 +294,6 @@ public class MaterializedIndexMeta implements Writable, GsonPostProcessable {
         indexMeta.viewDefineSql = this.viewDefineSql;
         indexMeta.isColocateMVIndex = this.isColocateMVIndex;
         indexMeta.whereClause = this.whereClause;
-        indexMeta.schemaId = this.schemaId;
         return indexMeta;
     }
 
@@ -337,8 +337,6 @@ public class MaterializedIndexMeta implements Writable, GsonPostProcessable {
         }
         return true;
     }
-
-
 
     public static MaterializedIndexMeta read(DataInput in) throws IOException {
         String json = Text.readString(in);

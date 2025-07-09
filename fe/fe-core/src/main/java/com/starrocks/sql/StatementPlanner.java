@@ -125,7 +125,6 @@ public class StatementPlanner {
         stmt = spmPlanner.plan(stmt);
 
         boolean needWholePhaseLock = true;
-        // 1. For all queries, we need db lock when analyze phase
         PlannerMetaLocker plannerMetaLocker = new PlannerMetaLocker(session, stmt);
         try (var guard = session.bindScope()) {
             // Analyze
@@ -583,6 +582,9 @@ public class StatementPlanner {
             if (targetTable instanceof OlapTable) {
                 TransactionState txnState = transactionMgr.getTransactionState(dbId, txnId);
                 txnState.addTableIndexes((OlapTable) targetTable);
+                if (stmt instanceof InsertStmt) {
+                    txnState.branchName = ((InsertStmt) stmt).getTargetBranch();
+                }
             }
         }
 

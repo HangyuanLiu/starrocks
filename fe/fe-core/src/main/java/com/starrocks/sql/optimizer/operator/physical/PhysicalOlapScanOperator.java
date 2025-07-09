@@ -109,6 +109,7 @@ public class PhysicalOlapScanOperator extends PhysicalScanOperator {
         this.usePkIndex = scanOperator.isUsePkIndex();
         this.vectorSearchOptions = scanOperator.getVectorSearchOptions();
         this.sample = scanOperator.getSample();
+        this.tableVersionRange = scanOperator.getTableVersionRange();
     }
 
     public VectorSearchOptions getVectorSearchOptions() {

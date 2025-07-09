@@ -58,6 +58,10 @@ import com.starrocks.common.ErrorReport;
 import com.starrocks.common.Pair;
 import com.starrocks.common.profile.Timer;
 import com.starrocks.common.profile.Tracers;
+import com.starrocks.common.util.TimeUtils;
+import com.starrocks.connector.ConnectorTableVersion;
+import com.starrocks.connector.PointerType;
+import com.starrocks.lake.LakeTable;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.MetadataMgr;
@@ -74,6 +78,7 @@ import com.starrocks.sql.ast.PartitionNames;
 import com.starrocks.sql.ast.PivotAggregation;
 import com.starrocks.sql.ast.PivotRelation;
 import com.starrocks.sql.ast.PivotValue;
+import com.starrocks.sql.ast.QueryPeriod;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
@@ -90,8 +95,16 @@ import com.starrocks.sql.ast.ValuesRelation;
 import com.starrocks.sql.ast.ViewRelation;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.common.TypeManager;
+import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.dump.HiveMetaStoreTableDumpInfo;
+import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
+import com.starrocks.sql.optimizer.transformer.ExpressionMapping;
+import com.starrocks.sql.optimizer.transformer.SqlToScalarOperatorTranslator;
+import com.starrocks.transaction.GtidGenerator;
 
+import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -151,10 +164,10 @@ public class QueryAnalyzer {
             // a. generated column output from child selectRelation directly.
             // b. all reference column of generated column output from child selectRelation directly.
             List<SlotRef> outputSlotRef = childSelectRelation.getOutputExpression()
-                                            .stream().filter(e -> e instanceof SlotRef)
-                                            .map(e -> (SlotRef) e).collect(Collectors.toList());
+                    .stream().filter(e -> e instanceof SlotRef)
+                    .map(e -> (SlotRef) e).collect(Collectors.toList());
             boolean hasStar = childSelectRelation.getSelectList()
-                                        .getItems().stream().anyMatch(SelectListItem::isStar);
+                    .getItems().stream().anyMatch(SelectListItem::isStar);
             Map<Expr, SlotRef> generatedExprToColumnRef = new HashMap<>();
             for (Map.Entry<Expr, SlotRef> entry : childSelectRelation.getGeneratedExprToColumnRef().entrySet()) {
                 List<SlotRef> allRefColumns = Lists.newArrayList();
@@ -248,7 +261,7 @@ public class QueryAnalyzer {
                 reAnalyzeExpressionBasedOnCurrentScope(childSelectRelation, scope, subquery.getGeneratedExprToColumnRef());
             }
             return null;
-        } 
+        }
 
         @Override
         public Void visitJoin(JoinRelation joinRelation, Scope scope) {
@@ -585,10 +598,12 @@ public class QueryAnalyzer {
 
                     r = viewRelation;
                 } else {
+                    /*
                     if (tableRelation.getQueryPeriodString() != null && !table.isTemporal()) {
                         throw unsupportedException("Unsupported table type for temporal clauses, table type: " +
                                 table.getType());
                     }
+                     */
 
                     if (table.isSupported()) {
                         tableRelation.setTable(table);
@@ -1482,6 +1497,35 @@ public class QueryAnalyzer {
                 }
                 if (table == null) {
                     try (Timer ignored = Tracers.watchScope("AnalyzeTable")) {
+                        QueryPeriod queryPeriod = tableRelation.getQueryPeriod();
+                        if (queryPeriod != null) {
+                            Optional<ConnectorTableVersion> startVersion = Optional.empty();
+                            Optional<ConnectorTableVersion> endVersion = Optional.empty();
+                            QueryPeriod.PeriodType periodType = queryPeriod.getPeriodType();
+                            startVersion = resolveQueryPeriod(queryPeriod.getStart(), periodType);
+                            endVersion = resolveQueryPeriod(queryPeriod.getEnd(), periodType);
+
+                            table = metadataMgr.getTable(session, catalogName, dbName, tbName);
+                            ConstantOperator constantOperator = endVersion.get().getConstantOperator();
+                            if (constantOperator.getType().isDatetime()) {
+                                LocalDateTime dateTime = constantOperator.getDatetime();
+                                ZonedDateTime zdt = ZonedDateTime.of(dateTime, TimeUtils.getTimeZone().toZoneId());
+                                long value = zdt.toEpochSecond();
+                                if (value < 0 || value > TimeUtils.MAX_UNIX_TIMESTAMP) {
+                                    value = 0;
+                                }
+
+                                value = value * 1000;
+
+                                session.gTxnId = GtidGenerator.generateGtidWithMinSequence(value);
+                            } else {
+                                String branchName = constantOperator.getChar();
+                                LakeTable lakeTable = (LakeTable) table;
+                                LakeTable.Tag tag = lakeTable.getTag(branchName);
+
+                                session.gTxnId = GtidGenerator.generateGtidWithMinSequence(tag.createTime);
+                            }
+                        }
                         table = metadataMgr.getTable(session, catalogName, dbName, tbName);
                     }
                 }
@@ -1524,6 +1568,34 @@ public class QueryAnalyzer {
         } catch (AnalysisException e) {
             throw new SemanticException(e.getMessage());
         }
+    }
+
+    private Optional<ConnectorTableVersion> resolveQueryPeriod(Optional<Expr> version, QueryPeriod.PeriodType type) {
+        if (version.isEmpty()) {
+            return Optional.empty();
+        }
+        ScalarOperator result;
+        try {
+            Scope scope = new Scope(RelationId.anonymous(), new RelationFields());
+            ExpressionAnalyzer.analyzeExpression(version.get(), new AnalyzeState(), scope, session);
+            ExpressionMapping expressionMapping = new ExpressionMapping(scope);
+            result = SqlToScalarOperatorTranslator.translate(version.get(), expressionMapping, new ColumnRefFactory());
+        } catch (Exception e) {
+            throw new SemanticException("Failed to resolve query period [type: %s, value: %s]. msg: %s",
+                    type.toString(), version.get().toString(), e.getMessage());
+        }
+
+        if (!(result instanceof ConstantOperator)) {
+            if (version.get() instanceof FunctionCallExpr) {
+                throw new SemanticException("Invalid datetime function: [type: %s, value: %s]. " +
+                        "The function requirement must be inferred in frontend.", type.toString(), version.get().toString());
+            } else {
+                throw new SemanticException("Invalid version value. [type: %s, value: %s]",
+                        type.toString(), version.get().toString());
+            }
+        }
+        PointerType pointerType = type == QueryPeriod.PeriodType.TIMESTAMP ? PointerType.TEMPORAL : PointerType.VERSION;
+        return Optional.of(new ConnectorTableVersion(pointerType, (ConstantOperator) result));
     }
 
     private Table resolveTableFunctionTable(Map<String, String> properties, Consumer<TableFunctionTable> pushDownSchemaFunc) {

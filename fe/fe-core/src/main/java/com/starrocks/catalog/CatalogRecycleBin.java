@@ -242,6 +242,14 @@ public class CatalogRecycleBin extends FrontendDaemon implements Writable {
         return null;
     }
 
+    public synchronized Partition getPartition(long partitionId, long snapshotId) {
+        RecyclePartitionInfo partitionInfo = idToPartition.get(partitionId);
+        if (partitionInfo != null) {
+            return partitionInfo.partitionTxnHistory.get(snapshotId);
+        }
+        return null;
+    }
+
     public PhysicalPartition getPhysicalPartition(long physicalPartitionId) {
         for (Partition partition : idToPartition.values().stream()
                 .map(RecyclePartitionInfo::getPartition)

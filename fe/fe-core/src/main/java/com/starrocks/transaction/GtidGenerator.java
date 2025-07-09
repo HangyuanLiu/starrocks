@@ -77,8 +77,24 @@ public class GtidGenerator {
         return ((timestamp - EPOCH) << TIMESTAMP_SHIFT) | (CLUSTER_ID << CLUSTER_ID_SHIFT);
     }
 
+    /**
+     * 根据 Gtid 解析出其中的时间戳
+     * @param gtid Gtid 值
+     * @return Gtid 中包含的原始时间戳（毫秒）
+     */
+    public static long extractTimestampFromGtid(long gtid) {
+        // timestamp位数
+        final long TIMESTAMP_SHIFT = SEQUENCE_BITS + CLUSTER_ID_BITS;
+        // 取出timestamp部分并加回EPOCH
+        return ((gtid >> TIMESTAMP_SHIFT) + EPOCH);
+    }
+
     protected long timeGen() {
         return System.currentTimeMillis();
     }
-}
 
+    public static long generateGtidWithMinSequence(long timestamp) {
+        final long sequence = 0L;
+        return ((timestamp - EPOCH) << TIMESTAMP_SHIFT) | (CLUSTER_ID << CLUSTER_ID_SHIFT) | sequence;
+    }
+}

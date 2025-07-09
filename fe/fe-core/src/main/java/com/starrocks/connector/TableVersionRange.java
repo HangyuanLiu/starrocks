@@ -53,6 +53,8 @@ public class TableVersionRange {
         return start.isEmpty() && end.isEmpty();
     }
 
+    public String tagName;
+
     @Override
     public String toString() {
         return new ToStringBuilder(this)

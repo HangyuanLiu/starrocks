@@ -50,8 +50,8 @@ public class CompactionTask extends AgentTask {
         return baseCompaction;
     }
 
-    private List<Long> tabletIds;
-    private boolean baseCompaction;
+    private final List<Long> tabletIds;
+    private final boolean baseCompaction;
 
     public CompactionTask(TResourceInfo resourceInfo, long backendId, long dbId,
                           long tableId, List<Long> tabletIds, boolean baseCompaction) {

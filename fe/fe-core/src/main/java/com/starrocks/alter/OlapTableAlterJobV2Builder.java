@@ -90,7 +90,8 @@ public class OlapTableAlterJobV2Builder extends AlterJobV2Builder {
                 TStorageMedium medium = table.getPartitionInfo().getDataProperty(partitionId).getStorageMedium();
                 short replicationNum = table.getPartitionInfo().getReplicationNum(partitionId);
                 // index state is SHADOW
-                MaterializedIndex shadowIndex = new MaterializedIndex(shadowIndexId, MaterializedIndex.IndexState.SHADOW);
+                MaterializedIndex shadowIndex = new MaterializedIndex(shadowIndexId,
+                        MaterializedIndex.IndexState.SHADOW, PhysicalPartition.INVALID_SHARD_GROUP_ID);
                 MaterializedIndex originIndex = partition.getIndex(originIndexId);
                 TabletMeta shadowTabletMeta = new TabletMeta(
                         dbId, tableId, physicalPartitionId, shadowIndexId, newSchemaHash, medium);

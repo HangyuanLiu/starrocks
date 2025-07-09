@@ -86,7 +86,6 @@ public class PartitionInfo extends JsonWriter implements Cloneable, GsonPreProce
     @SerializedName(value = "idToStorageCacheInfo")
     protected Map<Long, DataCacheInfo> idToStorageCacheInfo;
 
-
     public PartitionInfo() {
         this.idToDataProperty = new HashMap<>();
         this.idToReplicationNum = new HashMap<>();
@@ -305,7 +304,8 @@ public class PartitionInfo extends JsonWriter implements Cloneable, GsonPreProce
         return false;
     }
 
-    protected Object clone()  {
+    @Override
+    public Object clone()  {
         try {
             PartitionInfo p = (PartitionInfo) super.clone();
             p.type = this.type;
