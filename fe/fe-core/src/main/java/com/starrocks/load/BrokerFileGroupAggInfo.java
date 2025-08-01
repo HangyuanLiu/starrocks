@@ -215,8 +215,7 @@ public class BrokerFileGroupAggInfo implements Writable {
         return sb.toString();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         // The pull load source info doesn't need to be persisted.
         // It will be recreated by origin stmt in prepare of load job.
         // write 0 just for compatibility

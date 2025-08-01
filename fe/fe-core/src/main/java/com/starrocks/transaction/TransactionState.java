@@ -1196,8 +1196,7 @@ public class TransactionState implements Writable, GsonPreProcessable {
         return this.isCreatePartitionFailed.get();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
 
     }
 

@@ -132,8 +132,7 @@ public class SmallFileMgr implements Writable {
             return Base64.getDecoder().decode(content);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             out.writeLong(dbId);
             Text.writeString(out, catalog);
             Text.writeString(out, name);
@@ -530,8 +529,7 @@ public class SmallFileMgr implements Writable {
         return mgr;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeInt(idToFiles.size());
         for (SmallFile smallFile : idToFiles.values()) {
             smallFile.write(out);

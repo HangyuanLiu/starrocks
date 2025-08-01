@@ -34,7 +34,6 @@ public class StarMgrJournal implements Writable {
         return journal;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         journal.write(out);
     }

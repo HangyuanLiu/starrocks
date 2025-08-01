@@ -78,7 +78,6 @@ public class DropInfo implements Writable {
         return forceDrop;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeLong(dbId);
         out.writeLong(tableId);

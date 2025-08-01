@@ -1824,7 +1824,6 @@ public abstract class RoutineLoadJob extends AbstractTxnStateChangeCallback
         return job;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         // ATTN: must write type first
         Text.writeString(out, dataSourceType.name());

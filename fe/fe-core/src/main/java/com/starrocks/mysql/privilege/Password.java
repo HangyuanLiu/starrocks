@@ -55,8 +55,7 @@ public class Password implements Writable {
         return userForAuthPlugin;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         String jsonStr = GsonUtils.GSON.toJson(this);
         Text.writeString(out, jsonStr);
     }

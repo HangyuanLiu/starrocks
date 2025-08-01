@@ -96,8 +96,7 @@ public class BrokerDesc implements ParseNode, Writable {
         return "";
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, name);
         out.writeInt(properties.size());
         for (Map.Entry<String, String> entry : properties.entrySet()) {

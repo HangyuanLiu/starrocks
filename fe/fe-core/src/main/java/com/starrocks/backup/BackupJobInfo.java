@@ -683,7 +683,6 @@ public class BackupJobInfo implements Writable {
         return jobInfo;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         Text.writeString(out, toJson(true).toString());
         out.writeInt(tblAlias.size());

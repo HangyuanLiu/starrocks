@@ -94,8 +94,7 @@ public class BrokerHbResponse extends HeartbeatResponse implements Writable {
         return result;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
         Text.writeString(out, name);
         Text.writeString(out, host);

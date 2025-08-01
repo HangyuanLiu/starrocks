@@ -62,8 +62,7 @@ public final class MaxLiteral extends LiteralExpr {
         return toSql();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
     }
 
     public void readFields(DataInput in) throws IOException {

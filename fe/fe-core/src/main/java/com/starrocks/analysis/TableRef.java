@@ -37,9 +37,6 @@ package com.starrocks.analysis;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.gson.annotations.SerializedName;
-import com.starrocks.common.AnalysisException;
-import com.starrocks.common.ErrorCode;
-import com.starrocks.common.ErrorReport;
 import com.starrocks.common.io.Text;
 import com.starrocks.common.io.Writable;
 import com.starrocks.sql.ast.PartitionNames;
@@ -375,7 +372,6 @@ public class TableRef implements ParseNode, Writable {
         return sb.toString();
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         name.write(out);
         if (partitionNames == null) {

@@ -104,7 +104,6 @@ public class InfoSchemaDb extends Database {
         return null;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         // Do nothing
     }

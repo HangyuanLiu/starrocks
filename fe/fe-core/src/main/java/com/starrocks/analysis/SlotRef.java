@@ -44,7 +44,6 @@ import com.starrocks.catalog.StructField;
 import com.starrocks.catalog.StructType;
 import com.starrocks.catalog.Table;
 import com.starrocks.catalog.Type;
-import com.starrocks.common.AnalysisException;
 import com.starrocks.common.io.Text;
 import com.starrocks.planner.FragmentNormalizer;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -494,7 +493,6 @@ public class SlotRef extends Expr {
         return true;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         // TableName
         if (tblName == null) {

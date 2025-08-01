@@ -51,8 +51,7 @@ public class LinkDbInfo implements Writable {
         this.id = id;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, cluster);
         Text.writeString(out, name);
         out.writeLong(id);

@@ -769,8 +769,7 @@ public class KafkaRoutineLoadJob extends RoutineLoadJob {
         return gson.toJson(maskedProperties);
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
         Text.writeString(out, brokerList);
         Text.writeString(out, topic);

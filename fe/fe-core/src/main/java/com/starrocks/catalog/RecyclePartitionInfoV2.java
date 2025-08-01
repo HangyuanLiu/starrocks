@@ -56,7 +56,6 @@ public class RecyclePartitionInfoV2 extends RecyclePartitionInfo {
         return GsonUtils.GSON.fromJson(json, RecyclePartitionInfoV2.class);
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeLong(-1L);
         String json = GsonUtils.GSON.toJson(this);

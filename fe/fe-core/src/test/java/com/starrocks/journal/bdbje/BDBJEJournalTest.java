@@ -130,8 +130,7 @@ public class BDBJEJournalTest {
 
         String data = "petals on a wet black bough";
         Writable writable = new Writable() {
-            @Override
-            public void write(DataOutput out) throws IOException {
+            private void write(DataOutput out) throws IOException {
                 Text.writeString(out, data);
             }
         };
@@ -792,8 +791,7 @@ public class BDBJEJournalTest {
     public void testVerifyId() throws Exception {
         String data = "petals on a wet black bough";
         Writable writable = new Writable() {
-            @Override
-            public void write(DataOutput out) throws IOException {
+            private void write(DataOutput out) throws IOException {
                 Text.writeString(out, data);
             }
         };
@@ -825,8 +823,7 @@ public class BDBJEJournalTest {
     public void testJournalWithPrefix() throws Exception {
         String data = "petals on a wet black bough";
         Writable writable = new Writable() {
-            @Override
-            public void write(DataOutput out) throws IOException {
+            private void write(DataOutput out) throws IOException {
                 Text.writeString(out, data);
             }
         };

@@ -5339,8 +5339,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return root.toString();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, getJsonString());
     }
 

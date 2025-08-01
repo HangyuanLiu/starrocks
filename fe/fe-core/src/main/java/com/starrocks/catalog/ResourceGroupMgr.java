@@ -280,7 +280,6 @@ public class ResourceGroupMgr implements Writable {
         }
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         List<ResourceGroup> resourceGroups = new ArrayList<>(resourceGroupMap.values());
         SerializeData data = new SerializeData();

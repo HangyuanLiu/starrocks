@@ -789,7 +789,6 @@ public class OptimizeJobV2 extends AlterJobV2 implements GsonPostProcessable {
         this.jobState = jobState;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         String json = GsonUtils.GSON.toJson(this, OptimizeJobV2.class);
         Text.writeString(out, json);

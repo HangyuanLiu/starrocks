@@ -109,8 +109,7 @@ public class LabelName implements ParseNode, Writable {
         return stringBuilder.toString();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         // compatible with old version
         Text.writeString(out, ClusterNamespace.getFullName(dbName));
         Text.writeString(out, labelName);

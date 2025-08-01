@@ -94,8 +94,7 @@ public class BackendTabletsInfo implements Writable {
         return tabletSchemaHash.isEmpty() && replicaPersistInfos.isEmpty();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeLong(backendId);
         out.writeInt(tabletSchemaHash.size());
         for (Pair<Long, Integer> pair : tabletSchemaHash) {

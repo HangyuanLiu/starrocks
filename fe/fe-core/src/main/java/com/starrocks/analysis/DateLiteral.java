@@ -340,8 +340,7 @@ public class DateLiteral extends LiteralExpr {
         return ((ymd << 17) | hms) << 24 + microsecond;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
         // set flag bit in meta, 0 is DATETIME and 1 is DATE
         if (this.type.isDatetime()) {

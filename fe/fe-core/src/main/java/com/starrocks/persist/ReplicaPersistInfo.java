@@ -329,7 +329,6 @@ public class ReplicaPersistInfo implements Writable {
         return replicaInfo;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeLong(dbId);
         out.writeLong(tableId);

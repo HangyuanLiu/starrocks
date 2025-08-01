@@ -134,7 +134,6 @@ public class FunctionName implements Writable {
         return name;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         if (db_ != null) {
             out.writeBoolean(true);

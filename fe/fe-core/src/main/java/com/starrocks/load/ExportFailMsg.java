@@ -72,8 +72,7 @@ public class ExportFailMsg implements Writable {
         return "ExportFailMsg [cancelType=" + cancelType + ", msg=" + msg + "]";
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, cancelType.name());
         Text.writeString(out, msg);
     }

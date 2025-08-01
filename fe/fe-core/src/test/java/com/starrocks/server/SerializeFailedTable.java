@@ -27,8 +27,7 @@ public class SerializeFailedTable extends Table implements GsonPreProcessable {
         super(id, name, TableType.OLAP, new ArrayList<>());
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         throw new IOException("failed");
     }
 

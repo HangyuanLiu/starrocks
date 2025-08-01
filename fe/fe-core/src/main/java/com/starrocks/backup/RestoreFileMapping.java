@@ -113,8 +113,7 @@ public class RestoreFileMapping implements Writable {
             return Arrays.hashCode(chain);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             out.writeInt(chain.length);
             for (Long id : chain) {
                 out.writeLong(id);
@@ -173,7 +172,6 @@ public class RestoreFileMapping implements Writable {
         return mapping;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeInt(mapping.size());
         for (Map.Entry<IdChain, IdChain> entry : mapping.entrySet()) {

@@ -66,8 +66,7 @@ public class ClusterInfo implements Writable {
         this.newInstanceNum = 0;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, clusterName);
         out.writeLong(clusterId);
         out.writeInt(instanceNum);

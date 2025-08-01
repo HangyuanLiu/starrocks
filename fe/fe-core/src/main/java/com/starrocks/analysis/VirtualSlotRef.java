@@ -18,7 +18,6 @@
 package com.starrocks.analysis;
 
 import com.starrocks.catalog.Type;
-import com.starrocks.common.AnalysisException;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.io.DataInput;
@@ -57,8 +56,7 @@ public class VirtualSlotRef extends SlotRef {
         return virtualSlotRef;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
         if (CollectionUtils.isEmpty(realSlots)) {
             out.writeInt(0);

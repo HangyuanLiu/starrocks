@@ -37,8 +37,7 @@ public class BatchAlterJobPersistInfo implements Writable {
         this.alterJobV2List = alterJobV2List;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeInt(alterJobV2List.size());
         for (AlterJobV2 alterJobV2 : alterJobV2List) {
             alterJobV2.write(out);

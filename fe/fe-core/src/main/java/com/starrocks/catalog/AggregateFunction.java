@@ -394,8 +394,7 @@ public class AggregateFunction extends Function {
         return fn;
     }
 
-    @Override
-    public void write(DataOutput output) throws IOException {
+    private void write(DataOutput output) throws IOException {
         // 1. type
         FunctionType.AGGREGATE.write(output);
         // 2. parent

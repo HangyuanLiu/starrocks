@@ -78,7 +78,7 @@ public class CreateTableInfo implements Writable {
         return storageVolumeId;
     }
 
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         // compatible with old version
         Text.writeString(out, ClusterNamespace.getFullName(dbName));
         table.write(out);

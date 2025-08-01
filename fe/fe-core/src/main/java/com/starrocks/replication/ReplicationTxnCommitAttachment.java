@@ -53,8 +53,7 @@ public class ReplicationTxnCommitAttachment extends TxnCommitAttachment {
         return partitionVersionEpochs;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
         String s = GsonUtils.GSON.toJson(this);
         Text.writeString(out, s);

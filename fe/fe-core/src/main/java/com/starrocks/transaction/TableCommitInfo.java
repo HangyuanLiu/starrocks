@@ -59,8 +59,7 @@ public class TableCommitInfo implements Writable {
         idToPartitionCommitInfo = Maps.newHashMap();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeLong(tableId);
         if (idToPartitionCommitInfo == null) {
             out.writeBoolean(false);

@@ -112,8 +112,7 @@ public class ConsistencyCheckInfo implements Writable {
         return isConsistent;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeLong(dbId);
         out.writeLong(tableId);
         out.writeLong(physicalPartitionId);

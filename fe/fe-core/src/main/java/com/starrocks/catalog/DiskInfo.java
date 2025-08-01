@@ -203,7 +203,6 @@ public class DiskInfo implements Writable {
                 + ", medium: " + storageMedium + "]";
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         Text.writeString(out, rootPath);
         out.writeLong(totalCapacityB);

@@ -940,8 +940,7 @@ public class AnalyzeMgr implements Writable {
         }
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         // save history
         SerializeData data = new SerializeData();
         data.jobs = getAllNativeAnalyzeJobList();

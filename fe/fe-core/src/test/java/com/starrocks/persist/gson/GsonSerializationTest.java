@@ -85,8 +85,7 @@ public class GsonSerializationTest {
             ignoreClassA2 = new InnerClassA(2);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = GsonUtils.GSON.toJson(this);
             System.out.println(json);
             Text.writeString(out, json);
@@ -127,8 +126,7 @@ public class GsonSerializationTest {
             this.flag = flag;
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             Text.writeString(out, GsonUtils.GSON.toJson(this));
         }
 
@@ -165,8 +163,7 @@ public class GsonSerializationTest {
             this.ignoreField = flag;
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             Text.writeString(out, GsonUtils.GSON.toJson(this));
         }
 
@@ -191,8 +188,7 @@ public class GsonSerializationTest {
             ignoreClassA2 = new InnerClassA(2);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = GsonUtils.GSON.toJson(this);
             System.out.println(json);
             Text.writeString(out, json);
@@ -222,8 +218,7 @@ public class GsonSerializationTest {
             ignoreClassA2ChangeName = new InnerClassA(2);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = GsonUtils.GSON.toJson(this);
             System.out.println(json);
             Text.writeString(out, json);
@@ -363,8 +358,7 @@ public class GsonSerializationTest {
             map.put(new Key(MyEnum.TYPE_B, "key2"), 2L);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = GsonUtils.GSON.toJson(this);
             Text.writeString(out, json);
         }
@@ -456,8 +450,7 @@ public class GsonSerializationTest {
             a = Integer.parseInt(b);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = GsonUtils.GSON.toJson(this);
             System.out.println("write: " + json);
             Text.writeString(out, json);

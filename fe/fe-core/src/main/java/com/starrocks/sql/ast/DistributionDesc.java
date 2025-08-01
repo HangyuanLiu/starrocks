@@ -74,7 +74,6 @@ public class DistributionDesc implements ParseNode, Writable {
         }
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         Text.writeString(out, type.name());
     }

@@ -208,7 +208,6 @@ public class FunctionParams implements Writable {
         this.exprs = exprs;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeBoolean(isStar);
         out.writeBoolean(isDistinct);

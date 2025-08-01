@@ -132,8 +132,7 @@ public class TabletCommitInfo implements Writable {
         return commitInfos;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeLong(tabletId);
         out.writeLong(backendId);
     }

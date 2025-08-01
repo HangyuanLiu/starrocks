@@ -130,8 +130,7 @@ public class FlatJsonConfig implements Writable {
         return tFlatJsonConfig;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, GsonUtils.GSON.toJson(this));
     }
 

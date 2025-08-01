@@ -88,8 +88,7 @@ public class AlterJobV2HookTest {
             return Optional.of(100L);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
         }
     }
 }

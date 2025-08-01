@@ -921,7 +921,6 @@ public class BlobStorage implements Writable {
         return blobStorage;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         // must write type first
         Text.writeString(out, brokerName);

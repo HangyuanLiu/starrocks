@@ -266,8 +266,7 @@ public class LakeRestoreJob extends RestoreJob {
         // It is no need to release snapshots for lake table.
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, type.name());
         Text.writeString(out, GsonUtils.GSON.toJson(this));
     }

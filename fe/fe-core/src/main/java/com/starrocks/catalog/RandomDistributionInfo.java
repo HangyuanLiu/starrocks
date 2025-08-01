@@ -98,7 +98,7 @@ public class RandomDistributionInfo extends DistributionInfo {
         return builder.toString();
     }
 
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
         out.writeInt(bucketNum);
     }

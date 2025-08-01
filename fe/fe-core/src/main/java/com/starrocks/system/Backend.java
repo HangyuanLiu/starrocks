@@ -405,7 +405,6 @@ public class Backend extends ComputeNode {
         return backend;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeLong(getId());
         Text.writeString(out, getHost());

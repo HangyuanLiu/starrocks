@@ -43,8 +43,7 @@ public class EtlJobInfo implements Writable {
         return "EtlJobInfo [jobStatus=" + jobStatus + "]";
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         jobStatus.write(out);
     }
 

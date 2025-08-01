@@ -137,8 +137,7 @@ public class PulsarProgress extends RoutineLoadProgress {
         }
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
         out.writeInt(partitionToBacklogNum.size());
         for (Map.Entry<String, Long> entry : partitionToBacklogNum.entrySet()) {

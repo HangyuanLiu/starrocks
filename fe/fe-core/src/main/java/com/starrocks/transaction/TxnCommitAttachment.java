@@ -74,7 +74,6 @@ public abstract class TxnCommitAttachment implements Writable {
         }
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         // ATTN: must write type first
         Text.writeString(out, sourceType.name());

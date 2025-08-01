@@ -76,7 +76,6 @@ public abstract class RoutineLoadProgress implements Writable {
         return progress;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         // ATTN: must write type first
         Text.writeString(out, loadDataSourceType.name());

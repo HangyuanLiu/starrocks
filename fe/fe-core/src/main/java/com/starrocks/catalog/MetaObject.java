@@ -68,7 +68,6 @@ public class MetaObject implements Writable {
         this.lastCheckTime = lastCheckTime;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeLong(signature);
         out.writeLong(lastCheckTime);

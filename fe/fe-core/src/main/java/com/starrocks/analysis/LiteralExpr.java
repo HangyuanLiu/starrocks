@@ -187,7 +187,6 @@ public abstract class LiteralExpr extends Expr implements Comparable<LiteralExpr
         return true;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
     }
 

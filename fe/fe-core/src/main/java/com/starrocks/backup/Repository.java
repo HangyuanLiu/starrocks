@@ -690,7 +690,6 @@ public class Repository implements Writable, GsonPostProcessable {
         return repo;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeLong(id);
         Text.writeString(out, name);

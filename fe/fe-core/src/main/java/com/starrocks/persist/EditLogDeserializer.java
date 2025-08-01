@@ -29,7 +29,6 @@ import com.starrocks.catalog.MetaVersion;
 import com.starrocks.catalog.Resource;
 import com.starrocks.common.Config;
 import com.starrocks.common.io.Text;
-import com.starrocks.common.io.Writable;
 import com.starrocks.common.util.SmallFileMgr;
 import com.starrocks.ha.LeaderInfo;
 import com.starrocks.journal.bdbje.Timestamp;
@@ -77,8 +76,8 @@ import java.io.IOException;
 public class EditLogDeserializer {
     private static final Logger LOG = LogManager.getLogger(EditLogDeserializer.class);
 
-    private static final ImmutableMap<Short, Class<? extends Writable>> OPTYPE_TO_DESER_CLASS
-            = ImmutableMap.<Short, Class<? extends Writable>>builder()
+    private static final ImmutableMap<Short, Class<?>> OPTYPE_TO_DESER_CLASS
+            = ImmutableMap.<Short, Class<?>>builder()
             .put(OperationType.OP_SAVE_TRANSACTION_ID_V2, TransactionIdInfo.class)
             .put(OperationType.OP_SAVE_AUTO_INCREMENT_ID, AutoIncrementInfo.class)
             .put(OperationType.OP_DELETE_AUTO_INCREMENT_ID, AutoIncrementInfo.class)
@@ -265,10 +264,10 @@ public class EditLogDeserializer {
             .put(OperationType.OP_REMOVE_DYNAMIC_TABLET_JOB_LOG, RemoveDynamicTabletJobLog.class)
             .build();
 
-    public static Writable deserialize(Short opCode, DataInput in) throws IOException {
+    public static Object deserialize(Short opCode, DataInput in) throws IOException {
         LOG.debug("get opcode: {}", opCode);
 
-        Writable data = null;
+        Object data = null;
         switch (opCode) {
             case OperationType.OP_SAVE_NEXTID:
             case OperationType.OP_ERASE_DB:

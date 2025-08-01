@@ -14,10 +14,8 @@
 
 package com.starrocks.journal;
 
-import com.starrocks.common.io.Writable;
-
 // this is the value written to bdb or local edit files. key is an auto-increasing long.
-public record JournalEntity(short opCode, Writable data) {
+public record JournalEntity(short opCode, Object data) {
     @Override
     public String toString() {
         return " opCode=" + opCode + " " + data;

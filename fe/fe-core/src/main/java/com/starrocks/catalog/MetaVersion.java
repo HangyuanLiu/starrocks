@@ -44,8 +44,7 @@ public class MetaVersion implements Writable {
         return starrocksVersion;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         JsonObject jsonObject = new JsonObject();
         // For rollback compatibility
         jsonObject.addProperty(KEY_COMMUNITY_VERSION, FeConstants.META_VERSION);

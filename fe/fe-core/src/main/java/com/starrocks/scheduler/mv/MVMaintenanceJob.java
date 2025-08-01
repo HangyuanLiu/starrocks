@@ -500,7 +500,6 @@ public class MVMaintenanceJob implements Writable, GsonPreProcessable, GsonPostP
         return Objects.hash(jobId, viewId, epoch, state.get());
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         serializedState = state.get();
         Text.writeString(out, GsonUtils.GSON.toJson(this));

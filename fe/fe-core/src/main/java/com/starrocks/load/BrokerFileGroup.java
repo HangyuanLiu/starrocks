@@ -428,8 +428,7 @@ public class BrokerFileGroup implements Writable {
         return sb.toString();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         // tableId
         out.writeLong(tableId);
         // columnSeparator

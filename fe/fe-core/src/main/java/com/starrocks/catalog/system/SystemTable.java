@@ -134,8 +134,7 @@ public class SystemTable extends Table {
         return name.equals(BeConfigsSystemTable.NAME);
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         throw new UnsupportedOperationException("Do not allow to write SchemaTable to image.");
     }
 

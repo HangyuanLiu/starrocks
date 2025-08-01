@@ -1514,7 +1514,6 @@ public class StreamLoadTask extends AbstractTxnStateChangeCallback
         }
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         Text.writeString(out, GsonUtils.GSON.toJson(this));
         out.writeLong(loadId.getHi());

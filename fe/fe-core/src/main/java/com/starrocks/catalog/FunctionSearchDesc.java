@@ -113,8 +113,7 @@ public class FunctionSearchDesc implements Writable {
         return sb.toString();
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         name.write(out);
         // write args
         out.writeShort(argTypes.length);

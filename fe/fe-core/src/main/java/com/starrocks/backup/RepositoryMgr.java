@@ -149,7 +149,6 @@ public class RepositoryMgr extends Daemon implements Writable, GsonPostProcessab
         return mgr;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeInt(repoNameMap.size());
         for (Repository repo : repoNameMap.values()) {

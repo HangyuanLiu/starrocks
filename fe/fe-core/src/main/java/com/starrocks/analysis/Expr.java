@@ -1135,7 +1135,6 @@ public abstract class Expr extends TreeNode<Expr> implements ParseNode, Cloneabl
         return pos;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         throw new IOException("Not implemented serializable ");
     }

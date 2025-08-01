@@ -107,8 +107,7 @@ public class HashDistributionDesc extends DistributionDesc {
         return new HashDistributionInfo(numBucket, distributionColumns);
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
 
         out.writeInt(numBucket);

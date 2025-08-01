@@ -54,8 +54,7 @@ public class RoutineLoadOperation implements Writable {
         return operation;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeLong(id);
         Text.writeString(out, jobState.name());
     }

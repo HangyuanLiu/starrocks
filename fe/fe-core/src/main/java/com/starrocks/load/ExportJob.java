@@ -1036,8 +1036,7 @@ public class ExportJob implements Writable, GsonPostProcessable {
             return state;
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             out.writeLong(jobId);
             Text.writeString(out, state.name());
         }
@@ -1080,8 +1079,7 @@ public class ExportJob implements Writable, GsonPostProcessable {
             this.failMsg = failMsg;
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = GsonUtils.GSON.toJson(this, ExportUpdateInfo.class);
             Text.writeString(out, json);
 

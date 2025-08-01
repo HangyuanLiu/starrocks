@@ -875,7 +875,6 @@ public class Function implements Writable {
         writeOptionString(output, checksum);
     }
 
-    @Override
     public void write(DataOutput output) throws IOException {
         throw new Error("Origin function cannot be serialized");
     }

@@ -36,7 +36,6 @@ public class TransactionIdInfo implements Writable {
         this.txnId = txnId;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
     }
 }

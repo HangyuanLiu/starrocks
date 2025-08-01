@@ -62,8 +62,7 @@ public class MetadataTable extends Table {
     public String getOriginTable() {
         return originTable;
     }
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         throw new UnsupportedOperationException("Do not allow to write SchemaTable to image.");
     }
 

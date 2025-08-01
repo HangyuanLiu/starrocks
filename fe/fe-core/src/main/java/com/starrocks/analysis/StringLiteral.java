@@ -249,8 +249,7 @@ public class StringLiteral extends LiteralExpr {
         return super.uncheckedCastTo(targetType);
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
         Text.writeString(out, value);
     }

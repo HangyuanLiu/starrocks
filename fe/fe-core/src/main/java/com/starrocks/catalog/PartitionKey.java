@@ -493,7 +493,6 @@ public class PartitionKey implements Comparable<PartitionKey>, Writable {
         return Math.max(higher, 0);
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         int count = keys.size();
         if (count != types.size()) {

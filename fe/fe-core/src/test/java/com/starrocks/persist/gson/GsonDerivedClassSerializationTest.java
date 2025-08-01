@@ -87,8 +87,7 @@ public class GsonDerivedClassSerializationTest {
             this.flag = flag;
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = TEST_GSON.toJson(this);
             System.out.println("write: " + json);
             Text.writeString(out, json);
@@ -138,8 +137,7 @@ public class GsonDerivedClassSerializationTest {
             clz = new ChildClassA(1, "child1");
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = TEST_GSON.toJson(this);
             System.out.println("write: " + json);
             Text.writeString(out, json);
@@ -166,8 +164,7 @@ public class GsonDerivedClassSerializationTest {
             this.tagA = tag;
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             String json = TEST_GSON.toJson(this);
             System.out.println("write ClassA: " + json);
             Text.writeString(out, json);

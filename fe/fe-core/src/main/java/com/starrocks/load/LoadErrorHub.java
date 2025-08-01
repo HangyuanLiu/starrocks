@@ -125,8 +125,7 @@ public abstract class LoadErrorHub {
             return helper.toString();
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             Text.writeString(out, type.name());
             switch (type) {
                 case MYSQL_TYPE:

@@ -974,8 +974,7 @@ public class MergePartitionJob extends AlterJobV2 implements GsonPostProcessable
         this.jobState = jobState;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         String json = GsonUtils.GSON.toJson(this, MergePartitionJob.class);
         Text.writeString(out, json);
     }

@@ -127,8 +127,7 @@ public class OptimizeRange implements ParseNode, Writable {
      * @param out DataOutput to write to
      * @throws IOException if an I/O error occurs
      */
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         String json = GsonUtils.GSON.toJson(this);
         Text.writeString(out, json);
     }

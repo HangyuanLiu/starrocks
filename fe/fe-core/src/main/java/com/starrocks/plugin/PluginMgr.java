@@ -325,8 +325,7 @@ public class PluginMgr implements Writable {
         return rows;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         // only need to persist dynamic plugins
         List<PluginInfo> list = getAllDynamicPluginInfo();
         int size = list.size();

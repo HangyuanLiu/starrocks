@@ -144,8 +144,7 @@ public class DataProperty implements Writable {
         return dataProperty;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, storageMedium.name());
         out.writeLong(cooldownTimeMs);
     }

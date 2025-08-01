@@ -1915,8 +1915,7 @@ public class RestoreJob extends AbstractJob {
         }
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
 
         Text.writeString(out, backupTimestamp);

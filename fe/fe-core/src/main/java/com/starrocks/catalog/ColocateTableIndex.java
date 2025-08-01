@@ -107,7 +107,6 @@ public class ColocateTableIndex implements Writable {
             return groupId;
         }
 
-        @Override
         public void write(DataOutput out) throws IOException {
             out.writeLong(dbId);
             out.writeLong(grpId);
@@ -719,8 +718,7 @@ public class ColocateTableIndex implements Writable {
         return infos;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         int size = groupName2Id.size();
         out.writeInt(size);
         for (Map.Entry<String, GroupId> entry : groupName2Id.entrySet()) {

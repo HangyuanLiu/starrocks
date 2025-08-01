@@ -154,7 +154,6 @@ public class TableFunction extends Function {
         this.isLeftJoin = isLeftJoin;
     }
 
-    @Override
     public void write(DataOutput output) throws IOException {
         // 1. type
         FunctionType.TABLE.write(output);

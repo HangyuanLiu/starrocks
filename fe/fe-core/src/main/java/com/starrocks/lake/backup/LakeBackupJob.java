@@ -205,8 +205,7 @@ public class LakeBackupJob extends BackupJob {
         }
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         Text.writeString(out, type.name());
         Text.writeString(out, GsonUtils.GSON.toJson(this));
     }

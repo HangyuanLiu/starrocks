@@ -839,7 +839,6 @@ public class BackupHandler extends FrontendDaemon implements Writable, MemoryTra
         return backupHandler;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         repoMgr.write(out);
 

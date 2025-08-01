@@ -209,7 +209,6 @@ public abstract class AbstractJob implements Writable {
         return job;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         // ATTN: must write type first
         Text.writeString(out, type.name());

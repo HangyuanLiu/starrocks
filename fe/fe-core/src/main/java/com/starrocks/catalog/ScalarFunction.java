@@ -267,8 +267,7 @@ public class ScalarFunction extends Function {
         return fn;
     }
 
-    @Override
-    public void write(DataOutput output) throws IOException {
+    private void write(DataOutput output) throws IOException {
         // 1. type
         FunctionType.SCALAR.write(output);
         // 2. parent

@@ -69,8 +69,7 @@ public class TabletFailInfo implements Writable {
         return failInfos;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeLong(tabletId);
         out.writeLong(backendId);
     }

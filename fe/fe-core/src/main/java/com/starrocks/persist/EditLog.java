@@ -2096,8 +2096,7 @@ public class EditLog {
 
     public void logJsonObject(short op, Object obj) {
         logEdit(op, new Writable() {
-            @Override
-            public void write(DataOutput out) throws IOException {
+            private void write(DataOutput out) throws IOException {
                 Text.writeString(out, GsonUtils.GSON.toJson(obj));
             }
         });

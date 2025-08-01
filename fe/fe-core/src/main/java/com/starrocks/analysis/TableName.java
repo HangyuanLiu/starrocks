@@ -209,7 +209,6 @@ public class TableName implements Writable, GsonPreProcessable, GsonPostProcessa
         return stringBuilder.toString();
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         // compatible with old version
         Text.writeString(out, ClusterNamespace.getFullName(db));

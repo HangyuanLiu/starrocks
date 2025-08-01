@@ -120,7 +120,6 @@ public class MysqlLoadErrorHub extends LoadErrorHub {
             return table;
         }
 
-        @Override
         public void write(DataOutput out) throws IOException {
             Text.writeString(out, host);
             out.writeInt(port);

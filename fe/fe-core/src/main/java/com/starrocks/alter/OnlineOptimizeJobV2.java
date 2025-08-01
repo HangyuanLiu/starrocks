@@ -768,7 +768,6 @@ public class OnlineOptimizeJobV2 extends AlterJobV2 implements GsonPostProcessab
         this.jobState = jobState;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         String json = GsonUtils.GSON.toJson(this, OnlineOptimizeJobV2.class);
         Text.writeString(out, json);

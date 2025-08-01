@@ -122,7 +122,6 @@ public class SnapshotInfo implements Writable {
         return info;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeLong(dbId);
         out.writeLong(tblId);

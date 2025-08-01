@@ -145,7 +145,6 @@ public class ColocateGroupSchema implements Writable {
         return schema;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         groupId.write(out);
         out.writeInt(distributionColTypes.size());

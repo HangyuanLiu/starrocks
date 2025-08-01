@@ -605,7 +605,6 @@ public class Replica implements Writable {
         return strBuffer.toString();
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         out.writeLong(id);
         out.writeLong(backendId);

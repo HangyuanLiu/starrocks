@@ -75,7 +75,6 @@ public class BrokerLoadErrorHub extends LoadErrorHub {
             this.prop = prop;
         }
 
-        @Override
         public void write(DataOutput out) throws IOException {
             Text.writeString(out, brokerName);
             Text.writeString(out, path);

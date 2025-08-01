@@ -36,8 +36,7 @@ public class BackendIdsUpdateInfo implements Writable {
         this.backendIds = backends;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         out.writeInt(backendIds.size());
         for (Long id : backendIds) {
             out.writeLong(id);

@@ -413,7 +413,6 @@ public class LocalTablet extends Tablet implements GsonPostProcessable {
         }
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         super.write(out);
 

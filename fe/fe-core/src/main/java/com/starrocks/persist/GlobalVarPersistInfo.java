@@ -78,7 +78,6 @@ public class GlobalVarPersistInfo implements Writable {
         return persistJsonString;
     }
 
-    @Override
     public void write(DataOutput out) throws IOException {
         try {
             JSONObject root = new JSONObject();

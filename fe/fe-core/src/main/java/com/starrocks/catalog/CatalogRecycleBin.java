@@ -1080,8 +1080,7 @@ public class CatalogRecycleBin extends FrontendDaemon implements Writable {
         return info != null && asyncDeleteForTables.get(info) != null;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         int count = idToDatabase.size();
         out.writeInt(count);
         for (Map.Entry<Long, RecycleDatabaseInfo> entry : idToDatabase.entrySet()) {
@@ -1145,8 +1144,7 @@ public class CatalogRecycleBin extends FrontendDaemon implements Writable {
             return recoverable;
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             db.write(out);
 
             int count = tableNames.size();
@@ -1195,8 +1193,7 @@ public class CatalogRecycleBin extends FrontendDaemon implements Writable {
             return recoverable;
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             out.writeLong(dbId);
             table.write(out);
         }

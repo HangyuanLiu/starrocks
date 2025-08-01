@@ -114,8 +114,7 @@ public class BinlogConsumeStateVO implements Writable {
             return GsonUtils.GSON.fromJson(Text.readString(input), BinlogIdVO.class);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             Text.writeString(out, GsonUtils.GSON.toJson(this));
         }
 
@@ -173,8 +172,7 @@ public class BinlogConsumeStateVO implements Writable {
             return GsonUtils.GSON.fromJson(json, BinlogLSNVO.class);
         }
 
-        @Override
-        public void write(DataOutput out) throws IOException {
+        private void write(DataOutput out) throws IOException {
             Text.writeString(out, GsonUtils.GSON.toJson(this));
         }
 

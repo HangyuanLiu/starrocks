@@ -158,8 +158,7 @@ public class NullLiteral extends LiteralExpr {
         msg.node_type = TExprNodeType.NULL_LITERAL;
     }
 
-    @Override
-    public void write(DataOutput out) throws IOException {
+    private void write(DataOutput out) throws IOException {
         super.write(out);
     }
 
