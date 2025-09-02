@@ -16,12 +16,12 @@ package com.starrocks.planner;
 
 import com.google.common.base.Preconditions;
 import com.starrocks.common.IdGenerator;
+import com.starrocks.planner.expr.BinaryPredicate;
+import com.starrocks.planner.expr.Expr;
+import com.starrocks.planner.expr.JoinOperator;
+import com.starrocks.planner.expr.SlotRef;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.JoinOperator;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.TableRefPersist;
 import com.starrocks.thrift.TNestLoopJoinNode;
 import com.starrocks.thrift.TNormalNestLoopJoinNode;

@@ -183,6 +183,14 @@ public class ExpressionRangePartitionInfo extends RangePartitionInfo implements 
         return result;
     }
 
+    public List<com.starrocks.planner.expr.Expr> getPartitionExecExprs(Map<ColumnId, Column> idToColumn) {
+        List<Expr> result = new ArrayList<>(partitionExprs.size());
+        for (ColumnIdExpr columnIdExpr : partitionExprs) {
+            result.add(columnIdExpr.convertToColumnNameExpr(idToColumn));
+        }
+        return result;
+    }
+
     public List<ColumnIdExpr> getPartitionColumnIdExprs() {
         return partitionExprs;
     }

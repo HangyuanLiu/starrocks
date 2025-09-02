@@ -22,47 +22,47 @@ import com.starrocks.catalog.Type;
 import com.starrocks.common.FeConstants;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.SlotId;
+import com.starrocks.planner.expr.ArithmeticExpr;
+import com.starrocks.planner.expr.ArrayExpr;
+import com.starrocks.planner.expr.ArraySliceExpr;
+import com.starrocks.planner.expr.BetweenPredicate;
+import com.starrocks.planner.expr.BinaryPredicate;
+import com.starrocks.planner.expr.BoolLiteral;
+import com.starrocks.planner.expr.CaseExpr;
+import com.starrocks.planner.expr.CaseWhenClause;
+import com.starrocks.planner.expr.CastExpr;
+import com.starrocks.planner.expr.CloneExpr;
+import com.starrocks.planner.expr.CollectionElementExpr;
+import com.starrocks.planner.expr.CompoundPredicate;
+import com.starrocks.planner.expr.DateLiteral;
+import com.starrocks.planner.expr.DecimalLiteral;
+import com.starrocks.planner.expr.DictMappingExpr;
+import com.starrocks.planner.expr.DictQueryExpr;
+import com.starrocks.planner.expr.DictionaryGetExpr;
+import com.starrocks.planner.expr.Expr;
+import com.starrocks.planner.expr.FloatLiteral;
+import com.starrocks.planner.expr.FunctionCallExpr;
+import com.starrocks.planner.expr.FunctionParams;
+import com.starrocks.planner.expr.InPredicate;
+import com.starrocks.planner.expr.InformationFunction;
+import com.starrocks.planner.expr.IntLiteral;
+import com.starrocks.planner.expr.IsNullPredicate;
+import com.starrocks.planner.expr.LambdaFunctionExpr;
+import com.starrocks.planner.expr.LargeIntLiteral;
+import com.starrocks.planner.expr.LikePredicate;
+import com.starrocks.planner.expr.MapExpr;
+import com.starrocks.planner.expr.MatchExpr;
+import com.starrocks.planner.expr.NullLiteral;
+import com.starrocks.planner.expr.PlaceHolderExpr;
+import com.starrocks.planner.expr.SlotRef;
+import com.starrocks.planner.expr.StringLiteral;
+import com.starrocks.planner.expr.SubfieldExpr;
+import com.starrocks.planner.expr.Subquery;
+import com.starrocks.planner.expr.TableName;
+import com.starrocks.planner.expr.VarBinaryLiteral;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.SemanticException;
-import com.starrocks.sql.ast.expression.ArithmeticExpr;
-import com.starrocks.sql.ast.expression.ArrayExpr;
-import com.starrocks.sql.ast.expression.ArraySliceExpr;
-import com.starrocks.sql.ast.expression.BetweenPredicate;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
-import com.starrocks.sql.ast.expression.BoolLiteral;
-import com.starrocks.sql.ast.expression.CaseExpr;
-import com.starrocks.sql.ast.expression.CaseWhenClause;
-import com.starrocks.sql.ast.expression.CastExpr;
-import com.starrocks.sql.ast.expression.CloneExpr;
-import com.starrocks.sql.ast.expression.CollectionElementExpr;
-import com.starrocks.sql.ast.expression.CompoundPredicate;
-import com.starrocks.sql.ast.expression.DateLiteral;
-import com.starrocks.sql.ast.expression.DecimalLiteral;
-import com.starrocks.sql.ast.expression.DictMappingExpr;
-import com.starrocks.sql.ast.expression.DictQueryExpr;
-import com.starrocks.sql.ast.expression.DictionaryGetExpr;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.FloatLiteral;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.FunctionName;
-import com.starrocks.sql.ast.expression.FunctionParams;
-import com.starrocks.sql.ast.expression.InPredicate;
-import com.starrocks.sql.ast.expression.InformationFunction;
-import com.starrocks.sql.ast.expression.IntLiteral;
-import com.starrocks.sql.ast.expression.IsNullPredicate;
-import com.starrocks.sql.ast.expression.LambdaFunctionExpr;
-import com.starrocks.sql.ast.expression.LargeIntLiteral;
-import com.starrocks.sql.ast.expression.LikePredicate;
-import com.starrocks.sql.ast.expression.MapExpr;
-import com.starrocks.sql.ast.expression.MatchExpr;
-import com.starrocks.sql.ast.expression.NullLiteral;
-import com.starrocks.sql.ast.expression.PlaceHolderExpr;
-import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.StringLiteral;
-import com.starrocks.sql.ast.expression.SubfieldExpr;
-import com.starrocks.sql.ast.expression.Subquery;
-import com.starrocks.sql.ast.expression.TableName;
-import com.starrocks.sql.ast.expression.VarBinaryLiteral;
 import com.starrocks.sql.common.UnsupportedException;
 import com.starrocks.sql.optimizer.operator.scalar.ArrayOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ArraySliceOperator;
@@ -678,16 +678,5 @@ public class ScalarOperatorToExpr {
         }
     }
 
-    static class IgnoreSlotFormatter extends Formatter {
-        IgnoreSlotFormatter(BuildExpr buildExpr) {
-            super(buildExpr);
-        }
 
-        @Override
-        public Expr visitVariableReference(ColumnRefOperator node, FormatterContext context) {
-            SlotDescriptor descriptor = new SlotDescriptor(new SlotId(node.getId()), node.getName(),
-                    node.getType(), node.isNullable());
-            return new SlotRef(descriptor);
-        }
-    }
 }

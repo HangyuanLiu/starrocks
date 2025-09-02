@@ -38,9 +38,9 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.planner.expr.Expr;
+import com.starrocks.planner.expr.ExprSubstitutionMap;
+import com.starrocks.planner.expr.FunctionCallExpr;
 
 import java.util.ArrayList;
 import java.util.List;

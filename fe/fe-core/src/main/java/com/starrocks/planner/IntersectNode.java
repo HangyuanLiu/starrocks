@@ -34,7 +34,7 @@
 
 package com.starrocks.planner;
 
-import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.planner.expr.Expr;
 import com.starrocks.thrift.TPlanNode;
 import com.starrocks.thrift.TPlanNodeType;
 

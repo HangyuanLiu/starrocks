@@ -37,7 +37,7 @@ package com.starrocks.planner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.starrocks.sql.ast.OrderByElement;
-import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.planner.expr.Expr;
 
 import java.util.List;
 
