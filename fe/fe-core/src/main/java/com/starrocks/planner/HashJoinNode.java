@@ -35,13 +35,13 @@
 package com.starrocks.planner;
 
 import com.starrocks.common.Config;
+import com.starrocks.planner.expr.BinaryPredicate;
+import com.starrocks.planner.expr.Expr;
+import com.starrocks.planner.expr.SlotRef;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
 import com.starrocks.sql.ast.expression.BinaryType;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.JoinOperator;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.thrift.TAsofJoinCondition;
 import com.starrocks.thrift.TEqJoinCondition;
 import com.starrocks.thrift.THashJoinNode;

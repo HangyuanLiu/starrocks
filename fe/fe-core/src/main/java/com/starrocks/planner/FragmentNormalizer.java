@@ -27,19 +27,21 @@ import com.starrocks.common.AnalysisException;
 import com.starrocks.common.IdGenerator;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.UnionFind;
+import com.starrocks.planner.expr.BetweenPredicate;
+import com.starrocks.planner.expr.BinaryPredicate;
+import com.starrocks.planner.expr.CompoundPredicate;
+import com.starrocks.planner.expr.Expr;
+import com.starrocks.planner.expr.ExprVisitor;
+import com.starrocks.planner.expr.ExprVisitorBase;
+import com.starrocks.planner.expr.FunctionCallExpr;
+import com.starrocks.planner.expr.InPredicate;
+import com.starrocks.planner.expr.LiteralExpr;
+import com.starrocks.planner.expr.NullLiteral;
+import com.starrocks.planner.expr.SlotRef;
 import com.starrocks.rpc.ConfigurableSerDesFactory;
 import com.starrocks.server.RunMode;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
-import com.starrocks.sql.ast.expression.BetweenPredicate;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
 import com.starrocks.sql.ast.expression.BinaryType;
-import com.starrocks.sql.ast.expression.CompoundPredicate;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.InPredicate;
-import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.ast.expression.NullLiteral;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.thrift.TCacheParam;
 import com.starrocks.thrift.TExpr;
@@ -241,7 +243,7 @@ public class FragmentNormalizer {
         return null;
     }
 
-    public static class SimpleRangePredicateVisitor implements AstVisitorExtendInterface<String, Void> {
+    public static class SimpleRangePredicateVisitor implements ExprVisitor<String, Void> {
         @Override
         public String visitBinaryPredicate(BinaryPredicate node, Void context) {
             String lhs = visit(node.getChild(0), context);

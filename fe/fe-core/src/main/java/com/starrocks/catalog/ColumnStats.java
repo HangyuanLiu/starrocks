@@ -39,8 +39,8 @@ import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.common.io.Writable;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.planner.expr.Expr;
+import com.starrocks.planner.expr.SlotRef;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

@@ -34,9 +34,9 @@
 
 package com.starrocks.planner;
 
+import com.starrocks.planner.expr.BinaryPredicate;
+import com.starrocks.planner.expr.Expr;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.JoinOperator;
 import com.starrocks.thrift.TEqJoinCondition;
 import com.starrocks.thrift.TMergeJoinNode;

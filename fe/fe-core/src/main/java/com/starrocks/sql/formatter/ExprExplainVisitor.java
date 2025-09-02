@@ -15,59 +15,41 @@
 package com.starrocks.sql.formatter;
 
 import com.google.common.base.Joiner;
-import com.starrocks.catalog.FunctionSet;
-import com.starrocks.sql.analyzer.AstToStringBuilder;
-import com.starrocks.sql.ast.AstVisitorExtendInterface;
-import com.starrocks.sql.ast.OrderByElement;
-import com.starrocks.sql.ast.expression.AnalyticExpr;
-import com.starrocks.sql.ast.expression.ArithmeticExpr;
-import com.starrocks.sql.ast.expression.ArrayExpr;
-import com.starrocks.sql.ast.expression.ArraySliceExpr;
-import com.starrocks.sql.ast.expression.ArrowExpr;
-import com.starrocks.sql.ast.expression.BetweenPredicate;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
-import com.starrocks.sql.ast.expression.BoolLiteral;
-import com.starrocks.sql.ast.expression.CaseExpr;
-import com.starrocks.sql.ast.expression.CastExpr;
-import com.starrocks.sql.ast.expression.CloneExpr;
-import com.starrocks.sql.ast.expression.CollectionElementExpr;
-import com.starrocks.sql.ast.expression.CompoundPredicate;
-import com.starrocks.sql.ast.expression.DateLiteral;
-import com.starrocks.sql.ast.expression.DefaultValueExpr;
-import com.starrocks.sql.ast.expression.DictMappingExpr;
-import com.starrocks.sql.ast.expression.DictQueryExpr;
-import com.starrocks.sql.ast.expression.DictionaryGetExpr;
-import com.starrocks.sql.ast.expression.ExistsPredicate;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.FieldReference;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.InPredicate;
-import com.starrocks.sql.ast.expression.InformationFunction;
-import com.starrocks.sql.ast.expression.IntervalLiteral;
-import com.starrocks.sql.ast.expression.IsNullPredicate;
-import com.starrocks.sql.ast.expression.LambdaArgument;
-import com.starrocks.sql.ast.expression.LambdaFunctionExpr;
-import com.starrocks.sql.ast.expression.LargeStringLiteral;
-import com.starrocks.sql.ast.expression.LikePredicate;
-import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.ast.expression.MapExpr;
-import com.starrocks.sql.ast.expression.MatchExpr;
-import com.starrocks.sql.ast.expression.MaxLiteral;
-import com.starrocks.sql.ast.expression.MultiInPredicate;
-import com.starrocks.sql.ast.expression.NamedArgument;
-import com.starrocks.sql.ast.expression.NullLiteral;
-import com.starrocks.sql.ast.expression.Parameter;
-import com.starrocks.sql.ast.expression.PlaceHolderExpr;
-import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.StringLiteral;
-import com.starrocks.sql.ast.expression.SubfieldExpr;
-import com.starrocks.sql.ast.expression.Subquery;
-import com.starrocks.sql.ast.expression.TableName;
-import com.starrocks.sql.ast.expression.TimestampArithmeticExpr;
-import com.starrocks.sql.ast.expression.UserVariableExpr;
-import com.starrocks.sql.ast.expression.VarBinaryLiteral;
-import com.starrocks.sql.ast.expression.VariableExpr;
-import org.apache.commons.collections.CollectionUtils;
+import com.starrocks.planner.expr.ArithmeticExpr;
+import com.starrocks.planner.expr.ArrayExpr;
+import com.starrocks.planner.expr.ArraySliceExpr;
+import com.starrocks.planner.expr.ArrowExpr;
+import com.starrocks.planner.expr.BetweenPredicate;
+import com.starrocks.planner.expr.BinaryPredicate;
+import com.starrocks.planner.expr.BoolLiteral;
+import com.starrocks.planner.expr.CastExpr;
+import com.starrocks.planner.expr.CloneExpr;
+import com.starrocks.planner.expr.CollectionElementExpr;
+import com.starrocks.planner.expr.CompoundPredicate;
+import com.starrocks.planner.expr.DateLiteral;
+import com.starrocks.planner.expr.DictMappingExpr;
+import com.starrocks.planner.expr.DictQueryExpr;
+import com.starrocks.planner.expr.DictionaryGetExpr;
+import com.starrocks.planner.expr.ExistsPredicate;
+import com.starrocks.planner.expr.Expr;
+import com.starrocks.planner.expr.ExprVisitorBase;
+import com.starrocks.planner.expr.FunctionCallExpr;
+import com.starrocks.planner.expr.InPredicate;
+import com.starrocks.planner.expr.InformationFunction;
+import com.starrocks.planner.expr.IsNullPredicate;
+import com.starrocks.planner.expr.LambdaFunctionExpr;
+import com.starrocks.planner.expr.LargeStringLiteral;
+import com.starrocks.planner.expr.LikePredicate;
+import com.starrocks.planner.expr.LiteralExpr;
+import com.starrocks.planner.expr.MapExpr;
+import com.starrocks.planner.expr.MatchExpr;
+import com.starrocks.planner.expr.MaxLiteral;
+import com.starrocks.planner.expr.MultiInPredicate;
+import com.starrocks.planner.expr.NullLiteral;
+import com.starrocks.planner.expr.PlaceHolderExpr;
+import com.starrocks.planner.expr.StringLiteral;
+import com.starrocks.planner.expr.SubfieldExpr;
+import com.starrocks.planner.expr.VarBinaryLiteral;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -76,7 +58,7 @@ import java.util.stream.Collectors;
 /*
  * @Todo: merge with AST2StringVisitor
  */
-public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Void> {
+public class ExprExplainVisitor extends ExprVisitorBase<String, Void> {
     private FormatOptions options = FormatOptions.allEnable();
 
     public ExprExplainVisitor() {
@@ -166,38 +148,6 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
     @Override
     public String visitMaxLiteral(MaxLiteral node, Void context) {
         return "MAXVALUE";
-    }
-
-    @Override
-    public String visitIntervalLiteral(IntervalLiteral node, Void context) {
-        return "interval " + visit(node.getValue()) + " " + node.getUnitIdentifier().getDescription();
-    }
-
-    // ========================================= References and Function Calls =========================================
-    @Override
-    public String visitSlot(SlotRef node, Void context) {
-        StringBuilder sb = new StringBuilder();
-        TableName tblName = node.getTblName();
-
-        if (tblName != null && !node.isFromLambda()) {
-            return tblName.toSql() + "." + "`" + node.getColName() + "`";
-        } else if (node.getLabel() != null) {
-            if (node.isBackQuoted() && !(node.getLabel().startsWith("`") && node.getLabel().endsWith("`"))) {
-                sb.append("`").append(node.getLabel()).append("`");
-                return sb.toString();
-            } else {
-                return node.getLabel();
-            }
-        } else if (node.getDesc().getSourceExprs() != null) {
-            sb.append("<slot ").append(node.getDesc().getId().asInt()).append(">");
-            for (Expr expr : node.getDesc().getSourceExprs()) {
-                sb.append(" ");
-                sb.append(visit(expr));
-            }
-            return sb.toString();
-        } else {
-            return "<slot " + node.getDesc().getId().asInt() + ">";
-        }
     }
 
     // ========================================= Arithmetic and Predicates =========================================
@@ -350,13 +300,6 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
         return collection + "[" + index + "]";
     }
 
-    // ========================================= Subquery =========================================
-
-    @Override
-    public String visitSubqueryExpr(Subquery node, Void context) {
-        return "(" + AstToStringBuilder.toString(node.getQueryStatement()) + ")";
-    }
-
     // ========================================= Multi-Value Predicates =========================================
     @Override
     public String visitMultiInPredicate(MultiInPredicate node, Void context) {
@@ -377,109 +320,6 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
                 .collect(Collectors.joining(", ")));
         sb.append(")");
         return sb.toString();
-    }
-
-    // ========================================= Analytic Expressions =========================================
-
-    @Override
-    public String visitAnalyticExpr(AnalyticExpr node, Void context) {
-        if (node.getSqlString() != null) {
-            return node.getSqlString();
-        }
-        StringBuilder sb = new StringBuilder();
-        if (CollectionUtils.isNotEmpty(node.getPartitionExprs())) {
-            sb.append(" PARTITION BY ");
-            sb.append(String.join(", ", visitChildren(node.getPartitionExprs())));
-        }
-
-        if (CollectionUtils.isNotEmpty(node.getOrderByElements())) {
-            sb.append(" ORDER BY ");
-            sb.append(node.getOrderByElements().stream()
-                    .map(c -> visit(c, context))
-                    .collect(Collectors.joining(",")));
-        }
-        if (node.getWindow() != null) {
-            sb.append(" ").append(node.getWindow().toSql());
-        }
-
-        FunctionCallExpr fnCall = node.getFnCall();
-        return fnCall.accept(this, context) + " OVER (" + sb.toString().trim() + ")";
-    }
-
-    @Override
-    public String visitOrderByElement(OrderByElement node, Void context) {
-        StringBuilder strBuilder = new StringBuilder();
-        strBuilder.append(visit(node.getExpr()));
-        strBuilder.append(node.getIsAsc() ? " ASC" : " DESC");
-
-        // When ASC and NULLS FIRST or DESC and NULLS LAST, we do not print NULLS FIRST/LAST
-        // because it is the default behavior
-        if (node.getNullsFirstParam() != null) {
-            if (node.getIsAsc() && !node.getNullsFirstParam()) {
-                // If ascending, nulls are first by default, so only add if nulls last.
-                strBuilder.append(" NULLS LAST");
-            } else if (!node.getIsAsc() && node.getNullsFirstParam()) {
-                // If descending, nulls are last by default, so only add if nulls first.
-                strBuilder.append(" NULLS FIRST");
-            }
-        }
-        return strBuilder.toString();
-    }
-
-    // ========================================= Special Expressions =========================================
-    @Override
-    public String visitTimestampArithmeticExpr(TimestampArithmeticExpr node, Void context) {
-        String funcName = node.getFuncName();
-        StringBuilder strBuilder = new StringBuilder();
-        if (funcName != null) {
-            if (funcName.equalsIgnoreCase(FunctionSet.TIMESTAMPDIFF) || funcName.equalsIgnoreCase(FunctionSet.TIMESTAMPADD)) {
-                strBuilder.append(funcName).append("(");
-                strBuilder.append(node.getTimeUnitIdent()).append(", ");
-                strBuilder.append(visit(node.getChild(1))).append(", ");
-                strBuilder.append(visit(node.getChild(0))).append(")");
-                return strBuilder.toString();
-            }
-            // Function-call like version.
-            strBuilder.append(funcName).append("(");
-            strBuilder.append(visit(node.getChild(0))).append(", ");
-            strBuilder.append("INTERVAL ");
-            strBuilder.append(visit(node.getChild(1)));
-            strBuilder.append(" ").append(node.getTimeUnitIdent());
-            strBuilder.append(")");
-            return strBuilder.toString();
-        }
-        if (node.isIntervalFirst()) {
-            // Non-function-call like version with interval as first operand.
-            strBuilder.append("INTERVAL ");
-            strBuilder.append(visit(node.getChild(1))).append(" ");
-            strBuilder.append(node.getTimeUnitIdent());
-            strBuilder.append(" ").append(node.getOp().toString()).append(" ");
-            strBuilder.append(visit(node.getChild(0)));
-        } else {
-            // Non-function-call like version with interval as second operand.
-            strBuilder.append(visit(node.getChild(0)));
-            strBuilder.append(" ").append(node.getOp().toString()).append(" ");
-            strBuilder.append("INTERVAL ");
-            strBuilder.append(visit(node.getChild(1))).append(" ");
-            strBuilder.append(node.getTimeUnitIdent());
-        }
-        return strBuilder.toString();
-    }
-
-    @Override
-    public String visitVariableExpr(VariableExpr node, Void context) {
-        return node.getSetType() + " " + node.getName() +
-                (node.getValue() != null ? " = " + node.getValue() : "");
-    }
-
-    @Override
-    public String visitUserVariableExpr(UserVariableExpr node, Void context) {
-        return "@" + node.getName();
-    }
-
-    @Override
-    public String visitDefaultValueExpr(DefaultValueExpr node, Void context) {
-        return null;
     }
 
     @Override
@@ -515,11 +355,6 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
             commonSubOp.append("\n        ");
         }
         return String.format("%s -> %s%s", names, visit(node.getChild(0)), commonSubOp);
-    }
-
-    @Override
-    public String visitLambdaArguments(LambdaArgument node, Void context) {
-        return node.getName();
     }
 
     // ========================================= Dictionary Expressions =========================================
@@ -579,46 +414,6 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
     @Override
     public String visitMatchExpr(MatchExpr node, Void context) {
         return visit(node.getChild(0)) + " " + node.getMatchOperator().getName() + " " + visit(node.getChild(1));
-    }
-
-    @Override
-    public String visitFieldReference(FieldReference node, Void context) {
-        return "FieldReference(" + node.getFieldIndex() + ")";
-    }
-
-    // ========================================= Named Arguments =========================================
-
-    @Override
-    public String visitNamedArgument(NamedArgument node, Void context) {
-        return node.getName() + " => " + node.getExpr().accept(this, context);
-    }
-
-    @Override
-    public String visitExpression(Expr node, Void context) {
-        return "<" + node.getClass().getSimpleName() + ">";
-    }
-
-    @Override
-    public String visitCaseWhenExpr(CaseExpr node, Void context) {
-        StringBuilder output = new StringBuilder("CASE");
-        int childIdx = 0;
-        if (node.hasCaseExpr()) {
-            output.append(" ").append(visit(node.getChildren().get(childIdx++)));
-        }
-        while (childIdx + 2 <= node.getChildren().size()) {
-            output.append(" WHEN ").append(visit(node.getChildren().get(childIdx++)));
-            output.append(" THEN ").append(visit(node.getChildren().get(childIdx++)));
-        }
-        if (node.hasElseExpr()) {
-            output.append(" ELSE ").append(visit(node.getChildren().get(node.getChildren().size() - 1)));
-        }
-        output.append(" END");
-        return output.toString();
-    }
-
-    @Override
-    public String visitParameterExpr(Parameter node, Void context) {
-        return "?";
     }
 
     @Override
