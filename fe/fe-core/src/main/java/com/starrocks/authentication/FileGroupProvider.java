@@ -92,7 +92,14 @@ public class FileGroupProvider extends GroupProvider {
         if (groupFileUrl.startsWith("http://") || groupFileUrl.startsWith("https://")) {
             return new URL(groupFileUrl).openStream();
         } else {
-            String filePath = System.getenv("STARROCKS_HOME") + "/conf/" + groupFileUrl;
+            String starRocksHome = System.getenv("STARROCKS_HOME");
+            String filePath;
+            if (starRocksHome != null) {
+                filePath = starRocksHome + "/conf/" + groupFileUrl;
+            } else {
+                // If STARROCKS_HOME is not set, use absolute path
+                filePath = groupFileUrl;
+            }
             return new FileInputStream(filePath);
         }
     }
