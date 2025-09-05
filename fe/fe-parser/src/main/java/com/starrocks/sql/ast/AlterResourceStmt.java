@@ -23,11 +23,11 @@ public class AlterResourceStmt extends DdlStmt {
     private final String resourceName;
     private final Map<String, String> properties;
 
-    public AlterResourceStmt(String resourceName, Map<String, String> properties) {
+    public AlterResourceStmt(final String resourceName, final Map<String, String> properties) {
         this(resourceName, properties, NodePosition.ZERO);
     }
 
-    public AlterResourceStmt(String resourceName, Map<String, String> properties, NodePosition pos) {
+    public AlterResourceStmt(final String resourceName, final Map<String, String> properties, final NodePosition pos) {
         super(pos);
         this.resourceName = resourceName;
         this.properties = properties;
@@ -42,7 +42,7 @@ public class AlterResourceStmt extends DdlStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitAlterResourceStatement(this, context);
     }
 }

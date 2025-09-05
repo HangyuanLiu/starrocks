@@ -21,8 +21,8 @@ import java.util.Map;
 public class AlterUserStmt extends BaseCreateAlterUserStmt {
     private final boolean ifExists;
 
-    public AlterUserStmt(UserRef user, boolean ifExists, UserAuthOption userAuthOption,
-                         Map<String, String> properties, NodePosition pos) {
+    public AlterUserStmt(final UserRef user, final boolean ifExists, final UserAuthOption userAuthOption,
+                         final Map<String, String> properties, final NodePosition pos) {
         super(user, userAuthOption, properties, pos);
         this.ifExists = ifExists;
     }
@@ -32,7 +32,7 @@ public class AlterUserStmt extends BaseCreateAlterUserStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitAlterUserStatement(this, context);
     }
 }

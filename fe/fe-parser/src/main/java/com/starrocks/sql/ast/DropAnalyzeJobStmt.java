@@ -21,11 +21,11 @@ public class DropAnalyzeJobStmt extends DdlStmt {
     // -1 mean all jobs
     private final long id;
 
-    public DropAnalyzeJobStmt(long id) {
+    public DropAnalyzeJobStmt(final long id) {
         this(id, NodePosition.ZERO);
     }
 
-    public DropAnalyzeJobStmt(long id, NodePosition pos) {
+    public DropAnalyzeJobStmt(final long id, final NodePosition pos) {
         super(pos);
         this.id = id;
     }
@@ -40,7 +40,7 @@ public class DropAnalyzeJobStmt extends DdlStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitDropAnalyzeStatement(this, context);
     }
 }

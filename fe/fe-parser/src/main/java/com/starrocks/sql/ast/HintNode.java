@@ -35,7 +35,7 @@ public abstract class HintNode implements Comparable<HintNode>, ParseNode {
 
     protected final String hintStr;
 
-    protected HintNode(NodePosition pos, String hintStr) {
+    protected HintNode(final NodePosition pos, final String hintStr) {
         this.pos = pos;
         this.hintStr = hintStr;
     }
@@ -57,14 +57,14 @@ public abstract class HintNode implements Comparable<HintNode>, ParseNode {
     }
 
     @Override
-    public int compareTo(HintNode o) {
+    public int compareTo(final HintNode o) {
         return hintStr.compareTo(o.hintStr);
     }
 
     public enum Scope {
         // the entire query
         QUERY,
-        // part of a query. Like hint in select * from (select hint from tbl),
+        // part of a query. Like hint in select * from (select hint frofinal m tbl),
         // we may want the hint only takes effect in the subquery in the future.
         CLAUSE
     }

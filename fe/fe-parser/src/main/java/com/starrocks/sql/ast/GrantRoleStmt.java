@@ -20,15 +20,15 @@ import java.util.List;
 
 public class GrantRoleStmt extends BaseGrantRevokeRoleStmt {
 
-    public GrantRoleStmt(List<String> granteeRole, UserRef user, NodePosition pos) {
+    public GrantRoleStmt(List<String> granteeRole, final UserRef user, NodePosition pos) {
         super(granteeRole, user, pos);
     }
-    public GrantRoleStmt(List<String> granteeRole, String group, GrantType grantType, NodePosition pos) {
+    public GrantRoleStmt(List<String> granteeRole, final String group, GrantType grantType, NodePosition pos) {
         super(granteeRole, group, grantType, pos);
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitGrantRoleStatement(this, context);
     }
 }

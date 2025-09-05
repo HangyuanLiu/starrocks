@@ -26,7 +26,7 @@ public class AdminCheckTabletsStmt extends DdlStmt {
     private final Property property;
     private CheckType type;
 
-    public void setType(CheckType type) {
+    public void setType(final CheckType type) {
         this.type = type;
     }
 
@@ -34,7 +34,7 @@ public class AdminCheckTabletsStmt extends DdlStmt {
         CONSISTENCY // check the consistency of replicas of tablet
     }
 
-    public AdminCheckTabletsStmt(List<Long> tabletIds, Property property, NodePosition pos) {
+    public AdminCheckTabletsStmt(List<Long> tabletIds, final Property property, NodePosition pos) {
         super(pos);
         this.tabletIds = tabletIds;
         this.property = property;
@@ -53,7 +53,7 @@ public class AdminCheckTabletsStmt extends DdlStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitAdminCheckTabletsStatement(this, context);
     }
 }

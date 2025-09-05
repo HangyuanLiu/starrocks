@@ -29,7 +29,7 @@ public class AdminSetConfigStmt extends DdlStmt {
     private Property config;
     private final boolean persistent;
 
-    public AdminSetConfigStmt(ConfigType type, Property config, boolean persistent, NodePosition pos) {
+    public AdminSetConfigStmt(ConfigType type, final Property config, boolean persistent, NodePosition pos) {
         super(pos);
         this.type = type;
         this.config = config;
@@ -49,7 +49,7 @@ public class AdminSetConfigStmt extends DdlStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitAdminSetConfigStatement(this, context);
     }
 }
