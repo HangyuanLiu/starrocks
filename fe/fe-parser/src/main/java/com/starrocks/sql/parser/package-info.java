@@ -12,29 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-package com.starrocks.sql.ast;
-
-import com.starrocks.sql.parser.NodePosition;
-
 /**
- * Statement representing an empty statement.
+ * SQL parser utilities and supporting classes.
+ * 
+ * This package contains parser-related utility classes and supporting infrastructure
+ * for SQL parsing in StarRocks.
  */
-public final class EmptyStmt extends UnsupportedStmt {
-
-    /**
-     * Constructs an EmptyStmt with zero position.
-     */
-    public EmptyStmt() {
-        this(NodePosition.ZERO);
-    }
-
-    /**
-     * Constructs an EmptyStmt with the specified position.
-     *
-     * @param pos the position in the source code
-     */
-    public EmptyStmt(final NodePosition pos) {
-        super(pos);
-    }
-}
+package com.starrocks.sql.parser;

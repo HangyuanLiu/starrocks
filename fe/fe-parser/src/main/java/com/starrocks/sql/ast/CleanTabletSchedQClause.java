@@ -16,17 +16,28 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class CleanTabletSchedQClause extends AlterClause {
+/**
+ * Clause for cleaning tablet scheduling queue.
+ */
+public final class CleanTabletSchedQClause extends AlterClause {
+    /**
+     * Constructs a CleanTabletSchedQClause with zero position.
+     */
     public CleanTabletSchedQClause() {
         this(NodePosition.ZERO);
     }
 
-    public CleanTabletSchedQClause(NodePosition pos) {
+    /**
+     * Constructs a CleanTabletSchedQClause with the specified position.
+     *
+     * @param pos the position in the source code
+     */
+    public CleanTabletSchedQClause(final NodePosition pos) {
         super(pos);
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(final AstVisitor<R, C> visitor, final C context) {
         return visitor.visitCleanTabletSchedQClause(this, context);
     }
 }

@@ -16,20 +16,38 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class AlterStorageVolumeCommentClause extends AlterStorageVolumeClause {
+/**
+ * Clause for altering storage volume comment.
+ */
+public final class AlterStorageVolumeCommentClause extends AlterStorageVolumeClause {
+    /**
+     * The new comment for the storage volume.
+     */
     private final String newComment;
 
-    public AlterStorageVolumeCommentClause(String newComment, NodePosition pos) {
+    /**
+     * Constructs an AlterStorageVolumeCommentClause.
+     *
+     * @param comment the new comment for the storage volume
+     * @param pos     the position in the source code
+     */
+    public AlterStorageVolumeCommentClause(final String comment,
+                                           final NodePosition pos) {
         super(AlterStorageVolumeClause.AlterOpType.ALTER_COMMENT, pos);
-        this.newComment = newComment;
+        this.newComment = comment;
     }
 
+    /**
+     * Gets the new comment for the storage volume.
+     *
+     * @return the new comment
+     */
     public String getNewComment() {
         return newComment;
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(final AstVisitor<R, C> visitor, final C context) {
         return visitor.visitAlterStorageVolumeCommentClause(this, context);
     }
 }

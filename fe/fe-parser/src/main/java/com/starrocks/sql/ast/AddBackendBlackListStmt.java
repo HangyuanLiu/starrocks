@@ -18,20 +18,37 @@ import com.starrocks.sql.parser.NodePosition;
 
 import java.util.List;
 
-public class AddBackendBlackListStmt extends StatementBase {
+/**
+ * Statement for adding backends to blacklist.
+ */
+public final class AddBackendBlackListStmt extends StatementBase {
+    /**
+     * The list of backend IDs to add to blacklist.
+     */
     private final List<Long> backendIds;
 
-    public AddBackendBlackListStmt(List<Long> backendIds, NodePosition pos) {
+    /**
+     * Constructs an AddBackendBlackListStmt.
+     *
+     * @param ids the list of backend IDs to add to blacklist
+     * @param pos the position in the source code
+     */
+    public AddBackendBlackListStmt(final List<Long> ids, final NodePosition pos) {
         super(pos);
-        this.backendIds = backendIds;
+        this.backendIds = ids;
     }
 
+    /**
+     * Gets the list of backend IDs to add to blacklist.
+     *
+     * @return the backend IDs
+     */
     public List<Long> getBackendIds() {
         return backendIds;
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(final AstVisitor<R, C> visitor, final C context) {
         return visitor.visitAddBackendBlackListStatement(this, context);
     }
 }
