@@ -39,7 +39,7 @@ subprojects {
     ext {
         set("starrocks.home", "${rootDir}/../")
         // var sync start
-        set("antlr.version", "4.9.3")
+        set("antlr.version", "4.11.1")
         set("arrow.version", "18.0.0")
         set("async-profiler.version", "4.0")
         set("avro.version", "1.12.0")

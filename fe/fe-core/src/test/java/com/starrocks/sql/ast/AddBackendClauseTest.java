@@ -28,7 +28,7 @@ public class AddBackendClauseTest {
         AlterSystemStmt stmt =
                 (AlterSystemStmt) SqlParser.parseSingleStatement(sqlText, SqlModeHelper.MODE_DEFAULT);
         AddBackendClause addStmt = (AddBackendClause) stmt.getAlterClause();
-        Assertions.assertEquals("warehouse1", addStmt.getWarehouse());
+        Assertions.assertEquals("warehouse", addStmt.getWarehouse());
         Assertions.assertTrue(addStmt.getCNGroupName().isEmpty());
     }
 
