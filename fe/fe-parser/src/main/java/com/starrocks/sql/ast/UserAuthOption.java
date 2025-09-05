@@ -23,7 +23,7 @@ public class UserAuthOption implements ParseNode {
 
     private final NodePosition pos;
 
-    public UserAuthOption(String authPlugin, String authString, boolean passwordPlain,
+    public UserAuthOption(String authPlugin, final String authString, boolean passwordPlain,
                           NodePosition pos) {
         this.pos = pos;
         this.authPlugin = authPlugin;

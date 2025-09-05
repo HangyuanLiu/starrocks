@@ -24,11 +24,11 @@ public class RollupRenameClause extends AlterTableClause {
     private final String rollupName;
     private final String newRollupName;
 
-    public RollupRenameClause(String rollupName, String newRollupName) {
+    public RollupRenameClause(final String rollupName, final String newRollupName) {
         this(rollupName, newRollupName, NodePosition.ZERO);
     }
 
-    public RollupRenameClause(String rollupName, String newRollupName, NodePosition pos) {
+    public RollupRenameClause(final String rollupName, final String newRollupName, final NodePosition pos) {
         super(pos);
         this.rollupName = rollupName;
         this.newRollupName = newRollupName;
@@ -53,7 +53,7 @@ public class RollupRenameClause extends AlterTableClause {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitRollupRenameClause(this, context);
     }
 }

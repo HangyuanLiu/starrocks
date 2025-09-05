@@ -25,24 +25,54 @@ import com.starrocks.sql.ast.warehouse.SetWarehouseStmt;
 import com.starrocks.sql.ast.warehouse.cngroup.CreateCnGroupStmt;
 import com.starrocks.sql.ast.warehouse.cngroup.AlterCnGroupStmt;
 import com.starrocks.sql.ast.warehouse.cngroup.EnableDisableCnGroupStmt;
-import com.starrocks.sql.ast.BaseCreateAlterUserStmt;
-import com.starrocks.sql.ast.CreateUserStmt;
-import com.starrocks.sql.ast.AlterUserStmt;
 
+/**
+ * Visitor interface for AST nodes.
+ * 
+ * @param <R> the return type
+ * @param <C> the context type
+ */
 public interface AstVisitor<R, C> {
-    default R visit(ParseNode node) {
+    /**
+     * Visit a parse node.
+     *
+     * @param node the node to visit
+     * @return the result
+     */
+    default R visit(final ParseNode node) {
         return visit(node, null);
     }
 
-    default R visit(ParseNode node, C context) {
+    /**
+     * Visit a parse node with context.
+     *
+     * @param node    the node to visit
+     * @param context the context
+     * @return the result
+     */
+    default R visit(final ParseNode node, final C context) {
         return node.accept(this, context);
     }
 
-    default R visitNode(ParseNode node, C context) {
+    /**
+     * Visit a generic node.
+     *
+     * @param node    the node to visit
+     * @param context the context
+     * @return the result
+     */
+    default R visitNode(final ParseNode node, final C context) {
         return null;
     }
 
-    default R visitStatement(StatementBase statement, C context) {
+    /**
+     * Visit a statement.
+     *
+     * @param statement the statement to visit
+     * @param context   the context
+     * @return the result
+     */
+    default R visitStatement(final StatementBase statement, final C context) {
         return visitNode(statement, context);
     }
 

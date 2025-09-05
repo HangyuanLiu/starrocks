@@ -22,7 +22,7 @@ import java.util.Map;
 /*
  * We support the following create user stmts:
  * 1. create user user@'ip' [identified by 'password' | identified with auth_plugin [AS | BY auth_string]]
- *      specify the user name at a certain ip(wildcard is accepted), with optional password or auth plugin.
+ *      specify the user name at a certain ip(wildcard ifinal s accepted), with optional password or auth plugin.
  *      the user@ip must not exist in system
  *
  * 2. create user user@['domain'] [identified by 'password' | identified with auth_plugin [AS | BY auth_string]]
@@ -58,7 +58,7 @@ public class CreateUserStmt extends BaseCreateAlterUserStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitCreateUserStatement(this, context);
     }
 }

@@ -33,10 +33,10 @@ public class CreateWarehouseStmt extends DdlStmt {
         this(ifNotExists, warehouseName, properties, comment, NodePosition.ZERO);
     }
 
-    public CreateWarehouseStmt(boolean ifNotExists, String warehouseName,
-                               Map<String, String> properties,
-                               String comment,
-                               NodePosition pos) {
+    public CreateWarehouseStmt(final boolean ifNotExists, final String warehouseName,
+                               final Map<String, String> properties,
+                               final String comment,
+                               final NodePosition pos) {
         super(pos);
         this.ifNotExists = ifNotExists;
         this.warehouseName = warehouseName;
@@ -65,7 +65,7 @@ public class CreateWarehouseStmt extends DdlStmt {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitCreateWarehouseStatement(this, context);
     }
 }

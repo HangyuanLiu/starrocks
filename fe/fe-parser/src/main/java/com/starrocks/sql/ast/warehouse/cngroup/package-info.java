@@ -12,29 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-package com.starrocks.sql.ast;
-
-import com.starrocks.sql.parser.NodePosition;
-
 /**
- * Statement representing an empty statement.
+ * Compute node group related AST nodes.
+ * 
+ * This package contains AST classes for compute node group operations and statements.
  */
-public final class EmptyStmt extends UnsupportedStmt {
-
-    /**
-     * Constructs an EmptyStmt with zero position.
-     */
-    public EmptyStmt() {
-        this(NodePosition.ZERO);
-    }
-
-    /**
-     * Constructs an EmptyStmt with the specified position.
-     *
-     * @param pos the position in the source code
-     */
-    public EmptyStmt(final NodePosition pos) {
-        super(pos);
-    }
-}
+package com.starrocks.sql.ast.warehouse.cngroup;

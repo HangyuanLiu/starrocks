@@ -16,14 +16,30 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
+/**
+ * Base class for set list items.
+ */
 public class SetListItem implements ParseNode {
 
-    protected final NodePosition pos;
+    /**
+     * The position in the source code.
+     */
+    private final NodePosition pos;
 
-    public SetListItem(NodePosition pos) {
-        this.pos = pos;
+    /**
+     * Constructs a SetListItem.
+     *
+     * @param position the position in the source code
+     */
+    public SetListItem(final NodePosition position) {
+        this.pos = position;
     }
 
+    /**
+     * Gets the position in the source code.
+     *
+     * @return the position
+     */
     @Override
     public NodePosition getPos() {
         return pos;

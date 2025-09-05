@@ -24,13 +24,13 @@ public class CreateCnGroupStmt extends CnGroupStmtBase {
     private final Map<String, String> properties;
     private final boolean ifNotExists;
 
-    public CreateCnGroupStmt(boolean ifNotExists, String warehouseName, String cnGroupName, String comment,
-                             Map<String, String> properties) {
+    public CreateCnGroupStmt(final boolean ifNotExists, final String warehouseName, final String cnGroupName, final String comment,
+                             final Map<String, String> properties) {
         this(ifNotExists, warehouseName, cnGroupName, comment, properties, NodePosition.ZERO);
     }
 
-    public CreateCnGroupStmt(boolean ifNotExists, String warehouseName, String cnGroupName, String comment,
-                             Map<String, String> properties, NodePosition pos) {
+    public CreateCnGroupStmt(final boolean ifNotExists, final String warehouseName, final String cnGroupName, final String comment,
+                             final Map<String, String> properties, final NodePosition pos) {
         super(warehouseName, cnGroupName, pos);
         this.properties = properties;
         this.ifNotExists = ifNotExists;
@@ -50,7 +50,7 @@ public class CreateCnGroupStmt extends CnGroupStmtBase {
     }
 
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
+    public <R, C> R accept(AstVisitor<R, C> visitor, final C context) {
         return visitor.visitCreateCNGroupStatement(this, context);
     }
 
