@@ -18,7 +18,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.starrocks.catalog.UserIdentity;
 import com.starrocks.common.DdlException;
 import com.starrocks.sql.analyzer.SemanticException;
-import com.starrocks.StarRocksFE;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -93,7 +92,14 @@ public class FileGroupProvider extends GroupProvider {
         if (groupFileUrl.startsWith("http://") || groupFileUrl.startsWith("https://")) {
             return new URL(groupFileUrl).openStream();
         } else {
-            String filePath = StarRocksFE.STARROCKS_HOME_DIR + "/conf/" + groupFileUrl;
+            String starRocksHome = System.getenv("STARROCKS_HOME");
+            String filePath;
+            if (starRocksHome != null) {
+                filePath = starRocksHome + "/conf/" + groupFileUrl;
+            } else {
+                // If STARROCKS_HOME is not set, use absolute path
+                filePath = "/conf/" + groupFileUrl;
+            }
             return new FileInputStream(filePath);
         }
     }
