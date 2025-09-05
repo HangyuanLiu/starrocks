@@ -60,7 +60,7 @@ public class AddBackendClause extends BackendClause {
         sb.append("BACKEND ");
 
         if (!Strings.isNullOrEmpty(destCluster)) {
-            sb.append("to").append(destCluster);
+            sb.append(" to ").append(destCluster).append(" ");
         }
 
         for (int i = 0; i < hostPorts.size(); i++) {
