@@ -98,7 +98,7 @@ public class FileGroupProvider extends GroupProvider {
                 filePath = starRocksHome + "/conf/" + groupFileUrl;
             } else {
                 // If STARROCKS_HOME is not set, use absolute path
-                filePath = "/conf/" + groupFileUrl;
+                filePath = groupFileUrl;
             }
             return new FileInputStream(filePath);
         }
