@@ -576,13 +576,7 @@ public class ConnectContext {
         return authenticationContext;
     }
 
-    public void modifySystemVariable(SystemVariable setVar, boolean onlySetSessionVar) throws DdlException {
-        globalStateMgr.getVariableMgr().setSystemVariable(sessionVariable, setVar, onlySetSessionVar);
-        if (!SetType.GLOBAL.equals(setVar.getType()) && globalStateMgr.getVariableMgr()
-                .shouldForwardToLeader(setVar.getVariable())) {
-            modifiedSessionVariables.put(setVar.getVariable(), setVar);
-        }
-    }
+
 
     public void modifyUserVariable(UserVariable userVariable) {
         if (userVariables.size() > 1024 && !userVariables.containsKey(userVariable.getVariable())) {
@@ -659,6 +653,10 @@ public class ConnectContext {
         } else {
             return new SetStmt(sessionVariables);
         }
+    }
+
+    public void addModifiedSessionVariables(SystemVariable systemVariable) {
+        modifiedSessionVariables.put(systemVariable.getVariable(), systemVariable);
     }
 
     public SessionVariable getSessionVariable() {
@@ -1452,52 +1450,7 @@ public class ConnectContext {
         }
     }
 
-    // We can not make sure the set variables are all valid. Even if some variables are invalid, we should let user continue
-    // to execute SQL.
-    public void updateByUserProperty(UserProperty userProperty) {
-        try {
-            // set session variables
-            Map<String, String> sessionVariables = userProperty.getSessionVariables();
-            for (Map.Entry<String, String> entry : sessionVariables.entrySet()) {
-                String currentValue = globalStateMgr.getVariableMgr().getValue(
-                        sessionVariable, new VariableExpr(entry.getKey()));
-                if (!currentValue.equalsIgnoreCase(
-                        globalStateMgr.getVariableMgr().getDefaultValue(entry.getKey()))) {
-                    // If the current session variable is not default value, we should respect it.
-                    continue;
-                }
-                SystemVariable variable = new SystemVariable(entry.getKey(), new StringLiteral(entry.getValue()));
-                modifySystemVariable(variable, true);
-            }
 
-            // set catalog and database
-            boolean dbHasBeenSetByUser = !getCurrentCatalog().equals(
-                    globalStateMgr.getVariableMgr().getDefaultValue(SessionVariable.CATALOG))
-                    || !getDatabase().isEmpty();
-            if (!dbHasBeenSetByUser) {
-                String catalog = userProperty.getCatalog();
-                String database = userProperty.getDatabase();
-                if (catalog.equals(UserProperty.CATALOG_DEFAULT_VALUE)) {
-                    if (!database.equals(UserProperty.DATABASE_DEFAULT_VALUE)) {
-                        changeCatalogDb(userProperty.getCatalogDbName());
-                    }
-                } else {
-                    if (database.equals(UserProperty.DATABASE_DEFAULT_VALUE)) {
-                        changeCatalog(catalog);
-                    } else {
-                        changeCatalogDb(userProperty.getCatalogDbName());
-                    }
-                    SystemVariable variable = new SystemVariable(SessionVariable.CATALOG, new StringLiteral(catalog));
-                    modifySystemVariable(variable, true);
-                }
-            }
-        } catch (Exception e) {
-            LOG.warn("set session env failed: ", e);
-            // In handshake, we will send error message to client. But it seems that client will ignore it.
-            getState().setOk(0L, 0,
-                    String.format("set session variables from user property failed: %s", e.getMessage()));
-        }
-    }
 
     public boolean isLeaderTransferred() {
         return isLeaderTransferred;

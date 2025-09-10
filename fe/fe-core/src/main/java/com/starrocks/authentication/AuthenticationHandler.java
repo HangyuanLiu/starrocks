@@ -225,7 +225,7 @@ public class AuthenticationHandler {
         if (!authenticationResult.authenticatedUser.isEphemeral()) {
             UserProperty userProperty = GlobalStateMgr.getCurrentState().getAuthenticationMgr()
                     .getUserProperty(authenticationResult.authenticatedUser.getUser());
-            context.updateByUserProperty(userProperty);
+            VariableHandler.updateByUserProperty(context, userProperty);
         }
     }
 

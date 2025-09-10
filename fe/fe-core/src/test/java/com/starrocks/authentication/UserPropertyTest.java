@@ -397,7 +397,7 @@ public class UserPropertyTest {
         try {
             // Update By default UserProperty
             userProperty = new UserProperty();
-            context.updateByUserProperty(userProperty);
+            VariableHandler.updateByUserProperty(context, userProperty);
         } catch (Exception e) {
             throw e;
         }
@@ -409,7 +409,7 @@ public class UserPropertyTest {
             // database does not exist
             userProperty = new UserProperty();
             userProperty.setDatabase("database");
-            context.updateByUserProperty(userProperty);
+            VariableHandler.updateByUserProperty(context, userProperty);
         } catch (Exception e) {
             throw e;
         }
@@ -421,7 +421,7 @@ public class UserPropertyTest {
             Map<String, String> sessionVariables = userProperty.getSessionVariables();
             sessionVariables.put("aaa", "bbb");
             userProperty.setSessionVariables(sessionVariables);
-            context.updateByUserProperty(userProperty);
+            VariableHandler.updateByUserProperty(context, userProperty);
         } catch (Exception e) {
             throw e;
         }
@@ -432,7 +432,7 @@ public class UserPropertyTest {
             Map<String, String> sessionVariables = userProperty.getSessionVariables();
             sessionVariables.put("statistic_collect_parallel", "2");
             userProperty.setSessionVariables(sessionVariables);
-            context.updateByUserProperty(userProperty);
+            VariableHandler.updateByUserProperty(context, userProperty);
         } catch (Exception e) {
             throw e;
         }
@@ -445,7 +445,7 @@ public class UserPropertyTest {
             Map<String, String> sessionVariables = userProperty.getSessionVariables();
             sessionVariables.put("statistic_collect_parallel", "100");
             userProperty.setSessionVariables(sessionVariables);
-            context.updateByUserProperty(userProperty);
+            VariableHandler.updateByUserProperty(context, userProperty);
         } catch (Exception e) {
             throw e;
         }
@@ -465,7 +465,7 @@ public class UserPropertyTest {
             context.setCurrentUserIdentity(UserIdentity.ROOT);
             context.setCurrentRoleIds(
                     starRocksAssert.getCtx().getGlobalStateMgr().getAuthorizationMgr().getRoleIdsByUser(UserIdentity.ROOT));
-            context.updateByUserProperty(userProperty);
+            VariableHandler.updateByUserProperty(context, userProperty);
         } catch (Exception e) {
             throw e;
         }

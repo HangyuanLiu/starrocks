@@ -17,6 +17,7 @@ package com.starrocks.qe;
 import com.google.common.base.Preconditions;
 import com.starrocks.authentication.AuthenticationHandler;
 import com.starrocks.authentication.UserProperty;
+import com.starrocks.authentication.VariableHandler;
 import com.starrocks.catalog.UserIdentity;
 import com.starrocks.common.Config;
 import com.starrocks.sql.ast.ExecuteAsStmt;
@@ -56,7 +57,7 @@ public class ExecuteAsExecutor {
         if (!userIdentity.isEphemeral()) {
             UserProperty userProperty = ctx.getGlobalStateMgr().getAuthenticationMgr()
                     .getUserProperty(user.getUser());
-            ctx.updateByUserProperty(userProperty);
+            VariableHandler.updateByUserProperty(ctx, userProperty);
         }
     }
 
