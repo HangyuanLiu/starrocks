@@ -44,10 +44,13 @@ import com.starrocks.common.CloseableLock;
 import com.starrocks.common.Config;
 import com.starrocks.common.Pair;
 import com.starrocks.common.ThreadPoolManager;
+import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.mysql.MysqlCommand;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
 import com.starrocks.sql.analyzer.Authorizer;
+import com.starrocks.sql.ast.CleanTemporaryTableStmt;
+import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.system.Frontend;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -194,7 +197,24 @@ public class ConnectScheduler {
         }
 
         if (removed) {
-            ctx.cleanTemporaryTable();
+            UUID sessionId = ctx.getSessionId();
+            if (sessionId == null) {
+                return;
+            }
+            if (!GlobalStateMgr.getCurrentState().getTemporaryTableMgr().sessionExists(sessionId)) {
+                return;
+            }
+            LOG.debug("clean temporary table on session {}", sessionId);
+            try {
+                ctx.setQueryId(UUIDUtil.genUUID());
+                CleanTemporaryTableStmt cleanTemporaryTableStmt = new CleanTemporaryTableStmt(sessionId);
+                cleanTemporaryTableStmt.setOrigStmt(
+                        new OriginStatement("clean temporary table on session '" + sessionId.toString() + "'"));
+                StmtExecutor executor = StmtExecutor.newInternalExecutor(ctx, cleanTemporaryTableStmt);
+                executor.execute();
+            } catch (Throwable e) {
+                LOG.warn("Failed to clean temporary table on session {}, {}", sessionId, e);
+            }
         }
     }
 

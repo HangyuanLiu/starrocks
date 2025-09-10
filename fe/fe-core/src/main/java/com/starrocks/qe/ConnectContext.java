@@ -43,9 +43,9 @@ import com.google.common.collect.Sets;
 import com.starrocks.authentication.AuthenticationContext;
 import com.starrocks.authentication.AuthenticationProvider;
 import com.starrocks.authentication.UserIdentityUtils;
-import com.starrocks.authentication.UserProperty;
 import com.starrocks.authorization.AccessDeniedException;
 import com.starrocks.authorization.ObjectType;
+import com.starrocks.authorization.AuthorizationContext;
 import com.starrocks.authorization.PrivilegeException;
 import com.starrocks.authorization.PrivilegeType;
 import com.starrocks.catalog.UserIdentity;
@@ -72,18 +72,13 @@ import com.starrocks.server.RunMode;
 import com.starrocks.server.WarehouseManager;
 import com.starrocks.sql.analyzer.Authorizer;
 import com.starrocks.sql.analyzer.SemanticException;
-import com.starrocks.sql.ast.CleanTemporaryTableStmt;
 import com.starrocks.sql.ast.ExecuteStmt;
 import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.sql.ast.QueryStatement;
-import com.starrocks.sql.ast.SetListItem;
 import com.starrocks.sql.ast.SetStmt;
-import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.SystemVariable;
 import com.starrocks.sql.ast.UserVariable;
-import com.starrocks.sql.ast.expression.StringLiteral;
-import com.starrocks.sql.ast.expression.VariableExpr;
 import com.starrocks.sql.optimizer.QueryMaterializationContext;
 import com.starrocks.sql.optimizer.dump.DumpInfo;
 import com.starrocks.sql.optimizer.dump.QueryDumpInfo;
@@ -96,7 +91,6 @@ import com.starrocks.thrift.TUserIdentity;
 import com.starrocks.thrift.TWorkGroup;
 import com.starrocks.warehouse.Warehouse;
 import com.starrocks.warehouse.cngroup.ComputeResource;
-import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -104,15 +98,12 @@ import org.xnio.StreamConnection;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -172,24 +163,15 @@ public class ConnectContext {
     // Authentication context that encapsulates authentication and authorization information
     protected AuthenticationContext authenticationContext = new AuthenticationContext();
 
-    // currentRoleIds is the role that has taken effect in the current session.
-    // Note that this set is not all roles belonging to the current user.
-    // `execute as` will modify currentRoleIds and assign the active role of the impersonate user to currentRoleIds.
-    // For specific logic, please refer to setCurrentRoleIds.
-    private Set<Long> currentRoleIds = new HashSet<>();
+    // Authorization context that encapsulates current role ids and groups
+    protected AuthorizationContext authorizationContext = new AuthorizationContext();
 
-    // groups of current user
-    private Set<String> groups = new HashSet<>();
+    // Session and user variables encapsulated in SessionVariableContext
+    protected SessionVariableContext sessionVariableContext;
 
     // Serializer used to pack MySQL packet.
     protected MysqlSerializer serializer;
-    // Variables belong to this session.
-    protected SessionVariable sessionVariable;
-    // all the modified session variables, will forward to leader
-    protected Map<String, SystemVariable> modifiedSessionVariables = new HashMap<>();
-    // user define variable in this session
-    protected Map<String, UserVariable> userVariables;
-    protected Map<String, UserVariable> userVariablesCopyInWrite;
+
     // Executor
     protected StmtExecutor executor;
     // Command this connection is processing.
@@ -302,7 +284,7 @@ public class ConnectContext {
 
     public static SessionVariable getSessionVariableOrDefault() {
         ConnectContext ctx = get();
-        return (ctx != null) ? ctx.sessionVariable : SessionVariable.DEFAULT_SESSION_VARIABLE;
+        return (ctx != null) ? ctx.getSessionVariable() : SessionVariable.DEFAULT_SESSION_VARIABLE;
     }
 
     public static void remove() {
@@ -341,8 +323,7 @@ public class ConnectContext {
         serverCapability = MysqlCapability.DEFAULT_CAPABILITY;
         isKilled = false;
         serializer = MysqlSerializer.newInstance();
-        sessionVariable = globalStateMgr.getVariableMgr().newSessionVariable();
-        userVariables = new ConcurrentHashMap<>();
+        sessionVariableContext = new SessionVariableContext(() -> globalStateMgr.getVariableMgr().newSessionVariable());
         command = MysqlCommand.COM_SLEEP;
         queryDetail = null;
 
@@ -482,12 +463,12 @@ public class ConnectContext {
     }
 
     public Set<Long> getCurrentRoleIds() {
-        return currentRoleIds;
+        return authorizationContext.getCurrentRoleIds();
     }
 
     public void setCurrentRoleIds(UserIdentity user) {
         if (user.isEphemeral()) {
-            this.currentRoleIds = new HashSet<>();
+            authorizationContext.setCurrentRoleIds(new HashSet<>());
         } else {
             try {
                 Set<Long> defaultRoleIds;
@@ -496,7 +477,7 @@ public class ConnectContext {
                 } else {
                     defaultRoleIds = globalStateMgr.getAuthorizationMgr().getDefaultRoleIdsByUser(user);
                 }
-                this.currentRoleIds = defaultRoleIds;
+                authorizationContext.setCurrentRoleIds(defaultRoleIds);
             } catch (PrivilegeException e) {
                 LOG.warn("Set current role fail : {}", e.getMessage());
             }
@@ -504,7 +485,7 @@ public class ConnectContext {
     }
 
     public void setCurrentRoleIds(Set<Long> roleIds) {
-        this.currentRoleIds = roleIds;
+        authorizationContext.setCurrentRoleIds(roleIds);
     }
 
     public void setCurrentRoleIds(UserIdentity userIdentity, Set<String> groups) {
@@ -530,11 +511,11 @@ public class ConnectContext {
     }
 
     public Set<String> getGroups() {
-        return groups;
+        return authorizationContext.getGroups();
     }
 
     public void setGroups(Set<String> groups) {
-        this.groups = groups;
+        authorizationContext.setGroups(groups);
     }
 
     public String getAuthToken() {
@@ -579,10 +560,7 @@ public class ConnectContext {
 
 
     public void modifyUserVariable(UserVariable userVariable) {
-        if (userVariables.size() > 1024 && !userVariables.containsKey(userVariable.getVariable())) {
-            throw new SemanticException("User variable exceeds the maximum limit of 1024");
-        }
-        userVariables.put(userVariable.getVariable(), userVariable);
+        sessionVariableContext.modifyUserVariable(userVariable);
     }
 
     /**
@@ -592,12 +570,7 @@ public class ConnectContext {
      * be effected in the {@link ConnectContext#userVariablesCopyInWrite}.
      */
     public void modifyUserVariableCopyInWrite(UserVariable userVariable) {
-        if (userVariablesCopyInWrite != null) {
-            if (userVariablesCopyInWrite.size() > 1024) {
-                throw new SemanticException("User variable exceeds the maximum limit of 1024");
-            }
-            userVariablesCopyInWrite.put(userVariable.getVariable(), userVariable);
-        }
+        sessionVariableContext.modifyUserVariableCopyInWrite(userVariable);
     }
 
     /**
@@ -608,7 +581,7 @@ public class ConnectContext {
      * call by {@link SetExecutor#execute()}, {@link StmtExecutor#processQueryScopeHint()}
      */
     public void resetUserVariableCopyInWrite() {
-        userVariablesCopyInWrite = null;
+        sessionVariableContext.resetUserVariableCopyInWrite();
     }
 
     /**
@@ -618,10 +591,7 @@ public class ConnectContext {
      * call by {@link SetExecutor#execute()}, {@link StmtExecutor#processQueryScopeHint()}
      */
     public void modifyUserVariables(Map<String, UserVariable> userVarCopyInWrite) {
-        if (userVarCopyInWrite.size() > 1024) {
-            throw new SemanticException("User variable exceeds the maximum limit of 1024");
-        }
-        this.userVariables = userVarCopyInWrite;
+        sessionVariableContext.modifyUserVariables(userVarCopyInWrite);
     }
 
     /**
@@ -632,68 +602,47 @@ public class ConnectContext {
      * call by {@link SetExecutor#execute()}, {@link StmtExecutor#processQueryScopeHint()}
      */
     public void modifyUserVariablesCopyInWrite(Map<String, UserVariable> userVariables) {
-        this.userVariablesCopyInWrite = userVariables;
+        sessionVariableContext.modifyUserVariablesCopyInWrite(userVariables);
     }
 
     public SetStmt getModifiedSessionVariables() {
-        List<SetListItem> sessionVariables = new ArrayList<>();
-        if (MapUtils.isNotEmpty(modifiedSessionVariables)) {
-            sessionVariables.addAll(modifiedSessionVariables.values());
-        }
-        if (MapUtils.isNotEmpty(userVariables)) {
-            for (UserVariable userVariable : userVariables.values()) {
-                if (!userVariable.isFromHint()) {
-                    sessionVariables.add(userVariable);
-                }
-            }
-        }
-
-        if (sessionVariables.isEmpty()) {
-            return null;
-        } else {
-            return new SetStmt(sessionVariables);
-        }
+        return sessionVariableContext.getModifiedSessionVariables();
     }
 
     public void addModifiedSessionVariables(SystemVariable systemVariable) {
-        modifiedSessionVariables.put(systemVariable.getVariable(), systemVariable);
+        sessionVariableContext.addModifiedSessionVariables(systemVariable);
     }
 
     public SessionVariable getSessionVariable() {
-        return sessionVariable;
+        return sessionVariableContext.getSessionVariable();
+    }
+
+    public SessionVariableContext getSessionVariableContext() {
+        return sessionVariableContext;
     }
 
     public Map<String, UserVariable> getUserVariables() {
-        return userVariables;
+        return sessionVariableContext.getUserVariables();
     }
 
     public UserVariable getUserVariable(String variable) {
-        return userVariables.get(variable);
+        return sessionVariableContext.getUserVariable(variable);
     }
 
     public void resetSessionVariable() {
-        this.sessionVariable = globalStateMgr.getVariableMgr().newSessionVariable();
-        modifiedSessionVariables.clear();
+        sessionVariableContext.resetSessionVariable();
     }
 
     public UserVariable getUserVariableCopyInWrite(String variable) {
-        if (userVariablesCopyInWrite == null) {
-            return null;
-        }
-
-        return userVariablesCopyInWrite.get(variable);
+        return sessionVariableContext.getUserVariableCopyInWrite(variable);
     }
 
     public Map<String, UserVariable> getUserVariablesCopyInWrite() {
-        if (userVariablesCopyInWrite == null) {
-            return null;
-        }
-
-        return userVariablesCopyInWrite;
+        return sessionVariableContext.getUserVariablesCopyInWrite();
     }
 
     public void setSessionVariable(SessionVariable sessionVariable) {
-        this.sessionVariable = sessionVariable;
+        sessionVariableContext.setSessionVariable(sessionVariable);
     }
 
     public MysqlCommand getCommand() {
@@ -887,24 +836,25 @@ public class ConnectContext {
     }
 
     public String getCustomQueryId() {
-        return sessionVariable != null ? sessionVariable.getCustomQueryId() : "";
+        return getSessionVariable() != null ? getSessionVariable().getCustomQueryId() : "";
     }
 
     public boolean isProfileEnabled() {
-        if (sessionVariable == null) {
+        if (getSessionVariable() == null) {
             return false;
         }
-        if (sessionVariable.isEnableProfile()) {
+        if (getSessionVariable().isEnableProfile()) {
             return true;
         }
-        if (!sessionVariable.isEnableBigQueryProfile()) {
+        if (!getSessionVariable().isEnableBigQueryProfile()) {
             return false;
         }
-        return System.currentTimeMillis() - getStartTime() > sessionVariable.getBigQueryProfileMilliSecondThreshold();
+        return System.currentTimeMillis() - getStartTime() >
+                getSessionVariable().getBigQueryProfileMilliSecondThreshold();
     }
 
     public boolean needMergeProfile() {
-        return sessionVariable.getPipelineProfileLevel() < TPipelineProfileLevel.DETAIL.getValue();
+        return getSessionVariable().getPipelineProfileLevel() < TPipelineProfileLevel.DETAIL.getValue();
     }
 
     public boolean getIsLastStmt() {
@@ -924,7 +874,7 @@ public class ConnectContext {
     }
 
     public boolean shouldDumpQuery() {
-        return this.isHTTPQueryDump || sessionVariable.getEnableQueryDump();
+        return this.isHTTPQueryDump || getSessionVariable().getEnableQueryDump();
     }
 
     public DumpInfo getDumpInfo() {
@@ -960,15 +910,15 @@ public class ConnectContext {
     }
 
     public String getCurrentCatalog() {
-        return this.sessionVariable.getCatalog();
+        return this.getSessionVariable().getCatalog();
     }
 
     public void setCurrentCatalog(String currentCatalog) {
-        this.sessionVariable.setCatalog(currentCatalog);
+        this.getSessionVariable().setCatalog(currentCatalog);
     }
 
     public long getCurrentWarehouseId() {
-        String warehouseName = this.sessionVariable.getWarehouseName();
+        String warehouseName = this.getSessionVariable().getWarehouseName();
         if (warehouseName.equalsIgnoreCase(WarehouseManager.DEFAULT_WAREHOUSE_NAME)) {
             return WarehouseManager.DEFAULT_WAREHOUSE_ID;
         }
@@ -981,17 +931,17 @@ public class ConnectContext {
     }
 
     public String getCurrentWarehouseName() {
-        return this.sessionVariable.getWarehouseName();
+        return this.getSessionVariable().getWarehouseName();
     }
 
     public void setCurrentWarehouse(String currentWarehouse) {
-        this.sessionVariable.setWarehouseName(currentWarehouse);
+        this.getSessionVariable().setWarehouseName(currentWarehouse);
         this.computeResource = null;
     }
 
     public void setCurrentWarehouseId(long warehouseId) {
         Warehouse warehouse = globalStateMgr.getWarehouseMgr().getWarehouse(warehouseId);
-        this.sessionVariable.setWarehouseName(warehouse.getName());
+        this.getSessionVariable().setWarehouseName(warehouse.getName());
         this.computeResource = null;
     }
 
@@ -1195,7 +1145,7 @@ public class ConnectContext {
     }
 
     private int getExecTimeoutWithoutPendingTime() {
-        return executor != null ? executor.getExecTimeout() : sessionVariable.getQueryTimeoutS();
+        return executor != null ? executor.getExecTimeout() : getSessionVariable().getQueryTimeoutS();
     }
 
     /**
@@ -1240,7 +1190,7 @@ public class ConnectContext {
         }
         String errMsg = "";
         if (command == MysqlCommand.COM_SLEEP) {
-            int waitTimeout = sessionVariable.getWaitTimeoutS();
+            int waitTimeout = getSessionVariable().getWaitTimeoutS();
             if (delta > waitTimeout * 1000L) {
                 // Need kill this connection.
                 LOG.warn("kill wait timeout connection, remote: {}, wait timeout: {}, query id: {}, sql: {}",
@@ -1284,7 +1234,7 @@ public class ConnectContext {
     }
 
     public int getAliveBackendNumber() {
-        int v = sessionVariable.getCboDebugAliveBackendNumber();
+        int v = getSessionVariable().getCboDebugAliveBackendNumber();
         if (v > 0) {
             return v;
         }
@@ -1430,28 +1380,6 @@ public class ConnectContext {
         this.setDatabase(dbName);
     }
 
-    public void cleanTemporaryTable() {
-        if (sessionId == null) {
-            return;
-        }
-        if (!globalStateMgr.getTemporaryTableMgr().sessionExists(sessionId)) {
-            return;
-        }
-        LOG.debug("clean temporary table on session {}", sessionId);
-        try {
-            setQueryId(UUIDUtil.genUUID());
-            CleanTemporaryTableStmt cleanTemporaryTableStmt = new CleanTemporaryTableStmt(sessionId);
-            cleanTemporaryTableStmt.setOrigStmt(
-                    new OriginStatement("clean temporary table on session '" + sessionId.toString() + "'"));
-            executor = StmtExecutor.newInternalExecutor(this, cleanTemporaryTableStmt);
-            executor.execute();
-        } catch (Throwable e) {
-            LOG.warn("Failed to clean temporary table on session {}, {}", sessionId, e);
-        }
-    }
-
-
-
     public boolean isLeaderTransferred() {
         return isLeaderTransferred;
     }
@@ -1538,7 +1466,7 @@ public class ConnectContext {
                 row.add(Boolean.toString(isPending));
             }
             // warehouse
-            row.add(sessionVariable.getWarehouseName());
+            row.add(getSessionVariable().getWarehouseName());
             // cngroup
             row.add(getCurrentComputeResourceName());
             return row;
