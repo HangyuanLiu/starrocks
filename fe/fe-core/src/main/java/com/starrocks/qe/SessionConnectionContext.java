@@ -27,6 +27,8 @@ public class SessionConnectionContext {
     private String remoteIP;
     private UUID sessionId;
     private int connectionId;
+    private String proxyHostName;
+    private volatile boolean closed;
 
     public MysqlChannel getMysqlChannel() {
         return mysqlChannel;
@@ -58,6 +60,22 @@ public class SessionConnectionContext {
 
     public void setConnectionId(int connectionId) {
         this.connectionId = connectionId;
+    }
+
+    public String getProxyHostName() {
+        return proxyHostName;
+    }
+
+    public void setProxyHostName(String proxyHostName) {
+        this.proxyHostName = proxyHostName;
+    }
+
+    public boolean isClosed() {
+        return closed;
+    }
+
+    public void setClosed(boolean closed) {
+        this.closed = closed;
     }
 }
 

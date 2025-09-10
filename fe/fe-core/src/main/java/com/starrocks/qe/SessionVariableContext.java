@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.Optional;
+import com.starrocks.sql.ast.StatementBase;
 
 public class SessionVariableContext {
     private static final Logger LOG = LogManager.getLogger(SessionVariableContext.class);
@@ -43,6 +45,11 @@ public class SessionVariableContext {
     private final Map<String, SystemVariable> modifiedSessionVariables = new HashMap<>();
     private Map<String, UserVariable> userVariables;
     private Map<String, UserVariable> userVariablesCopyInWrite;
+
+    // Additional session-scoped flags/settings migrated from ConnectContext
+    private StatementBase.ExplainLevel explainLevel;
+    private boolean relationAliasCaseInsensitive = false;
+    private Optional<Boolean> useConnectorMetadataCache = Optional.empty();
 
     public SessionVariableContext(Supplier<SessionVariable> sessionVariableSupplier) {
         this.sessionVariableSupplier = sessionVariableSupplier;
@@ -195,5 +202,29 @@ public class SessionVariableContext {
         if (!SetType.GLOBAL.equals(setVar.getType()) && variableMgr.shouldForwardToLeader(setVar.getVariable())) {
             context.addModifiedSessionVariables(setVar);
         }
+    }
+
+    public StatementBase.ExplainLevel getExplainLevel() {
+        return explainLevel;
+    }
+
+    public void setExplainLevel(StatementBase.ExplainLevel explainLevel) {
+        this.explainLevel = explainLevel;
+    }
+
+    public boolean isRelationAliasCaseInsensitive() {
+        return relationAliasCaseInsensitive;
+    }
+
+    public void setRelationAliasCaseInSensitive(boolean relationAliasCaseInsensitive) {
+        this.relationAliasCaseInsensitive = relationAliasCaseInsensitive;
+    }
+
+    public Optional<Boolean> getUseConnectorMetadataCache() {
+        return useConnectorMetadataCache;
+    }
+
+    public void setUseConnectorMetadataCache(Optional<Boolean> useConnectorMetadataCache) {
+        this.useConnectorMetadataCache = useConnectorMetadataCache;
     }
 }

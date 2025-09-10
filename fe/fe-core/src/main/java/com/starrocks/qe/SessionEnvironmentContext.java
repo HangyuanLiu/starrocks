@@ -41,6 +41,12 @@ public class SessionEnvironmentContext {
     private String currentDb = "";
     private ComputeResource computeResource = null;
     private com.starrocks.thrift.TWorkGroup resourceGroup;
+    // the protocol capability which server say it can support
+    private com.starrocks.mysql.MysqlCapability serverCapability = com.starrocks.mysql.MysqlCapability.DEFAULT_CAPABILITY;
+    // the protocol capability after server and client negotiate
+    private com.starrocks.mysql.MysqlCapability capability;
+    // Serializer used to pack MySQL packet.
+    private com.starrocks.mysql.MysqlSerializer serializer;
 
     public SessionEnvironmentContext(ConnectContext context) {
         this.context = context;
@@ -219,6 +225,30 @@ public class SessionEnvironmentContext {
 
     public void setResourceGroup(com.starrocks.thrift.TWorkGroup resourceGroup) {
         this.resourceGroup = resourceGroup;
+    }
+
+    public com.starrocks.mysql.MysqlCapability getServerCapability() {
+        return serverCapability;
+    }
+
+    public void setServerCapability(com.starrocks.mysql.MysqlCapability serverCapability) {
+        this.serverCapability = serverCapability;
+    }
+
+    public com.starrocks.mysql.MysqlCapability getCapability() {
+        return capability;
+    }
+
+    public void setCapability(com.starrocks.mysql.MysqlCapability capability) {
+        this.capability = capability;
+    }
+
+    public com.starrocks.mysql.MysqlSerializer getSerializer() {
+        return serializer;
+    }
+
+    public void setSerializer(com.starrocks.mysql.MysqlSerializer serializer) {
+        this.serializer = serializer;
     }
 }
 

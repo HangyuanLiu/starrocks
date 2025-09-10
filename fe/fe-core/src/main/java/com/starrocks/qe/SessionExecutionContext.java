@@ -20,6 +20,14 @@ import com.starrocks.thrift.TUniqueId;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.Set;
+import com.starrocks.sql.optimizer.QueryMaterializationContext;
+import com.starrocks.sql.optimizer.dump.DumpInfo;
+import com.starrocks.sql.spm.SQLPlanStorage;
+import java.util.List;
+import java.util.Map;
+import com.google.common.collect.Maps;
 
 public class SessionExecutionContext {
     // The identifier of the statement being analyzed/executed. Must be set before analyze.
@@ -61,9 +69,35 @@ public class SessionExecutionContext {
     // GlobalTransactionMgr#ExplicitTxnState, and the transaction state is recorded in TransactionState.
     private long txnId;
 
-    // Flags
+    // Flags & execution state
     private volatile boolean isPending = false;
     private volatile boolean isForward = false;
+    private volatile boolean isKilled = false;
+    private QueryState state;
+    private String errorCode = "";
+    private StmtExecutor executor;
+    private boolean isLeaderTransferred = false;
+    private AtomicLong currentThreadId = null;
+
+    // Session-scoped execution/session infos migrated from ConnectContext
+    private QueryDetail queryDetail;
+    // isLastStmt is true when original stmt is single stmt or current processing stmt is the last for multi stmts
+    private boolean isLastStmt = true;
+    private boolean isHTTPQueryDump = false;
+    private boolean isStatisticsConnection = false;
+    private boolean isStatisticsJob = false;
+    private boolean isStatisticsContext = false;
+    private boolean needQueued = true;
+    private DumpInfo dumpInfo;
+    private Set<Long> currentSqlDbIds = com.google.common.collect.Sets.newHashSet();
+    private QueryMaterializationContext queryMVContext;
+    private SQLPlanStorage sqlPlanStorage = SQLPlanStorage.create(false);
+    private AtomicLong currentThreadAllocatedMemory = new AtomicLong(0);
+
+    // Prepared statements and listeners, audit builder
+    private final Map<String, PrepareStmtContext> preparedStmtCtxs = Maps.newHashMap();
+    private final List<ConnectContext.Listener> listeners = com.google.common.collect.Lists.newArrayList();
+    private com.starrocks.plugin.AuditEvent.AuditEventBuilder auditEventBuilder = new com.starrocks.plugin.AuditEvent.AuditEventBuilder();
 
     public long getStmtId() {
         return stmtId;
@@ -186,6 +220,14 @@ public class SessionExecutionContext {
         setForward(forward);
     }
 
+    public boolean isKilled() {
+        return isKilled;
+    }
+
+    public void setKilled(boolean killed) {
+        isKilled = killed;
+    }
+
     // Return rows helpers
     public void updateReturnRows(int delta) {
         this.returnRows += delta;
@@ -218,6 +260,171 @@ public class SessionExecutionContext {
 
     public long getTxnId() {
         return txnId;
+    }
+
+    public QueryState getState() {
+        return state;
+    }
+
+    public void setState(QueryState state) {
+        this.state = state;
+    }
+
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    public void resetErrorCode() {
+        this.errorCode = "";
+    }
+
+    public void setErrorCodeOnce(String errorCode) {
+        if (this.errorCode == null || this.errorCode.isEmpty()) {
+            this.errorCode = errorCode;
+        }
+    }
+
+    public StmtExecutor getExecutor() {
+        return executor;
+    }
+
+    public void setExecutor(StmtExecutor executor) {
+        this.executor = executor;
+    }
+
+    public boolean isLeaderTransferred() {
+        return isLeaderTransferred;
+    }
+
+    public void setLeaderTransferred(boolean leaderTransferred) {
+        isLeaderTransferred = leaderTransferred;
+    }
+
+    public long getCurrentThreadId() {
+        if (currentThreadId == null) {
+            return 0;
+        }
+        return currentThreadId.get();
+    }
+
+    public void setCurrentThreadId(long currentThreadId) {
+        this.currentThreadId = new AtomicLong(currentThreadId);
+    }
+
+    public void setQueryDetail(QueryDetail queryDetail) {
+        this.queryDetail = queryDetail;
+    }
+
+    public QueryDetail getQueryDetail() {
+        return queryDetail;
+    }
+
+    public boolean getIsLastStmt() {
+        return isLastStmt;
+    }
+
+    public void setIsLastStmt(boolean isLastStmt) {
+        this.isLastStmt = isLastStmt;
+    }
+
+    public void setIsHTTPQueryDump(boolean isHTTPQueryDump) {
+        this.isHTTPQueryDump = isHTTPQueryDump;
+    }
+
+    public boolean isHTTPQueryDump() {
+        return isHTTPQueryDump;
+    }
+
+    public boolean isStatisticsConnection() {
+        return isStatisticsConnection;
+    }
+
+    public void setStatisticsConnection(boolean statisticsConnection) {
+        isStatisticsConnection = statisticsConnection;
+    }
+
+    public boolean isStatisticsJob() {
+        return isStatisticsJob || isStatisticsContext;
+    }
+
+    public void setStatisticsJob(boolean statisticsJob) {
+        isStatisticsJob = statisticsJob;
+    }
+
+    public void setStatisticsContext(boolean statisticsContext) {
+        isStatisticsContext = statisticsContext;
+    }
+
+    public boolean isNeedQueued() {
+        return needQueued;
+    }
+
+    public void setNeedQueued(boolean needQueued) {
+        this.needQueued = needQueued;
+    }
+
+    public DumpInfo getDumpInfo() {
+        return dumpInfo;
+    }
+
+    public void setDumpInfo(DumpInfo dumpInfo) {
+        this.dumpInfo = dumpInfo;
+    }
+
+    public Set<Long> getCurrentSqlDbIds() {
+        return currentSqlDbIds;
+    }
+
+    public void setCurrentSqlDbIds(Set<Long> currentSqlDbIds) {
+        this.currentSqlDbIds = currentSqlDbIds;
+    }
+
+    public QueryMaterializationContext getQueryMVContext() {
+        return queryMVContext;
+    }
+
+    public void setQueryMVContext(QueryMaterializationContext queryMVContext) {
+        this.queryMVContext = queryMVContext;
+    }
+
+    public SQLPlanStorage getSqlPlanStorage() {
+        return sqlPlanStorage;
+    }
+
+    public long getCurrentThreadAllocatedMemory() {
+        return currentThreadAllocatedMemory.get();
+    }
+
+    public void setCurrentThreadAllocatedMemory(long currentThreadAllocatedMemory) {
+        this.currentThreadAllocatedMemory.set(currentThreadAllocatedMemory);
+    }
+
+    public void putPreparedStmt(String stmtName, PrepareStmtContext ctx) {
+        this.preparedStmtCtxs.put(stmtName, ctx);
+    }
+
+    public PrepareStmtContext getPreparedStmt(String stmtName) {
+        return this.preparedStmtCtxs.get(stmtName);
+    }
+
+    public void removePreparedStmt(String stmtName) {
+        this.preparedStmtCtxs.remove(stmtName);
+    }
+
+    public void registerListener(ConnectContext.Listener listener) {
+        this.listeners.add(listener);
+    }
+
+    public List<ConnectContext.Listener> getListeners() {
+        return listeners;
+    }
+
+    public com.starrocks.plugin.AuditEvent.AuditEventBuilder getAuditEventBuilder() {
+        return auditEventBuilder;
+    }
+
+    public void setAuditEventBuilder(com.starrocks.plugin.AuditEvent.AuditEventBuilder auditEventBuilder) {
+        this.auditEventBuilder = auditEventBuilder;
     }
 }
 

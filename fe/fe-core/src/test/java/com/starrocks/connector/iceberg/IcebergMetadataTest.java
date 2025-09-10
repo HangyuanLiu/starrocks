@@ -1758,7 +1758,6 @@ public class IcebergMetadataTest extends TableTestBase {
                 " `iceberg_catalog`.`db`.`table$logical_iceberg_metadata` FOR VERSION AS OF 1 WHERE 1=1'";
         Assertions.assertEquals(expectedSql, collectJob.getSql());
         Assertions.assertNotNull(collectJob.getContext());
-        Assertions.assertTrue(collectJob.getContext().isMetadataContext());
         collectJob.asyncCollectMetadata();
         Assertions.assertNotNull(collectJob.getMetadataJobCoord());
         Assertions.assertTrue(collectJob.getResultQueue().isEmpty());

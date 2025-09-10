@@ -28,6 +28,9 @@ public class AuthorizationContext {
     // groups of current user
     private Set<String> groups = new HashSet<>();
 
+    // Bypass the authorizer check for certain cases
+    private boolean bypassAuthorizerCheck = false;
+
     public AuthorizationContext() {
     }
 
@@ -45,6 +48,14 @@ public class AuthorizationContext {
 
     public void setGroups(Set<String> groups) {
         this.groups = groups;
+    }
+
+    public boolean isBypassAuthorizerCheck() {
+        return bypassAuthorizerCheck;
+    }
+
+    public void setBypassAuthorizerCheck(boolean bypassAuthorizerCheck) {
+        this.bypassAuthorizerCheck = bypassAuthorizerCheck;
     }
 }
 
