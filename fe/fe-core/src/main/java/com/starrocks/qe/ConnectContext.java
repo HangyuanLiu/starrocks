@@ -43,16 +43,12 @@ import com.google.common.collect.Sets;
 import com.starrocks.authentication.AuthenticationContext;
 import com.starrocks.authentication.AuthenticationProvider;
 import com.starrocks.authentication.UserIdentityUtils;
-import com.starrocks.authorization.AccessDeniedException;
-import com.starrocks.authorization.ObjectType;
 import com.starrocks.authorization.AuthorizationContext;
 import com.starrocks.authorization.PrivilegeException;
-import com.starrocks.authorization.PrivilegeType;
 import com.starrocks.catalog.UserIdentity;
 import com.starrocks.cluster.ClusterNamespace;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.ErrorCode;
-import com.starrocks.common.ErrorReport;
 import com.starrocks.common.util.SqlUtils;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.common.util.UUIDUtil;
@@ -65,13 +61,8 @@ import com.starrocks.mysql.ssl.SSLChannel;
 import com.starrocks.mysql.ssl.SSLChannelImp;
 import com.starrocks.mysql.ssl.SSLContextLoader;
 import com.starrocks.plugin.AuditEvent.AuditEventBuilder;
-import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.server.MetadataMgr;
 import com.starrocks.server.RunMode;
-import com.starrocks.server.WarehouseManager;
-import com.starrocks.sql.analyzer.Authorizer;
-import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.ExecuteStmt;
 import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.sql.ast.QueryStatement;
@@ -89,7 +80,6 @@ import com.starrocks.thrift.TPipelineProfileLevel;
 import com.starrocks.thrift.TUniqueId;
 import com.starrocks.thrift.TUserIdentity;
 import com.starrocks.thrift.TWorkGroup;
-import com.starrocks.warehouse.Warehouse;
 import com.starrocks.warehouse.cngroup.ComputeResource;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -104,10 +94,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.starrocks.common.util.Util.normalizeName;
 
 // When one client connect in, we create a connection context for it.
 // We store session information here. Meanwhile, ConnectScheduler all
@@ -116,30 +104,20 @@ public class ConnectContext {
     private static final Logger LOG = LogManager.getLogger(ConnectContext.class);
     protected static ThreadLocal<ConnectContext> threadLocalInfo = new ThreadLocal<>();
 
-    // set this id before analyze
-    protected long stmtId;
-    protected long forwardedStmtId;
-    private int forwardTimes = 0;
+    // Execution context (stmt/query/connection identifiers, timings, flags)
+    protected SessionExecutionContext sessionExecutionContext = new SessionExecutionContext();
 
-    // The queryId of the last query processed by this session.
-    // In some scenarios, the user can get the output of a request by queryId,
-    // such as Insert, export requests
-    protected UUID lastQueryId;
+    // Session environment (catalog, db, warehouse, resource group)
+    protected SessionEnvironmentContext sessionEnvironmentContext = new SessionEnvironmentContext(this);
 
-    // The queryId is used to track a user's request. A user request will only have one queryId
-    // in the entire StarRocks system. in some scenarios, a user request may be forwarded to multiple
-    // nodes for processing or be processed repeatedly, but each execution instance will have
-    // the same queryId
-    protected UUID queryId;
+    // Authentication context that encapsulates authentication and authorization information
+    protected AuthenticationContext authenticationContext = new AuthenticationContext();
 
-    // A request will be executed multiple times because of retry or redirect.
-    // This id is used to distinguish between different execution instances
-    protected TUniqueId executionId;
+    // Authorization context that encapsulates current role ids and groups
+    protected AuthorizationContext authorizationContext = new AuthorizationContext();
 
-    // id for this connection
-    protected int connectionId;
-    // Time when the connection is make
-    protected long connectionStartTime;
+    // Session and user variables encapsulated in SessionVariableContext
+    protected SessionVariableContext sessionVariableContext;
 
     // mysql net
     protected MysqlChannel mysqlChannel;
@@ -157,25 +135,16 @@ public class ConnectContext {
     protected MysqlCapability capability;
     // Indicate if this client is killed.
     protected volatile boolean isKilled;
-    // Db
-    protected String currentDb = "";
+    // Db moved to SessionEnvironmentContext
 
-    // Authentication context that encapsulates authentication and authorization information
-    protected AuthenticationContext authenticationContext = new AuthenticationContext();
 
-    // Authorization context that encapsulates current role ids and groups
-    protected AuthorizationContext authorizationContext = new AuthorizationContext();
-
-    // Session and user variables encapsulated in SessionVariableContext
-    protected SessionVariableContext sessionVariableContext;
 
     // Serializer used to pack MySQL packet.
     protected MysqlSerializer serializer;
 
     // Executor
     protected StmtExecutor executor;
-    // Command this connection is processing.
-    protected MysqlCommand command;
+    // Command and timing moved into SessionExecutionContext
     // last command start time
     protected volatile Instant startTime = Instant.now();
     // last command end time
@@ -220,10 +189,9 @@ public class ConnectContext {
 
     protected StatementBase.ExplainLevel explainLevel;
 
-    protected TWorkGroup resourceGroup;
+    // Resource group moved to SessionEnvironmentContext
 
-    protected volatile boolean isPending = false;
-    protected volatile boolean isForward = false;
+    // Flags moved into SessionExecutionContext
 
     private ConnectContext parent;
 
@@ -234,7 +202,6 @@ public class ConnectContext {
     private UUID sessionId;
 
     private String proxyHostName;
-    private AtomicInteger pendingForwardRequests = new AtomicInteger(0);
 
     // QueryMaterializationContext is different from MaterializationContext that it keeps the context during the query
     // lifecycle instead of per materialized view.
@@ -260,11 +227,12 @@ public class ConnectContext {
     // thread id is the thread who created this ConnectContext's id
     private AtomicLong currentThreadId = null;
 
-    // The cnResource of the current session.
-    private ComputeResource computeResource = null;
+    // The cnResource moved to SessionEnvironmentContext
 
     // listeners for this connection
     private List<Listener> listeners = Lists.newArrayList();
+
+
 
     public void setTxnId(long txnId) {
         this.txnId = txnId;
@@ -319,12 +287,12 @@ public class ConnectContext {
         globalStateMgr = GlobalStateMgr.getCurrentState();
         closed = false;
         state = new QueryState();
-        returnRows = 0;
+        sessionExecutionContext.resetReturnRows();
         serverCapability = MysqlCapability.DEFAULT_CAPABILITY;
         isKilled = false;
         serializer = MysqlSerializer.newInstance();
         sessionVariableContext = new SessionVariableContext(() -> globalStateMgr.getVariableMgr().newSessionVariable());
-        command = MysqlCommand.COM_SLEEP;
+        sessionExecutionContext.setCommand(MysqlCommand.COM_SLEEP);
         queryDetail = null;
 
         if (shouldDumpQuery()) {
@@ -372,19 +340,19 @@ public class ConnectContext {
     }
 
     public long getStmtId() {
-        return stmtId;
+        return sessionExecutionContext.getStmtId();
     }
 
     public void setStmtId(long stmtId) {
-        this.stmtId = stmtId;
+        sessionExecutionContext.setStmtId(stmtId);
     }
 
     public long getForwardedStmtId() {
-        return forwardedStmtId;
+        return sessionExecutionContext.getForwardedStmtId();
     }
 
     public void setForwardedStmtId(long forwardedStmtId) {
-        this.forwardedStmtId = forwardedStmtId;
+        sessionExecutionContext.setForwardedStmtId(forwardedStmtId);
     }
 
     public String getRemoteIP() {
@@ -646,48 +614,48 @@ public class ConnectContext {
     }
 
     public MysqlCommand getCommand() {
-        return command;
+        return sessionExecutionContext.getCommand();
     }
 
     public void setCommand(MysqlCommand command) {
-        this.command = command;
+        sessionExecutionContext.setCommand(command);
     }
 
     public long getStartTime() {
-        return startTime.toEpochMilli();
+        return sessionExecutionContext.getStartTime();
     }
 
     public Instant getStartTimeInstant() {
-        return startTime;
+        return sessionExecutionContext.getStartTimeInstant();
     }
 
     public void setStartTime() {
-        startTime = Instant.now();
-        returnRows = 0;
-        pendingTimeSecond = 0;
+        sessionExecutionContext.setStartTime();
     }
 
     @VisibleForTesting
     public void setStartTime(Instant start) {
-        startTime = start;
-        returnRows = 0;
-        pendingTimeSecond = 0;
+        sessionExecutionContext.setStartTime(start);
     }
 
     public void setEndTime() {
-        endTime = Instant.now();
+        sessionExecutionContext.setEndTime();
+    }
+
+    public Instant getEndTimeInstant() {
+        return sessionExecutionContext.getEndTimeInstant();
     }
 
     public void updateReturnRows(int returnRows) {
-        this.returnRows += returnRows;
+        sessionExecutionContext.updateReturnRows(returnRows);
     }
 
     public long getReturnRows() {
-        return returnRows;
+        return sessionExecutionContext.getReturnRows();
     }
 
     public void resetReturnRows() {
-        returnRows = 0;
+        sessionExecutionContext.resetReturnRows();
     }
 
     public MysqlSerializer getSerializer() {
@@ -695,11 +663,11 @@ public class ConnectContext {
     }
 
     public int getConnectionId() {
-        return connectionId;
+        return sessionExecutionContext.getConnectionId();
     }
 
     public void setConnectionId(int connectionId) {
-        this.connectionId = connectionId;
+        sessionExecutionContext.setConnectionId(connectionId);
     }
 
     public String getProxyHostName() {
@@ -711,23 +679,23 @@ public class ConnectContext {
     }
 
     public boolean hasPendingForwardRequest() {
-        return pendingForwardRequests.intValue() > 0;
+        return sessionExecutionContext.hasPendingForwardRequest();
     }
 
     public void incPendingForwardRequest() {
-        pendingForwardRequests.incrementAndGet();
+        sessionExecutionContext.incPendingForwardRequest();
     }
 
     public void decPendingForwardRequest() {
-        pendingForwardRequests.decrementAndGet();
+        sessionExecutionContext.decPendingForwardRequest();
     }
 
     public void resetConnectionStartTime() {
-        this.connectionStartTime = System.currentTimeMillis();
+        sessionExecutionContext.resetConnectionStartTime();
     }
 
     public long getConnectionStartTime() {
-        return connectionStartTime;
+        return sessionExecutionContext.getConnectionStartTime();
     }
 
     public MysqlChannel getMysqlChannel() {
@@ -780,11 +748,11 @@ public class ConnectContext {
     }
 
     public String getDatabase() {
-        return currentDb;
+        return sessionEnvironmentContext.getDatabase();
     }
 
     public void setDatabase(String db) {
-        currentDb = db;
+        sessionEnvironmentContext.setDatabase(db);
     }
 
     public void setExecutor(StmtExecutor executor) {
@@ -799,7 +767,7 @@ public class ConnectContext {
         mysqlChannel.close();
         threadLocalInfo.remove();
         returnRows = 0;
-        computeResource = null;
+        sessionEnvironmentContext.setCurrentComputeResource(null);
     }
 
     public boolean isKilled() {
@@ -812,27 +780,27 @@ public class ConnectContext {
     }
 
     public TUniqueId getExecutionId() {
-        return executionId;
+        return sessionExecutionContext.getExecutionId();
     }
 
     public void setExecutionId(TUniqueId executionId) {
-        this.executionId = executionId;
+        sessionExecutionContext.setExecutionId(executionId);
     }
 
     public UUID getQueryId() {
-        return queryId;
+        return sessionExecutionContext.getQueryId();
     }
 
     public void setQueryId(UUID queryId) {
-        this.queryId = queryId;
+        sessionExecutionContext.setQueryId(queryId);
     }
 
     public UUID getLastQueryId() {
-        return lastQueryId;
+        return sessionExecutionContext.getLastQueryId();
     }
 
     public void setLastQueryId(UUID queryId) {
-        this.lastQueryId = queryId;
+        sessionExecutionContext.setLastQueryId(queryId);
     }
 
     public String getCustomQueryId() {
@@ -902,62 +870,43 @@ public class ConnectContext {
     }
 
     public TWorkGroup getResourceGroup() {
-        return resourceGroup;
+        return sessionEnvironmentContext.getResourceGroup();
     }
 
     public void setResourceGroup(TWorkGroup resourceGroup) {
-        this.resourceGroup = resourceGroup;
+        sessionEnvironmentContext.setResourceGroup(resourceGroup);
     }
 
     public String getCurrentCatalog() {
-        return this.getSessionVariable().getCatalog();
+        return sessionEnvironmentContext.getCurrentCatalog();
     }
 
     public void setCurrentCatalog(String currentCatalog) {
-        this.getSessionVariable().setCatalog(currentCatalog);
+        sessionEnvironmentContext.setCurrentCatalog(currentCatalog);
     }
 
     public long getCurrentWarehouseId() {
-        String warehouseName = this.getSessionVariable().getWarehouseName();
-        if (warehouseName.equalsIgnoreCase(WarehouseManager.DEFAULT_WAREHOUSE_NAME)) {
-            return WarehouseManager.DEFAULT_WAREHOUSE_ID;
-        }
-
-        Warehouse warehouse = globalStateMgr.getWarehouseMgr().getWarehouseAllowNull(warehouseName);
-        if (warehouse == null) {
-            throw new SemanticException("Warehouse " + warehouseName + " not exist");
-        }
-        return warehouse.getId();
+        return sessionEnvironmentContext.getCurrentWarehouseId();
     }
 
     public String getCurrentWarehouseName() {
-        return this.getSessionVariable().getWarehouseName();
+        return sessionEnvironmentContext.getCurrentWarehouseName();
     }
 
     public void setCurrentWarehouse(String currentWarehouse) {
-        this.getSessionVariable().setWarehouseName(currentWarehouse);
-        this.computeResource = null;
+        sessionEnvironmentContext.setCurrentWarehouse(currentWarehouse);
     }
 
     public void setCurrentWarehouseId(long warehouseId) {
-        Warehouse warehouse = globalStateMgr.getWarehouseMgr().getWarehouse(warehouseId);
-        this.getSessionVariable().setWarehouseName(warehouse.getName());
-        this.computeResource = null;
+        sessionEnvironmentContext.setCurrentWarehouseId(warehouseId);
     }
 
     public void setCurrentComputeResource(ComputeResource computeResource) {
-        this.computeResource = computeResource;
+        sessionEnvironmentContext.setCurrentComputeResource(computeResource);
     }
 
     public synchronized void tryAcquireResource(boolean force) {
-        if (!force && this.computeResource != null) {
-            return;
-        }
-        // once warehouse is set, needs to choose the available cngroup
-        // try to acquire cn group id once the warehouse is set
-        final long warehouseId = this.getCurrentWarehouseId();
-        final WarehouseManager warehouseManager = globalStateMgr.getWarehouseMgr();
-        this.computeResource = warehouseManager.acquireComputeResource(warehouseId, this.computeResource);
+        sessionEnvironmentContext.tryAcquireResource(force);
     }
 
     /**
@@ -967,13 +916,7 @@ public class ConnectContext {
      * @return: the current compute resource, or the default resource if not in shared data mode.
      */
     public ComputeResource getCurrentComputeResource() {
-        if (!RunMode.isSharedDataMode()) {
-            return WarehouseManager.DEFAULT_RESOURCE;
-        }
-        if (this.computeResource == null) {
-            tryAcquireResource(false);
-        }
-        return this.computeResource;
+        return sessionEnvironmentContext.getCurrentComputeResource();
     }
 
     /**
@@ -983,11 +926,7 @@ public class ConnectContext {
      * @return: the name of the current compute resource, or empty string if not set.
      */
     public String getCurrentComputeResourceName() {
-        if (!RunMode.isSharedDataMode() || this.computeResource == null) {
-            return "";
-        }
-        final WarehouseManager warehouseManager = globalStateMgr.getWarehouseMgr();
-        return warehouseManager.getComputeResourceName(this.computeResource);
+        return sessionEnvironmentContext.getCurrentComputeResourceName();
     }
 
     /**
@@ -996,10 +935,7 @@ public class ConnectContext {
      * @return: the current compute resource(null if not set), or the default resource if not in shared data mode.
      */
     public ComputeResource getCurrentComputeResourceNoAcquire() {
-        if (!RunMode.isSharedDataMode()) {
-            return WarehouseManager.DEFAULT_RESOURCE;
-        }
-        return this.computeResource;
+        return sessionEnvironmentContext.getCurrentComputeResourceNoAcquire();
     }
 
     public void setParentConnectContext(ConnectContext parent) {
@@ -1063,11 +999,11 @@ public class ConnectContext {
     }
 
     public void setForwardTimes(int forwardTimes) {
-        this.forwardTimes = forwardTimes;
+        sessionExecutionContext.setForwardTimes(forwardTimes);
     }
 
     public int getForwardTimes() {
-        return this.forwardTimes;
+        return sessionExecutionContext.getForwardTimes();
     }
 
     public void setSessionId(UUID sessionId) {
@@ -1121,7 +1057,7 @@ public class ConnectContext {
                     Thread.sleep(10);
                     times++;
                     if (times > 100) {
-                        LOG.warn("kill queryId={} connectId={} wait for close fail, break.", queryId, connectionId);
+                        LOG.warn("kill queryId={} connectId={} wait for close fail, break.", getQueryId(), getConnectionId());
                         break;
                     }
                 } catch (InterruptedException e) {
@@ -1141,7 +1077,7 @@ public class ConnectContext {
      * @return Get the timeout for this session, unit: second
      */
     public int getExecTimeout() {
-        return pendingTimeSecond + getExecTimeoutWithoutPendingTime();
+        return (int) (sessionExecutionContext.getPendingTimeSecond() + getExecTimeoutWithoutPendingTime());
     }
 
     private int getExecTimeoutWithoutPendingTime() {
@@ -1154,11 +1090,11 @@ public class ConnectContext {
      * @param pendingTimeSecond: the pending time for this session
      */
     public void setPendingTimeSecond(int pendingTimeSecond) {
-        this.pendingTimeSecond = pendingTimeSecond;
+        sessionExecutionContext.setPendingTimeSecond(pendingTimeSecond);
     }
 
     public long getPendingTimeSecond() {
-        return this.pendingTimeSecond;
+        return sessionExecutionContext.getPendingTimeSecond();
     }
 
     private String getExecType() {
@@ -1189,12 +1125,12 @@ public class ConnectContext {
             sql = executor.getOriginStmtInString();
         }
         String errMsg = "";
-        if (command == MysqlCommand.COM_SLEEP) {
+        if (getCommand() == MysqlCommand.COM_SLEEP) {
             int waitTimeout = getSessionVariable().getWaitTimeoutS();
             if (delta > waitTimeout * 1000L) {
                 // Need kill this connection.
                 LOG.warn("kill wait timeout connection, remote: {}, wait timeout: {}, query id: {}, sql: {}",
-                        getMysqlChannel().getRemoteHostPortString(), waitTimeout, queryId, SqlUtils.sqlPrefix(sql));
+                        getMysqlChannel().getRemoteHostPortString(), waitTimeout, getQueryId(), SqlUtils.sqlPrefix(sql));
 
                 killFlag = true;
                 killConnection = true;
@@ -1209,7 +1145,7 @@ public class ConnectContext {
                 LOG.warn("kill timeout {}, remote: {}, execute timeout: {}, exec timeout: {}, pending time:{}, " +
                                 "query id: {}, sql: {}",
                         getExecType().toLowerCase(), getMysqlChannel().getRemoteHostPortString(), timeoutSecond,
-                        execTimeout, pendingTime, queryId, SqlUtils.sqlPrefix(sql));
+                        execTimeout, pendingTime, getQueryId(), SqlUtils.sqlPrefix(sql));
 
                 // Only kill
                 killFlag = true;
@@ -1259,19 +1195,19 @@ public class ConnectContext {
     }
 
     public void setPending(boolean pending) {
-        isPending = pending;
+        sessionExecutionContext.setPending(pending);
     }
 
     public boolean isPending() {
-        return isPending;
+        return sessionExecutionContext.isPending();
     }
 
     public void setIsForward(boolean forward) {
-        isForward = forward;
+        sessionExecutionContext.setIsForward(forward);
     }
 
     public boolean isForward() {
-        return isForward;
+        return sessionExecutionContext.isForward();
     }
 
     public boolean enableSSL() throws IOException {
@@ -1308,21 +1244,7 @@ public class ConnectContext {
     // Change current catalog of this session, and reset current database.
     // We can support "use 'catalog <catalog_name>'" from mysql client or "use catalog <catalog_name>" from jdbc.
     public void changeCatalog(String newCatalogName) throws DdlException {
-        CatalogMgr catalogMgr = globalStateMgr.getCatalogMgr();
-        newCatalogName = normalizeName(newCatalogName);
-        if (!catalogMgr.catalogExists(newCatalogName)) {
-            ErrorReport.reportDdlException(ErrorCode.ERR_BAD_CATALOG_ERROR, newCatalogName);
-        }
-        if (!CatalogMgr.isInternalCatalog(newCatalogName)) {
-            try {
-                Authorizer.checkAnyActionOnCatalog(this, newCatalogName);
-            } catch (AccessDeniedException e) {
-                AccessDeniedException.reportAccessDenied(newCatalogName, this.getCurrentUserIdentity(), this.getCurrentRoleIds(),
-                        PrivilegeType.ANY.name(), ObjectType.CATALOG.name(), newCatalogName);
-            }
-        }
-        this.setCurrentCatalog(newCatalogName);
-        this.setDatabase("");
+        sessionEnvironmentContext.changeCatalog(newCatalogName);
     }
 
     // Change current catalog and database of this session.
@@ -1330,54 +1252,7 @@ public class ConnectContext {
     // For "CATALOG.DB", we change the current catalog database.
     // For "DB", we keep the current catalog and change the current database.
     public void changeCatalogDb(String identifier) throws DdlException {
-        CatalogMgr catalogMgr = globalStateMgr.getCatalogMgr();
-        MetadataMgr metadataMgr = globalStateMgr.getMetadataMgr();
-
-        String dbName;
-
-        String[] parts = identifier.split("\\.", 2); // at most 2 parts
-        if (parts.length != 1 && parts.length != 2) {
-            ErrorReport.reportDdlException(ErrorCode.ERR_BAD_CATALOG_AND_DB_ERROR, identifier);
-        }
-
-        if (parts.length == 1) { // use database
-            dbName = identifier;
-        } else { // use catalog.database
-            String newCatalogName = normalizeName(parts[0]);
-            if (!catalogMgr.catalogExists(newCatalogName)) {
-                ErrorReport.reportDdlException(ErrorCode.ERR_BAD_CATALOG_ERROR, newCatalogName);
-            }
-            if (!CatalogMgr.isInternalCatalog(newCatalogName)) {
-                try {
-                    Authorizer.checkAnyActionOnCatalog(this, newCatalogName);
-                } catch (AccessDeniedException e) {
-                    AccessDeniedException.reportAccessDenied(newCatalogName,
-                            this.getCurrentUserIdentity(), this.getCurrentRoleIds(),
-                            PrivilegeType.ANY.name(), ObjectType.CATALOG.name(), newCatalogName);
-                }
-            }
-            this.setCurrentCatalog(newCatalogName);
-            dbName = parts[1];
-        }
-
-        dbName = normalizeName(dbName);
-
-        if (!Strings.isNullOrEmpty(dbName) && metadataMgr.getDb(this, this.getCurrentCatalog(), dbName) == null) {
-            LOG.debug("Unknown catalog {} and db {}", this.getCurrentCatalog(), dbName);
-            ErrorReport.reportDdlException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
-        }
-
-        // Here we check the request permission that sent by the mysql client or jdbc.
-        // So we didn't check UseDbStmt permission in PrivilegeCheckerV2.
-        try {
-            Authorizer.checkAnyActionOnOrInDb(this, this.getCurrentCatalog(), dbName);
-        } catch (AccessDeniedException e) {
-            AccessDeniedException.reportAccessDenied(this.getCurrentCatalog(),
-                    this.getCurrentUserIdentity(), this.getCurrentRoleIds(),
-                    PrivilegeType.ANY.name(), ObjectType.DATABASE.name(), dbName);
-        }
-
-        this.setDatabase(dbName);
+        sessionEnvironmentContext.changeCatalogDb(identifier);
     }
 
     public boolean isLeaderTransferred() {
@@ -1428,7 +1303,7 @@ public class ConnectContext {
 
         public List<String> toRow(long nowMs, boolean full) {
             List<String> row = Lists.newArrayList();
-            row.add("" + connectionId);
+            row.add("" + getConnectionId());
             row.add(ClusterNamespace.getNameFromFullName(getQualifiedUser()));
             // Ip + port
             if (ConnectContext.this instanceof HttpConnectContext) {
@@ -1437,11 +1312,11 @@ public class ConnectContext {
             } else {
                 row.add(getMysqlChannel().getRemoteHostPortString());
             }
-            row.add(ClusterNamespace.getNameFromFullName(currentDb));
+            row.add(ClusterNamespace.getNameFromFullName(getDatabase()));
             // Command
-            row.add(command.toString());
+            row.add(getCommand().toString());
             // connection start Time
-            row.add(TimeUtils.longToTimeString(connectionStartTime));
+            row.add(TimeUtils.longToTimeString(getConnectionStartTime()));
             // Time
             row.add("" + (nowMs - getStartTime()) / 1000);
             // State
@@ -1458,12 +1333,12 @@ public class ConnectContext {
                 }
             }
             row.add(stmt);
-            if (isForward) {
+            if (isForward()) {
                 // if query is forward to leader, we can't know its accurate status in query queue,
                 // so isPending should not be displayed
                 row.add("");
             } else {
-                row.add(Boolean.toString(isPending));
+                row.add(Boolean.toString(isPending()));
             }
             // warehouse
             row.add(getSessionVariable().getWarehouseName());
@@ -1474,12 +1349,12 @@ public class ConnectContext {
     }
 
     public boolean isIdleLastFor(long milliSeconds) {
-        if (command != MysqlCommand.COM_SLEEP) {
+        if (getCommand() != MysqlCommand.COM_SLEEP) {
             return false;
         }
 
-        return endTime.isAfter(startTime)
-                && endTime.plusMillis(milliSeconds).isBefore(Instant.now());
+        return getEndTimeInstant().isAfter(getStartTimeInstant())
+                && getEndTimeInstant().plusMillis(milliSeconds).isBefore(Instant.now());
     }
 
     public long getCurrentThreadAllocatedMemory() {

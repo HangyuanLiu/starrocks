@@ -58,6 +58,7 @@ public class SessionVariableContext {
         this.sessionVariable = sessionVariable;
     }
 
+    // Reset session variable to default values provided by VariableMgr and clear modified set
     public void resetSessionVariable() {
         this.sessionVariable = sessionVariableSupplier.get();
         modifiedSessionVariables.clear();
@@ -105,6 +106,7 @@ public class SessionVariableContext {
         this.userVariables = userVarCopyInWrite;
     }
 
+    // Instead of modifying the live map, use a copy to ensure atomicity/isolation of updates
     public void modifyUserVariablesCopyInWrite(Map<String, UserVariable> userVariables) {
         this.userVariablesCopyInWrite = userVariables;
     }
@@ -139,6 +141,8 @@ public class SessionVariableContext {
 
     // We can not make sure the set variables are all valid. Even if some variables are invalid,
     // we should let user continue to execute SQL.
+    // We can not make sure the set variables are all valid. Even if some variables are invalid,
+    // we should let user continue to execute SQL during handshake.
     public void updateByUserProperty(ConnectContext context, UserProperty userProperty) {
         GlobalStateMgr globalStateMgr = GlobalStateMgr.getCurrentState();
 
@@ -183,6 +187,7 @@ public class SessionVariableContext {
         }
     }
 
+    // Apply a system variable change to this session and record it for forwarding if needed
     public void modifySystemVariable(ConnectContext context, SystemVariable setVar, boolean onlySetSessionVar)
             throws DdlException {
         VariableMgr variableMgr = GlobalStateMgr.getCurrentState().getVariableMgr();
