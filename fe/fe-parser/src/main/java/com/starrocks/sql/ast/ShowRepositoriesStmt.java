@@ -15,19 +15,26 @@
 
 package com.starrocks.sql.ast;
 
+import com.google.common.collect.ImmutableList;
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowEnginesStmt extends ShowStmt {
+public class ShowRepositoriesStmt extends ShowStmt {
 
-    public ShowEnginesStmt() {
+    public static final ImmutableList<String> TITLE_NAMES = new ImmutableList.Builder<String>()
+            .add("RepoId").add("RepoName").add("CreateTime").add("IsReadOnly").add("Location")
+            .add("Broker").add("ErrMsg")
+            .build();
+
+    public ShowRepositoriesStmt() {
         this(NodePosition.ZERO);
     }
 
-    public ShowEnginesStmt(NodePosition pos) {
+    public ShowRepositoriesStmt(NodePosition pos) {
         super(pos);
     }
+
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return ((AstVisitorExtendInterface<R, C>) visitor).visitShowEnginesStatement(this, context);
+        return visitor.visitShowRepositoriesStatement(this, context);
     }
 }

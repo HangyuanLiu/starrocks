@@ -261,4 +261,38 @@ public interface AstVisitor<R, C> {
     default R visitAlterStorageVolumeCommentClause(AlterStorageVolumeCommentClause clause, C context) {
         return visitNode(clause, context);
     }
+
+    // ------------------------------------------- Show Statement ----------------------------------------------------
+
+    default R visitShowEnginesStatement(ShowEnginesStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitHelpStatement(HelpStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitShowEventStatement(ShowEventsStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitShowTriggersStatement(ShowTriggersStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitShowPrivilegeStatement(ShowPrivilegesStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitShowRepositoriesStatement(ShowRepositoriesStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitShowPluginsStatement(ShowPluginsStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
+
+    default R visitShowGrantsStatement(ShowGrantsStmt statement, C context) {
+        return visitStatement(statement, context);
+    }
 }

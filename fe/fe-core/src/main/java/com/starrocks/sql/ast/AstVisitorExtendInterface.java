@@ -643,13 +643,7 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitShowStatement(statement, context);
     }
 
-    default R visitHelpStatement(HelpStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
 
-    default R visitShowEnginesStatement(ShowEnginesStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
 
     default R visitShowWarningStatement(ShowWarningStmt statement, C context) {
         return visitShowStatement(statement, context);
@@ -707,9 +701,6 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitShowStatement(statement, context);
     }
 
-    default R visitShowRepositoriesStatement(ShowRepositoriesStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
 
     default R visitShowCharsetStatement(ShowCharsetStmt statement, C context) {
         return visitShowStatement(statement, context);
@@ -719,13 +710,7 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitShowStatement(statement, context);
     }
 
-    default R visitShowEventStatement(ShowEventsStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
 
-    default R visitShowPrivilegeStatement(ShowPrivilegesStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
 
     default R visitShowProcedureStatement(ShowProcedureStmt statement, C context) {
         return visitShowStatement(statement, context);
@@ -735,9 +720,6 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitShowStatement(statement, context);
     }
 
-    default R visitShowTriggersStatement(ShowTriggersStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
 
     // ---------------------------------------- Authz Statement ----------------------------------------------------
 
@@ -805,9 +787,6 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitDDLStatement(statement, context);
     }
 
-    default R visitShowGrantsStatement(ShowGrantsStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
 
     // ------------------------------------------- Security Integration Statement ----------------------------------------------------
 
@@ -980,9 +959,6 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitDDLStatement(statement, context);
     }
 
-    default R visitShowPluginsStatement(ShowPluginsStmt statement, C context) {
-        return visitShowStatement(statement, context);
-    }
 
     // --------------------------------------- File Statement ----------------------------------------------------------
 

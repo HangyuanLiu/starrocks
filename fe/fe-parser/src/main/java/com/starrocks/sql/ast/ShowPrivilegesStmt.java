@@ -27,6 +27,6 @@ public class ShowPrivilegesStmt extends ShowStmt {
 
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return ((AstVisitorExtendInterface<R, C>) visitor).visitShowPrivilegeStatement(this, context);
+        return visitor.visitShowPrivilegeStatement(this, context);
     }
 }

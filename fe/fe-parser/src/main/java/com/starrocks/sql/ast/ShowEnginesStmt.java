@@ -17,17 +17,17 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowTriggersStmt extends ShowStmt {
-    public ShowTriggersStmt() {
+public class ShowEnginesStmt extends ShowStmt {
+
+    public ShowEnginesStmt() {
         this(NodePosition.ZERO);
     }
 
-    public ShowTriggersStmt(NodePosition pos) {
+    public ShowEnginesStmt(NodePosition pos) {
         super(pos);
     }
-
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return ((AstVisitorExtendInterface<R, C>) visitor).visitShowTriggersStatement(this, context);
+        return visitor.visitShowEnginesStatement(this, context);
     }
 }
