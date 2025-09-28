@@ -17,7 +17,7 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowTriggersStmt extends ShowStmt {
+public class ShowTriggersStmt extends StatementBase {
     public ShowTriggersStmt() {
         this(NodePosition.ZERO);
     }

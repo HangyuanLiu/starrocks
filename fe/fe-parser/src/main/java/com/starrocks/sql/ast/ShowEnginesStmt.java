@@ -17,7 +17,7 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowEnginesStmt extends ShowStmt {
+public class ShowEnginesStmt extends StatementBase {
 
     public ShowEnginesStmt() {
         this(NodePosition.ZERO);

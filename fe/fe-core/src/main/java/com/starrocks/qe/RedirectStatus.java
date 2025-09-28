@@ -984,12 +984,12 @@ public class RedirectStatus {
 
         @Override
         public RedirectStatus visitHelpStatement(HelpStmt statement, Void context) {
-            return visitShowStatement(statement, context);
+            return RedirectStatus.NO_FORWARD;
         }
 
         @Override
         public RedirectStatus visitShowEnginesStatement(ShowEnginesStmt statement, Void context) {
-            return visitShowStatement(statement, context);
+            return RedirectStatus.NO_FORWARD;
         }
 
         @Override
@@ -1076,7 +1076,7 @@ public class RedirectStatus {
 
         @Override
         public RedirectStatus visitShowRepositoriesStatement(ShowRepositoriesStmt statement, Void context) {
-            return visitShowStatement(statement, context);
+            return RedirectStatus.NO_FORWARD;
         }
 
         @Override
@@ -1091,12 +1091,12 @@ public class RedirectStatus {
 
         @Override
         public RedirectStatus visitShowEventStatement(ShowEventsStmt statement, Void context) {
-            return visitShowStatement(statement, context);
+            return RedirectStatus.NO_FORWARD;
         }
 
         @Override
         public RedirectStatus visitShowPrivilegeStatement(ShowPrivilegesStmt statement, Void context) {
-            return visitShowStatement(statement, context);
+            return RedirectStatus.NO_FORWARD;
         }
 
         @Override
@@ -1111,7 +1111,7 @@ public class RedirectStatus {
 
         @Override
         public RedirectStatus visitShowTriggersStatement(ShowTriggersStmt statement, Void context) {
-            return visitShowStatement(statement, context);
+            return RedirectStatus.NO_FORWARD;
         }
 
         // ---------------------------------------- Authz Statement ----------------------------------------------------
@@ -1198,7 +1198,7 @@ public class RedirectStatus {
 
         @Override
         public RedirectStatus visitShowGrantsStatement(ShowGrantsStmt statement, Void context) {
-            return visitShowStatement(statement, context);
+            return RedirectStatus.NO_FORWARD;
         }
 
         // ------------------------------------------- Security Integration Statement
@@ -1417,7 +1417,7 @@ public class RedirectStatus {
 
         @Override
         public RedirectStatus visitShowPluginsStatement(ShowPluginsStmt statement, Void context) {
-            return visitShowStatement(statement, context);
+            return RedirectStatus.NO_FORWARD;
         }
 
         // --------------------------------------- File Statement ----------------------------------------------------------

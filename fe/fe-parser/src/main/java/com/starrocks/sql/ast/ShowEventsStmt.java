@@ -17,7 +17,7 @@ package com.starrocks.sql.ast;
 import com.starrocks.sql.parser.NodePosition;
 
 // Show Events statement
-public class ShowEventsStmt extends ShowStmt {
+public class ShowEventsStmt extends StatementBase {
 
     public ShowEventsStmt(NodePosition pos) {
         super(pos);

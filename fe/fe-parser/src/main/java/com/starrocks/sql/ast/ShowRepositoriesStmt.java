@@ -18,7 +18,7 @@ package com.starrocks.sql.ast;
 import com.google.common.collect.ImmutableList;
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowRepositoriesStmt extends ShowStmt {
+public class ShowRepositoriesStmt extends StatementBase {
 
     public static final ImmutableList<String> TITLE_NAMES = new ImmutableList.Builder<String>()
             .add("RepoId").add("RepoName").add("CreateTime").add("IsReadOnly").add("Location")

@@ -16,7 +16,7 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowPrivilegesStmt extends ShowStmt {
+public class ShowPrivilegesStmt extends StatementBase {
     public ShowPrivilegesStmt() {
         this(NodePosition.ZERO);
     }

@@ -17,7 +17,7 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowPluginsStmt extends ShowStmt {
+public class ShowPluginsStmt extends StatementBase {
 
     public ShowPluginsStmt() {
         this(NodePosition.ZERO);

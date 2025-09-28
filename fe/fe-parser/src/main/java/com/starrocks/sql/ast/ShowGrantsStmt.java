@@ -16,7 +16,7 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class ShowGrantsStmt extends ShowStmt {
+public class ShowGrantsStmt extends StatementBase {
     private UserRef user;
     private final String groupOrRole;
     private final GrantType grantType;

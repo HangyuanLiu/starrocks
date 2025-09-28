@@ -19,7 +19,7 @@ package com.starrocks.sql.ast;
 
 import com.starrocks.sql.parser.NodePosition;
 
-public class HelpStmt extends ShowStmt {
+public class HelpStmt extends StatementBase {
     private String mask;
 
     public HelpStmt(String mask) {
