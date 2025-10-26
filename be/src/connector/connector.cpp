@@ -24,6 +24,7 @@
 #include "connector/jdbc_connector.h"
 #include "connector/lake_connector.h"
 #include "connector/mysql_connector.h"
+#include "connector/starrocks_connector.h"
 
 namespace starrocks::connector {
 
@@ -51,6 +52,7 @@ const std::string Connector::FILE = "file";
 const std::string Connector::LAKE = "lake";
 const std::string Connector::BINLOG = "binlog";
 const std::string Connector::ICEBERG = "iceberg";
+const std::string Connector::STARROCKS = "starrocks";
 
 class ConnectorManagerInit {
 public:
@@ -66,6 +68,7 @@ public:
 #ifndef __APPLE__
         cm->put(Connector::ICEBERG, std::make_unique<IcebergConnector>());
 #endif
+        cm->put(Connector::STARROCKS, std::make_unique<StarRocksConnector>());
     }
 };
 

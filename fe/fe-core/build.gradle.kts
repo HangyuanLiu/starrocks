@@ -92,6 +92,7 @@ dependencies {
     testImplementation("com.github.hazendaz.jmockit:jmockit")
     implementation("com.github.oshi:oshi-core")
     implementation("com.github.seancfoley:ipaddress")
+    implementation("com.github.vertical-blank:sql-formatter")
     implementation("com.google.cloud.bigdataoss:gcs-connector")
     implementation("com.google.code.gson:gson")
     implementation("com.google.guava:guava")

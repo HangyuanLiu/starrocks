@@ -77,6 +77,7 @@ enum TPlanNodeType {
   TABLE_FUNCTION_NODE,
   DECODE_NODE,
   JDBC_SCAN_NODE,
+  CONNECTOR_SCAN_NODE,
   LAKE_SCAN_NODE,
   NESTLOOP_JOIN_NODE,
 
@@ -1307,8 +1308,11 @@ struct TTableFunctionNode {
 
 struct TConnectorScanNode {
   1: optional string connector_name
-  // // Scan node for hdfs
-  // 2: optional THdfsScanNode hdfs_scan_node
+  2: optional Types.TTupleId tuple_id
+  3: optional string db_name
+  4: optional string table_name
+  5: optional string opaqued_query_plan
+  6: optional map<string, string> properties
 }
 
 // binlog meta column names
