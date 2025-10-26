@@ -505,6 +505,18 @@ Status ExecNode::create_vectorized_node(starrocks::RuntimeState* state, starrock
     case TPlanNodeType::TABLE_FUNCTION_NODE:
         *node = pool->add(new TableFunctionNode(pool, tnode, descs));
         return Status::OK();
+    case TPlanNodeType::STARROCKS_SCAN_NODE: {
+        TPlanNode new_node = tnode;
+        TConnectorScanNode connector_scan_node;
+        connector_scan_node.connector_name = connector::Connector::STARROCKS;
+        new_node.connector_scan_node = connector_scan_node;
+        *node = pool->add(new ConnectorScanNode(pool, new_node, descs));
+        return Status::OK();
+    }
+    case TPlanNodeType::CONNECTOR_SCAN_NODE: {
+        *node = pool->add(new ConnectorScanNode(pool, tnode, descs));
+        return Status::OK();
+    }
     case TPlanNodeType::HDFS_SCAN_NODE:
     case TPlanNodeType::KUDU_SCAN_NODE: {
         TPlanNode new_node = tnode;
@@ -861,6 +873,7 @@ void ExecNode::collect_scan_nodes(vector<ExecNode*>* nodes) {
     collect_nodes(TPlanNodeType::LAKE_SCAN_NODE, nodes);
     collect_nodes(TPlanNodeType::SCHEMA_SCAN_NODE, nodes);
     collect_nodes(TPlanNodeType::STREAM_SCAN_NODE, nodes);
+    collect_nodes(TPlanNodeType::STARROCKS_SCAN_NODE, nodes);
 }
 
 void ExecNode::init_runtime_profile(const std::string& name) {

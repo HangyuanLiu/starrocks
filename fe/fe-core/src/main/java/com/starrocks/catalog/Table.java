@@ -105,6 +105,8 @@ public class Table extends MetaObject implements Writable, GsonPostProcessable, 
         HUDI,
         @SerializedName("JDBC")
         JDBC,
+        @SerializedName("STARROCKS")
+        STARROCKS,
         @SerializedName("MATERIALIZED_VIEW")
         MATERIALIZED_VIEW,
         @SerializedName("LAKE") // for backward and rollback compatibility
@@ -158,6 +160,7 @@ public class Table extends MetaObject implements Writable, GsonPostProcessable, 
                     .add(TableType.HIVE)
                     .add(TableType.ICEBERG)
                     .add(TableType.HUDI)
+                    .add(TableType.STARROCKS)
                     .add(TableType.ODPS)
                     .add(TableType.DELTALAKE)
                     .add(TableType.PAIMON)

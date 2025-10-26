@@ -37,6 +37,7 @@ public class ExternalScanPartitionPruneRule extends TransformationRule {
             OperatorType.LOGICAL_HUDI_SCAN,
             OperatorType.LOGICAL_ICEBERG_SCAN,
             OperatorType.LOGICAL_DELTALAKE_SCAN,
+            OperatorType.LOGICAL_STARROCKS_SCAN,
             OperatorType.LOGICAL_FILE_SCAN,
             OperatorType.LOGICAL_ES_SCAN,
             OperatorType.LOGICAL_PAIMON_SCAN,

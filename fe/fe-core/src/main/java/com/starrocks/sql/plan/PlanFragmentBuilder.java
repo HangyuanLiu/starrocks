@@ -15,6 +15,8 @@
 package com.starrocks.sql.plan;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
+import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.analysis.RowPositionDescriptor;
@@ -52,6 +54,7 @@ import com.starrocks.common.Pair;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.connector.BucketProperty;
 import com.starrocks.connector.metadata.MetadataTable;
+import com.starrocks.connector.starrocks.StarRocksExternalTable;
 import com.starrocks.load.BrokerFileGroup;
 import com.starrocks.planner.AggregateInfo;
 import com.starrocks.planner.AggregationNode;
@@ -109,6 +112,7 @@ import com.starrocks.planner.SlotId;
 import com.starrocks.planner.SortInfo;
 import com.starrocks.planner.SortNode;
 import com.starrocks.planner.SplitCastPlanFragment;
+import com.starrocks.planner.StarRocksScanNode;
 import com.starrocks.planner.TableFunctionNode;
 import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.planner.TupleId;
@@ -197,6 +201,7 @@ import com.starrocks.sql.optimizer.operator.physical.PhysicalSchemaScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalSetOperation;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalSplitConsumeOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalSplitProduceOperator;
+import com.starrocks.sql.optimizer.operator.physical.PhysicalStarRocksScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalTableFunctionOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalTableFunctionTableScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalTopNOperator;
@@ -220,8 +225,12 @@ import com.starrocks.sql.optimizer.statistics.Statistics;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
 import com.starrocks.thrift.TBrokerFileStatus;
 import com.starrocks.thrift.TFileScanType;
+import com.starrocks.thrift.TInternalScanRange;
+import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TPartitionType;
 import com.starrocks.thrift.TResultSinkType;
+import com.starrocks.thrift.TScanRange;
+import com.starrocks.thrift.TScanRangeLocations;
 import com.starrocks.type.Type;
 import com.starrocks.warehouse.cngroup.ComputeResource;
 import org.apache.commons.collections4.CollectionUtils;
@@ -237,6 +246,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1389,6 +1399,135 @@ public class PlanFragmentBuilder {
                     new PlanFragment(context.getNextFragmentId(), deltaLakeScanNode, DataPartition.RANDOM);
             context.getFragments().add(fragment);
             return fragment;
+        }
+
+        @Override
+        public PlanFragment visitPhysicalStarRocksScan(OptExpression optExpression, ExecPlan context) {
+            PhysicalStarRocksScanOperator node = (PhysicalStarRocksScanOperator) optExpression.getOp();
+
+            Table referenceTable = node.getTable();
+            context.getDescTbl().addReferencedTable(referenceTable);
+            TupleDescriptor tupleDescriptor = context.getDescTbl().createTupleDescriptor();
+            tupleDescriptor.setTable(referenceTable);
+
+            prepareContextSlots(node, context, tupleDescriptor);
+
+            StarRocksExternalTable starRocksTable = (StarRocksExternalTable) referenceTable;
+            StarRocksScanNode scanNode = new StarRocksScanNode(context.getNextNodeId(), tupleDescriptor,
+                    "StarRocksScanNode", starRocksTable);
+            scanNode.computeStatistics(optExpression.getStatistics());
+            scanNode.setScanOptimizeOption(node.getScanOptimizeOption());
+            currentExecGroup.add(scanNode, true);
+            scanNode.setTupleId(tupleDescriptor.getId().asInt());
+
+            scanNode.setOpaquedQueryPlan(starRocksTable.getOpaquedQueryPlan());
+            scanNode.setExecutionProperties(starRocksTable.getExecutionProperties());
+            scanNode.setScanRanges(buildStarRocksScanRanges(starRocksTable));
+
+            ScalarOperatorToExpr.FormatterContext formatterContext =
+                    new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr());
+            List<ScalarOperator> predicates = Utils.extractConjuncts(node.getPredicate());
+            for (ScalarOperator predicate : predicates) {
+                scanNode.getConjuncts()
+                        .add(ScalarOperatorToExpr.buildExecExpression(predicate, formatterContext));
+            }
+
+            scanNode.setLimit(node.getLimit());
+            scanNode.setDataCacheOptions(node.getDataCacheOptions());
+
+            tupleDescriptor.computeMemLayout();
+            context.getScanNodes().add(scanNode);
+
+            PlanFragment fragment =
+                    new PlanFragment(context.getNextFragmentId(), scanNode, DataPartition.RANDOM);
+            context.getFragments().add(fragment);
+            return fragment;
+        }
+
+        private static final Splitter STARROCKS_ENDPOINT_SPLITTER =
+                Splitter.onPattern("[;,]").trimResults().omitEmptyStrings();
+
+        private List<TScanRangeLocations> buildStarRocksScanRanges(StarRocksExternalTable table) {
+            List<TScanRangeLocations> ranges = new ArrayList<>();
+            for (StarRocksExternalTable.Tablet tablet : table.getTablets().values()) {
+                TInternalScanRange internalRange = new TInternalScanRange();
+                internalRange.setTablet_id(tablet.getTabletId());
+                if (tablet.getVersion() >= 0) {
+                    internalRange.setVersion(Long.toString(tablet.getVersion()));
+                    internalRange.setVersion_hash("0");
+                }
+                if (tablet.getSchemaHash() > 0) {
+                    internalRange.setSchema_hash(Integer.toString(tablet.getSchemaHash()));
+                }
+                internalRange.setDb_name(table.getCatalogDBName());
+                internalRange.setTable_name(table.getCatalogTableName());
+
+                List<TNetworkAddress> hosts = buildTabletHosts(table, tablet);
+                // set remote hosts for scan range
+                internalRange.setHosts(hosts);
+
+                TScanRange scanRange = new TScanRange();
+                scanRange.setInternal_scan_range(internalRange);
+
+                TScanRangeLocations scanRangeLocations = new TScanRangeLocations();
+                scanRangeLocations.setScan_range(scanRange);
+                // No need to set locations here. The backend selector (HDFSBackendSelector) will assign
+                // the scan range to a backend based on consistent hashing.
+                ranges.add(scanRangeLocations);
+            }
+            return ranges;
+        }
+
+        private List<TNetworkAddress> buildTabletHosts(StarRocksExternalTable table,
+                                                       StarRocksExternalTable.Tablet tablet) {
+            LinkedHashSet<TNetworkAddress> uniqueHosts = new LinkedHashSet<>();
+            for (String endpoint : resolveTabletEndpoints(table, tablet)) {
+                TNetworkAddress address = parseNetworkAddress(endpoint);
+                if (Strings.isNullOrEmpty(address.hostname) || address.port <= 0) {
+                    LOG.warn("Skip invalid StarRocks endpoint '{}' for {}.{}: tablet {}",
+                            endpoint, table.getCatalogDBName(), table.getCatalogTableName(), tablet.getTabletId());
+                    continue;
+                }
+                uniqueHosts.add(address);
+            }
+            return new ArrayList<>(uniqueHosts);
+        }
+
+        private List<String> resolveTabletEndpoints(StarRocksExternalTable table,
+                                                    StarRocksExternalTable.Tablet tablet) {
+            List<String> endpoints = new ArrayList<>(tablet.getEndpoints());
+            if (!endpoints.isEmpty()) {
+                return endpoints;
+            }
+            Map<String, String> props = table.getExecutionProperties();
+            if (props == null) {
+                return endpoints;
+            }
+            String fallback = props.get("be_rpc_endpoints");
+            if (Strings.isNullOrEmpty(fallback)) {
+                return endpoints;
+            }
+            STARROCKS_ENDPOINT_SPLITTER.split(fallback).forEach(endpoints::add);
+            return endpoints;
+        }
+
+        private TNetworkAddress parseNetworkAddress(String endpoint) {
+            if (endpoint == null || endpoint.isEmpty()) {
+                return new TNetworkAddress("", 0);
+            }
+            String host = endpoint;
+            int port = 0;
+            int colonIndex = endpoint.lastIndexOf(':');
+            if (colonIndex > 0 && colonIndex < endpoint.length() - 1) {
+                host = endpoint.substring(0, colonIndex);
+                String portString = endpoint.substring(colonIndex + 1);
+                try {
+                    port = Integer.parseInt(portString);
+                } catch (NumberFormatException ignored) {
+                    port = 0;
+                }
+            }
+            return new TNetworkAddress(host, port);
         }
 
         public PlanFragment visitPhysicalPaimonScan(OptExpression optExpression, ExecPlan context) {

@@ -47,6 +47,7 @@ public class PushDownPredicateScanRule extends TransformationRule {
             OperatorType.LOGICAL_ICEBERG_SCAN,
             OperatorType.LOGICAL_HUDI_SCAN,
             OperatorType.LOGICAL_DELTALAKE_SCAN,
+            OperatorType.LOGICAL_STARROCKS_SCAN,
             OperatorType.LOGICAL_FILE_SCAN,
             OperatorType.LOGICAL_PAIMON_SCAN,
             OperatorType.LOGICAL_ODPS_SCAN,

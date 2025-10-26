@@ -77,6 +77,8 @@ enum TPlanNodeType {
   TABLE_FUNCTION_NODE,
   DECODE_NODE,
   JDBC_SCAN_NODE,
+  STARROCKS_SCAN_NODE,
+  CONNECTOR_SCAN_NODE,
   LAKE_SCAN_NODE,
   NESTLOOP_JOIN_NODE,
 
@@ -1312,10 +1314,17 @@ struct TTableFunctionNode {
     5: optional bool fn_result_required
 }
 
+// Scan node for external StarRocks cluster
+struct TStarRocksScanNode {
+  1: optional Types.TTupleId tuple_id
+  2: optional string db_name
+  3: optional string table_name
+  4: optional string opaqued_query_plan
+  5: optional map<string, string> properties
+}
+
 struct TConnectorScanNode {
   1: optional string connector_name
-  // // Scan node for hdfs
-  // 2: optional THdfsScanNode hdfs_scan_node
 }
 
 // binlog meta column names
@@ -1462,6 +1471,9 @@ struct TPlanNode {
   63: optional TLakeScanNode lake_scan_node;
 
   64: optional TNestLoopJoinNode nestloop_join_node;
+
+  // Scan node for external StarRocks cluster
+  65: optional TStarRocksScanNode starrocks_scan_node;
 
   // 70 ~ 80 are reserved for stream operators
   // Stream plan

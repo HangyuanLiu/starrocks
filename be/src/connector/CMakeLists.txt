@@ -21,6 +21,7 @@ ADD_BE_LIB(Connector
         jdbc_connector.cpp
         lake_connector.cpp
         mysql_connector.cpp
+        starrocks_connector.cpp
         file_connector.cpp
         binlog_connector.cpp
         iceberg_connector.cpp

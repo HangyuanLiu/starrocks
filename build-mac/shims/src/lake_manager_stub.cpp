@@ -112,7 +112,7 @@ Status ReplicationTxnManager::replicate_snapshot(const TReplicateSnapshotRequest
 }
 
 void SegmentPKIterator::close() {
-    pk_column.reset();
+    _pk_column_chunk.reset();
     _iter.reset();
     _begin_rowid_offsets.clear();
     _current_rows = 0;
@@ -139,5 +139,9 @@ std::vector<TabletWriteLogEntry> TabletWriteLogManager::get_logs(int64_t /*table
 LakePersistentIndexParallelCompactMgr::~LakePersistentIndexParallelCompactMgr() = default;
 
 void LakePersistentIndexParallelCompactMgr::shutdown() {}
+
+Status LakePersistentIndexParallelCompactMgr::update_max_threads(int /*max_threads*/) {
+    return Status::NotSupported("Lake storage is disabled on macOS");
+}
 
 } // namespace starrocks::lake

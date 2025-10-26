@@ -25,6 +25,8 @@ import com.starrocks.connector.jdbc.JDBCConnector;
 import com.starrocks.connector.kudu.KuduConnector;
 import com.starrocks.connector.odps.OdpsConnector;
 import com.starrocks.connector.paimon.PaimonConnector;
+import com.starrocks.connector.starrocks.StarRocksConnector;
+import com.starrocks.connector.starrocks.StarRocksConnectorConfig;
 import com.starrocks.connector.unified.UnifiedConnector;
 import org.apache.commons.lang3.EnumUtils;
 
@@ -42,6 +44,7 @@ public enum ConnectorType {
     PAIMON("paimon", PaimonConnector.class, null),
     ODPS("odps", OdpsConnector.class, null),
     KUDU("kudu", KuduConnector.class, null),
+    STARROCKS("starrocks", StarRocksConnector.class, StarRocksConnectorConfig.class),
     UNIFIED("unified", UnifiedConnector.class, null);
 
     public static final Set<ConnectorType> SUPPORT_TYPE_SET = EnumSet.of(
@@ -54,6 +57,7 @@ public enum ConnectorType {
             PAIMON,
             ODPS,
             KUDU,
+            STARROCKS,
             UNIFIED
     );
 
