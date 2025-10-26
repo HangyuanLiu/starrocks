@@ -45,6 +45,7 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalRawValuesOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalRepeatOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalSchemaScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalStarRocksScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalTableFunctionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalTableFunctionTableScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalTopNOperator;
@@ -90,6 +91,7 @@ import com.starrocks.sql.optimizer.operator.physical.PhysicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalRawValuesOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalRepeatOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalSchemaScanOperator;
+import com.starrocks.sql.optimizer.operator.physical.PhysicalStarRocksScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalTableFunctionOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalTableFunctionTableScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalTopNOperator;
@@ -151,6 +153,10 @@ public abstract class OperatorVisitor<R, C> {
     }
 
     public R visitLogicalDeltaLakeScan(LogicalDeltaLakeScanOperator node, C context) {
+        return visitLogicalTableScan(node, context);
+    }
+
+    public R visitLogicalStarRocksScan(LogicalStarRocksScanOperator node, C context) {
         return visitLogicalTableScan(node, context);
     }
 
@@ -330,6 +336,10 @@ public abstract class OperatorVisitor<R, C> {
     }
 
     public R visitPhysicalDeltaLakeScan(PhysicalDeltaLakeScanOperator node, C context) {
+        return visitOperator(node, context);
+    }
+
+    public R visitPhysicalStarRocksScan(PhysicalStarRocksScanOperator node, C context) {
         return visitOperator(node, context);
     }
 

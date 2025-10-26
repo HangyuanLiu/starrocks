@@ -35,6 +35,7 @@ import com.starrocks.connector.partitiontraits.KuduPartitionTraits;
 import com.starrocks.connector.partitiontraits.OdpsPartitionTraits;
 import com.starrocks.connector.partitiontraits.OlapPartitionTraits;
 import com.starrocks.connector.partitiontraits.PaimonPartitionTraits;
+import com.starrocks.connector.partitiontraits.StarRocksPartitionTraits;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.common.PCellSortedSet;
@@ -76,6 +77,7 @@ public abstract class ConnectorPartitionTraits {
                     .put(Table.TableType.JDBC, JDBCPartitionTraits::new)
                     .put(Table.TableType.DELTALAKE, DeltaLakePartitionTraits::new)
                     .put(Table.TableType.BENCHMARK, BenchmarkPartitionTraits::new)
+                    .put(Table.TableType.STARROCKS, StarRocksPartitionTraits::new)
                     .build();
 
     protected Table table;

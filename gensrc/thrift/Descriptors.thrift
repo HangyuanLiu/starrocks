@@ -688,6 +688,13 @@ struct TJDBCTable {
     8: optional string jdbc_passwd
 }
 
+struct TStarRocksTable {
+    1: required string service_name
+    2: required string database_name
+    3: required string table_name
+    4: optional map<string, string> properties
+}
+
 // "Union" of all table types.
 struct TTableDescriptor {
   1: required Types.TTableId id
@@ -727,6 +734,9 @@ struct TTableDescriptor {
 
   // Paimon Table schema
   36: optional TPaimonTable paimonTable
+
+  // StarRocks Table schema
+  65: optional TStarRocksTable starRocksTable
 }
 
 struct TDescriptorTable {

@@ -18,6 +18,7 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.planner.OlapScanNode;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.planner.SchemaScanNode;
+import com.starrocks.planner.StarRocksScanNode;
 import com.starrocks.qe.BackendSelector;
 import com.starrocks.qe.BucketAwareBackendSelector;
 import com.starrocks.qe.ColocatedBackendSelector;
@@ -28,6 +29,7 @@ import com.starrocks.qe.NoopBackendSelector;
 import com.starrocks.qe.NormalBackendSelector;
 import com.starrocks.qe.ReplicatedBackendSelector;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.qe.StarRocksBackendSelector;
 import com.starrocks.qe.scheduler.WorkerProvider;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.thrift.TScanRangeLocations;
@@ -62,6 +64,9 @@ public class BackendSelectorFactory {
 
         if (scanNode instanceof SchemaScanNode) {
             return new NormalBackendSelector(scanNode, locations, assignment, workerProvider, false);
+        } else if (scanNode instanceof StarRocksScanNode) {
+            return new StarRocksBackendSelector(scanNode, locations, assignment, workerProvider,
+                    sessionVariable.getHDFSBackendSelectorScanRangeShuffle(), useIncrementalScanRanges, connectContext);
         } else if (scanNode.isConnectorScanNode()) {
             boolean hasColocate = execFragment.isColocated();
             boolean hasBucket = execFragment.isLocalBucketShuffleJoin();
