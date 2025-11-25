@@ -15,7 +15,6 @@
 
 package com.starrocks.sql.ast;
 
-import com.starrocks.common.proc.ProcNodeInterface;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.LimitElement;
 import com.starrocks.sql.parser.NodePosition;
@@ -41,7 +40,7 @@ public class ShowAlterStmt extends ShowStmt {
     private String dbName;
     private final Expr whereClause;
     private HashMap<String, Expr> filterMap;
-    private ProcNodeInterface node;
+    private String procPath;
 
     public ShowAlterStmt(AlterType type, String dbName, Expr whereClause, List<OrderByElement> orderByElements,
                          LimitElement limitElement) {
@@ -82,10 +81,6 @@ public class ShowAlterStmt extends ShowStmt {
         return orderByPairs;
     }
 
-    public ProcNodeInterface getNode() {
-        return this.node;
-    }
-
     public Expr getWhereClause() {
         return whereClause;
     }
@@ -94,8 +89,12 @@ public class ShowAlterStmt extends ShowStmt {
         return orderByElements;
     }
 
-    public void setNode(ProcNodeInterface node) {
-        this.node = node;
+    public String getProcPath() {
+        return procPath;
+    }
+
+    public void setProcPath(String procPath) {
+        this.procPath = procPath;
     }
 
     public void setFilter(HashMap<String, Expr> filterMap) {
