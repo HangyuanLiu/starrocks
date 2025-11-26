@@ -408,7 +408,7 @@ public class LakeTableSchemaChangeJobTest {
         Assertions.assertEquals(AlterJobV2.JobState.FINISHED_REWRITING, schemaChangeJob.getJobState());
 
         // LakeTablet alter job will not mark tablet force delete into TabletInvertedIndex
-        Assertions.assertTrue(GlobalStateMgr.getCurrentState().getTabletInvertedIndex().getForceDeleteTablets().isEmpty());
+        Assertions.assertTrue(GlobalStateMgr.getCurrentState().getForceDeleteTracker().snapshot().isEmpty());
 
         // Drop the table, now it's ok to cancel the job
         db.dropTable(table.getName());

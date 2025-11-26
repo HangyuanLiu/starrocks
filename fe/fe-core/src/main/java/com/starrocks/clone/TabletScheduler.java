@@ -1417,8 +1417,8 @@ public class TabletScheduler extends FrontendDaemon {
             sendDeleteReplicaTask(replica.getBackendId(), tabletCtx.getTabletId(), tabletCtx.getSchemaHash());
         }
         // NOTE: TabletScheduler is specific for LocalTablet, LakeTablet will never go here.
-        GlobalStateMgr.getCurrentState().getTabletInvertedIndex()
-                .markTabletForceDelete(tabletCtx.getTabletId(), replica.getBackendId());
+        GlobalStateMgr.getCurrentState().getForceDeleteTracker()
+                .mark(tabletCtx.getTabletId(), replica.getBackendId());
 
         // write edit log
         ReplicaPersistInfo info = ReplicaPersistInfo.createForDelete(tabletCtx.getDbId(),

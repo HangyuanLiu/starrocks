@@ -63,6 +63,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.DictionaryMgr;
 import com.starrocks.catalog.DomainResolver;
+import com.starrocks.catalog.ForceDeleteTracker;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.GlobalFunctionMgr;
@@ -375,6 +376,7 @@ public class GlobalStateMgr {
     private final JournalObservable journalObservable;
 
     private final TabletInvertedIndex tabletInvertedIndex;
+    private final ForceDeleteTracker forceDeleteTracker;
     private ColocateTableIndex colocateTableIndex;
 
     private final CatalogRecycleBin recycleBin;
@@ -572,6 +574,10 @@ public class GlobalStateMgr {
         return this.tabletInvertedIndex;
     }
 
+    public ForceDeleteTracker getForceDeleteTracker() {
+        return forceDeleteTracker;
+    }
+
     // only for test
     public void setColocateTableIndex(ColocateTableIndex colocateTableIndex) {
         this.colocateTableIndex = colocateTableIndex;
@@ -696,6 +702,7 @@ public class GlobalStateMgr {
         this.journalObservable = new JournalObservable();
 
         this.tabletInvertedIndex = new TabletInvertedIndex();
+        this.forceDeleteTracker = new ForceDeleteTracker();
         this.colocateTableIndex = new ColocateTableIndex();
         this.recycleBin = new CatalogRecycleBin();
         this.functionSet = new FunctionSet();

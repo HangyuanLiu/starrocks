@@ -34,16 +34,13 @@
 
 package com.starrocks.catalog;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.starrocks.common.Config;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.concurrent.QueryableReentrantReadWriteLock;
-import com.starrocks.lake.LakeTablet;
 import com.starrocks.memory.MemoryTrackable;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.thrift.TStorageMedium;
@@ -55,7 +52,6 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -80,9 +76,6 @@ public class TabletInvertedIndex implements MemoryTrackable {
 
     // replica id -> tablet id
     private final Map<Long, Long> replicaToTabletMap = new Long2LongOpenHashMap();
-
-    // tablet id -> backend set
-    private final Map<Long, Set<Long>> forceDeleteTablets = new Long2ObjectOpenHashMap<>();
 
     // tablet id -> (backend id -> replica)
     private final Map<Long, Map<Long, Replica>> replicaMetaTable = new Long2ObjectOpenHashMap<>();
@@ -154,81 +147,13 @@ public class TabletInvertedIndex implements MemoryTrackable {
         }
     }
 
-    @VisibleForTesting
-    public Map<Long, Set<Long>> getForceDeleteTablets() {
-        readLock();
-        try {
-            return forceDeleteTablets;
-        } finally {
-            readUnlock();
-        }
-    }
-
-    public boolean tabletForceDelete(long tabletId, long backendId) {
-        readLock();
-        try {
-            if (forceDeleteTablets.containsKey(tabletId)) {
-                return forceDeleteTablets.get(tabletId).contains(backendId);
-            }
-            return false;
-        } finally {
-            readUnlock();
-        }
-    }
-
-    public void markTabletForceDelete(long tabletId, long backendId) {
-        writeLock();
-        try {
-            if (forceDeleteTablets.containsKey(tabletId)) {
-                forceDeleteTablets.get(tabletId).add(backendId);
-            } else {
-                forceDeleteTablets.put(tabletId, Sets.newHashSet(backendId));
-            }
-        } finally {
-            writeUnlock();
-        }
-    }
-
-    public void markTabletForceDelete(long tabletId, Set<Long> backendIds) {
-        if (backendIds.isEmpty()) {
-            return;
-        }
-        writeLock();
-        try {
-            forceDeleteTablets.put(tabletId, backendIds);
-        } finally {
-            writeUnlock();
-        }
-    }
-
-    public void markTabletForceDelete(Tablet tablet) {
-        // LakeTablet is managed by StarOS, no need to do this mark and clean up
-        if (tablet instanceof LakeTablet) {
-            return;
-        }
-        markTabletForceDelete(tablet.getId(), tablet.getBackendIds());
-    }
-
-    public void eraseTabletForceDelete(long tabletId, long backendId) {
-        writeLock();
-        try {
-            if (forceDeleteTablets.containsKey(tabletId)) {
-                forceDeleteTablets.get(tabletId).remove(backendId);
-                if (forceDeleteTablets.get(tabletId).isEmpty()) {
-                    forceDeleteTablets.remove(tabletId);
-                }
-            }
-        } finally {
-            writeUnlock();
-        }
-    }
-
     public void deleteTablet(long tabletId) {
         if (GlobalStateMgr.isCheckpointThread()) {
             return;
         }
         writeLock();
         try {
+            GlobalStateMgr.getCurrentState().getForceDeleteTracker().eraseTablet(tabletId);
             Map<Long, Replica> replicas = replicaMetaTable.remove(tabletId);
             if (replicas != null) {
                 for (Replica replica : replicas.values()) {
@@ -474,6 +399,7 @@ public class TabletInvertedIndex implements MemoryTrackable {
             replicaToTabletMap.clear();
             replicaMetaTable.clear();
             backingReplicaMetaTable.clear();
+            GlobalStateMgr.getCurrentState().getForceDeleteTracker().clear();
         } finally {
             writeUnlock();
         }

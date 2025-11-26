@@ -406,8 +406,8 @@ public class OlapDeleteJob extends DeleteJob {
     protected List<TabletCommitInfo> getTabletCommitInfos() {
         List<TabletCommitInfo> tabletCommitInfos = Lists.newArrayList();
         TabletInvertedIndex invertedIndex = GlobalStateMgr.getCurrentState().getTabletInvertedIndex();
-        for (TabletDeleteInfo tDeleteInfo : getTabletDeleteInfo()) {
-            for (Replica replica : tDeleteInfo.getFinishedReplicas()) {
+        for (TabletDeleteInfo tabletDeleteInfo : getTabletDeleteInfo()) {
+            for (Replica replica : tabletDeleteInfo.getFinishedReplicas()) {
                 // the inverted index contains rolling up replica
                 Long tabletId = invertedIndex.getTabletIdByReplica(replica.getId());
                 if (tabletId == null) {

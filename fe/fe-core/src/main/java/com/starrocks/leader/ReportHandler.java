@@ -51,6 +51,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.ColumnId;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.DiskInfo;
+import com.starrocks.catalog.ForceDeleteTracker;
 import com.starrocks.catalog.KeysType;
 import com.starrocks.catalog.LocalTablet;
 import com.starrocks.catalog.LocalTablet.TabletHealthStatus;
@@ -1333,6 +1334,7 @@ public class ReportHandler extends Daemon implements MemoryTrackable {
         int maxTaskSendPerBe = Config.max_agent_tasks_send_per_be;
         AgentBatchTask batchTask = new AgentBatchTask();
         TabletInvertedIndex invertedIndex = GlobalStateMgr.getCurrentState().getTabletInvertedIndex();
+        ForceDeleteTracker forceDeleteTracker = GlobalStateMgr.getCurrentState().getForceDeleteTracker();
         for (Long tabletId : backendTablets.keySet()) {
             TabletMeta tabletMeta = invertedIndex.getTabletMeta(tabletId);
             if (tabletMeta == null && maxTaskSendPerBe > 0) {
@@ -1343,10 +1345,10 @@ public class ReportHandler extends Daemon implements MemoryTrackable {
                 // continue to report them to FE forever and add some processing overhead(the tablet report
                 // process is protected with DB S lock).
                 addDropReplicaTask(batchTask, backendId, tabletId,
-                        -1 /* Unknown schema hash */, invertedIndex.tabletForceDelete(tabletId, backendId));
+                        -1 /* Unknown schema hash */, forceDeleteTracker.contains(tabletId, backendId));
                 LOG.debug("delete tablet[{}] from backend[{}] because not found in meta", tabletId, backendId);
                 if (!FeConstants.runningUnitTest) {
-                    invertedIndex.eraseTabletForceDelete(tabletId, backendId);
+                    forceDeleteTracker.erase(tabletId, backendId);
                 }
                 ++deleteFromBackendCounter;
                 --maxTaskSendPerBe;

@@ -124,7 +124,7 @@ public class InsertOverwriteJobRunnerTest {
         connectContext.getSessionVariable().setOptimizerExecuteTimeout(300000000);
         String sql = "insert overwrite t1 select * from t2";
         cluster.runSql("insert_overwrite_test", sql);
-        Assertions.assertFalse(GlobalStateMgr.getCurrentState().getTabletInvertedIndex().getForceDeleteTablets().isEmpty());
+        Assertions.assertFalse(GlobalStateMgr.getCurrentState().getForceDeleteTracker().snapshot().isEmpty());
     }
 
     @Test

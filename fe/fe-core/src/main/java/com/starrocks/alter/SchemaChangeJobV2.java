@@ -359,7 +359,7 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
                             .setBloomFilterColumnNames(bfColumns)
                             .setBloomFilterFpp(bfFpp)
                             .setIndexes(originIndexId == baseIndexId ?
-                                        indexes : OlapTable.getIndexesBySchema(indexes, shadowSchema))
+                                    indexes : OlapTable.getIndexesBySchema(indexes, shadowSchema))
                             .setSortKeyIndexes(originIndexId == baseIndexId ? sortKeyIdxes : null)
                             .setSortKeyUniqueIds(originIndexId == baseIndexId ? sortKeyUniqueIds : null)
                             .addColumns(shadowSchema)
@@ -779,8 +779,8 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
                         long baseTabletId = physicalPartitionIndexTabletMap.get(
                                 partitionId, shadowIdxId).get(shadowTablet.getId());
                         // NOTE: known for sure that only LocalTablet uses this SchemaChangeJobV2 class
-                        GlobalStateMgr.getCurrentState().getTabletInvertedIndex().
-                                markTabletForceDelete(baseTabletId, shadowTablet.getBackendIds());
+                        GlobalStateMgr.getCurrentState().getForceDeleteTracker()
+                                .mark(baseTabletId, shadowTablet.getBackendIds());
                         List<Replica> replicas = ((LocalTablet) shadowTablet).getImmutableReplicas();
                         int healthyReplicaNum = 0;
                         for (Replica replica : replicas) {
@@ -1227,9 +1227,6 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
         }
         return taskInfos;
     }
-
-
-
 
     @Override
     public Optional<Long> getTransactionId() {

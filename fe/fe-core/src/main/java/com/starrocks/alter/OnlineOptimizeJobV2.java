@@ -486,7 +486,7 @@ public class OnlineOptimizeJobV2 extends AlterJobV2 implements GsonPostProcessab
 
             // mark all source tablet ids force delete to drop it directly on BE,
             // not to move it to trash
-            sourceTablets.forEach(GlobalStateMgr.getCurrentState().getTabletInvertedIndex()::markTabletForceDelete);
+            sourceTablets.forEach(GlobalStateMgr.getCurrentState().getForceDeleteTracker()::mark);
 
             try {
                 GlobalStateMgr.getCurrentState().getColocateTableIndex().updateLakeTableColocationInfo(targetTable,
@@ -579,7 +579,7 @@ public class OnlineOptimizeJobV2 extends AlterJobV2 implements GsonPostProcessab
             }
             // mark all tmp tablet ids force delete to drop it directly on BE,
             // not to move it to trash
-            tmpTablets.forEach(GlobalStateMgr.getCurrentState().getTabletInvertedIndex()::markTabletForceDelete);
+            tmpTablets.forEach(GlobalStateMgr.getCurrentState().getForceDeleteTracker()::mark);
             targetTable.setState(OlapTableState.NORMAL);
         } catch (Exception e) {
             LOG.warn("exception when cancel optimize job.", e);
@@ -678,7 +678,7 @@ public class OnlineOptimizeJobV2 extends AlterJobV2 implements GsonPostProcessab
                 targetTable.dropTempPartition(partition.getName(), true);
             }
         }
-        sourceTablets.forEach(GlobalStateMgr.getCurrentState().getTabletInvertedIndex()::markTabletForceDelete);
+        sourceTablets.forEach(GlobalStateMgr.getCurrentState().getForceDeleteTracker()::mark);
 
         if (allPartitionOptimized) {
             this.distributionInfo = replayedJob.distributionInfo;

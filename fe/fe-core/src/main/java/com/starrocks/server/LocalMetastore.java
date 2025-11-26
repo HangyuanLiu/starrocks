@@ -4746,7 +4746,7 @@ public class LocalMetastore implements ConnectorMetadata, MVRepairHandler, Memor
             // happening is small, and the trash data will be deleted by BE anyway, but we need to find a better
             // solution.
             if (!isReplay) {
-                index.markTabletForceDelete(tablet);
+                GlobalStateMgr.getCurrentState().getForceDeleteTracker().mark(tablet);
             }
         }
     }

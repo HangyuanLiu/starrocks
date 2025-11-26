@@ -743,7 +743,7 @@ public class MergePartitionJob extends AlterJobV2 implements GsonPostProcessable
             }
             // mark all source tablet ids force delete to drop it directly on BE,
             // not to move it to trash
-            sourceTablets.forEach(GlobalStateMgr.getCurrentState().getTabletInvertedIndex()::markTabletForceDelete);
+            sourceTablets.forEach(GlobalStateMgr.getCurrentState().getForceDeleteTracker()::mark);
 
             try {
                 GlobalStateMgr.getCurrentState().getColocateTableIndex().updateLakeTableColocationInfo(targetTable,
@@ -832,7 +832,7 @@ public class MergePartitionJob extends AlterJobV2 implements GsonPostProcessable
             }
             // mark all source tablet ids force delete to drop it directly on BE,
             // not to move it to trash
-            sourceTablets.forEach(GlobalStateMgr.getCurrentState().getTabletInvertedIndex()::markTabletForceDelete);
+            sourceTablets.forEach(GlobalStateMgr.getCurrentState().getForceDeleteTracker()::mark);
             targetTable.setState(OlapTableState.NORMAL);
         } catch (Exception e) {
             LOG.warn("exception when cancel merge partition job.", e);
@@ -920,7 +920,7 @@ public class MergePartitionJob extends AlterJobV2 implements GsonPostProcessable
                 targetTable.dropTempPartition(partition.getName(), true);
             }
         }
-        sourceTablets.forEach(GlobalStateMgr.getCurrentState().getTabletInvertedIndex()::markTabletForceDelete);
+        sourceTablets.forEach(GlobalStateMgr.getCurrentState().getForceDeleteTracker()::mark);
 
         targetTable.setState(OlapTableState.NORMAL);
 
