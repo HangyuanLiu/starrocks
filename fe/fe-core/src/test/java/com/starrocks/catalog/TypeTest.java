@@ -51,6 +51,7 @@ import com.starrocks.type.BooleanType;
 import com.starrocks.type.CharType;
 import com.starrocks.type.DateType;
 import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.FunctionType;
 import com.starrocks.type.HLLType;
@@ -235,7 +236,7 @@ public class TypeTest {
         Object[][] testCases = new Object[][] {
                 {BooleanType.BOOLEAN, "tinyint"},
                 {IntegerType.LARGEINT, "bigint unsigned"},
-                {TypeFactory.createDecimalV3NarrowestType(18, 4), "decimal"},
+                {DecimalTypeFactory.createDecimalV3NarrowestType(18, 4), "decimal"},
                 {new ArrayType(IntegerType.INT), "array"},
                 {new MapType(IntegerType.INT, IntegerType.INT), "map"},
                 {new StructType(Lists.newArrayList(IntegerType.INT)), "struct"},
@@ -253,7 +254,7 @@ public class TypeTest {
         Object[][] testCases = new Object[][] {
                 {BooleanType.BOOLEAN, "tinyint(1)"},
                 {IntegerType.LARGEINT, "bigint(20) unsigned"},
-                {TypeFactory.createDecimalV3NarrowestType(18, 4), "decimal(18, 4)"},
+                {DecimalTypeFactory.createDecimalV3NarrowestType(18, 4), "decimal(18, 4)"},
                 {new ArrayType(IntegerType.INT), "array<int(11)>"},
                 {new MapType(IntegerType.INT, IntegerType.INT), "map<int(11),int(11)>"},
                 {new StructType(Lists.newArrayList(IntegerType.INT)), "struct<col1 int(11)>"},
@@ -418,7 +419,7 @@ public class TypeTest {
 
     @Test
     public void testExtendedPrecision() {
-        ScalarType type = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 10, 4);
+        ScalarType type = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 10, 4);
         Assertions.assertSame(type, ColumnDefAnalyzer.extendedPrecision(type, true));
         Assertions.assertNotSame(type, ColumnDefAnalyzer.extendedPrecision(type, false));
     }

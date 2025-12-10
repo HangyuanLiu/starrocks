@@ -32,6 +32,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
 import com.starrocks.sql.optimizer.transformer.RelationTransformer;
 import com.starrocks.type.BooleanType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.PrimitiveType;
@@ -113,7 +114,7 @@ public class AnalyzeDecimalV3Test {
         List<Expr> items = ((SelectRelation) queryRelation).getOutputExpression();
         Assertions.assertTrue(items.size() == 2 && items.get(1) != null);
         Type type = items.get(1).getType();
-        Assertions.assertEquals(type, TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 2));
+        Assertions.assertEquals(type, DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 2));
     }
 
     @Test
@@ -148,7 +149,7 @@ public class AnalyzeDecimalV3Test {
 
         Assertions.assertTrue(items.size() == 1 && items.get(0) != null);
         Type type = items.get(0).getType();
-        Assertions.assertEquals(type, TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2));
+        Assertions.assertEquals(type, DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2));
     }
 
     @Test
@@ -165,7 +166,7 @@ public class AnalyzeDecimalV3Test {
 
         Assertions.assertTrue(items.size() == 1 && items.get(0) != null);
         Type type = items.get(0).getType();
-        Assertions.assertEquals(type, TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2));
+        Assertions.assertEquals(type, DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2));
     }
 
     @Test
@@ -187,9 +188,9 @@ public class AnalyzeDecimalV3Test {
         List<Expr> items = ((SelectRelation) queryRelation).getOutputExpression();
 
         Type[] expectTypes = Arrays.asList(
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30)
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30)
         ).toArray(new Type[0]);
         Assertions.assertTrue(items.size() == 6);
         Assertions.assertTrue(expectTypes.length == 3);
@@ -231,15 +232,15 @@ public class AnalyzeDecimalV3Test {
         List<Expr> items = ((SelectRelation) queryRelation).getOutputExpression();
 
         Type[] expectArgTypes = Arrays.asList(
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18)
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18)
         ).toArray(new Type[0]);
 
         Type[] expectReturnTypes = Arrays.asList(
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 4),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 10),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18)
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 4),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 10),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18)
         ).toArray(new Type[0]);
         Assertions.assertTrue(items.size() == 9);
         Assertions.assertTrue(expectArgTypes.length == 3);
@@ -351,11 +352,11 @@ public class AnalyzeDecimalV3Test {
         QueryRelation queryRelation = analyzeSuccess(sql1);
         List<Expr> items = ((SelectRelation) queryRelation).getOutputExpression();
 
-        ScalarType targetDecimal32Type = TypeFactory.createDecimalV3Type(
+        ScalarType targetDecimal32Type = DecimalTypeFactory.createDecimalV3Type(
                 PrimitiveType.DECIMAL32, 7, 4);
-        ScalarType targetDecimal64Type = TypeFactory.createDecimalV3Type(
+        ScalarType targetDecimal64Type = DecimalTypeFactory.createDecimalV3Type(
                 PrimitiveType.DECIMAL64, 18, 16);
-        ScalarType targetDecimal128Type = TypeFactory.createDecimalV3Type(
+        ScalarType targetDecimal128Type = DecimalTypeFactory.createDecimalV3Type(
                 PrimitiveType.DECIMAL128, 30, 7);
         Assertions.assertEquals(items.get(0).getType(), targetDecimal32Type);
         Assertions.assertEquals(items.get(1).getType(), targetDecimal64Type);
@@ -402,42 +403,42 @@ public class AnalyzeDecimalV3Test {
     @Test
     public void testDecimal128TypedBetweenPredicatePushDown() throws Exception {
         String predicate = "col_decimal_p38s30 between -999.99 and 999.99";
-        Type decimal128p38s30 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30);
+        Type decimal128p38s30 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30);
         testDecimalTypedPredicatePushDownHelper(predicate, decimal128p38s30);
     }
 
     @Test
     public void testDecimal64TypedBetweenPredicatePushDown() throws Exception {
         String predicate = "col_decimal_p15s10 between -999.99 and 999.99";
-        Type decimal64p15s10 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10);
+        Type decimal64p15s10 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10);
         testDecimalTypedPredicatePushDownHelper(predicate, decimal64p15s10);
     }
 
     @Test
     public void testDecimal32TypedBetweenPredicatePushDown() throws Exception {
         String predicate = "col_decimal_p9s4 between -999.99 and 999.99";
-        Type decimal32p9s4 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4);
+        Type decimal32p9s4 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4);
         testDecimalTypedPredicatePushDownHelper(predicate, decimal32p9s4);
     }
 
     @Test
     public void testDecimal128TypedCompoundPredicatePushDown() throws Exception {
         String predicate = "-999.99 < col_decimal_p38s30 and 999.99 > col_decimal_p38s30";
-        Type decimal128p38s30 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30);
+        Type decimal128p38s30 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30);
         testDecimalTypedPredicatePushDownHelper(predicate, decimal128p38s30);
     }
 
     @Test
     public void testDecimal64TypedCompoundPredicatePushDown() throws Exception {
         String predicate = "col_decimal_p15s10 <= -999.99 or col_decimal_p15s10 >= 999.99";
-        Type decimal64p15s10 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10);
+        Type decimal64p15s10 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10);
         testDecimalTypedPredicatePushDownHelper(predicate, decimal64p15s10);
     }
 
     @Test
     public void testDecimal32TypedCompoundPredicatePushDown() throws Exception {
         String predicate = "col_decimal_p9s4 != -999.99 and  col_decimal_p9s4 is NULL";
-        Type decimal32p9s4 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4);
+        Type decimal32p9s4 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4);
         testDecimalTypedPredicatePushDownHelper(predicate, decimal32p9s4);
     }
 
@@ -465,21 +466,21 @@ public class AnalyzeDecimalV3Test {
     @Test
     public void testDecimal128TypedInPredicatePushDown() throws Exception {
         String predicate = "col_decimal_p38s30 in (999.999, -999.999, -1, 0, +1)";
-        Type decimal128p38s30 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30);
+        Type decimal128p38s30 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30);
         testDecimalTypedInPredicatePushDownHelper(predicate, 5, decimal128p38s30);
     }
 
     @Test
     public void testDecimal64TypedInPredicatePushDown() throws Exception {
         String predicate = "col_decimal_p15s10 not in (0, 1)";
-        Type decimal64p15s10 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10);
+        Type decimal64p15s10 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10);
         testDecimalTypedInPredicatePushDownHelper(predicate, 2, decimal64p15s10);
     }
 
     @Test
     public void testDecimal32TypedIntPredicatePushDown() throws Exception {
         String predicate = "col_decimal_p9s4 not in (2, 4)";
-        Type decimal32p9s4 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4);
+        Type decimal32p9s4 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4);
         testDecimalTypedInPredicatePushDownHelper(predicate, 2, decimal32p9s4);
     }
 
@@ -508,14 +509,14 @@ public class AnalyzeDecimalV3Test {
     public void testSmallIntDivDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col0_smallint/col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 6));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 6));
     }
 
     @Test
     public void testDecimal32p9s2DivDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col1_decimal_p9s2/col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 8));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 8));
     }
 
     @Test
@@ -529,35 +530,35 @@ public class AnalyzeDecimalV3Test {
     public void testDecimalv2DivDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal/col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 12));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 12));
     }
 
     @Test
     public void testDecimal128p38s3DivDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col0_nullable_decimal_p38s3/col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 9));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 9));
     }
 
     @Test
     public void testDecimal128p38s30DivDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal_p38s30/col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
     }
 
     @Test
     public void testDecimal128p38s3DivDecimal128p38s3() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal_p38s30/col1_nullable_decimal_p38s3",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
     }
 
     @Test
     public void testDecimal64p15s10DivDecimal64p15s10() throws Exception {
         testDecimalArithmeticHelper(
                 "col_nullable_decimal_p15s10/col_decimal_p15s10",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 12));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 12));
     }
 
     @Test
@@ -565,7 +566,7 @@ public class AnalyzeDecimalV3Test {
         assertThrows(SemanticException.class, () -> {
             testDecimalArithmeticHelper(
                     "col_decimal_p38s30/col_nullable_decimal_p15s10",
-                    TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                    DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
             Assertions.fail("should not reach here");
         });
     }
@@ -575,7 +576,7 @@ public class AnalyzeDecimalV3Test {
         assertThrows(SemanticException.class, () -> {
             testDecimalArithmeticHelper(
                     "col_decimal_p38s30/col_decimal_p38s30",
-                    TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                    DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
             Assertions.fail("should not reach here");
         });
     }
@@ -585,7 +586,7 @@ public class AnalyzeDecimalV3Test {
         assertThrows(SemanticException.class, () -> {
             testDecimalArithmeticHelper(
                     "col_decimal_p38s30/col_decimal_p9s9",
-                    TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                    DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
             Assertions.fail("should not reach here");
         });
     }
@@ -595,7 +596,7 @@ public class AnalyzeDecimalV3Test {
     public void testDecimal32p9s2ModDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col1_decimal_p9s2%col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 2));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 2));
     }
 
     public void testDoubleModDecimal32p9s2() throws Exception {
@@ -608,56 +609,56 @@ public class AnalyzeDecimalV3Test {
     public void testDecimalv2ModDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal%col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 9));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 9));
     }
 
     @Test
     public void testDecimal128p38s3ModDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col0_nullable_decimal_p38s3%col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 3));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 3));
     }
 
     @Test
     public void testDecimal128p38s30ModDecimal32p9s2() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal_p38s30%col0_decimal_p9s2",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
     }
 
     @Test
     public void testDecimal128p38s3ModDecimal128p38s3() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal_p38s30%col1_nullable_decimal_p38s3",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
     }
 
     @Test
     public void testDecimal64p15s10ModDecimal64p15s10() throws Exception {
         testDecimalArithmeticHelper(
                 "col_nullable_decimal_p15s10%col_decimal_p15s10",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 10));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 10));
     }
 
     @Test
     public void testDecimal128p38s30ModDecimal64p15s10() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal_p38s30%col_nullable_decimal_p15s10",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
     }
 
     @Test
     public void testDecimal128p38s30ModDecimal128p38s30() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal_p38s30%col_decimal_p38s30",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
     }
 
     @Test
     public void testDecimal128p38s30ModDecimal32p9s9() throws Exception {
         testDecimalArithmeticHelper(
                 "col_decimal_p38s30%col_decimal_p9s9",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
     }
 
     @Test
@@ -703,7 +704,7 @@ public class AnalyzeDecimalV3Test {
                     ((LogicalProjectOperator) logicalPlan.getRoot().getOp()).getColumnRefMap()
                             .get(logicalPlan.getOutputColumn().get(0));
 
-            Type decimal128p38s5 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 24, 12);
+            Type decimal128p38s5 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 24, 12);
             Assertions.assertEquals(op.getChild(0).getType(), decimal128p38s5);
             Assertions.assertEquals(op.getChild(1).getType(), decimal128p38s5);
         }
@@ -727,8 +728,8 @@ public class AnalyzeDecimalV3Test {
         {
             SelectRelation queryRelation = (SelectRelation) analyzeSuccess(sql);
             Expr expr = queryRelation.getOutputExpression().get(0);
-            Type decimal128p38s8 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 8);
-            Type decimal32p9s2 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2);
+            Type decimal128p38s8 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 8);
+            Type decimal32p9s2 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2);
             Assertions.assertEquals(expr.getType(), decimal128p38s8);
             Assertions.assertEquals(expr.getChild(0).getType(), decimal32p9s2);
         }
@@ -746,8 +747,8 @@ public class AnalyzeDecimalV3Test {
         {
             SelectRelation queryRelation = (SelectRelation) analyzeSuccess(sql);
             Expr expr = queryRelation.getOutputExpression().get(0);
-            Type decimal128p38s12 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 12);
-            Type decimal64p15s10 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10);
+            Type decimal128p38s12 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 12);
+            Type decimal64p15s10 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10);
             Assertions.assertEquals(expr.getType(), decimal128p38s12);
             Assertions.assertEquals(expr.getChild(0).getType(), decimal64p15s10);
         }
@@ -765,8 +766,8 @@ public class AnalyzeDecimalV3Test {
         {
             SelectRelation queryRelation = (SelectRelation) analyzeSuccess(sql);
             Expr expr = queryRelation.getOutputExpression().get(0);
-            Type decimal128p38s18 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18);
-            Type decimal128p38s30 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30);
+            Type decimal128p38s18 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18);
+            Type decimal128p38s30 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30);
             Assertions.assertEquals(decimal128p38s18, expr.getType());
             Assertions.assertEquals(decimal128p38s30, expr.getChild(0).getType());
         }
@@ -839,7 +840,7 @@ public class AnalyzeDecimalV3Test {
                     ((LogicalProjectOperator) logicalPlan.getRoot().getOp()).getColumnRefMap()
                             .get(logicalPlan.getOutputColumn().get(0));
 
-            Type decimal64p9s3 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 3);
+            Type decimal64p9s3 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 3);
             Assertions.assertEquals(op.getType(), decimal64p9s3);
             Assertions.assertEquals(op.getChild(0).getType(), decimal64p9s3);
             Assertions.assertEquals(op.getChild(1).getType(), decimal64p9s3);
@@ -877,12 +878,12 @@ public class AnalyzeDecimalV3Test {
         {
             SelectRelation queryRelation = (SelectRelation) analyzeSuccess(sql);
             List<Expr> items = ((SelectRelation) queryRelation).getOutputExpression();
-            Assertions.assertEquals(items.get(0).getType(), TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 9));
+            Assertions.assertEquals(items.get(0).getType(), DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 9));
             Assertions.assertEquals(items.get(1).getType(),
-                    TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10));
+                    DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10));
             Assertions.assertEquals(items.get(2).getType(), FloatType.DOUBLE);
             Assertions.assertEquals(items.get(3).getType(),
-                    TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
+                    DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 30));
         }
     }
 
@@ -903,9 +904,9 @@ public class AnalyzeDecimalV3Test {
             List<Expr> items = queryRelation.getOutputExpression();
             Assertions.assertEquals(items.get(0).getType(), FloatType.DOUBLE);
             Assertions.assertEquals(items.get(1).getType(),
-                    TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 0));
+                    DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 0));
             Assertions.assertEquals(items.get(2).getType(), FloatType.FLOAT);
-            Assertions.assertEquals(items.get(3).getType(), TypeFactory.createDecimalV3NarrowestType(3, 2));
+            Assertions.assertEquals(items.get(3).getType(), DecimalTypeFactory.createDecimalV3NarrowestType(3, 2));
             Assertions.assertEquals(items.get(4).getType(), TypeFactory.createDecimalV3TypeForZero(1));
         }
     }

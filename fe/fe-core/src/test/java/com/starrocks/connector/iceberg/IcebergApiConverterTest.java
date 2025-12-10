@@ -32,6 +32,7 @@ import com.starrocks.type.BooleanType;
 import com.starrocks.type.CharType;
 import com.starrocks.type.DateType;
 import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.MapType;
@@ -94,11 +95,11 @@ public class IcebergApiConverterTest {
         int scale = 5;
         org.apache.iceberg.types.Type icebergType = Types.DecimalType.of(precision, scale);
         Type resType = fromIcebergType(icebergType);
-        assertEquals(resType, TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, scale));
+        assertEquals(resType, DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, scale));
         resType = fromIcebergType(Types.DecimalType.of(10, scale));
-        assertEquals(resType, TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, scale));
+        assertEquals(resType, DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, scale));
         resType = fromIcebergType(Types.DecimalType.of(19, scale));
-        assertEquals(resType, TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 19, scale));
+        assertEquals(resType, DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 19, scale));
     }
 
     @Test

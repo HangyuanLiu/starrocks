@@ -43,6 +43,7 @@ import com.starrocks.type.AnyMapType;
 import com.starrocks.type.AnyStructType;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.MapType;
 import com.starrocks.type.StringType;
 import com.starrocks.type.StructType;
@@ -118,7 +119,7 @@ public class AggStateCombinatorTest extends MVTestBase {
 
     private Type mockType(Type type) {
         if (type.isDecimalOfAnyVersion()) {
-            return TypeFactory.createDecimalV3NarrowestType(10, 2);
+            return DecimalTypeFactory.createDecimalV3NarrowestType(10, 2);
         } else if (type.isChar()) {
             return TypeFactory.createCharType(100);
         } else if (type.isVarchar()) {

@@ -16,6 +16,7 @@ package com.starrocks.connector.jdbc;
 
 import com.google.common.collect.ImmutableSet;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
@@ -141,7 +142,7 @@ public class ClickhouseSchemaResolver extends JDBCSchemaResolver {
                 } else {
                     int precision = Integer.parseInt(precisionAndScale[0]);
                     int scale = Integer.parseInt(precisionAndScale[1]);
-                    return TypeFactory.createUnifiedDecimalType(precision, scale);
+                    return DecimalTypeFactory.createUnifiedDecimalType(precision, scale);
                 }
             default:
                 primitiveType = PrimitiveType.UNKNOWN_TYPE;

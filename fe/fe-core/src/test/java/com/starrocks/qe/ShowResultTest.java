@@ -28,6 +28,7 @@ import com.starrocks.thrift.TShowResultSetMetaData;
 import com.starrocks.type.BitmapType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.HLLType;
 import com.starrocks.type.IntegerType;
@@ -191,7 +192,7 @@ public class ShowResultTest {
                 .addColumn(new Column("explicit_col", IntegerType.INT))
                 .column("builder_col", VarcharType.VARCHAR)
                 .addColumn(new Column("another_explicit", TypeFactory.createCharType(10)))
-                .column("final_col", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4))
+                .column("final_col", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4))
                 .build();
 
         Assertions.assertEquals(4, metaData.getColumnCount());
@@ -287,10 +288,10 @@ public class ShowResultTest {
     public void testMetaDataDecimalTypes() {
         ShowResultSetMetaData metaData = ShowResultSetMetaData.builder()
                 .column("decimalv2_col", TypeFactory.createDecimalV2Type(10, 2))
-                .column("decimal32_col", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2))
-                .column("decimal64_col", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4))
-                .column("decimal128_col", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 8))
-                .column("decimal256_col", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 16))
+                .column("decimal32_col", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2))
+                .column("decimal64_col", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4))
+                .column("decimal128_col", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 8))
+                .column("decimal256_col", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 16))
                 .build();
 
         Assertions.assertEquals(5, metaData.getColumnCount());
@@ -646,9 +647,9 @@ public class ShowResultTest {
     @Test
     public void testResultSetToThriftWithDecimalV3Types() {
         ShowResultSetMetaData metaData = ShowResultSetMetaData.builder()
-                .addColumn(new Column("decimal32_col", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2)))
-                .addColumn(new Column("decimal64_col", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4)))
-                .addColumn(new Column("decimal128_col", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 8)))
+                .addColumn(new Column("decimal32_col", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2)))
+                .addColumn(new Column("decimal64_col", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4)))
+                .addColumn(new Column("decimal128_col", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 8)))
                 .build();
         
         List<List<String>> rows = Lists.newArrayList();

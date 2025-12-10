@@ -21,6 +21,7 @@ import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.MapType;
@@ -183,7 +184,7 @@ public class TrinoViewTest {
         Assertions.assertEquals(columnList.get(3).getType(), IntegerType.BIGINT);
         Assertions.assertEquals(columnList.get(4).getType(), FloatType.FLOAT);
         Assertions.assertEquals(columnList.get(5).getType(), FloatType.DOUBLE);
-        Assertions.assertEquals(columnList.get(6).getType(), TypeFactory.createDecimalV3NarrowestType(10, 2));
+        Assertions.assertEquals(columnList.get(6).getType(), DecimalTypeFactory.createDecimalV3NarrowestType(10, 2));
         Assertions.assertEquals(columnList.get(7).getType(), TypeFactory.createVarcharType(20));
         Assertions.assertEquals(columnList.get(8).getType(), TypeFactory.createCharType(10));
         Assertions.assertEquals(columnList.get(9).getType(), TypeFactory.createDefaultCatalogString());

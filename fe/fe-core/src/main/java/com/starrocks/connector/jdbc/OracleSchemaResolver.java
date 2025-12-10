@@ -23,6 +23,7 @@ import com.starrocks.common.DdlException;
 import com.starrocks.common.SchemaConstants;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
@@ -154,7 +155,7 @@ public class OracleSchemaResolver extends JDBCSchemaResolver {
             if (precision == 0) {
                 return TypeFactory.createVarcharType(TypeFactory.CATALOG_MAX_VARCHAR_LENGTH);
             }
-            return TypeFactory.createUnifiedDecimalType(precision, max(digits, 0));
+            return DecimalTypeFactory.createUnifiedDecimalType(precision, max(digits, 0));
         }
     }
 

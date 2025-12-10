@@ -23,10 +23,10 @@ import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.type.DateType;
 import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.PrimitiveType;
-import com.starrocks.type.TypeFactory;
 import com.starrocks.type.VarcharType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -103,17 +103,17 @@ public class ScalarOperatorFunctionsTest {
         O_LI_NEG_100 = ConstantOperator.createLargeInt(new BigInteger("-100"));
         O_DECIMAL_100 = ConstantOperator.createDecimal(new BigDecimal(100), DecimalType.DECIMALV2);
         O_DECIMAL32P7S2_100 = ConstantOperator.createDecimal(new BigDecimal(100),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 7, 2));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 7, 2));
         O_DECIMAL32P9S0_100 = ConstantOperator.createDecimal(new BigDecimal(100),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 0));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 0));
         O_DECIMAL64P15S10_100 = ConstantOperator.createDecimal(new BigDecimal(100),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 15, 10));
         O_DECIMAL64P18S15_100 = ConstantOperator.createDecimal(new BigDecimal(100),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 15));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 15));
         O_DECIMAL128P38S20_100 = ConstantOperator.createDecimal(new BigDecimal(100),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 20));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 20));
         O_DECIMAL128P30S2_100 = ConstantOperator.createDecimal(new BigDecimal(100),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 30, 2));
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 30, 2));
     }
 
     @Test

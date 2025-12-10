@@ -27,6 +27,7 @@ import com.starrocks.thrift.TTypeNode;
 import com.starrocks.thrift.TTypeNodeType;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.HLLType;
 import com.starrocks.type.IntegerType;
@@ -760,7 +761,7 @@ public class TypeDeserializerTest {
                 TypeFactory.createCharType(10),
                 TypeFactory.createVarcharType(255),
                 TypeFactory.createDecimalV2Type(10, 4),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 6),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 6),
                 new ArrayType(IntegerType.INT),
                 new MapType(TypeFactory.createVarcharType(100), IntegerType.BIGINT), // Use explicit length for VARCHAR key
                 new StructType(Lists.newArrayList(

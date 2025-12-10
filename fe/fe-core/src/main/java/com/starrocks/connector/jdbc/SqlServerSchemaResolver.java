@@ -18,10 +18,12 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.JDBCTable;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.DdlException;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.ScalarType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
+import com.starrocks.type.TypeRegister;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -101,7 +103,7 @@ public class SqlServerSchemaResolver extends JDBCSchemaResolver {
                 if (columnSize > 0) {
                     return TypeFactory.createVarcharType(columnSize);
                 } else {
-                    return TypeFactory.createVarcharType(TypeFactory.getOlapMaxVarcharLength());
+                    return TypeFactory.createVarcharType(TypeRegister.getOlapMaxVarcharLength());
                 }
             // DATETIMEOFFSET
             case -155:
@@ -111,7 +113,7 @@ public class SqlServerSchemaResolver extends JDBCSchemaResolver {
             case Types.LONGNVARCHAR:
                 if (typeName.equalsIgnoreCase("text") || typeName.equalsIgnoreCase("ntext") ||
                         typeName.equalsIgnoreCase("xml")) {
-                    return TypeFactory.createVarcharType(TypeFactory.getOlapMaxVarcharLength());
+                    return TypeFactory.createVarcharType(TypeRegister.getOlapMaxVarcharLength());
                 } else if (typeName.equalsIgnoreCase("datetimeoffset")) {
                     return TypeFactory.createVarcharType(columnSize);
                 }
@@ -151,7 +153,7 @@ public class SqlServerSchemaResolver extends JDBCSchemaResolver {
             if (precision == 0) {
                 return TypeFactory.createVarcharType(TypeFactory.CATALOG_MAX_VARCHAR_LENGTH);
             }
-            return TypeFactory.createUnifiedDecimalType(precision, max(digits, 0));
+            return DecimalTypeFactory.createUnifiedDecimalType(precision, max(digits, 0));
 
         }
 

@@ -16,10 +16,16 @@ package com.starrocks.sql.ast.expression;
 
 import com.google.common.base.Preconditions;
 import com.starrocks.common.AnalysisException;
+import com.starrocks.common.Config;
 import com.starrocks.common.util.DateUtils;
+import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.sql.parser.ParsingException;
+import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.Type;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 /**
@@ -60,7 +66,7 @@ public final class LiteralExprFactory {
                 case DECIMAL64:
                 case DECIMAL128:
                 case DECIMAL256:
-                    literalExpr = new DecimalLiteral(value);
+                    literalExpr = createDecimalLiteral(value);
                     break;
                 case CHAR:
                 case VARCHAR:
@@ -142,7 +148,7 @@ public final class LiteralExprFactory {
             case DECIMAL64:
             case DECIMAL128:
             case DECIMAL256:
-                literalExpr = new DecimalLiteral("0");
+                literalExpr = createDecimalLiteral(BigDecimal.ZERO);
                 break;
             case CHAR:
             case VARCHAR:
@@ -160,5 +166,74 @@ public final class LiteralExprFactory {
         }
         Preconditions.checkNotNull(literalExpr);
         return literalExpr;
+    }
+
+    private static DecimalLiteral createDecimalLiteral(String value) {
+        try {
+            return createDecimalLiteral(new BigDecimal(value));
+        } catch (NumberFormatException e) {
+            throw new ParsingException("Invalid floating-point literal: " + value, e);
+        }
+    }
+
+    public static DecimalLiteral createDecimalLiteral(BigDecimal bigDecimal) {
+        return createDecimalLiteral(bigDecimal, NodePosition.ZERO);
+    }
+
+    public static DecimalLiteral createDecimalLiteral(BigDecimal bigDecimal, NodePosition pos) {
+        // Currently, our storage engine doesn't support scientific notation.
+        // So we remove exponent field here.
+        BigDecimal value = new BigDecimal(bigDecimal.toPlainString());
+
+        Type type;
+        if (!Config.enable_decimal_v3) {
+            type = DecimalType.DECIMALV2;
+        } else {
+            int precision = getRealPrecision(value);
+            int scale = getRealScale(value);
+            int integerPartWidth = precision - scale;
+            int maxIntegerPartWidth = 76;
+            // integer part of decimal literal should not exceed 76
+            if (integerPartWidth > maxIntegerPartWidth) {
+                String errMsg = String.format(
+                        "Non-typed decimal literal is overflow, value='%s' (precision=%d, scale=%d)",
+                        bigDecimal.toPlainString(), precision, scale);
+                throw new InternalError(errMsg);
+            }
+            // round to low-resolution decimal if decimal literal's resolution is too high
+            scale = Math.min(maxIntegerPartWidth - integerPartWidth, scale);
+            precision = integerPartWidth + scale;
+            value = value.setScale(scale, RoundingMode.HALF_UP);
+            type = DecimalTypeFactory.createDecimalV3NarrowestType(precision, scale);
+        }
+
+        return new DecimalLiteral(value, type, pos);
+    }
+
+    // Precision and scale of BigDecimal is subtly different from Decimal32/64/128/256.
+    // In BigDecimal, the precision is the number of digits in the unscaled BigInteger value.
+    // there are two types of subnormal BigDecimal violate the invariants:  0 < P and 0 <= S <= P
+    // type 1: 0 <= S but S > P.  i.e. BigDecimal("0.0001"), unscaled BigInteger is 1, the scale is 4
+    // type 2: S < 0. i.e. BigDecimal("10000"), unscaled BigInteger is 1, the  scaled is -4
+    public static int getRealPrecision(BigDecimal decimal) {
+        if (decimal.equals(BigDecimal.ZERO)) {
+            return 0;
+        }
+        int scale = decimal.scale();
+        int precision = decimal.precision();
+        if (scale < 0) {
+            return Math.abs(scale) + precision;
+        } else {
+            return Math.max(scale, precision);
+        }
+    }
+
+    // An integer that has trailing zeros represented by BigDecimal with negative scale, i.e.
+    // BigDecimal("20000"):  unscaled integer is 2, the scale is -5.
+    public static int getRealScale(BigDecimal decimal) {
+        if (decimal.equals(BigDecimal.ZERO)) {
+            return 0;
+        }
+        return Math.max(0, decimal.scale());
     }
 }

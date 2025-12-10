@@ -52,6 +52,7 @@ import com.starrocks.sql.ast.expression.IsNullPredicate;
 import com.starrocks.sql.ast.expression.LambdaFunctionExpr;
 import com.starrocks.sql.ast.expression.LargeIntLiteral;
 import com.starrocks.sql.ast.expression.LikePredicate;
+import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.MapExpr;
 import com.starrocks.sql.ast.expression.MatchExpr;
 import com.starrocks.sql.ast.expression.NullLiteral;
@@ -268,7 +269,7 @@ public class ScalarOperatorToExpr {
                 } else if (type.isTime()) {
                     return new FloatLiteral(literal.getTime(), DateType.TIME);
                 } else if (type.isDecimalOfAnyVersion()) {
-                    DecimalLiteral d = new DecimalLiteral(literal.getDecimal());
+                    DecimalLiteral d = LiteralExprFactory.createDecimalLiteral(literal.getDecimal());
                     ExprCastFunction.uncheckedCastTo(d, type);
                     return d;
                 } else if (type.isVarchar() || type.isChar()) {

@@ -22,7 +22,7 @@ import com.starrocks.type.ScalarType;
 import com.starrocks.type.StructField;
 import com.starrocks.type.StructType;
 import com.starrocks.type.Type;
-import com.starrocks.type.TypeFactory;
+import com.starrocks.type.TypeRegister;
 
 import java.util.List;
 
@@ -66,7 +66,7 @@ public class TypeDefAnalyzer {
                 int maxLen;
                 if (type == PrimitiveType.VARCHAR) {
                     name = "Varchar";
-                    maxLen = TypeFactory.getOlapMaxVarcharLength();
+                    maxLen = TypeRegister.getOlapMaxVarcharLength();
                 } else {
                     name = "Char";
                     maxLen = ScalarType.MAX_CHAR_LENGTH;
@@ -85,7 +85,7 @@ public class TypeDefAnalyzer {
             }
             case VARBINARY: {
                 String name = "VARBINARY";
-                int maxLen = TypeFactory.getOlapMaxVarcharLength();
+                int maxLen = TypeRegister.getOlapMaxVarcharLength();
                 int len = scalarType.getLength();
                 // len is decided by child, when it is -1.
                 if (scalarType.getLength() > maxLen) {

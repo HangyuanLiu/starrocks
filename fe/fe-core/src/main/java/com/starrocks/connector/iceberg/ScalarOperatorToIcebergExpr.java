@@ -36,9 +36,9 @@ import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorVisitor;
 import com.starrocks.sql.optimizer.operator.scalar.SubfieldOperator;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.ScalarType;
-import com.starrocks.type.TypeFactory;
 import com.starrocks.type.VarbinaryType;
 import com.starrocks.type.VarcharType;
 import org.apache.iceberg.exceptions.ValidationException;
@@ -373,7 +373,7 @@ public class ScalarOperatorToIcebergExpr {
                     // num usually don't need cast, and num and string has different comparator
                     // cast is dangerous.
                 case DECIMAL:
-                    res = operator.castTo(TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 9, 0));
+                    res = operator.castTo(DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 9, 0));
                     break;
                 case INTEGER:
                 case LONG:

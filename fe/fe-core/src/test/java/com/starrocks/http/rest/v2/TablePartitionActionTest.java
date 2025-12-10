@@ -56,9 +56,9 @@ import com.starrocks.sql.ast.PartitionValue;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.thrift.TStorageMedium;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.PrimitiveType;
-import com.starrocks.type.TypeFactory;
 import com.starrocks.type.VarcharType;
 import com.starrocks.warehouse.cngroup.ComputeResource;
 import mockit.Expectations;
@@ -127,7 +127,7 @@ public class TablePartitionActionTest extends StarRocksHttpTestCase {
         Column c1 = new Column("c1", DateType.DATETIME, true, null, null, false, null, "cc1", 2);
         Column c2 = new Column("c2", VarcharType.VARCHAR, true, null, null, false, null, "cc2", 3);
         Column c3 = new Column("c3",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 8),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 8),
                 false, null, null, true, new ColumnDef.DefaultValueDef(true, new StringLiteral("0")), "cc3", 4
         );
         List<Column> columns = Lists.newArrayList(c0, c1, c2, c3);
@@ -169,7 +169,7 @@ public class TablePartitionActionTest extends StarRocksHttpTestCase {
         Column c1 = new Column("c1", DateType.DATETIME, true, null, null, false, null, "cc1", 2);
         Column c2 = new Column("c2", VarcharType.VARCHAR, true, null, null, false, null, "cc2", 3);
         Column c3 = new Column("c3",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 8),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 8),
                 false, null, null, true, new ColumnDef.DefaultValueDef(true, new StringLiteral("0")), "cc3", 4
         );
         List<Column> columns = Lists.newArrayList(c0, c1, c2, c3);
@@ -333,7 +333,7 @@ public class TablePartitionActionTest extends StarRocksHttpTestCase {
         Column c1 = new Column("c1", DateType.DATETIME, true, null, null, false, null, "cc1", 2);
         Column c2 = new Column("c2", VarcharType.VARCHAR, true, null, null, false, null, "cc2", 3);
         Column c3 = new Column("c3",
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 8),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 8),
                 false, null, null, true, new ColumnDef.DefaultValueDef(true, new StringLiteral("0")), "cc3", 4
         );
         List<Column> columns = Lists.newArrayList(c0, c1, c2, c3);

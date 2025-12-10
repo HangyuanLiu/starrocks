@@ -154,7 +154,7 @@ public class TypeDeserializer {
                 scalarType.getType() == TPrimitiveType.DECIMAL128 ||
                 scalarType.getType() == TPrimitiveType.DECIMAL256) {
             Preconditions.checkState(scalarType.isSetPrecision() && scalarType.isSetScale());
-            return TypeFactory.createDecimalV3Type(
+            return DecimalTypeFactory.createDecimalV3Type(
                     TypeDeserializer.fromThrift(scalarType.getType()),
                     scalarType.getPrecision(),
                     scalarType.getScale());
@@ -231,7 +231,8 @@ public class TypeDeserializer {
             case DECIMAL64:
             case DECIMAL128:
             case DECIMAL256:
-                return TypeFactory.createDecimalV3Type(TypeDeserializer.fromThrift(tPrimitiveType), ptype.precision, ptype.scale);
+                return DecimalTypeFactory.createDecimalV3Type(
+                        TypeDeserializer.fromThrift(tPrimitiveType), ptype.precision, ptype.scale);
             default:
                 return TypeFactory.createType(TypeDeserializer.fromThrift(tPrimitiveType));
         }

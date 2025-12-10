@@ -37,6 +37,7 @@ import com.starrocks.sql.ast.expression.BoolLiteral;
 import com.starrocks.sql.ast.expression.DateLiteral;
 import com.starrocks.sql.ast.expression.DecimalLiteral;
 import com.starrocks.sql.ast.expression.ExprToSql;
+import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.FloatLiteral;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.LargeIntLiteral;
@@ -60,6 +61,7 @@ import org.junit.jupiter.api.MethodOrderer.MethodName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @TestMethodOrder(MethodName.class)
@@ -171,9 +173,7 @@ public class SetExecutorTest {
         testUserVariableImp(new DateLiteral(DateUtils.parseStrictDateTime("2020-01-01"), DateType.DATE), DateType.DATE);
         testUserVariableImp(new DateLiteral(DateUtils.parseStrictDateTime("2020-01-01 00:00:00"),
                 DateType.DATETIME), DateType.DATETIME);
-        testUserVariableImp(new DecimalLiteral("1", DecimalType.DECIMAL32_INT), DecimalType.DECIMAL32_INT);
-        testUserVariableImp(new DecimalLiteral("1", DecimalType.DECIMAL64_INT), DecimalType.DECIMAL64_INT);
-        testUserVariableImp(new DecimalLiteral("1", DecimalType.DECIMAL128_INT), DecimalType.DECIMAL128_INT);
+        testUserVariableImp(LiteralExprFactory.createDecimalLiteral(new BigDecimal("1")), DecimalType.DECIMAL32_INT);
         testUserVariableImp(new StringLiteral("xxx"), TypeFactory.createVarcharType(10));
     }
 

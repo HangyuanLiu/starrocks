@@ -14,6 +14,7 @@
 
 package com.starrocks.sql.util;
 
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.ScalarType;
 import com.starrocks.type.Type;
@@ -66,7 +67,7 @@ public class TypePlus {
                     case VARBINARY -> rectifiedType = TypeFactory.createVarbinary(len);
                     case DECIMALV2 -> rectifiedType = TypeFactory.createDecimalV2Type(precision, scale);
                     case DECIMAL32, DECIMAL64, DECIMAL128, DECIMAL256 ->
-                            rectifiedType = TypeFactory.createDecimalV3Type(primitiveType, precision, scale);
+                            rectifiedType = DecimalTypeFactory.createDecimalV3Type(primitiveType, precision, scale);
                     default -> rectifiedType = TypeFactory.createType(primitiveType);
                 }
             } else {

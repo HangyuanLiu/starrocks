@@ -41,11 +41,11 @@ import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriteContext;
 import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriter;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.NullType;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.ScalarType;
 import com.starrocks.type.Type;
-import com.starrocks.type.TypeFactory;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -231,10 +231,10 @@ public class FoldConstantsRule extends BottomUpScalarOperatorRewriteRule {
         if (call.getType().isDecimalV3()) {
             Preconditions.checkArgument(sum.getType().isDecimalV3());
             ScalarType sumType = (ScalarType) sum.getType();
-            sumType = TypeFactory.createDecimalV3Type(call.getType().getPrimitiveType(), sumType.getScalarPrecision(),
+            sumType = DecimalTypeFactory.createDecimalV3Type(call.getType().getPrimitiveType(), sumType.getScalarPrecision(),
                     sumType.getScalarScale());
             int precision = PrimitiveType.getMaxPrecisionOfDecimal(call.getType().getPrimitiveType());
-            ScalarType countType = TypeFactory.createDecimalV3Type(call.getType().getPrimitiveType(), precision, 0);
+            ScalarType countType = DecimalTypeFactory.createDecimalV3Type(call.getType().getPrimitiveType(), precision, 0);
             fn = new ScalarFunction(fn.getFunctionName(), new Type[] {sumType, countType}, call.getType(),
                     fn.hasVarArgs());
         }

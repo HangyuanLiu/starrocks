@@ -123,6 +123,7 @@ import com.starrocks.statistic.StatsConstants;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.InvalidType;
 import com.starrocks.type.MapType;
 import com.starrocks.type.PrimitiveType;
@@ -131,6 +132,7 @@ import com.starrocks.type.StructField;
 import com.starrocks.type.StructType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
+import com.starrocks.type.TypeRegister;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -1283,16 +1285,16 @@ public class AnalyzerUtils {
             if (PrimitiveType.VARCHAR == srcType.getPrimitiveType() ||
                     PrimitiveType.CHAR == srcType.getPrimitiveType() ||
                     PrimitiveType.NULL_TYPE == srcType.getPrimitiveType()) {
-                int len = TypeFactory.getOlapMaxVarcharLength();
+                int len = TypeRegister.getOlapMaxVarcharLength();
                 if (srcType instanceof ScalarType) {
                     ScalarType scalarType = (ScalarType) srcType;
                     if (Config.transform_type_prefer_string_for_varchar) {
                         // always use max varchar length for varchar type if transform_type_prefer_string_for_varchar is set.
-                        len = TypeFactory.getOlapMaxVarcharLength();
+                        len = TypeRegister.getOlapMaxVarcharLength();
                     } else {
                         if (scalarType.getLength() > 0) {
                             // Catalog's varchar length may larger than olap's max varchar length
-                            len = Integer.min(scalarType.getLength(), TypeFactory.getOlapMaxVarcharLength());
+                            len = Integer.min(scalarType.getLength(), TypeRegister.getOlapMaxVarcharLength());
                         }
                     }
                 }
@@ -1300,13 +1302,13 @@ public class AnalyzerUtils {
             } else if (PrimitiveType.FLOAT == srcType.getPrimitiveType() ||
                     PrimitiveType.DOUBLE == srcType.getPrimitiveType()) {
                 if (convertDouble) {
-                    newType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 9);
+                    newType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 9);
                 }
             } else if (PrimitiveType.DECIMAL256 == srcType.getPrimitiveType() ||
                     PrimitiveType.DECIMAL128 == srcType.getPrimitiveType() ||
                     PrimitiveType.DECIMAL64 == srcType.getPrimitiveType() ||
                     PrimitiveType.DECIMAL32 == srcType.getPrimitiveType()) {
-                newType = TypeFactory.createDecimalV3Type(srcType.getPrimitiveType(),
+                newType = DecimalTypeFactory.createDecimalV3Type(srcType.getPrimitiveType(),
                         srcType.getPrecision(), srcType.getDecimalDigits());
             } else {
                 newType = TypeFactory.createType(srcType.getPrimitiveType());

@@ -21,6 +21,7 @@ import com.starrocks.catalog.JDBCTable;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
@@ -163,7 +164,7 @@ public class MysqlSchemaResolver extends JDBCSchemaResolver {
             return TypeFactory.createType(primitiveType);
         } else {
             int precision = columnSize + max(-digits, 0);
-            return TypeFactory.createUnifiedDecimalType(precision, max(digits, 0));
+            return DecimalTypeFactory.createUnifiedDecimalType(precision, max(digits, 0));
         }
     }
 

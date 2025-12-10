@@ -10,9 +10,9 @@ import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.expression.ArithmeticExpr;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.ScalarType;
-import com.starrocks.type.TypeFactory;
 import com.starrocks.utframe.UtFrameUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -25,12 +25,12 @@ public class ArithmeticExprTest {
         UtFrameUtils.createDefaultCtx();
         Expr lhsExpr = new SlotRef(new TableName("foo_db", "bar_table"), "c0");
         Expr rhsExpr = new SlotRef(new TableName("foo_db", "bar_table"), "c1");
-        ScalarType decimal32p9s2 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2);
+        ScalarType decimal32p9s2 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2);
         lhsExpr.setType(decimal32p9s2);
         rhsExpr.setType(decimal32p9s2);
         ArithmeticExpr addExpr = new ArithmeticExpr(
                 ArithmeticExpr.Operator.ADD, lhsExpr, rhsExpr);
-        ScalarType decimal64p10s2 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 2);
+        ScalarType decimal64p10s2 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 2);
         ExpressionAnalyzer.analyzeExpressionIgnoreSlot(addExpr, ConnectContext.get());
         Assertions.assertEquals(addExpr.getType(), decimal64p10s2);
 
@@ -55,7 +55,7 @@ public class ArithmeticExprTest {
                 pType = PrimitiveType.DECIMAL128;
                 break;
         }
-        return TypeFactory.createDecimalV3Type(pType, precision, scale);
+        return DecimalTypeFactory.createDecimalV3Type(pType, precision, scale);
     }
 
     @Test

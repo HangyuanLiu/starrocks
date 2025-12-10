@@ -683,10 +683,6 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitExpression(node, context);
     }
 
-    default R visitDecimalLiteral(DecimalLiteral node, C context) {
-        return visitLiteral(node, context);
-    }
-
     // ------------------------------------------- Lambda -----------------------------------------
     default R visitLambdaArguments(LambdaArgument node, C context) {
         return visitExpression(node, context);

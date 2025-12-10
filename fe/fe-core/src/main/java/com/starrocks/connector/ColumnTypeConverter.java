@@ -20,6 +20,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.connector.delta.DeltaDataType;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.type.ArrayType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.MapType;
 import com.starrocks.type.NullType;
 import com.starrocks.type.PrimitiveType;
@@ -186,7 +187,7 @@ public class ColumnTypeConverter {
             return TypeFactory.createType(primitiveType);
         } else {
             int[] parts = getPrecisionAndScale(hiveType);
-            return TypeFactory.createUnifiedDecimalType(parts[0], parts[1]);
+            return DecimalTypeFactory.createUnifiedDecimalType(parts[0], parts[1]);
         }
     }
 
@@ -305,7 +306,7 @@ public class ColumnTypeConverter {
                 if (logicalType instanceof LogicalTypes.Decimal) {
                     int precision = ((LogicalTypes.Decimal) logicalType).getPrecision();
                     int scale = ((LogicalTypes.Decimal) logicalType).getScale();
-                    return TypeFactory.createUnifiedDecimalType(precision, scale);
+                    return DecimalTypeFactory.createUnifiedDecimalType(precision, scale);
                 } else {
                     primitiveType = PrimitiveType.VARCHAR;
                     break;
@@ -478,7 +479,7 @@ public class ColumnTypeConverter {
             case DECIMAL:
                 int precision = ((io.delta.kernel.types.DecimalType) dataType).getPrecision();
                 int scale = ((io.delta.kernel.types.DecimalType) dataType).getScale();
-                return TypeFactory.createUnifiedDecimalType(precision, scale);
+                return DecimalTypeFactory.createUnifiedDecimalType(precision, scale);
             case BINARY:
                 primitiveType = PrimitiveType.VARBINARY;
                 break;
@@ -523,7 +524,7 @@ public class ColumnTypeConverter {
         }
 
         public Type visit(DecimalType decimalType) {
-            return TypeFactory.createUnifiedDecimalType(decimalType.getPrecision(), decimalType.getScale());
+            return DecimalTypeFactory.createUnifiedDecimalType(decimalType.getPrecision(), decimalType.getScale());
         }
 
         public Type visit(TinyIntType tinyIntType) {
@@ -635,7 +636,7 @@ public class ColumnTypeConverter {
                 ColumnTypeAttributes typeAttributes = columnSchema.getTypeAttributes();
                 int precision = typeAttributes.getPrecision();
                 int scale = typeAttributes.getScale();
-                return TypeFactory.createUnifiedDecimalType(precision, scale);
+                return DecimalTypeFactory.createUnifiedDecimalType(precision, scale);
             case BINARY:
                 return VarbinaryType.VARBINARY;
             default:
@@ -679,11 +680,11 @@ public class ColumnTypeConverter {
                 int precision = ((Types.DecimalType) icebergType).precision();
                 int scale = ((Types.DecimalType) icebergType).scale();
                 if (precision <= 9) {
-                    return TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, precision, scale);
+                    return DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, precision, scale);
                 } else if (precision <= 18) {
-                    return TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, precision, scale);
+                    return DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, precision, scale);
                 } else {
-                    return TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, precision, scale);
+                    return DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, precision, scale);
                 }
             case LIST:
                 Type type = convertToArrayTypeForIceberg(icebergType);

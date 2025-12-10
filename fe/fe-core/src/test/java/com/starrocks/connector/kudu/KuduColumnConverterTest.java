@@ -17,6 +17,7 @@ package com.starrocks.connector.kudu;
 import com.starrocks.connector.ColumnTypeConverter;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.PrimitiveType;
@@ -128,6 +129,6 @@ public class KuduColumnConverterTest {
                 .typeAttributes(new ColumnTypeAttributes.ColumnTypeAttributesBuilder().precision(p).scale(s).build())
                 .build();
         Type result = ColumnTypeConverter.fromKuduType(columnSchema);
-        Assertions.assertEquals(result, TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, p, s));
+        Assertions.assertEquals(result, DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, p, s));
     }
 }

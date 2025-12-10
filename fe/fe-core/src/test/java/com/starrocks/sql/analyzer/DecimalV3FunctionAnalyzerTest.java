@@ -24,12 +24,14 @@ import com.starrocks.common.AnalysisException;
 import com.starrocks.sql.ast.expression.ArithmeticExpr;
 import com.starrocks.sql.ast.expression.DecimalLiteral;
 import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FloatLiteral;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.PrimitiveType;
@@ -67,12 +69,12 @@ public class DecimalV3FunctionAnalyzerTest {
     @Test
     public void testGetFnOfTruncateForDecimalAndIntLiteral() {
         List<Expr> params = Lists.newArrayList();
-        params.add(new DecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2)));
+        params.add(LiteralExprFactory.createDecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2))));
         params.add(new IntLiteral(1));
         FunctionCallExpr node = new FunctionCallExpr(FunctionSet.TRUNCATE, params);
 
         List<Type> paramTypes = Lists.newArrayList();
-        paramTypes.add(TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 7, 2));
+        paramTypes.add(DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 7, 2));
         paramTypes.add(IntegerType.TINYINT);
 
         Function function = ExprUtils.getBuiltinFunction(FunctionSet.TRUNCATE, paramTypes.toArray(new Type[0]),
@@ -87,14 +89,14 @@ public class DecimalV3FunctionAnalyzerTest {
     @Test
     public void testGetFnOfTruncateForDecimalAndSlotRef() {
         List<Expr> params = Lists.newArrayList();
-        params.add(new DecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2)));
+        params.add(LiteralExprFactory.createDecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2))));
         TableName tableName = new TableName("db", "table");
         SlotRef slotRef = new SlotRef(tableName, "v1");
         params.add(slotRef);
         FunctionCallExpr node = new FunctionCallExpr(FunctionSet.TRUNCATE, params);
 
         List<Type> paramTypes = Lists.newArrayList();
-        paramTypes.add(TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 7, 2));
+        paramTypes.add(DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 7, 2));
         paramTypes.add(IntegerType.TINYINT);
 
         Function function = ExprUtils.getBuiltinFunction(FunctionSet.TRUNCATE, paramTypes.toArray(new Type[0]),
@@ -109,12 +111,12 @@ public class DecimalV3FunctionAnalyzerTest {
     @Test
     public void testGetFnOfTruncateForDecimalAndConstantExpression() {
         List<Expr> params = Lists.newArrayList();
-        params.add(new DecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2)));
+        params.add(LiteralExprFactory.createDecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2))));
         params.add(new ArithmeticExpr(ArithmeticExpr.Operator.ADD, new IntLiteral(1), new IntLiteral(1)));
         FunctionCallExpr node = new FunctionCallExpr(FunctionSet.TRUNCATE, params);
 
         List<Type> paramTypes = Lists.newArrayList();
-        paramTypes.add(TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 7, 2));
+        paramTypes.add(DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 7, 2));
         paramTypes.add(IntegerType.TINYINT);
 
         Function function = ExprUtils.getBuiltinFunction(FunctionSet.TRUNCATE, paramTypes.toArray(new Type[0]),
@@ -131,7 +133,7 @@ public class DecimalV3FunctionAnalyzerTest {
     @Test
     public void testDecimalStd() {
         List<Expr> params = Lists.newArrayList();
-        params.add(new DecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2)));
+        params.add(LiteralExprFactory.createDecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2))));
 
         List<Type> paramTypes = Lists.newArrayList();
         paramTypes.add(DecimalType.DECIMAL128);

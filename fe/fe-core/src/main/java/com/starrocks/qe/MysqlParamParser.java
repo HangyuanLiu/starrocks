@@ -17,7 +17,6 @@ package com.starrocks.qe;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.mysql.MysqlCodec;
 import com.starrocks.sql.ast.expression.DateLiteral;
-import com.starrocks.sql.ast.expression.DecimalLiteral;
 import com.starrocks.sql.ast.expression.FloatLiteral;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.LiteralExpr;
@@ -32,6 +31,7 @@ import com.starrocks.type.StringType;
 import com.starrocks.type.Type;
 import com.starrocks.type.VarcharType;
 
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 /**
@@ -45,7 +45,7 @@ public final class MysqlParamParser {
     public static LiteralExpr createLiteral(int mysqlTypeCode, ByteBuffer data) throws AnalysisException {
         switch (mysqlTypeCode) {
             case 0: // MYSQL_TYPE_DECIMAL
-                return new DecimalLiteral(readLengthEncodedString(data));
+                return LiteralExprFactory.createDecimalLiteral(new BigDecimal(readLengthEncodedString(data)));
             case 1: // MYSQL_TYPE_TINY
                 return new IntLiteral(readIntegerValue(PrimitiveType.TINYINT, data), IntegerType.TINYINT);
             case 2: // MYSQL_TYPE_SHORT

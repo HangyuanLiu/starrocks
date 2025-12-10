@@ -23,6 +23,7 @@ import com.starrocks.catalog.JDBCTable;
 import com.starrocks.catalog.Table;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.TypeFactory;
 import com.starrocks.type.VarbinaryType;
@@ -209,7 +210,7 @@ public class JDBCMetadataTest {
         List<Column> columns = table.getColumns();
         Assertions.assertEquals(columns.size(), columnResult.getRowCount());
         Assertions.assertTrue(columns.get(0).getType().equals(IntegerType.INT));
-        Assertions.assertTrue(columns.get(1).getType().equals(TypeFactory.createUnifiedDecimalType(10, 2)));
+        Assertions.assertTrue(columns.get(1).getType().equals(DecimalTypeFactory.createUnifiedDecimalType(10, 2)));
         Assertions.assertTrue(columns.get(2).getType().equals(TypeFactory.createCharType(10)));
         Assertions.assertTrue(columns.get(3).getType().equals(TypeFactory.createVarcharType(10)));
         Assertions.assertTrue(columns.get(4).getType().equals(IntegerType.SMALLINT));

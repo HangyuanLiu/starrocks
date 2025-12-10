@@ -26,6 +26,7 @@ import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.DateType;
 import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.FunctionType;
 import com.starrocks.type.HLLType;
@@ -41,6 +42,7 @@ import com.starrocks.type.StructType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeCompatibilityMatrix;
 import com.starrocks.type.TypeFactory;
+import com.starrocks.type.TypeRegister;
 import com.starrocks.type.UnknownType;
 import com.starrocks.type.VarcharType;
 
@@ -350,7 +352,7 @@ public class TypeManager {
             ScalarType resultType = (ScalarType) compatibleType;
             // If result type is varchar with length, it may cause the case when result type is not compatible.
             if (isContainVarcharWithoutLength && resultType.getLength() > 0) {
-                return TypeFactory.createVarcharType(TypeFactory.getOlapMaxVarcharLength());
+                return TypeFactory.createVarcharType(TypeRegister.getOlapMaxVarcharLength());
             } else {
                 return compatibleType;
             }
@@ -465,13 +467,13 @@ public class TypeManager {
         // same triple (type, precision, scale)
         if (decimalType.equals(otherType)) {
             PrimitiveType type = PrimitiveType.getWiderDecimalV3Type(PrimitiveType.DECIMAL64, decimalType.getType());
-            return TypeFactory.createDecimalV3Type(type, decimalType.getScalarPrecision(), decimalType.getScalarScale());
+            return DecimalTypeFactory.createDecimalV3Type(type, decimalType.getScalarPrecision(), decimalType.getScalarScale());
         }
 
         switch (otherType.getPrimitiveType()) {
             case DECIMALV2:
                 return getCommonTypeForDecimalV3(decimalType,
-                        TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 27, 9));
+                        DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 27, 9));
             case DECIMAL32:
             case DECIMAL64:
             case DECIMAL128:
@@ -480,22 +482,22 @@ public class TypeManager {
 
             case BOOLEAN:
                 return getCommonTypeForDecimalV3(decimalType,
-                        TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 1, 0));
+                        DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 1, 0));
             case TINYINT:
                 return getCommonTypeForDecimalV3(decimalType,
-                        TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 3, 0));
+                        DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 3, 0));
             case SMALLINT:
                 return getCommonTypeForDecimalV3(decimalType,
-                        TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 5, 0));
+                        DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 5, 0));
             case INT:
                 return getCommonTypeForDecimalV3(decimalType,
-                        TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 0));
+                        DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 10, 0));
             case BIGINT:
                 return getCommonTypeForDecimalV3(decimalType,
-                        TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 19, 0));
+                        DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 19, 0));
             case LARGEINT:
                 return getCommonTypeForDecimalV3(decimalType,
-                        TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 0));
+                        DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 0));
             case FLOAT:
             case DOUBLE:
             case CHAR:
@@ -657,10 +659,10 @@ public class TypeManager {
             // the narrowestType for specified precision and scale is just wide properly to hold a decimal value, i.e
             // DECIMAL128(7,4), DECIMAL64(7,4) and DECIMAL32(7,4) can all be held in a DECIMAL32(7,4) type without
             // precision loss.
-            Type narrowestType = TypeFactory.createDecimalV3NarrowestType(precision, scale);
+            Type narrowestType = DecimalTypeFactory.createDecimalV3NarrowestType(precision, scale);
             primitiveType = PrimitiveType.getWiderDecimalV3Type(primitiveType, narrowestType.getPrimitiveType());
             // create a commonType with wider primitive type.
-            return TypeFactory.createDecimalV3Type(primitiveType, precision, scale);
+            return DecimalTypeFactory.createDecimalV3Type(primitiveType, precision, scale);
         }
     }
 

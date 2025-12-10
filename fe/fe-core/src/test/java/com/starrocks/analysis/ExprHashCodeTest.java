@@ -33,6 +33,7 @@ import com.starrocks.sql.ast.expression.CompoundPredicate;
 import com.starrocks.sql.ast.expression.DateLiteral;
 import com.starrocks.sql.ast.expression.DecimalLiteral;
 import com.starrocks.sql.ast.expression.ExistsPredicate;
+import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.FloatLiteral;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
@@ -70,7 +71,7 @@ public class ExprHashCodeTest {
         LargeIntLiteral largeIntLiteral = new LargeIntLiteral("123");
         StringLiteral stringLiteral = new StringLiteral("test");
         DateLiteral dateLiteral = new DateLiteral(2000L, 10L, 10L);
-        DecimalLiteral decimalLiteral = new DecimalLiteral(new BigDecimal(100));
+        DecimalLiteral decimalLiteral = LiteralExprFactory.createDecimalLiteral(new BigDecimal(100));
         FunctionCallExpr functionCallExpr = new FunctionCallExpr("abs", ImmutableList.of(intLiteral));
         LikePredicate likePredicate = new LikePredicate(LikePredicate.Operator.LIKE, stringLiteral, stringLiteral);
         SelectRelation selectRelation = new SelectRelation(new SelectList(),

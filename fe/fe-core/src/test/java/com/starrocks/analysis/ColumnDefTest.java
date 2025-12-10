@@ -59,6 +59,7 @@ import com.starrocks.type.PercentileType;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
+import com.starrocks.type.TypeRegister;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -347,7 +348,7 @@ public class ColumnDefTest {
     @Test
     public void testInvalidVarcharInsideArray() {
         assertThrows(SemanticException.class, () -> {
-            Type tooLongVarchar = TypeFactory.createVarcharType(TypeFactory.getOlapMaxVarcharLength() + 1);
+            Type tooLongVarchar = TypeFactory.createVarcharType(TypeRegister.getOlapMaxVarcharLength() + 1);
             ColumnDef column = new ColumnDef("col", new TypeDef(new ArrayType(tooLongVarchar)), false, null, null, true,
                     DefaultValueDef.NOT_SET, "");
             ColumnDefAnalyzer.analyze(column, true);

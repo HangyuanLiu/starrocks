@@ -22,6 +22,7 @@ import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.MapType;
@@ -51,7 +52,7 @@ import static com.starrocks.connector.ColumnTypeConverter.fromPaimonType;
 import static com.starrocks.connector.ColumnTypeConverter.getPrecisionAndScale;
 import static com.starrocks.connector.ColumnTypeConverter.toHiveType;
 import static com.starrocks.type.TypeFactory.CATALOG_MAX_VARCHAR_LENGTH;
-import static com.starrocks.type.TypeFactory.getOlapMaxVarcharLength;
+import static com.starrocks.type.TypeRegister.getOlapMaxVarcharLength;
 import static com.starrocks.type.UnknownType.UNKNOWN_TYPE;
 
 
@@ -141,7 +142,7 @@ public class ColumnTypeConverterTest {
         resType = fromHiveTypeToArrayType(typeStr);
         Assertions.assertEquals(arrayType, resType);
 
-        itemType = TypeFactory.createUnifiedDecimalType(4, 2);
+        itemType = DecimalTypeFactory.createUnifiedDecimalType(4, 2);
         Assertions.assertEquals(new ArrayType(new ArrayType(itemType)),
                 fromHiveTypeToArrayType("array<Array<decimal(4, 2)>>"));
 
@@ -173,7 +174,7 @@ public class ColumnTypeConverterTest {
         resType = fromHiveTypeToMapType(typeStr);
         Assertions.assertEquals(mapType, resType);
 
-        keyType = TypeFactory.createUnifiedDecimalType(10, 7);
+        keyType = DecimalTypeFactory.createUnifiedDecimalType(10, 7);
         valueType = DateType.DATETIME;
         mapType = new MapType(keyType, valueType);
         typeStr = "map<decimal(10,7),timestamp>";
@@ -422,12 +423,12 @@ public class ColumnTypeConverterTest {
         other = new Column("k1", TypeFactory.createCharType(10), false);
         Assertions.assertFalse(columnEquals(base, other));
 
-        base = new Column("k1", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 5, 5), false);
-        other = new Column("k1", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 6, 5), false);
+        base = new Column("k1", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 5, 5), false);
+        other = new Column("k1", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 6, 5), false);
         Assertions.assertFalse(columnEquals(base, other));
 
-        base = new Column("k1", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 5, 5), false);
-        other = new Column("k1", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 5, 4), false);
+        base = new Column("k1", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 5, 5), false);
+        other = new Column("k1", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 5, 4), false);
         Assertions.assertFalse(columnEquals(base, other));
     }
 

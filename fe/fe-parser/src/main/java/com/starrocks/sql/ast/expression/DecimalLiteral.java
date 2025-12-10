@@ -36,17 +36,13 @@ package com.starrocks.sql.ast.expression;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import com.starrocks.common.Config;
 import com.starrocks.sql.ast.AstVisitor;
-import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.sql.parser.ParsingException;
-import com.starrocks.type.DecimalType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.ScalarType;
 import com.starrocks.type.Type;
-import com.starrocks.type.TypeFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -65,41 +61,17 @@ public class DecimalLiteral extends LiteralExpr {
     public DecimalLiteral() {
     }
 
-    public DecimalLiteral(BigDecimal value) {
-        this(value, NodePosition.ZERO);
-    }
-
-    public DecimalLiteral(BigDecimal value, NodePosition pos) {
-        super(pos);
-        init(value);
+    public DecimalLiteral(BigDecimal value, Type type) {
+        super();
+        this.value = new BigDecimal(value.toPlainString());
+        this.type = type;
         analysisDone();
     }
 
-    public DecimalLiteral(String value) {
-        this(value, NodePosition.ZERO);
-    }
-
-    public DecimalLiteral(String value, NodePosition pos) {
+    public DecimalLiteral(BigDecimal value, Type type, NodePosition pos) {
         super(pos);
-        BigDecimal v = null;
-        try {
-            v = new BigDecimal(value);
-        } catch (NumberFormatException e) {
-            throw new ParsingException("Invalid floating-point literal: " + value, e);
-        }
-        init(v);
-        analysisDone();
-    }
-
-    public DecimalLiteral(String value, Type type) {
-        Preconditions.checkArgument(type.isDecimalOfAnyVersion());
-        BigDecimal v = null;
-        try {
-            v = new BigDecimal(value);
-        } catch (NumberFormatException e) {
-            throw new ParsingException("Invalid floating-point literal: " + value, e);
-        }
-        init(v, type);
+        this.value = new BigDecimal(value.toPlainString());
+        this.type = type;
         analysisDone();
     }
 
@@ -140,60 +112,7 @@ public class DecimalLiteral extends LiteralExpr {
         return Math.max(0, decimal.scale());
     }
 
-    private void init(BigDecimal value) {
-        // Currently, our storage engine doesn't support scientific notation.
-        // So we remove exponent field here.
-        this.value = new BigDecimal(value.toPlainString());
 
-        if (!Config.enable_decimal_v3) {
-            type = DecimalType.DECIMALV2;
-        } else {
-            int precision = getRealPrecision(this.value);
-            int scale = getRealScale(this.value);
-            int integerPartWidth = precision - scale;
-            int maxIntegerPartWidth = 76;
-            // integer part of decimal literal should not exceed 76
-            if (integerPartWidth > maxIntegerPartWidth) {
-                String errMsg = String.format(
-                        "Non-typed decimal literal is overflow, value='%s' (precision=%d, scale=%d)",
-                        value.toPlainString(), precision, scale);
-                throw new InternalError(errMsg);
-            }
-            // round to low-resolution decimal if decimal literal's resolution is too high
-            scale = Math.min(maxIntegerPartWidth - integerPartWidth, scale);
-            precision = integerPartWidth + scale;
-            this.value = this.value.setScale(scale, RoundingMode.HALF_UP);
-            type = TypeFactory.createDecimalV3NarrowestType(precision, scale);
-        }
-    }
-
-    private void init(BigDecimal value, Type type) {
-        Preconditions.checkArgument(type.isDecimalOfAnyVersion());
-        ScalarType scalarType = (ScalarType) type;
-        this.value = new BigDecimal(value.toPlainString());
-        if (type.isDecimalV3()) {
-            int precision = scalarType.getScalarPrecision();
-            int scale = scalarType.getScalarScale();
-            int realPrecision = getRealPrecision(this.value);
-            int realScale = getRealScale(this.value);
-            int realIntegerPartWidth = realPrecision - realScale;
-            int maxIntegerPartWidth = precision - scale;
-            // integer part of decimal literal should not exceed precision - scale
-            if (realIntegerPartWidth > maxIntegerPartWidth) {
-                String errMsg = String.format(
-                        "Typed decimal literal(%s) is overflow, value='%s' (precision=%d, scale=%d)",
-                        type.toString(), value.toPlainString(), realPrecision, realScale);
-                throw new ParsingException(errMsg);
-            }
-            realScale = Math.min(scale, realScale);
-            realPrecision = realIntegerPartWidth + realScale;
-            // round
-            this.value = this.value.setScale(realScale, RoundingMode.HALF_UP);
-            this.type = TypeFactory.createDecimalV3NarrowestType(realPrecision, realScale);
-        } else {
-            this.type = type;
-        }
-    }
 
     public BigDecimal getValue() {
         return value;
@@ -468,6 +387,6 @@ public class DecimalLiteral extends LiteralExpr {
 
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return ((AstVisitorExtendInterface<R, C>) visitor).visitDecimalLiteral(this, context);
+        return visitor.visitDecimalLiteral(this, context);
     }
 }

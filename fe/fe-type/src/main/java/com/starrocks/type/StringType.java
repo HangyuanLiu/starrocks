@@ -20,10 +20,18 @@ public class StringType extends ScalarType {
     public static final int MAX_STRING_LENGTH = 1048576;
 
     public static final ScalarType DEFAULT_STRING = new StringType(DEFAULT_STRING_LENGTH);
-    public static StringType STRING = new StringType(MAX_STRING_LENGTH);
+    public static final StringType STRING = new StringType(resolveConfiguredLength());
 
     public StringType(int len) {
         super(PrimitiveType.VARCHAR);
         setLength(len);
+    }
+
+    private static int resolveConfiguredLength() {
+        int configuredMaxLength = TypeOptions.getStringMaxLength();
+        if (configuredMaxLength <= 0) {
+            return MAX_STRING_LENGTH;
+        }
+        return configuredMaxLength;
     }
 }

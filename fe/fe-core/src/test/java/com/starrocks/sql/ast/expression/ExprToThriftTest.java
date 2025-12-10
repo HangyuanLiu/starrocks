@@ -36,6 +36,7 @@ import com.starrocks.thrift.TInfoFunc;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.MapType;
@@ -47,6 +48,7 @@ import com.starrocks.type.VarbinaryType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -224,8 +226,8 @@ public class ExprToThriftTest {
 
         private static Expr buildDecimalLiteral() {
             try {
-                DecimalLiteral literal = new DecimalLiteral("1.23");
-                ScalarType type = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 6, 2);
+                DecimalLiteral literal = LiteralExprFactory.createDecimalLiteral(new BigDecimal("1.23"));
+                ScalarType type = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 6, 2);
                 literal.setType(type);
                 literal.setOriginType(type);
                 return literal;

@@ -80,6 +80,7 @@ import com.starrocks.sql.ast.expression.LambdaFunctionExpr;
 import com.starrocks.sql.ast.expression.LargeIntLiteral;
 import com.starrocks.sql.ast.expression.LimitElement;
 import com.starrocks.sql.ast.expression.LiteralExpr;
+import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.SubfieldExpr;
@@ -96,6 +97,7 @@ import com.starrocks.type.BooleanType;
 import com.starrocks.type.CharType;
 import com.starrocks.type.DateType;
 import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.FunctionType;
 import com.starrocks.type.HLLType;
@@ -978,7 +980,7 @@ public class AstBuilder extends AstVisitor<ParseNode, ParseTreeContext> {
                 if (integerPartWidth > 38) {
                     return new FloatLiteral(node.getValue());
                 }
-                return new DecimalLiteral(decimal);
+                return LiteralExprFactory.createDecimalLiteral(decimal);
             }
 
         } catch (ParsingException | NumberFormatException e) {
@@ -992,8 +994,10 @@ public class AstBuilder extends AstVisitor<ParseNode, ParseTreeContext> {
             if (SqlModeHelper.check(sqlMode, SqlModeHelper.MODE_DOUBLE_LITERAL)) {
                 return new FloatLiteral(node.getValue());
             } else {
-                return new DecimalLiteral(node.getValue());
+                return LiteralExprFactory.createDecimalLiteral(new BigDecimal(node.getValue()));
             }
+        } catch (NumberFormatException e) {
+            throw new ParsingException("Invalid floating-point literal: " + node.getValue(), e);
         } catch (ParsingException e) {
             throw new ParsingException(e.getMessage());
         }
@@ -1410,11 +1414,11 @@ public class AstBuilder extends AstVisitor<ParseNode, ParseTreeContext> {
         } else if (typeName.equals("decimal")) {
             if (precision != -1) {
                 if (scale != -1) {
-                    return TypeFactory.createUnifiedDecimalType(precision, scale);
+                    return DecimalTypeFactory.createUnifiedDecimalType(precision, scale);
                 }
-                return TypeFactory.createUnifiedDecimalType(precision, 0);
+                return DecimalTypeFactory.createUnifiedDecimalType(precision, 0);
             }
-            return TypeFactory.createUnifiedDecimalType(38, 0);
+            return DecimalTypeFactory.createUnifiedDecimalType(38, 0);
         } else if (typeName.contains("decimal")) {
             throw new ParsingException("Unknown type: %s", typeName);
         } else if (typeName.equals("real")) {

@@ -48,9 +48,9 @@ import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rewrite.ReplaceColumnRefRewriter;
 import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriter;
 import com.starrocks.sql.optimizer.rewrite.scalar.ImplicitCastRule;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.ScalarType;
 import com.starrocks.type.Type;
-import com.starrocks.type.TypeFactory;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -288,9 +288,9 @@ public class MultiDistinctByCTERewriter {
                     // TODO(stephen): support auto scale up decimal precision
                     ScalarType decimalType;
                     if (avgCallOperatorType.isDecimal256()) {
-                        decimalType = TypeFactory.createDecimalV3NarrowestType(76, 0);
+                        decimalType = DecimalTypeFactory.createDecimalV3NarrowestType(76, 0);
                     } else {
-                        decimalType = TypeFactory.createDecimalV3NarrowestType(38, 0);
+                        decimalType = DecimalTypeFactory.createDecimalV3NarrowestType(38, 0);
                     }
                     distinctAvgCallOperator.getChildren().set(
                             1, new CastOperator(decimalType, distinctAvgCallOperator.getChild(1), true));

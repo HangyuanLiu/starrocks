@@ -16,6 +16,7 @@ package com.starrocks.connector.trino;
 
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.type.ArrayType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.MapType;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.StructField;
@@ -131,7 +132,7 @@ public class TrinoViewColumnTypeConverter {
             return TypeFactory.createType(primitiveType);
         } else {
             int[] parts = getPrecisionAndScale(trinoType);
-            return TypeFactory.createUnifiedDecimalType(parts[0], parts[1]);
+            return DecimalTypeFactory.createUnifiedDecimalType(parts[0], parts[1]);
         }
     }
 

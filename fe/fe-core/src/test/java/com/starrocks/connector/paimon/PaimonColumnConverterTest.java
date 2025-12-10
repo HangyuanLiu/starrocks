@@ -15,6 +15,7 @@
 package com.starrocks.connector.paimon;
 
 import com.starrocks.connector.ColumnTypeConverter;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.StructType;
 import com.starrocks.type.Type;
@@ -90,7 +91,7 @@ public class PaimonColumnConverterTest {
         int scale = 5;
         DecimalType paimonType = new DecimalType(precision, scale);
         Type result = ColumnTypeConverter.fromPaimonType(paimonType);
-        Type srType = TypeFactory.createUnifiedDecimalType(precision, scale);
+        Type srType = DecimalTypeFactory.createUnifiedDecimalType(precision, scale);
         Assertions.assertEquals(result, srType);
     }
 

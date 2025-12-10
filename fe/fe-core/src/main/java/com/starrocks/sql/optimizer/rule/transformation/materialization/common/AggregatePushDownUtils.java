@@ -40,9 +40,9 @@ import com.starrocks.sql.optimizer.rule.transformation.materialization.Aggregate
 import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.PredicateSplit;
 import com.starrocks.sql.optimizer.rule.tree.pdagg.AggregatePushDownContext;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.ScalarType;
 import com.starrocks.type.Type;
-import com.starrocks.type.TypeFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -368,7 +368,7 @@ public class AggregatePushDownUtils {
         if (argType.isDecimalV3()) {
             // There is not need to apply ImplicitCastRule to divide operator of decimal types.
             // but we should cast BIGINT-typed countColRef into DECIMAL(38,0).
-            ScalarType decimal128p38s0 = TypeFactory.createDecimalV3NarrowestType(38, 0);
+            ScalarType decimal128p38s0 = DecimalTypeFactory.createDecimalV3NarrowestType(38, 0);
             newAvg.getChildren().set(1, new CastOperator(decimal128p38s0, newAvg.getChild(1), true));
         } else {
             final ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();

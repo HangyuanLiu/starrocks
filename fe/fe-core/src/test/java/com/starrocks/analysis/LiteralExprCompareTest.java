@@ -38,6 +38,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
+
 import java.util.TimeZone;
 
 public class LiteralExprCompareTest {
@@ -138,10 +140,10 @@ public class LiteralExprCompareTest {
 
     @Test
     public void decimalTest() throws AnalysisException {
-        LiteralExpr decimal1 = new DecimalLiteral("1.23456");
-        LiteralExpr decimal2 = new DecimalLiteral("1.23456");
-        LiteralExpr decimal3 = new DecimalLiteral("1.23457");
-        LiteralExpr decimal4 = new DecimalLiteral("2.23457");
+        LiteralExpr decimal1 = LiteralExprFactory.createDecimalLiteral(new BigDecimal("1.23456"));
+        LiteralExpr decimal2 = LiteralExprFactory.createDecimalLiteral(new BigDecimal("1.23456"));
+        LiteralExpr decimal3 = LiteralExprFactory.createDecimalLiteral(new BigDecimal("1.23457"));
+        LiteralExpr decimal4 = LiteralExprFactory.createDecimalLiteral(new BigDecimal("2.23457"));
 
         // value equal
         Assertions.assertTrue(decimal1.equals(decimal2));

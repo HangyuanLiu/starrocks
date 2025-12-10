@@ -17,9 +17,6 @@ package com.starrocks.type;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.starrocks.common.Config;
-import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.SessionVariableConstants;
 
 /**
  * Factory class for creating Type instances.
@@ -56,15 +53,6 @@ public class TypeFactory {
         return type;
     }
 
-    /**
-     * Get the maximum varchar length for OLAP tables.
-     *
-     * @return the maximum varchar length
-     */
-    public static int getOlapMaxVarcharLength() {
-        return Config.max_varchar_length;
-    }
-
     // 1GB for each line, it's enough
     public static final int CATALOG_MAX_VARCHAR_LENGTH = 1024 * 1024 * 1024;
 
@@ -79,10 +67,6 @@ public class TypeFactory {
         return createVarcharType(CATALOG_MAX_VARCHAR_LENGTH);
     }
 
-    private static boolean isDecimalV3Enabled() {
-        return Config.enable_decimal_v3;
-    }
-
     /**
      * Create a VARBINARY type with specified length.
      *
@@ -93,18 +77,6 @@ public class TypeFactory {
         ScalarType type = new ScalarType(PrimitiveType.VARBINARY);
         type.setLength(len);
         return type;
-    }
-
-    /**
-     * Create a unified decimal type with default precision and scale.
-     * Unified decimal is used for parser, which creating default decimal from name.
-     * For mysql compatibility, uses precision=10, scale=0 as default.
-     *
-     * @return the created decimal type
-     */
-    public static ScalarType createUnifiedDecimalType() {
-        // for mysql compatibility
-        return createUnifiedDecimalType(10, 0);
     }
 
     /**
@@ -127,8 +99,8 @@ public class TypeFactory {
      * @param scale     the scale
      * @return the created decimal type
      */
-    public static ScalarType createUnifiedDecimalType(int precision, int scale) {
-        if (isDecimalV3Enabled()) {
+    public static ScalarType createUnifiedDecimalType(int precision, int scale, String underlyingType) {
+        if (TypeOptions.isDecimalV3Enabled()) {
             // use decimal64 even if precision <= 9, because decimal32 is vulnerable to overflow
             // and casted to decimal64 before expression evaluations are performed on it in BE, so
             // decimal32 has a performance penalty.
@@ -141,7 +113,7 @@ public class TypeFactory {
                 pt = PrimitiveType.DECIMAL256;
             }
 
-            return createDecimalV3Type(pt, precision, scale);
+            return createDecimalV3Type(pt, precision, scale, underlyingType);
         } else {
             return createDecimalV2Type(precision, scale);
         }
@@ -179,13 +151,9 @@ public class TypeFactory {
      * @param scale     the scale
      * @return the created DecimalV3 type
      */
-    public static ScalarType createDecimalV3Type(PrimitiveType type, int precision, int scale) {
+    public static ScalarType createDecimalV3Type(PrimitiveType type, int precision, int scale, String underlyingType) {
         int maxPrecision = PrimitiveType.getMaxPrecisionOfDecimal(PrimitiveType.DECIMAL256);
-        ConnectContext ctx = ConnectContext.get();
-        if (ctx == null ||
-                ctx.getSessionVariable() == null ||
-                ctx.getSessionVariable().getLargeDecimalUnderlyingType() == null ||
-                ctx.getSessionVariable().getLargeDecimalUnderlyingType().equals(SessionVariableConstants.PANIC)) {
+        if (underlyingType.equals("panic")) {
             Preconditions.checkArgument(0 <= precision &&
                             precision <= PrimitiveType.getMaxPrecisionOfDecimal(type),
                     "DECIMAL's precision should range from 1 to %s",
@@ -194,8 +162,7 @@ public class TypeFactory {
                     "DECIMAL(P[,S]) type P must be greater than or equal to the value of S");
         }
         if (precision > maxPrecision) {
-            String underlyingType = ConnectContext.get().getSessionVariable().getLargeDecimalUnderlyingType();
-            if (underlyingType.equals(SessionVariableConstants.DOUBLE)) {
+            if (underlyingType.equals("double")) {
                 return new ScalarType(PrimitiveType.DOUBLE);
             } else {
                 precision = maxPrecision;
@@ -237,7 +204,7 @@ public class TypeFactory {
      * Wildcard decimal uses precision=-1 and scale=-1.
      *
      * @param type the decimal primitive type (DECIMAL32/64/128/256)
-     * @return the created wildcard DecimalV3 type
+     * @return the created wildcard DecimalV3 type¡
      */
     public static ScalarType createWildcardDecimalV3Type(PrimitiveType type) {
         Preconditions.checkArgument(type.isDecimalV3Type());
@@ -255,9 +222,9 @@ public class TypeFactory {
      * @param precision the precision
      * @return the created DecimalV3 type
      */
-    public static ScalarType createDecimalV3Type(PrimitiveType type, int precision) {
+    public static ScalarType createDecimalV3Type(PrimitiveType type, int precision, String underlyingType) {
         int defaultScale = PrimitiveType.getDefaultScaleOfDecimal(type);
-        return createDecimalV3Type(type, precision, Math.min(precision, defaultScale));
+        return createDecimalV3Type(type, precision, Math.min(precision, defaultScale), underlyingType);
     }
 
     /**
@@ -267,10 +234,10 @@ public class TypeFactory {
      * @param type the decimal primitive type (DECIMAL32/64/128/256)
      * @return the created DecimalV3 type
      */
-    public static ScalarType createDecimalV3Type(PrimitiveType type) {
+    public static ScalarType createDecimalV3Type(PrimitiveType type, String underlyingType) {
         int maxPrecision = PrimitiveType.getMaxPrecisionOfDecimal(type);
         int defaultScale = PrimitiveType.getDefaultScaleOfDecimal(type);
-        return createDecimalV3Type(type, maxPrecision, defaultScale);
+        return createDecimalV3Type(type, maxPrecision, defaultScale, underlyingType);
     }
 
     /**
@@ -282,7 +249,7 @@ public class TypeFactory {
      * @param scale     the scale
      * @return the created narrowest DecimalV3 type
      */
-    public static ScalarType createDecimalV3NarrowestType(int precision, int scale) {
+    public static ScalarType createDecimalV3NarrowestType(int precision, int scale, String underlyingType) {
         if (precision == 0 && scale == 0) {
             return createDecimalV3TypeForZero(0);
         }
@@ -291,13 +258,13 @@ public class TypeFactory {
         final int decimal128MaxPrecision = PrimitiveType.getMaxPrecisionOfDecimal(PrimitiveType.DECIMAL128);
         final int decimal256MaxPrecision = PrimitiveType.getMaxPrecisionOfDecimal(PrimitiveType.DECIMAL256);
         if (0 < precision && precision <= decimal32MaxPrecision) {
-            return createDecimalV3Type(PrimitiveType.DECIMAL32, precision, scale);
+            return createDecimalV3Type(PrimitiveType.DECIMAL32, precision, scale, underlyingType);
         } else if (decimal32MaxPrecision < precision && precision <= decimal64MaxPrecision) {
-            return createDecimalV3Type(PrimitiveType.DECIMAL64, precision, scale);
+            return createDecimalV3Type(PrimitiveType.DECIMAL64, precision, scale, underlyingType);
         } else if (decimal64MaxPrecision < precision && precision <= decimal128MaxPrecision) {
-            return createDecimalV3Type(PrimitiveType.DECIMAL128, precision, scale);
+            return createDecimalV3Type(PrimitiveType.DECIMAL128, precision, scale, underlyingType);
         } else if (decimal128MaxPrecision < precision && precision <= decimal256MaxPrecision) {
-            return createDecimalV3Type(PrimitiveType.DECIMAL256, precision, scale);
+            return createDecimalV3Type(PrimitiveType.DECIMAL256, precision, scale, underlyingType);
         } else {
             Preconditions.checkState(false, "Illegal decimal precision(1 to 76): precision=" + precision);
             return new ScalarType(PrimitiveType.INVALID_TYPE);
@@ -342,9 +309,5 @@ public class TypeFactory {
         ScalarType res = PRIMITIVE_TYPE_SCALAR_TYPE_MAP.get(type);
         Preconditions.checkNotNull(res, "unknown type " + type);
         return res;
-    }
-
-    static {
-        StringType.STRING = new StringType(Config.max_varchar_length);
     }
 }

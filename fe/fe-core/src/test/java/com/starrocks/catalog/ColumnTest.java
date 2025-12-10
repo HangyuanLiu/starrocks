@@ -49,6 +49,7 @@ import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.type.DateType;
 import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.JsonType;
 import com.starrocks.type.PrimitiveType;
@@ -222,7 +223,7 @@ public class ColumnTest {
     @Test
     public void testSchemaChangeAllowedInvolvingDecimalv3() throws DdlException {
         Column decimalColumn =
-                new Column("user", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 15, 3), false, null, true,
+                new Column("user", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 15, 3), false, null, true,
                         new ColumnDef.DefaultValueDef(true, new StringLiteral("0")), "");
 
         Column varcharColumn1 = new Column("user", TypeFactory.createVarcharType(50), false, null, true,
@@ -240,7 +241,7 @@ public class ColumnTest {
         }
 
         Column decimalColumn2 =
-                new Column("user", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 20, 4), false, null, true,
+                new Column("user", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 20, 4), false, null, true,
                         new ColumnDef.DefaultValueDef(true, new StringLiteral("0")), "");
         decimalColumn.checkSchemaChangeAllowed(decimalColumn2);
 
@@ -254,7 +255,7 @@ public class ColumnTest {
         Column decimalv2Column = new Column("user", DecimalType.DEFAULT_DECIMALV2, false, null, true,
                 new ColumnDef.DefaultValueDef(true, new StringLiteral("0")), "");
         Column decimalColumn3 =
-                new Column("user", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 27, 9), false, null, true,
+                new Column("user", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 27, 9), false, null, true,
                         new ColumnDef.DefaultValueDef(true, new StringLiteral("0")), "");
         decimalv2Column.checkSchemaChangeAllowed(decimalColumn3);
 
@@ -266,7 +267,7 @@ public class ColumnTest {
         }
 
         Column decimalColumn4 =
-                new Column("user", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 13), false, null, true,
+                new Column("user", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 13), false, null, true,
                         new ColumnDef.DefaultValueDef(true, new StringLiteral("0")), "");
         try {
             decimalv2Column.checkSchemaChangeAllowed(decimalColumn4);

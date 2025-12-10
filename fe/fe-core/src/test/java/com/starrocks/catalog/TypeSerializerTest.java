@@ -23,6 +23,7 @@ import com.starrocks.type.AnyElementType;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.HLLType;
 import com.starrocks.type.IntegerType;
@@ -254,7 +255,7 @@ public class TypeSerializerTest {
         TTypeDesc container = new TTypeDesc();
         container.types = new ArrayList<>();
 
-        ScalarType decimal32Type = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2);
+        ScalarType decimal32Type = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2);
         TypeSerializer.toThrift(decimal32Type, container);
 
         Assertions.assertEquals(1, container.types.size());
@@ -266,7 +267,7 @@ public class TypeSerializerTest {
         TTypeDesc container = new TTypeDesc();
         container.types = new ArrayList<>();
 
-        ScalarType decimal64Type = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 6);
+        ScalarType decimal64Type = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 6);
         TypeSerializer.toThrift(decimal64Type, container);
 
         Assertions.assertEquals(1, container.types.size());
@@ -278,7 +279,7 @@ public class TypeSerializerTest {
         TTypeDesc container = new TTypeDesc();
         container.types = new ArrayList<>();
 
-        ScalarType decimal128Type = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 10);
+        ScalarType decimal128Type = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 10);
         TypeSerializer.toThrift(decimal128Type, container);
 
         Assertions.assertEquals(1, container.types.size());
@@ -290,7 +291,7 @@ public class TypeSerializerTest {
         TTypeDesc container = new TTypeDesc();
         container.types = new ArrayList<>();
 
-        ScalarType decimal256Type = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 20);
+        ScalarType decimal256Type = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 20);
         TypeSerializer.toThrift(decimal256Type, container);
 
         Assertions.assertEquals(1, container.types.size());
@@ -403,7 +404,7 @@ public class TypeSerializerTest {
         container.types = new ArrayList<>();
 
         MapType mapType = new MapType(
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4),
                 TypeFactory.createDecimalV2Type(10, 2)
         );
         TypeSerializer.toThrift(mapType, container);
@@ -495,7 +496,7 @@ public class TypeSerializerTest {
 
         StructType structType = new StructType(Lists.newArrayList(
                 new StructField("price", TypeFactory.createDecimalV2Type(10, 2)),
-                new StructField("quantity", TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4))
+                new StructField("quantity", DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 4))
         ));
         TypeSerializer.toThrift(structType, container);
 
@@ -779,9 +780,9 @@ public class TypeSerializerTest {
                 TypeFactory.createVarbinary(1024),
                 HLLType.HLL,
                 TypeFactory.createDecimalV2Type(10, 4),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 6),
-                TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 10),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 18, 6),
+                DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 10),
                 new ArrayType(IntegerType.INT),
                 new ArrayType(TypeFactory.createVarcharType(100)),
                 new MapType(IntegerType.INT, TypeFactory.createVarcharType(200)),

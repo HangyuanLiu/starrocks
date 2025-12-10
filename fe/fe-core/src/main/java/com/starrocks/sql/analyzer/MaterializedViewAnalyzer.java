@@ -130,6 +130,7 @@ import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.ScalarType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
+import com.starrocks.type.TypeRegister;
 import org.apache.commons.collections.map.CaseInsensitiveMap;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.iceberg.PartitionField;
@@ -1854,9 +1855,9 @@ public class MaterializedViewAnalyzer {
         if (type.isScalarType()) {
             ScalarType scalarType = (ScalarType) type;
             if (scalarType.isWildcardChar()) {
-                type = TypeFactory.createCharType(TypeFactory.getOlapMaxVarcharLength());
+                type = TypeFactory.createCharType(TypeRegister.getOlapMaxVarcharLength());
             } else if (scalarType.isWildcardVarchar()) {
-                type = TypeFactory.createVarcharType(TypeFactory.getOlapMaxVarcharLength());
+                type = TypeFactory.createVarcharType(TypeRegister.getOlapMaxVarcharLength());
             }
         }
         String columnName = FeConstants.GENERATED_PARTITION_COLUMN_PREFIX + placeHolderSlotId;

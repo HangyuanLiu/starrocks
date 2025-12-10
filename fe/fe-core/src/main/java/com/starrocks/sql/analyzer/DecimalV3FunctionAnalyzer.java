@@ -34,6 +34,7 @@ import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.InvalidType;
@@ -104,8 +105,8 @@ public class DecimalV3FunctionAnalyzer {
             new ImmutableSortedSet.Builder<>(String::compareTo).add(FunctionSet.SUM)
                     .add(FunctionSet.MULTI_DISTINCT_SUM).build();
 
-    private static final ScalarType DECIMAL128P38S0 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 0);
-    private static final ScalarType DECIMAL256P76S0 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 0);
+    private static final ScalarType DECIMAL128P38S0 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 0);
+    private static final ScalarType DECIMAL256P76S0 = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 0);
 
     // For decimal32/64/128/256 types, normalize argType's scale and precision
     private static Type[] normalizeDecimalArgTypes(final Type[] argTypes, String fnName) {
@@ -249,7 +250,7 @@ public class DecimalV3FunctionAnalyzer {
             case VARCHAR -> TypeFactory.createVarcharType(len);
             case VARBINARY -> TypeFactory.createVarbinary(len);
             case DECIMALV2 -> TypeFactory.createDecimalV2Type(precision, scale);
-            case DECIMAL32, DECIMAL64, DECIMAL128, DECIMAL256 -> TypeFactory.createDecimalV3Type(type, precision, scale);
+            case DECIMAL32, DECIMAL64, DECIMAL128, DECIMAL256 -> DecimalTypeFactory.createDecimalV3Type(type, precision, scale);
             default -> TypeFactory.createType(type);
         };
     }
@@ -267,9 +268,9 @@ public class DecimalV3FunctionAnalyzer {
                 ScalarType rhsType = argType.isDecimal256() ? DECIMAL256P76S0 : DECIMAL128P38S0;
 
                 if (argType.isDecimal256() && scale > 36) {
-                    argType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 36);
+                    argType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 36);
                 } else if (!argType.isDecimal256() && scale > 18) {
-                    argType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18);
+                    argType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18);
                 }
 
                 final ArithmeticExpr.TypeTriple triple =
@@ -284,10 +285,10 @@ public class DecimalV3FunctionAnalyzer {
                 // so we limit the maximum scale for this case
                 int scale = ((ScalarType) argType).getScalarScale();
                 if (argType.isDecimal256() && scale > 36) {
-                    argType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 36);
+                    argType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, 36);
                     returnType = argType;
                 } else if (!argType.isDecimal256() && scale > 18) {
-                    argType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18);
+                    argType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18);
                     returnType = argType;
                 }
             } else if (DECIMAL_ARRAY_AGG_FUNCTION_SAME_TYPE.contains(fn.functionName())) {
@@ -322,9 +323,9 @@ public class DecimalV3FunctionAnalyzer {
         }
         ScalarType decimalType;
         if (argType.isDecimal256()) {
-            decimalType = TypeFactory.createDecimalV3NarrowestType(76, ((ScalarType) argType).getScalarScale());
+            decimalType = DecimalTypeFactory.createDecimalV3NarrowestType(76, ((ScalarType) argType).getScalarScale());
         } else {
-            decimalType = TypeFactory.createDecimalV3NarrowestType(38, ((ScalarType) argType).getScalarScale());
+            decimalType = DecimalTypeFactory.createDecimalV3NarrowestType(38, ((ScalarType) argType).getScalarScale());
         }
         AggregateFunction newFn = new AggregateFunction(
                 fn.getFunctionName(), Arrays.asList(sumFn.getArgs()), decimalType,
@@ -351,9 +352,9 @@ public class DecimalV3FunctionAnalyzer {
         ScalarType retType;
         // TODO(stephen): support auto scale up decimal precision
         if (argType.isDecimal256()) {
-            retType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, decimalType.getScalarScale());
+            retType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL256, 76, decimalType.getScalarScale());
         } else {
-            retType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, decimalType.getScalarScale());
+            retType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, decimalType.getScalarScale());
         }
         AggregateFunction newFn = new AggregateFunction(
                 fn.getFunctionName(), Collections.singletonList(decimalType), retType,
@@ -482,14 +483,14 @@ public class DecimalV3FunctionAnalyzer {
                 //  casting the narrower type to the wider type is sound and efficient.
                 PrimitiveType commonPrimitiveType = argScalarType.isDecimal256() ? PrimitiveType.DECIMAL256 :
                         PrimitiveType.DECIMAL128;
-                commonType = TypeFactory.createDecimalV3Type(commonPrimitiveType, precision, scale);
+                commonType = DecimalTypeFactory.createDecimalV3Type(commonPrimitiveType, precision, scale);
 
             }
 
             Type argType = argumentTypes[0];
             // stddev/variance always use decimal128(38,9) to computing result.
             if (DECIMAL_AGG_VARIANCE_STDDEV_TYPE.contains(fnName) && argType.isDecimalV3()) {
-                argType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 9);
+                argType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 9);
             }
             newFn = DecimalV3FunctionAnalyzer
                     .rectifyAggregationFunction((AggregateFunction) fn, argType, commonType);
@@ -529,7 +530,7 @@ public class DecimalV3FunctionAnalyzer {
             // Decimal version of truncate/round/round_up_to may change the scale, we need to calculate the scale of the return type
             // And we need to downgrade to double version if second param is neither int literal nor SlotRef expression
             Type commonType = argumentTypes[0].isDecimalV3() ?
-                    TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, argumentTypes[0].getPrecision(),
+                    DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, argumentTypes[0].getPrecision(),
                             ((ScalarType) argumentTypes[0]).getScalarScale()) : DecimalType.DEFAULT_DECIMAL128;
             List<Type> argTypes = Arrays.stream(fn.getArgs()).map(t -> t.isDecimalV3() ? commonType : t)
                     .collect(Collectors.toList());
@@ -592,7 +593,7 @@ public class DecimalV3FunctionAnalyzer {
                 ScalarType decimalType = (ScalarType) ((ArrayType) argumentTypes[0]).getItemType();
                 int precision = PrimitiveType.getMaxPrecisionOfDecimal(PrimitiveType.DECIMAL128);
                 int scale = decimalType.getScalarScale();
-                ScalarType retType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, precision, scale);
+                ScalarType retType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, precision, scale);
                 newFn.setArgsType(new Type[] {new ArrayType(decimalType)});
                 if (FunctionSet.ARRAY_AVG.equals(fn.functionName())) {
                     // avg on decimal complies with Snowflake-style
@@ -603,7 +604,7 @@ public class DecimalV3FunctionAnalyzer {
                     Preconditions.checkState(PrimitiveType.DECIMAL128.equals(retType.getPrimitiveType()));
                     newFn.setArgsType(argumentTypes);
                 } else if (FunctionSet.ARRAY_SUM.equals(fn.functionName()) && retType.getScalarScale() > 18) {
-                    retType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18);
+                    retType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 38, 18);
                     newFn.setArgsType(new Type[] {new ArrayType(retType)});
                 }
                 newFn.setRetType(retType);
@@ -657,8 +658,8 @@ public class DecimalV3FunctionAnalyzer {
         int maxPrecision = PrimitiveType.getMaxPrecisionOfDecimal(widerType);
 
         ArithmeticExpr.TypeTriple result = new ArithmeticExpr.TypeTriple();
-        result.lhsTargetType = TypeFactory.createDecimalV3Type(widerType, maxPrecision, lhsScale);
-        result.rhsTargetType = TypeFactory.createDecimalV3Type(widerType, maxPrecision, rhsScale);
+        result.lhsTargetType = DecimalTypeFactory.createDecimalV3Type(widerType, maxPrecision, lhsScale);
+        result.rhsTargetType = DecimalTypeFactory.createDecimalV3Type(widerType, maxPrecision, rhsScale);
         int returnScale = 0;
         int returnPrecision = 0;
         switch (op) {
@@ -684,7 +685,7 @@ public class DecimalV3FunctionAnalyzer {
                     // decimal32(4,3) * decimal32(4,3) => decimal32(8,6);
                     // decimal64(15,3) * decimal32(9,4) => decimal128(24,7).
                     PrimitiveType commonPtype =
-                            TypeFactory.createDecimalV3NarrowestType(returnPrecision, returnScale).getPrimitiveType();
+                            DecimalTypeFactory.createDecimalV3NarrowestType(returnPrecision, returnScale).getPrimitiveType();
                     // TODO(stephen): support auto scale up decimal precision
                     if (defaultMaxDecimalType == PrimitiveType.DECIMAL128 && commonPtype == PrimitiveType.DECIMAL256) {
                         commonPtype = PrimitiveType.DECIMAL128;
@@ -693,9 +694,9 @@ public class DecimalV3FunctionAnalyzer {
                     // a common type shall never be narrower than type of lhs and rhs
                     commonPtype = PrimitiveType.getWiderDecimalV3Type(commonPtype, lhsPtype);
                     commonPtype = PrimitiveType.getWiderDecimalV3Type(commonPtype, rhsPtype);
-                    result.returnType = TypeFactory.createDecimalV3Type(commonPtype, returnPrecision, returnScale);
-                    result.lhsTargetType = TypeFactory.createDecimalV3Type(commonPtype, lhsPrecision, lhsScale);
-                    result.rhsTargetType = TypeFactory.createDecimalV3Type(commonPtype, rhsPrecision, rhsScale);
+                    result.returnType = DecimalTypeFactory.createDecimalV3Type(commonPtype, returnPrecision, returnScale);
+                    result.lhsTargetType = DecimalTypeFactory.createDecimalV3Type(commonPtype, lhsPrecision, lhsScale);
+                    result.rhsTargetType = DecimalTypeFactory.createDecimalV3Type(commonPtype, rhsPrecision, rhsScale);
                     return result;
                 } else if (returnScale <= maxDecimalPrecision) {
                     ConnectContext connectContext = ConnectContext.get();
@@ -714,11 +715,11 @@ public class DecimalV3FunctionAnalyzer {
                     // decimal128(23,5) * decimal64(18,4) => decimal128(38, 9).
                     // TODO(stephen): support auto scale up decimal precision
                     result.returnType =
-                            TypeFactory.createDecimalV3Type(defaultMaxDecimalType, maxDecimalPrecision, returnScale);
+                            DecimalTypeFactory.createDecimalV3Type(defaultMaxDecimalType, maxDecimalPrecision, returnScale);
                     result.lhsTargetType =
-                            TypeFactory.createDecimalV3Type(defaultMaxDecimalType, lhsPrecision, lhsScale);
+                            DecimalTypeFactory.createDecimalV3Type(defaultMaxDecimalType, lhsPrecision, lhsScale);
                     result.rhsTargetType =
-                            TypeFactory.createDecimalV3Type(defaultMaxDecimalType, rhsPrecision, rhsScale);
+                            DecimalTypeFactory.createDecimalV3Type(defaultMaxDecimalType, rhsPrecision, rhsScale);
                     return result;
                 } else {
                     // returnScale > 38, so it is cannot be represented as decimal.
@@ -744,8 +745,8 @@ public class DecimalV3FunctionAnalyzer {
                 }
 
                 maxPrecision = PrimitiveType.getMaxPrecisionOfDecimal(widerType);
-                result.lhsTargetType = TypeFactory.createDecimalV3Type(widerType, maxPrecision, lhsScale);
-                result.rhsTargetType = TypeFactory.createDecimalV3Type(widerType, maxPrecision, rhsScale);
+                result.lhsTargetType = DecimalTypeFactory.createDecimalV3Type(widerType, maxPrecision, lhsScale);
+                result.rhsTargetType = DecimalTypeFactory.createDecimalV3Type(widerType, maxPrecision, rhsScale);
                 int adjustedScale = returnScale + rhsScale;
                 if (adjustedScale > maxPrecision) {
                     throw new SemanticException(
@@ -769,7 +770,7 @@ public class DecimalV3FunctionAnalyzer {
                 Preconditions.checkState(false, "DecimalV3 only support operators: +-*/%&|^");
         }
         result.returnType = op == ArithmeticExpr.Operator.INT_DIVIDE ? IntegerType.BIGINT :
-                TypeFactory.createDecimalV3Type(widerType, maxPrecision, returnScale);
+                DecimalTypeFactory.createDecimalV3Type(widerType, maxPrecision, returnScale);
         return result;
     }
 
@@ -823,9 +824,9 @@ public class DecimalV3FunctionAnalyzer {
         decimalType = PrimitiveType.getWiderDecimalV3Type(decimalType, lhsType.getPrimitiveType());
         decimalType = PrimitiveType.getWiderDecimalV3Type(decimalType, rhsType.getPrimitiveType());
 
-        triple.lhsTargetType = TypeFactory.createDecimalV3Type(decimalType, retPrecision, lhsScale);
-        triple.rhsTargetType = TypeFactory.createDecimalV3Type(decimalType, retPrecision, rhsScale);
-        triple.returnType = TypeFactory.createDecimalV3Type(decimalType, retPrecision, retScale);
+        triple.lhsTargetType = DecimalTypeFactory.createDecimalV3Type(decimalType, retPrecision, lhsScale);
+        triple.rhsTargetType = DecimalTypeFactory.createDecimalV3Type(decimalType, retPrecision, rhsScale);
+        triple.returnType = DecimalTypeFactory.createDecimalV3Type(decimalType, retPrecision, retScale);
     }
 
     private static ArithmeticExpr.TypeTriple rewriteDecimalDecimalOperation(ArithmeticExpr expr) {

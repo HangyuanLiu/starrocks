@@ -45,6 +45,7 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.thrift.TSlotDescriptor;
 import com.starrocks.type.BooleanType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.ScalarType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
@@ -164,7 +165,7 @@ public class SlotDescriptor {
         if (this.originType.isScalarType()) {
             ScalarType scalarType = (ScalarType) this.originType;
             if (this.originType.isDecimalV3()) {
-                this.type = TypeFactory.createDecimalV3Type(
+                this.type = DecimalTypeFactory.createDecimalV3Type(
                         scalarType.getPrimitiveType(),
                         scalarType.getScalarPrecision(),
                         scalarType.getScalarScale());

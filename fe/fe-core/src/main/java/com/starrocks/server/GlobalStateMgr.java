@@ -249,6 +249,7 @@ import com.starrocks.transaction.GtidGenerator;
 import com.starrocks.transaction.PublishVersionDaemon;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.PrimitiveType;
+import com.starrocks.type.TypeRegister;
 import com.starrocks.warehouse.WarehouseIdleChecker;
 import com.starrocks.warehouse.cngroup.ComputeResource;
 import org.apache.commons.lang3.StringUtils;
@@ -280,6 +281,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class GlobalStateMgr {
+    static {
+        // Configure shared type singletons as early as possible.
+        TypeRegister.initializeSpecialTypes();
+    }
+
     private static final Logger LOG = LogManager.getLogger(GlobalStateMgr.class);
     // 0 ~ 9999 used for qe
     public static final long NEXT_ID_INIT_VALUE = 10000;
@@ -1201,6 +1207,7 @@ public class GlobalStateMgr {
             nodeMgr.getClusterIdAndRoleOnStartup();
 
             // 3. Load image first and replay edits
+            TypeRegister.initializeSpecialTypes();
             initJournal();
             loadImage(); // load image file
 

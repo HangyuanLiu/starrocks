@@ -26,6 +26,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.MapType;
@@ -60,7 +61,7 @@ public class EntityConvertUtils {
                 if (decimalTypeInfo.getPrecision() > 38) {
                     return TypeFactory.createDefaultCatalogString();
                 }
-                return TypeFactory.createUnifiedDecimalType(decimalTypeInfo.getPrecision(), decimalTypeInfo.getScale());
+                return DecimalTypeFactory.createUnifiedDecimalType(decimalTypeInfo.getPrecision(), decimalTypeInfo.getScale());
             case DOUBLE:
                 return FloatType.DOUBLE;
             case CHAR:

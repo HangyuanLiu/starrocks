@@ -27,6 +27,7 @@ import com.starrocks.sql.ast.expression.CloneExpr;
 import com.starrocks.sql.ast.expression.CollectionElementExpr;
 import com.starrocks.sql.ast.expression.CompoundPredicate;
 import com.starrocks.sql.ast.expression.DateLiteral;
+import com.starrocks.sql.ast.expression.DecimalLiteral;
 import com.starrocks.sql.ast.expression.DefaultValueExpr;
 import com.starrocks.sql.ast.expression.DictMappingExpr;
 import com.starrocks.sql.ast.expression.DictionaryGetExpr;
@@ -1238,6 +1239,10 @@ public interface AstVisitor<R, C> {
     }
 
     default R visitVarBinaryLiteral(VarBinaryLiteral node, C context) {
+        return visitLiteral(node, context);
+    }
+
+    default R visitDecimalLiteral(DecimalLiteral node, C context) {
         return visitLiteral(node, context);
     }
 

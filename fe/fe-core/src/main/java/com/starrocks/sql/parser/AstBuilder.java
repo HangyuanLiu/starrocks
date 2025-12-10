@@ -465,6 +465,7 @@ import com.starrocks.sql.ast.expression.LargeIntLiteral;
 import com.starrocks.sql.ast.expression.LikePredicate;
 import com.starrocks.sql.ast.expression.LimitElement;
 import com.starrocks.sql.ast.expression.LiteralExpr;
+import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.MapExpr;
 import com.starrocks.sql.ast.expression.MatchExpr;
 import com.starrocks.sql.ast.expression.MultiInPredicate;
@@ -536,6 +537,11 @@ import com.starrocks.type.AggStateDesc;
 import com.starrocks.type.AnyMapType;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalType;
+import com.starrocks.type.DecimalTypeFactory;
+import com.starrocks.type.FloatType;
+import com.starrocks.type.FunctionType;
+import com.starrocks.type.HLLType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.Type;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -7342,7 +7348,7 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
             } else if (intLiteral.compareTo(LARGEINT_MAX_ABS) <= 0) {
                 return new LargeIntLiteral(intLiteral.toString(), pos);
             } else if (intLiteral.compareTo(INT256_MAX_ABS) <= 0) {
-                return new DecimalLiteral(intLiteral.toString(), pos);
+                return LiteralExprFactory.createDecimalLiteral(new BigDecimal(intLiteral), pos);
             } else {
                 throw new ParsingException(PARSER_ERROR_MSG.numOverflow(intText), pos);
             }
@@ -8045,7 +8051,7 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
             } else if (intLiteral.compareTo(LARGEINT_MAX_ABS) <= 0) {
                 return new LargeIntLiteral(intLiteral.toString(), pos);
             } else if (intLiteral.compareTo(INT256_MAX_ABS) <= 0) {
-                return new DecimalLiteral(intLiteral.toString(), pos);
+                return LiteralExprFactory.createDecimalLiteral(new BigDecimal(intLiteral), pos);
             } else {
                 throw new ParsingException(PARSER_ERROR_MSG.numOverflow(context.getText()), pos);
             }
@@ -8068,7 +8074,7 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
                 if (integerPartWidth > 38) {
                     return new FloatLiteral(context.getText(), pos);
                 }
-                return new DecimalLiteral(decimal, pos);
+                return LiteralExprFactory.createDecimalLiteral(decimal, pos);
             }
 
         } catch (ParsingException | NumberFormatException e) {
@@ -8083,9 +8089,9 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
             if (SqlModeHelper.check(sqlMode, SqlModeHelper.MODE_DOUBLE_LITERAL)) {
                 return new FloatLiteral(context.getText(), pos);
             } else {
-                return new DecimalLiteral(context.getText(), pos);
+                return LiteralExprFactory.createDecimalLiteral(new BigDecimal(context.getText()), pos);
             }
-        } catch (ParsingException e) {
+        } catch (ParsingException | NumberFormatException e) {
             throw new ParsingException(PARSER_ERROR_MSG.invalidNumFormat(context.getText()), pos);
         }
     }

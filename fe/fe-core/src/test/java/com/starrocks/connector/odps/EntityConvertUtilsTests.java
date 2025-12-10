@@ -27,6 +27,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.type.ArrayType;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.DateType;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.MapType;
@@ -82,7 +83,7 @@ public class EntityConvertUtilsTests {
     public void testConvertTypeCaseDecimalLessThanOrEqualMaxDecimal32Precision() {
         DecimalTypeInfo decimalTypeInfo = TypeInfoFactory.getDecimalTypeInfo(5, 2);
         Type result = EntityConvertUtils.convertType(decimalTypeInfo);
-        Type expectedType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 5, 2);
+        Type expectedType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 5, 2);
         assertEquals(expectedType, result);
     }
 
@@ -90,7 +91,7 @@ public class EntityConvertUtilsTests {
     public void testConvertTypeCaseDecimalLessThanOrEqualMaxDecimal64Precision() {
         DecimalTypeInfo decimalTypeInfo = TypeInfoFactory.getDecimalTypeInfo(12, 4);
         Type result = EntityConvertUtils.convertType(decimalTypeInfo);
-        Type expectedType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 12, 4);
+        Type expectedType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL64, 12, 4);
         assertEquals(expectedType, result);
     }
 
@@ -98,7 +99,7 @@ public class EntityConvertUtilsTests {
     public void testConvertTypeCaseDecimalGreaterThanMaxDecimal64Precision() {
         DecimalTypeInfo decimalTypeInfo = TypeInfoFactory.getDecimalTypeInfo(20, 6);
         Type result = EntityConvertUtils.convertType(decimalTypeInfo);
-        Type expectedType = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 20, 6);
+        Type expectedType = DecimalTypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL128, 20, 6);
         assertEquals(expectedType, result);
     }
 

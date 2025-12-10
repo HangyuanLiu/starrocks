@@ -192,8 +192,12 @@ public final class ExprCastFunction {
                 case DECIMAL64:
                 case DECIMAL128:
                 case DECIMAL256:
-                    DecimalLiteral decimalLiteral = new DecimalLiteral(value);
-                    return castDecimalLiteral(decimalLiteral, targetType);
+                    try {
+                        DecimalLiteral decimalLiteral = LiteralExprFactory.createDecimalLiteral(new BigDecimal(value));
+                        return castDecimalLiteral(decimalLiteral, targetType);
+                    } catch (NumberFormatException e) {
+                        throw new ParsingException("Invalid floating-point literal: " + value, e);
+                    }
                 default:
                     break;
             }
@@ -227,7 +231,7 @@ public final class ExprCastFunction {
         if (targetType.isFloatingPointType()) {
             return new FloatLiteral(value.doubleValue(), targetType);
         } else if (targetType.isDecimalOfAnyVersion()) {
-            DecimalLiteral decimalLiteral = new DecimalLiteral(new BigDecimal(value));
+            DecimalLiteral decimalLiteral = LiteralExprFactory.createDecimalLiteral(new BigDecimal(value));
             decimalLiteral.setType(targetType);
             return decimalLiteral;
         } else if (targetType.isNumericType()) {
@@ -262,7 +266,7 @@ public final class ExprCastFunction {
         } else if (targetType.isFloatingPointType()) {
             return new FloatLiteral((double) literal.getValue(), targetType);
         } else if (targetType.isDecimalOfAnyVersion()) {
-            DecimalLiteral decimalLiteral = new DecimalLiteral(new BigDecimal(literal.getValue()));
+            DecimalLiteral decimalLiteral = LiteralExprFactory.createDecimalLiteral(new BigDecimal(literal.getValue()));
             decimalLiteral.setType(targetType);
             return decimalLiteral;
         }
@@ -304,7 +308,8 @@ public final class ExprCastFunction {
             }
             return literal;
         } else {
-            DecimalLiteral decimalLiteral = new DecimalLiteral(new BigDecimal(Double.toString(literal.getValue())));
+            DecimalLiteral decimalLiteral = LiteralExprFactory.createDecimalLiteral(
+                    new BigDecimal(Double.toString(literal.getValue())));
             decimalLiteral.setType(targetType);
             return decimalLiteral;
         }

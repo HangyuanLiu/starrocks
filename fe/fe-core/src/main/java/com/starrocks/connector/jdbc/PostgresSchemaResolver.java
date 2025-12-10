@@ -22,9 +22,11 @@ import com.starrocks.catalog.Table;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.SchemaConstants;
 import com.starrocks.common.util.TimeUtils;
+import com.starrocks.type.DecimalTypeFactory;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
+import com.starrocks.type.TypeRegister;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -114,7 +116,7 @@ public class PostgresSchemaResolver extends JDBCSchemaResolver {
                 if (typeName.equalsIgnoreCase("varchar")) {
                     return TypeFactory.createVarcharType(columnSize);
                 } else if (typeName.equalsIgnoreCase("text")) {
-                    return TypeFactory.createVarcharType(TypeFactory.getOlapMaxVarcharLength());
+                    return TypeFactory.createVarcharType(TypeRegister.getOlapMaxVarcharLength());
                 }
                 primitiveType = PrimitiveType.UNKNOWN_TYPE;
                 break;
@@ -143,9 +145,9 @@ public class PostgresSchemaResolver extends JDBCSchemaResolver {
             // if user not specify numeric precision and scale, the default value is 0,
             // we can't defer the precision and scale, can only deal it as string.
             if (precision == 0) {
-                return TypeFactory.createVarcharType(TypeFactory.getOlapMaxVarcharLength());
+                return TypeFactory.createVarcharType(TypeRegister.getOlapMaxVarcharLength());
             }
-            return TypeFactory.createUnifiedDecimalType(precision, max(digits, 0));
+            return DecimalTypeFactory.createUnifiedDecimalType(precision, max(digits, 0));
         }
     }
 
