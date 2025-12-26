@@ -68,6 +68,7 @@ import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectListItem;
 import com.starrocks.sql.ast.SelectRelation;
+import com.starrocks.sql.ast.TableRef;
 import com.starrocks.sql.ast.ValuesRelation;
 import com.starrocks.sql.ast.expression.DefaultValueExpr;
 import com.starrocks.sql.ast.expression.Expr;
@@ -292,6 +293,13 @@ public class InsertPlanner {
             outputFullSchema = targetTable.getFullSchema();
         }
 
+        if (targetTable.isIcebergTable()) {
+            outputBaseSchema = outputBaseSchema.stream().filter(col ->
+                    !IcebergTable.ICEBERG_META_COLUMNS.contains(col.getName())).toList();
+            outputFullSchema = outputFullSchema.stream().filter(col ->
+                    !IcebergTable.ICEBERG_META_COLUMNS.contains(col.getName())).toList();
+        }
+
         refreshExternalTable(insertStmt.getQueryStatement(), session);
 
         //1. Process the literal value of the insert values type and cast it into the type of the target table
@@ -444,7 +452,8 @@ public class InsertPlanner {
                 session.getSessionVariable().setPreferComputeNode(false);
                 session.getSessionVariable().setUseComputeNodes(0);
                 OlapTableSink olapTableSink = (OlapTableSink) dataSink;
-                TableName catalogDbTable = insertStmt.getTableName();
+                TableRef tableRef = insertStmt.getTableRef();
+                TableName catalogDbTable = TableName.fromTableRef(tableRef);
                 Database db = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(session, catalogDbTable.getCatalog(),
                         catalogDbTable.getDb());
                 try {
@@ -492,12 +501,12 @@ public class InsertPlanner {
                     // If you want to set tablet sink dop > 1, please enable single tablet loading and disable shuffle service
                     sinkFragment.setPipelineDop(1);
                 } else {
-                    if (ConnectContext.get().getSessionVariable().getEnableAdaptiveSinkDop()) {
-                        sinkFragment.setPipelineDop(
-                                ConnectContext.get().getSessionVariable().getSinkDegreeOfParallelism());
+                    SessionVariable sv = session.getSessionVariable();
+                    if (sv.getEnableAdaptiveSinkDop()) {
+                        long warehouseId = session.getCurrentComputeResource().getWarehouseId();
+                        sinkFragment.setPipelineDop(sv.getSinkDegreeOfParallelism(warehouseId));
                     } else {
-                        sinkFragment
-                                .setPipelineDop(ConnectContext.get().getSessionVariable().getParallelExecInstanceNum());
+                        sinkFragment.setPipelineDop(sv.getParallelExecInstanceNum());
                     }
                 }
 
@@ -715,8 +724,11 @@ public class InsertPlanner {
                 ExpressionAnalyzer.analyzeExpression(expr,
                         new AnalyzeState(), new Scope(RelationId.anonymous(), new RelationFields(
                                 insertStatement.getTargetTable().getBaseSchema().stream()
-                                        .map(col -> new Field(col.getName(),
-                                                col.getType(), insertStatement.getTableName(), null))
+                                        .map(col -> {
+                                            TableRef tableRef = insertStatement.getTableRef();
+                                            TableName tableName = TableName.fromTableRef(tableRef);
+                                            return new Field(col.getName(), col.getType(), tableName, null);
+                                        })
                                         .collect(Collectors.toList()))), session);
 
                 List<SlotRef> slots = new ArrayList<>();
@@ -791,8 +803,8 @@ public class InsertPlanner {
                     // Only olap table can have the synchronized materialized view.
                     OlapTable targetOlapTable = (OlapTable) targetTable;
                     MaterializedIndexMeta targetIndexMeta = null;
-                    for (MaterializedIndexMeta indexMeta : targetOlapTable.getIndexIdToMeta().values()) {
-                        if (indexMeta.getIndexId() == targetOlapTable.getBaseIndexId()) {
+                    for (MaterializedIndexMeta indexMeta : targetOlapTable.getIndexMetaIdToMeta().values()) {
+                        if (indexMeta.getIndexMetaId() == targetOlapTable.getBaseIndexMetaId()) {
                             continue;
                         }
                         for (Column column : indexMeta.getSchema()) {
@@ -803,7 +815,7 @@ public class InsertPlanner {
                         }
                     }
                     String targetIndexMetaName = targetIndexMeta == null ? "" :
-                            targetOlapTable.getIndexNameById(targetIndexMeta.getIndexId());
+                            targetOlapTable.getIndexNameByMetaId(targetIndexMeta.getIndexMetaId());
                     throw new SemanticException(
                             "The define expr of shadow column " + targetColumn.getName() + " is null, " +
                                     "please check the associated materialized view " + targetIndexMetaName
@@ -958,7 +970,7 @@ public class InsertPlanner {
         Preconditions.checkState(columns.size() == outputColumns.size(),
                 "outputColumn's size must equal with table's column size");
 
-        List<Column> keyColumns = table.getKeyColumnsByIndexId(table.getBaseIndexId());
+        List<Column> keyColumns = table.getKeyColumnsByIndexId(table.getBaseIndexMetaId());
         List<Integer> keyColumnIds = Lists.newArrayList();
         keyColumns.forEach(column -> {
             int index = columns.indexOf(column);

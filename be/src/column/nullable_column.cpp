@@ -140,12 +140,12 @@ void NullableColumn::append_value_multiple_times(const Column& src, uint32_t ind
     DCHECK_EQ(_null_column->size(), _data_column->size());
 }
 
-StatusOr<ColumnPtr> NullableColumn::replicate(const Buffer<uint32_t>& offsets) {
+StatusOr<MutableColumnPtr> NullableColumn::replicate(const Buffer<uint32_t>& offsets) {
     ASSIGN_OR_RETURN(auto data_col, this->_data_column->replicate(offsets));
 
     ASSIGN_OR_RETURN(auto null_col, this->_null_column->replicate(offsets));
 
-    return NullableColumn::create(data_col, NullColumn::dynamic_pointer_cast(null_col));
+    return NullableColumn::create(std::move(data_col), NullColumn::dynamic_pointer_cast(std::move(null_col)));
 }
 
 bool NullableColumn::append_nulls(size_t count) {
@@ -383,13 +383,21 @@ void NullableColumn::check_or_die() const {
     _null_column->check_or_die();
 }
 
-StatusOr<ColumnPtr> NullableColumn::upgrade_if_overflow() {
+StatusOr<MutableColumnPtr> NullableColumn::upgrade_if_overflow() {
     RETURN_IF_ERROR(_null_column->capacity_limit_reached());
-    return upgrade_helper_func(&_data_column);
+    auto ret = upgrade_helper_func(_data_column->as_mutable_raw_ptr());
+    if (ret.ok() && ret.value() != nullptr) {
+        _data_column = std::move(ret.value());
+    }
+    return ret;
 }
 
-StatusOr<ColumnPtr> NullableColumn::downgrade() {
-    return downgrade_helper_func(&_data_column);
+StatusOr<MutableColumnPtr> NullableColumn::downgrade() {
+    auto ret = downgrade_helper_func(_data_column->as_mutable_raw_ptr());
+    if (ret.ok() && ret.value() != nullptr) {
+        _data_column = std::move(ret.value());
+    }
+    return ret;
 }
 
 } // namespace starrocks

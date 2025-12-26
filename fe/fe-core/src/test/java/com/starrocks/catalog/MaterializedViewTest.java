@@ -113,17 +113,15 @@ public class MaterializedViewTest extends StarRocksTestBase {
     public void testInit() {
         MaterializedView mv = new MaterializedView();
         Assertions.assertEquals(Table.TableType.MATERIALIZED_VIEW, mv.getType());
-        Assertions.assertEquals(null, mv.getTableProperty());
 
         MaterializedView mv2 = new MaterializedView(1000, 100, "mv2", columns, KeysType.AGG_KEYS,
                 null, null, null);
         Assertions.assertEquals(100, mv2.getDbId());
         Assertions.assertEquals(Table.TableType.MATERIALIZED_VIEW, mv2.getType());
-        Assertions.assertEquals(null, mv2.getTableProperty());
         Assertions.assertEquals("mv2", mv2.getName());
         Assertions.assertEquals(KeysType.AGG_KEYS, mv2.getKeysType());
-        mv2.setBaseIndexId(10003);
-        Assertions.assertEquals(10003, mv2.getBaseIndexId());
+        mv2.setBaseIndexMetaId(10003);
+        Assertions.assertEquals(10003, mv2.getBaseIndexMetaId());
         Assertions.assertFalse(mv2.isPartitioned());
         mv2.setState(OlapTable.OlapTableState.ROLLUP);
         Assertions.assertEquals(OlapTable.OlapTableState.ROLLUP, mv2.getState());
@@ -157,17 +155,17 @@ public class MaterializedViewTest extends StarRocksTestBase {
     public void testSchema() {
         MaterializedView mv = new MaterializedView(1000, 100, "mv2", columns, KeysType.AGG_KEYS,
                 null, null, null);
-        mv.setBaseIndexId(1L);
+        mv.setBaseIndexMetaId(1L);
         mv.setIndexMeta(1L, "mv_name", columns, 0,
                 111, (short) 2, TStorageType.COLUMN, KeysType.AGG_KEYS, null);
-        Assertions.assertEquals(1, mv.getBaseIndexId());
+        Assertions.assertEquals(1, mv.getBaseIndexMetaId());
         mv.rebuildFullSchema();
-        Assertions.assertEquals("mv_name", mv.getIndexNameById(1L));
+        Assertions.assertEquals("mv_name", mv.getIndexNameByMetaId(1L));
         List<Column> indexColumns = Lists.newArrayList(columns.get(0), columns.get(2));
         mv.setIndexMeta(2L, "index_name", indexColumns, 0,
                 222, (short) 1, TStorageType.COLUMN, KeysType.AGG_KEYS, null);
         mv.rebuildFullSchema();
-        Assertions.assertEquals("index_name", mv.getIndexNameById(2L));
+        Assertions.assertEquals("index_name", mv.getIndexNameByMetaId(2L));
     }
 
     @Test

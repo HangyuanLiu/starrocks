@@ -34,7 +34,6 @@
 
 package com.starrocks.qe;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
@@ -129,11 +128,14 @@ import com.starrocks.qe.feedback.skeleton.SkeletonBuilder;
 import com.starrocks.qe.feedback.skeleton.SkeletonNode;
 import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.qe.scheduler.FeExecuteCoordinator;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.GracefulExitFlag;
 import com.starrocks.server.WarehouseManager;
 import com.starrocks.service.ExecuteEnv;
 import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
+import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlResultDescriptor;
 import com.starrocks.sql.ExplainAnalyzer;
 import com.starrocks.sql.PrepareStmtPlanner;
 import com.starrocks.sql.StatementPlanner;
@@ -148,6 +150,7 @@ import com.starrocks.sql.analyzer.ShowStmtToSelectStmtConverter;
 import com.starrocks.sql.ast.AddBackendBlackListStmt;
 import com.starrocks.sql.ast.AddComputeNodeBlackListStmt;
 import com.starrocks.sql.ast.AddSqlBlackListStmt;
+import com.starrocks.sql.ast.AddSqlDigestBlackListStmt;
 import com.starrocks.sql.ast.AdminSetConfigStmt;
 import com.starrocks.sql.ast.AnalyzeProfileStmt;
 import com.starrocks.sql.ast.AnalyzeStmt;
@@ -160,6 +163,7 @@ import com.starrocks.sql.ast.DeallocateStmt;
 import com.starrocks.sql.ast.DelBackendBlackListStmt;
 import com.starrocks.sql.ast.DelComputeNodeBlackListStmt;
 import com.starrocks.sql.ast.DelSqlBlackListStmt;
+import com.starrocks.sql.ast.DelSqlDigestBlackListStmt;
 import com.starrocks.sql.ast.DeleteStmt;
 import com.starrocks.sql.ast.DmlStmt;
 import com.starrocks.sql.ast.DropHistogramStmt;
@@ -189,6 +193,7 @@ import com.starrocks.sql.ast.ShowExportStmt;
 import com.starrocks.sql.ast.ShowStmt;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.SystemVariable;
+import com.starrocks.sql.ast.TableRef;
 import com.starrocks.sql.ast.UnsupportedStmt;
 import com.starrocks.sql.ast.UpdateFailPointStatusStatement;
 import com.starrocks.sql.ast.UpdateStmt;
@@ -196,9 +201,11 @@ import com.starrocks.sql.ast.UseCatalogStmt;
 import com.starrocks.sql.ast.UseDbStmt;
 import com.starrocks.sql.ast.UserVariable;
 import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.Parameter;
 import com.starrocks.sql.ast.expression.SetVarHint;
 import com.starrocks.sql.ast.expression.StringLiteral;
+import com.starrocks.sql.ast.expression.UserVariableExpr;
 import com.starrocks.sql.ast.expression.UserVariableHint;
 import com.starrocks.sql.ast.feedback.PlanAdvisorStmt;
 import com.starrocks.sql.ast.translate.TranslateStmt;
@@ -233,6 +240,7 @@ import com.starrocks.statistic.StatisticExecutor;
 import com.starrocks.statistic.StatisticUtils;
 import com.starrocks.statistic.StatisticsCollectJobFactory;
 import com.starrocks.statistic.StatsConstants;
+import com.starrocks.system.ComputeNode;
 import com.starrocks.system.Frontend;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.task.LoadEtlTask;
@@ -255,6 +263,7 @@ import com.starrocks.transaction.TransactionStmtExecutor;
 import com.starrocks.transaction.VisibleStateWaiter;
 import com.starrocks.type.TypeFactory;
 import com.starrocks.warehouse.WarehouseIdleChecker;
+import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -276,6 +285,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
@@ -287,6 +297,7 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 import static com.starrocks.common.ErrorCode.ERR_NO_ROWS_IMPORTED;
+import static com.starrocks.service.arrow.flight.sql.ArrowFlightSqlServiceImpl.buildSchema;
 import static com.starrocks.sql.parser.ErrorMsgProxy.PARSER_ERROR_MSG;
 import static com.starrocks.statistic.AnalyzeMgr.IS_MULTI_COLUMN_STATS;
 
@@ -322,8 +333,15 @@ public class StmtExecutor {
     private PrepareStmtContext prepareStmtContext = null;
     private boolean isInternalStmt = false;
 
+    private final CompletableFuture<ArrowFlightSqlResultDescriptor> deploymentFinished;
+
     public StmtExecutor(ConnectContext ctx, StatementBase parsedStmt) {
         this(ctx, parsedStmt, false);
+    }
+
+    public StmtExecutor(ConnectContext ctx, StatementBase parsedStmt,
+                        CompletableFuture<ArrowFlightSqlResultDescriptor> deploymentFinished) {
+        this(ctx, parsedStmt, false, deploymentFinished);
     }
 
     public static StmtExecutor newInternalExecutor(ConnectContext ctx, StatementBase parsedStmt) {
@@ -335,12 +353,18 @@ public class StmtExecutor {
     }
 
     private StmtExecutor(ConnectContext ctx, StatementBase parsedStmt, boolean isInternalStmt) {
+        this(ctx, parsedStmt, isInternalStmt, null);
+    }
+
+    private StmtExecutor(ConnectContext ctx, StatementBase parsedStmt, boolean isInternalStmt,
+                         CompletableFuture<ArrowFlightSqlResultDescriptor> deploymentFinished) {
         this.context = ctx;
         this.parsedStmt = Preconditions.checkNotNull(parsedStmt);
         this.originStmt = parsedStmt.getOrigStmt();
         this.serializer = context.getSerializer();
         this.isProxy = false;
         this.isInternalStmt = isInternalStmt;
+        this.deploymentFinished = deploymentFinished;
     }
 
     public void setProxy() {
@@ -369,11 +393,14 @@ public class StmtExecutor {
                 String.format("%s-%s", Version.STARROCKS_VERSION, Version.STARROCKS_COMMIT_HASH));
         summaryProfile.addInfoString(ProfileManager.USER, context.getQualifiedUser());
         summaryProfile.addInfoString(ProfileManager.DEFAULT_DB, context.getDatabase());
+        // only print the sepecific sql in multi statement
+        String sql = context.isSingleStmt() ? originStmt.originStmt :
+                AstToSQLBuilder.toSQLOrDefault(parsedStmt, originStmt.originStmt);
         if (AuditEncryptionChecker.needEncrypt(parsedStmt)) {
             summaryProfile.addInfoString(ProfileManager.SQL_STATEMENT,
                     AstToSQLBuilder.toSQLOrDefault(parsedStmt, originStmt.originStmt));
         } else {
-            summaryProfile.addInfoString(ProfileManager.SQL_STATEMENT, originStmt.originStmt);
+            summaryProfile.addInfoString(ProfileManager.SQL_STATEMENT, sql);
         }
         summaryProfile.addInfoString(ProfileManager.WAREHOUSE_CNGROUP, GlobalStateMgr.getCurrentState().getWarehouseMgr()
                 .getWarehouseComputeResourceName(context.getCurrentComputeResource()));
@@ -546,6 +573,12 @@ public class StmtExecutor {
         return null;
     }
 
+    /**
+     * The execution timeout varies among different statements:
+     * 1. SELECT: use query_timeout
+     * 2. DML: use insert_timeout or statement-specified timeout
+     * 3. ANALYZE: use fe_conf.statistic_collect_query_timeout
+     */
     public int getExecTimeout() {
         if (parsedStmt instanceof CreateTableAsSelectStmt ctas) {
             Map<String, String> properties = ctas.getInsertStmt().getProperties();
@@ -567,6 +600,8 @@ public class StmtExecutor {
                 }
             }
             return ConnectContext.get().getSessionVariable().getInsertTimeoutS();
+        } else if (parsedStmt instanceof AnalyzeStmt) {
+            return (int) Config.statistic_collect_query_timeout;
         } else {
             return ConnectContext.get().getSessionVariable().getQueryTimeoutS();
         }
@@ -747,6 +782,12 @@ public class StmtExecutor {
                             .toLowerCase().replaceAll(" +", " ");
                     // If this sql is in blacklist, show message.
                     GlobalStateMgr.getCurrentState().getSqlBlackList().verifying(originSql);
+                    if (Config.enable_sql_digest || context.getSessionVariable().isEnableSQLDigest()) {
+                        String digest = ConnectProcessor.computeStatementDigest(parsedStmt);
+                        if (!digest.isEmpty()) {
+                            GlobalStateMgr.getCurrentState().getSqlDigestBlackList().verifying(digest);
+                        }
+                    }
                 }
             }
 
@@ -785,7 +826,7 @@ public class StmtExecutor {
                     } catch (Exception e) {
                         // For Arrow Flight SQL, FE doesn't know whether the client has already pull data from BE.
                         // So FE cannot decide whether it is able to retry.
-                        if (i == retryTime - 1 || context instanceof ArrowFlightSqlConnectContext) {
+                        if (i == retryTime - 1 || context.isArrowFlightSql()) {
                             throw e;
                         }
                         ExecuteExceptionHandler.handle(e, retryContext);
@@ -890,6 +931,10 @@ public class StmtExecutor {
                 handleAddSqlBlackListStmt();
             } else if (parsedStmt instanceof DelSqlBlackListStmt) {
                 handleDelSqlBlackListStmt();
+            } else if (parsedStmt instanceof AddSqlDigestBlackListStmt) {
+                handleAddSqlDigestBlackListStmt();
+            } else if (parsedStmt instanceof DelSqlDigestBlackListStmt) {
+                handleDelSqlDigestBlackListStmt();
             } else if (parsedStmt instanceof ExecuteAsStmt) {
                 handleExecAsStmt();
             } else if (parsedStmt instanceof ExecuteScriptStmt) {
@@ -1020,19 +1065,46 @@ public class StmtExecutor {
         }
     }
 
+    public void processQueryScopeSetVarHint() throws DdlException {
+        if (!parsedStmt.isExistQueryScopeHint()) {
+            return;
+        }
+
+        SessionVariable clonedSessionVariable = null;
+        for (HintNode hint : parsedStmt.getAllQueryScopeHints()) {
+            if (!(hint instanceof SetVarHint)) {
+                continue;
+            }
+
+            if (clonedSessionVariable == null) {
+                clonedSessionVariable = (SessionVariable) context.sessionVariable.clone();
+            }
+            for (Map.Entry<String, String> entry : hint.getValue().entrySet()) {
+                GlobalStateMgr.getCurrentState().getVariableMgr().setSystemVariable(clonedSessionVariable,
+                        new SystemVariable(entry.getKey(), new StringLiteral(entry.getValue())), true, context);
+            }
+        }
+
+        if (clonedSessionVariable == null) {
+            return;
+        }
+
+        context.setSessionVariable(clonedSessionVariable);
+    }
+
     // support select hint e.g. select /*+ SET_VAR(query_timeout=1) */ sleep(3);
-    @VisibleForTesting
     public void processQueryScopeHint() throws DdlException {
         SessionVariable clonedSessionVariable = null;
         UUID queryId = context.getQueryId();
         final TUniqueId executionId = context.getExecutionId();
-        Map<String, UserVariable> clonedUserVars = new ConcurrentHashMap<>();
-        clonedUserVars.putAll(context.getUserVariables());
+
+        Map<String, UserVariable> clonedUserVars = new ConcurrentHashMap<>(context.getUserVariables());
         boolean hasUserVariableHint = parsedStmt.getAllQueryScopeHints()
                 .stream().anyMatch(hint -> hint instanceof UserVariableHint);
         if (hasUserVariableHint) {
             context.modifyUserVariablesCopyInWrite(clonedUserVars);
         }
+
         boolean executeSuccess = true;
         try {
             for (HintNode hint : parsedStmt.getAllQueryScopeHints()) {
@@ -1042,7 +1114,7 @@ public class StmtExecutor {
                     }
                     for (Map.Entry<String, String> entry : hint.getValue().entrySet()) {
                         GlobalStateMgr.getCurrentState().getVariableMgr().setSystemVariable(clonedSessionVariable,
-                                new SystemVariable(entry.getKey(), new StringLiteral(entry.getValue())), true);
+                                new SystemVariable(entry.getKey(), new StringLiteral(entry.getValue())), true, context);
                     }
                 }
 
@@ -1106,12 +1178,12 @@ public class StmtExecutor {
     private void dropTableCreatedByCTAS(CreateTableAsSelectStmt stmt) throws Exception {
         if (stmt instanceof CreateTemporaryTableAsSelectStmt) {
             DropTemporaryTableStmt dropTemporaryTableStmt =
-                    new DropTemporaryTableStmt(true, stmt.getCreateTableStmt().getDbTbl(), true);
+                    new DropTemporaryTableStmt(true, stmt.getCreateTableStmt().getTableRef(), true);
             dropTemporaryTableStmt.setSessionId(context.getSessionId());
             DDLStmtExecutor.execute(dropTemporaryTableStmt, context);
         } else {
             DDLStmtExecutor.execute(new DropTableStmt(
-                    true, stmt.getCreateTableStmt().getDbTbl(), true), context);
+                    true, stmt.getCreateTableStmt().getTableRef(), true), context);
         }
     }
 
@@ -1152,7 +1224,8 @@ public class StmtExecutor {
         }
         try {
             context.incPendingForwardRequest();
-            leaderOpExecutor = new LeaderOpExecutor(parsedStmt, originStmt, context, redirectStatus, isInternalStmt);
+            leaderOpExecutor =
+                    new LeaderOpExecutor(parsedStmt, originStmt, context, redirectStatus, isInternalStmt, deploymentFinished);
             LOG.debug("need to transfer to Leader. stmt: {}", context.getStmtId());
             leaderOpExecutor.execute();
         } finally {
@@ -1437,7 +1510,7 @@ public class StmtExecutor {
 
         // TODO(liuzihe): support execute in FE for Arrow Flight SQL.
         boolean executeInFe = !isExplainAnalyze && !isSchedulerExplain && !isOutfileQuery
-                && canExecuteInFe(context, execPlan.getPhysicalPlan()) && !(context instanceof ArrowFlightSqlConnectContext);
+                && canExecuteInFe(context, execPlan.getPhysicalPlan()) && !(context.isArrowFlightSql());
 
         if (isExplainAnalyze) {
             context.getSessionVariable().setEnableProfile(true);
@@ -1491,13 +1564,27 @@ public class StmtExecutor {
         RowBatch batch = null;
         if (context instanceof HttpConnectContext) {
             batch = httpResultSender.sendQueryResult(coord, execPlan, parsedStmt.getOrigStmt().getOrigStmt());
-        } else if (context instanceof ArrowFlightSqlConnectContext) {
-            ArrowFlightSqlConnectContext ctx = (ArrowFlightSqlConnectContext) context;
-            ctx.setReturnResultFromFE(false);
-            ctx.setDeploymentFinished(coord);
         } else {
-            boolean needSendResult = !isPlanAdvisorAnalyze && !isExplainAnalyze
-                    && !context.getSessionVariable().isEnableExecutionOnly();
+            final boolean isArrowFlight = context.isArrowFlightSql() && deploymentFinished != null;
+            if (isArrowFlight && !isExplainAnalyze && !isOutfileQuery) {
+                Preconditions.checkState(coord instanceof DefaultCoordinator,
+                        "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
+                DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coord;
+
+                ExecutionFragment rootFragment = defaultCoordinator.getExecutionDAG().getRootFragment();
+                FragmentInstance rootFragmentInstance = rootFragment.getInstances().get(0);
+                ComputeNode worker = rootFragmentInstance.getWorker();
+                TUniqueId rootFragmentInstanceId = rootFragmentInstance.getInstanceId();
+                Schema schema = buildSchema(execPlan);
+
+                ArrowFlightSqlResultDescriptor backendResultDesc =
+                        new ArrowFlightSqlResultDescriptor(worker.getId(), rootFragmentInstanceId, schema);
+
+                deploymentFinished.complete(backendResultDesc);
+            }
+
+            final boolean needSendResult = !isPlanAdvisorAnalyze && !isExplainAnalyze
+                    && !context.getSessionVariable().isEnableExecutionOnly() && !isArrowFlight;
             // send mysql result
             // 1. If this is a query with OUTFILE clause, eg: select * from tbl1 into outfile xxx,
             //    We will not send real query result to client. Instead, we only send OK to client with
@@ -1534,21 +1621,15 @@ public class StmtExecutor {
                             channel.sendOnePacket(row);
                         }
                     }
+                }
+                if (batch.getBatch() != null) {
                     context.updateReturnRows(batch.getBatch().getRows().size());
                 }
             } while (!batch.isEos());
-            if (!isSendFields && !isOutfileQuery && !isExplainAnalyze && !isPlanAdvisorAnalyze) {
+
+            if (!isSendFields && !isOutfileQuery && !isExplainAnalyze && !isPlanAdvisorAnalyze && !isArrowFlight) {
                 sendFields(colNames, outputExprs);
             }
-        }
-
-        if (context instanceof ArrowFlightSqlConnectContext) {
-            coord.join(context.getSessionVariable().getQueryTimeoutS());
-            if (!isOutfileQuery) {
-                context.getState().setEof();
-            }
-            // TODO(liuzihe): process query statistics for Arrow Flight SQL. For now query statistics is passed by the final
-            //  batch, so we need to change the implementation to support Arrow Flight SQL.
         }
 
         processQueryStatisticsFromResult(batch, execPlan, isOutfileQuery);
@@ -1567,12 +1648,16 @@ public class StmtExecutor {
                 context.getState().setOk(statisticsForAuditLog.returnedRows, 0, "");
             }
 
-            if (null != statisticsForAuditLog) {
-                analyzePlanWithExecStats(execPlan);
+            if (null == statisticsForAuditLog) {
+                return;
             }
 
-            if (null == statisticsForAuditLog || null == statisticsForAuditLog.statsItems ||
-                    statisticsForAuditLog.statsItems.isEmpty()) {
+            analyzePlanWithExecStats(execPlan);
+            if (context.isArrowFlightSql()) {
+                context.updateReturnRows(statisticsForAuditLog.getReturnedRows());
+            }
+
+            if (null == statisticsForAuditLog.statsItems || statisticsForAuditLog.statsItems.isEmpty()) {
                 return;
             }
 
@@ -1624,13 +1709,15 @@ public class StmtExecutor {
     // TODO: move to DdlExecutor
     private void handleAnalyzeStmt() throws IOException {
         AnalyzeStmt analyzeStmt = (AnalyzeStmt) parsedStmt;
-        TableName tableName = analyzeStmt.getTableName();
+        TableRef tableRef = analyzeStmt.getTableRef();
+        TableName tableName = new TableName(tableRef.getCatalogName(), tableRef.getDbName(),
+                tableRef.getTableName(), tableRef.getPos());
         Database db =
                 GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(context, tableName.getCatalog(), tableName.getDb());
         if (db == null) {
             throw new SemanticException("Database %s is not found", tableName.getCatalogAndDb());
         }
-        Table table = MetaUtils.getSessionAwareTable(context, db, analyzeStmt.getTableName());
+        Table table = MetaUtils.getSessionAwareTable(context, db, tableName);
         if (StatisticUtils.isEmptyTable(table)) {
             return;
         }
@@ -1645,7 +1732,7 @@ public class StmtExecutor {
 
         AnalyzeStatus analyzeStatus;
         if (analyzeStmt.isExternal()) {
-            String catalogName = analyzeStmt.getTableName().getCatalog();
+            String catalogName = analyzeStmt.getCatalogName();
             analyzeStatus = new ExternalAnalyzeStatus(GlobalStateMgr.getCurrentState().getNextId(),
                     catalogName, db.getOriginName(), table.getName(),
                     table.getUUID(),
@@ -1754,7 +1841,7 @@ public class StmtExecutor {
         if (analyzeStmt.isExternal()) {
             if (analyzeTypeDesc.isHistogram()) {
                 statisticExecutor.collectStatistics(statsConnectCtx,
-                        new ExternalHistogramStatisticsCollectJob(analyzeStmt.getTableName().getCatalog(),
+                        new ExternalHistogramStatisticsCollectJob(analyzeStmt.getCatalogName(),
                                 db, table, analyzeStmt.getColumnNames(), analyzeStmt.getColumnTypes(),
                                 StatsConstants.AnalyzeType.HISTOGRAM, StatsConstants.ScheduleType.ONCE,
                                 analyzeStmt.getProperties()),
@@ -1765,7 +1852,7 @@ public class StmtExecutor {
                         StatsConstants.AnalyzeType.FULL;
                 statisticExecutor.collectStatistics(statsConnectCtx,
                         StatisticsCollectJobFactory.buildExternalStatisticsCollectJob(
-                                analyzeStmt.getTableName().getCatalog(),
+                                analyzeStmt.getCatalogName(),
                                 db, table, null,
                                 analyzeStmt.getColumnNames(),
                                 analyzeStmt.getColumnTypes(),
@@ -1804,7 +1891,12 @@ public class StmtExecutor {
 
     private void handleDropStatsStmt() {
         DropStatsStmt dropStatsStmt = (DropStatsStmt) parsedStmt;
-        TableName tableName = dropStatsStmt.getTableName();
+        TableRef tableRef = dropStatsStmt.getTableRef();
+        if (tableRef == null) {
+            throw new SemanticException("Table ref is null");
+        }
+        TableName tableName = new TableName(tableRef.getCatalogName(), tableRef.getDbName(),
+                tableRef.getTableName(), tableRef.getPos());
         Table table = GlobalStateMgr.getCurrentState().getMetadataMgr().getTable(context, tableName.getCatalog(),
                 tableName.getDb(), tableName.getTbl());
         if (table == null) {
@@ -1837,7 +1929,12 @@ public class StmtExecutor {
 
     private void handleDropHistogramStmt() {
         DropHistogramStmt dropHistogramStmt = (DropHistogramStmt) parsedStmt;
-        TableName tableName = dropHistogramStmt.getTableName();
+        TableRef tableRef = dropHistogramStmt.getTableRef();
+        if (tableRef == null) {
+            throw new SemanticException("Table ref is null");
+        }
+        TableName tableName = new TableName(tableRef.getCatalogName(), tableRef.getDbName(),
+                tableRef.getTableName(), tableRef.getPos());
         Table table = GlobalStateMgr.getCurrentState().getMetadataMgr().getTable(context, tableName.getCatalog(),
                 tableName.getDb(), tableName.getTbl());
         if (table == null) {
@@ -1849,7 +1946,7 @@ public class StmtExecutor {
 
             GlobalStateMgr.getCurrentState().getAnalyzeMgr().dropExternalAnalyzeStatus(table.getUUID());
             GlobalStateMgr.getCurrentState().getAnalyzeMgr().dropExternalHistogramStatsMetaAndData(
-                    StatisticUtils.buildConnectContext(), dropHistogramStmt.getTableName(), table, columns);
+                    StatisticUtils.buildConnectContext(), tableName, table, columns);
             GlobalStateMgr.getCurrentState().getStatisticStorage().expireConnectorHistogramStatistics(table, columns);
         } else {
             List<String> columns = table.getBaseSchema().stream().filter(d -> !d.isAggregated()).map(Column::getName)
@@ -1869,7 +1966,23 @@ public class StmtExecutor {
         if (killAnalyzeStmt.isKillAllPendingTasks()) {
             analyzeManager.killAllPendingTasks();
         } else {
-            long analyzeId = killAnalyzeStmt.getAnalyzeId();
+            long analyzeId;
+            if (killAnalyzeStmt.hasUserVariable()) {
+                UserVariableExpr userVariableExpr = killAnalyzeStmt.getUserVariableExpr();
+                // Analyze the user variable expression to get its value
+                com.starrocks.sql.analyzer.ExpressionAnalyzer.analyzeExpressionIgnoreSlot(userVariableExpr, context);
+                Expr value = userVariableExpr.getValue();
+                if (value instanceof com.starrocks.sql.ast.expression.NullLiteral) {
+                    throw new SemanticException("User variable '%s' is not set", userVariableExpr.getName());
+                }
+                if (!(value instanceof IntLiteral)) {
+                    throw new SemanticException("User variable '%s' must be an integer, but got %s",
+                            userVariableExpr.getName(), value.getType().toSql());
+                }
+                analyzeId = ((IntLiteral) value).getLongValue();
+            } else {
+                analyzeId = killAnalyzeStmt.getAnalyzeId();
+            }
             checkPrivilegeForKillAnalyzeStmt(context, analyzeId);
             // Try to kill the job anyway.
             analyzeManager.killConnection(analyzeId);
@@ -1938,6 +2051,23 @@ public class StmtExecutor {
 
     private void handleDelSqlBlackListStmt() {
         GlobalStateMgr.getCurrentState().getSqlBlackList().deleteBlackSql((DelSqlBlackListStmt) parsedStmt);
+    }
+
+    private void handleAddSqlDigestBlackListStmt() {
+        AddSqlDigestBlackListStmt stmt = (AddSqlDigestBlackListStmt) parsedStmt;
+        String digest = stmt.getDigest();
+        if (!digest.matches("^[a-f0-9]{32}$")) {
+            throw new SemanticException("Invalid digest format. Expected 32-character hex string: " + digest);
+        }
+        GlobalStateMgr.getCurrentState().getSqlDigestBlackList().addDigest(stmt.getDigest());
+    }
+
+    private void handleDelSqlDigestBlackListStmt() {
+        DelSqlDigestBlackListStmt delSqlDigestBlackListStmt = (DelSqlDigestBlackListStmt) parsedStmt;
+        List<String> digests = delSqlDigestBlackListStmt.getDigests();
+        if (digests != null) {
+            GlobalStateMgr.getCurrentState().getSqlDigestBlackList().deleteDigests(digests);
+        }
     }
 
     private void handleAddBackendBlackListStmt() throws StarRocksException {
@@ -2125,7 +2255,7 @@ public class StmtExecutor {
         }
 
         // Send result set for Arrow Flight SQL.
-        if (context instanceof ArrowFlightSqlConnectContext) {
+        if (context.isArrowFlightSql()) {
             ArrowFlightSqlConnectContext ctx = (ArrowFlightSqlConnectContext) context;
             ctx.addShowResult(DebugUtil.printId(ctx.getExecutionId()), resultSet);
             context.getState().setEof();
@@ -2169,33 +2299,37 @@ public class StmtExecutor {
     }
 
     private void handleExplainStmt(String explainString) throws IOException {
-        if (context instanceof HttpConnectContext) {
-            httpResultSender.sendExplainResult(explainString);
-            return;
-        }
 
         if (context.getQueryDetail() != null) {
             context.getQueryDetail().setExplain(explainString);
         }
 
-        ShowResultSetMetaData metaData =
-                ShowResultSetMetaData.builder()
-                        .addColumn(new Column("Explain String", TypeFactory.createVarcharType(20)))
-                        .build();
-        sendMetaData(metaData);
-
-        if (isProxy) {
-            proxyResultSet = new ShowResultSet(metaData,
-                    Arrays.stream(explainString.split("\n")).map(Collections::singletonList).collect(
-                            Collectors.toList()));
+        if (context instanceof HttpConnectContext) {
+            httpResultSender.sendExplainResult(explainString);
+        } else if (context.isArrowFlightSql()) {
+            ArrowFlightSqlConnectContext ctx = (ArrowFlightSqlConnectContext) context;
+            ctx.addExplainResult(DebugUtil.printId(ctx.getExecutionId()), explainString);
         } else {
-            // Send result set.
-            for (String item : explainString.split("\n")) {
-                serializer.reset();
-                serializer.writeLenEncodedString(item);
-                context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
+            ShowResultSetMetaData metaData =
+                    ShowResultSetMetaData.builder()
+                            .addColumn(new Column("Explain String", TypeFactory.createVarcharType(20)))
+                            .build();
+            sendMetaData(metaData);
+
+            if (isProxy) {
+                proxyResultSet = new ShowResultSet(metaData,
+                        Arrays.stream(explainString.split("\n")).map(Collections::singletonList).collect(
+                                Collectors.toList()));
+            } else {
+                // Send result set.
+                for (String item : explainString.split("\n")) {
+                    serializer.reset();
+                    serializer.writeLenEncodedString(item);
+                    context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
+                }
             }
         }
+
         context.getState().setEof();
     }
 
@@ -2315,7 +2449,7 @@ public class StmtExecutor {
         }
 
         // proxy send show export result
-        String db = exportStmt.getTblName().getDb();
+        String db = exportStmt.getDbName();
         String showStmt = String.format("SHOW EXPORT FROM %s WHERE QueryId = \"%s\";", db, queryId);
         StatementBase statementBase =
                 com.starrocks.sql.parser.SqlParser.parse(showStmt, context.getSessionVariable()).get(0);
@@ -2450,11 +2584,13 @@ public class StmtExecutor {
     }
 
     public void handleInsertOverwrite(InsertStmt insertStmt) throws Exception {
-        TableName tableName = insertStmt.getTableName();
+        TableRef tableRef = insertStmt.getTableRef();
         Database db =
-                GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(context, tableName.getCatalog(), tableName.getDb());
+                GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(context, tableRef.getCatalogName(), tableRef.getDbName());
         if (db == null) {
-            throw new SemanticException("Database %s is not found", tableName.getCatalogAndDb());
+            String catalogAndDb = tableRef.getCatalogName() != null ? 
+                    tableRef.getCatalogName() + "." + tableRef.getDbName() : tableRef.getDbName();
+            throw new SemanticException("Database %s is not found", catalogAndDb);
         }
 
         Locker locker = new Locker();
@@ -2578,17 +2714,21 @@ public class StmtExecutor {
         }
 
         DmlType dmlType = DmlType.fromStmt(stmt);
-        stmt.getTableName().normalization(context);
-        String catalogName = stmt.getTableName().getCatalog();
-        String dbName = stmt.getTableName().getDb();
-        String tableName = stmt.getTableName().getTbl();
+        TableRef tableRef = stmt.getTableRef();
+        if (tableRef == null) {
+            throw new SemanticException("Table ref is null");
+        }
+        String catalogName = tableRef.getCatalogName();
+        String dbName = tableRef.getDbName();
+        String tableName = tableRef.getTableName();
         Database database = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(context, catalogName, dbName);
         GlobalTransactionMgr transactionMgr = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
         final Table targetTable;
         if (stmt instanceof InsertStmt && ((InsertStmt) stmt).getTargetTable() != null) {
             targetTable = ((InsertStmt) stmt).getTargetTable();
         } else {
-            targetTable = MetaUtils.getSessionAwareTable(context, database, stmt.getTableName());
+            TableName tableNameObj = new TableName(catalogName, dbName, tableName, tableRef.getPos());
+            targetTable = MetaUtils.getSessionAwareTable(context, database, tableNameObj);
         }
         if (isExplainAnalyze) {
             Preconditions.checkState(targetTable instanceof OlapTable,
@@ -3173,38 +3313,50 @@ public class StmtExecutor {
         if (!Config.enable_collect_query_detail_info) {
             return;
         }
-        String sql = parsedStmt.getOrigStmt().originStmt;
-        boolean needEncrypt = AuditEncryptionChecker.needEncrypt(parsedStmt);
-        if (needEncrypt || Config.enable_sql_desensitize_in_log) {
-            sql = AstToSQLBuilder.toSQL(parsedStmt, FormatOptions.allEnable()
-                            .setColumnSimplifyTableName(false)
-                            .setHideCredential(needEncrypt)
-                            .setEnableDigest(Config.enable_sql_desensitize_in_log))
-                    .orElse("this is a desensitized sql");
+
+        SessionVariable sessionVariableBackup = context.getSessionVariable();
+        try {
+            processQueryScopeSetVarHint();
+        } catch (DdlException e) {
+            LOG.warn("Failed to process query scope set variable.", e);
         }
 
-        boolean isQuery = context.isQueryStmt(parsedStmt);
+        try {
+            String sql = parsedStmt.getOrigStmt().originStmt;
+            boolean needEncrypt = AuditEncryptionChecker.needEncrypt(parsedStmt);
+            if (needEncrypt || Config.enable_sql_desensitize_in_log) {
+                sql = AstToSQLBuilder.toSQL(parsedStmt, FormatOptions.allEnable()
+                                .setColumnSimplifyTableName(false)
+                                .setHideCredential(needEncrypt)
+                                .setEnableDigest(Config.enable_sql_desensitize_in_log))
+                        .orElse("this is a desensitized sql");
+            }
 
-        QueryDetail queryDetail = new QueryDetail(
-                DebugUtil.printId(context.getQueryId()),
-                isQuery,
-                context.connectionId,
-                context.getMysqlChannel() != null ? context.getMysqlChannel().getRemoteIp() : "System",
-                context.getStartTime(), -1, -1,
-                QueryDetail.QueryMemState.RUNNING,
-                context.getDatabase(),
-                sql,
-                context.getQualifiedUser(),
-                Optional.ofNullable(context.getResourceGroup()).map(TWorkGroup::getName).orElse(""),
-                context.getCurrentWarehouseName(),
-                context.getCurrentCatalog(),
-                context.getCommandStr(),
-                getPreparedStmtId());
-        // Set query source from context
-        queryDetail.setQuerySource(context.getQuerySource());
-        context.setQueryDetail(queryDetail);
-        // copy queryDetail, cause some properties can be changed in future
-        QueryDetailQueue.addQueryDetail(queryDetail.copy());
+            boolean isQuery = context.isQueryStmt(parsedStmt);
+
+            QueryDetail queryDetail = new QueryDetail(
+                    DebugUtil.printId(context.getQueryId()),
+                    isQuery,
+                    context.connectionId,
+                    context.getMysqlChannel() != null ? context.getMysqlChannel().getRemoteIp() : "System",
+                    context.getStartTime(), -1, -1,
+                    QueryDetail.QueryMemState.RUNNING,
+                    context.getDatabase(),
+                    sql,
+                    context.getQualifiedUser(),
+                    Optional.ofNullable(context.getResourceGroup()).map(TWorkGroup::getName).orElse(""),
+                    context.getCurrentWarehouseName(),
+                    context.getCurrentCatalog(),
+                    context.getCommandStr(),
+                    getPreparedStmtId());
+            // Set query source from context
+            queryDetail.setQuerySource(context.getQuerySource());
+            context.setQueryDetail(queryDetail);
+            // copy queryDetail, cause some properties can be changed in future
+            QueryDetailQueue.addQueryDetail(queryDetail.copy());
+        } finally {
+            context.setSessionVariable(sessionVariableBackup);
+        }
     }
 
     /*

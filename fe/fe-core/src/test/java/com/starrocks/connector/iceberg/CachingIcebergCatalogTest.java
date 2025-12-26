@@ -163,6 +163,24 @@ public class CachingIcebergCatalogTest {
     }
 
     @Test
+    public void testGetTableIOError(@Mocked IcebergCatalog icebergCatalog, @Mocked Table nativeTable) {
+        new Expectations() {
+            {
+                icebergCatalog.getTable(connectContext, "test", "table");
+                result = new RuntimeException(new java.io.IOException("io failure"));
+            }
+        };
+
+        CachingIcebergCatalog cachingIcebergCatalog = new CachingIcebergCatalog(CATALOG_NAME, icebergCatalog,
+                DEFAULT_CATALOG_PROPERTIES, Executors.newSingleThreadExecutor());
+        StarRocksConnectorException ex = Assertions.assertThrows(StarRocksConnectorException.class,
+                () -> cachingIcebergCatalog.getTable(connectContext, "test", "table"));
+        String expectedPrefix = "Failed to get iceberg table iceberg_catalog.test.table";
+        Assertions.assertTrue(ex.getMessage().contains(expectedPrefix));
+        Assertions.assertTrue(ex.getMessage().contains("io failure"));
+    }
+
+    @Test
     public void testInvalidateCache(@Mocked IcebergCatalog icebergCatalog, @Mocked Table nativeTable) {
         new Expectations() {
             {
@@ -309,6 +327,28 @@ public class CachingIcebergCatalogTest {
                 DEFAULT_CATALOG_PROPERTIES, Executors.newSingleThreadExecutor());
         Assertions.assertEquals(nativeTable, cachingIcebergCatalog.getTable(ctx, "db3", "tbl3"));
         Assertions.assertEquals(nativeTable, cachingIcebergCatalog.getTable(ctx, "db3", "tbl3"));
+    }
+
+    @Test
+    public void testGetCatalogPropertiesDelegatesToWrappedCatalog() {
+        Map<String, String> expectedProperties = new HashMap<>();
+        expectedProperties.put("s3.access-key-id", "test-key");
+        expectedProperties.put("s3.secret-access-key", "test-secret");
+
+        // Use Mockito for this test since JMockit doesn't properly handle default interface methods
+        IcebergCatalog delegate = Mockito.mock(IcebergCatalog.class);
+        Mockito.when(delegate.getCatalogProperties()).thenReturn(expectedProperties);
+
+        CachingIcebergCatalog cachingIcebergCatalog = new CachingIcebergCatalog(CATALOG_NAME, delegate,
+                DEFAULT_CATALOG_PROPERTIES, Executors.newSingleThreadExecutor());
+
+        Map<String, String> actualProperties = cachingIcebergCatalog.getCatalogProperties();
+        Assertions.assertEquals(expectedProperties, actualProperties);
+        Assertions.assertEquals("test-key", actualProperties.get("s3.access-key-id"));
+        Assertions.assertEquals("test-secret", actualProperties.get("s3.secret-access-key"));
+
+        // Verify that getCatalogProperties was called on the delegate
+        Mockito.verify(delegate).getCatalogProperties();
     }
 
     @Test

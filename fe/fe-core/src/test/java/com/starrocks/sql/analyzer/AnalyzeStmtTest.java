@@ -27,6 +27,7 @@ import com.starrocks.common.AlreadyExistsException;
 import com.starrocks.common.MetaNotFoundException;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.DDLStmtExecutor;
+import com.starrocks.qe.SetExecutor;
 import com.starrocks.qe.ShowExecutor;
 import com.starrocks.qe.StmtExecutor;
 import com.starrocks.scheduler.history.TableKeeper;
@@ -40,6 +41,7 @@ import com.starrocks.sql.ast.DropStatsStmt;
 import com.starrocks.sql.ast.KillAnalyzeStmt;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectRelation;
+import com.starrocks.sql.ast.SetStmt;
 import com.starrocks.sql.ast.SetUserPropertyStmt;
 import com.starrocks.sql.ast.ShowAnalyzeJobStmt;
 import com.starrocks.sql.ast.ShowAnalyzeStatusStmt;
@@ -315,7 +317,7 @@ public class AnalyzeStmtTest {
                 2020, 1, 1, 1, 1),
                 Maps.newHashMap());
         Assertions.assertEquals("[test, t0, v1, HISTOGRAM, 2020-01-01 01:01:00, {}]",
-                ShowHistogramStatsMetaStmt.showHistogramStatsMeta(getConnectContext(), histogramStatsMeta).toString());
+                ShowExecutor.showHistogramStatsMeta(getConnectContext(), histogramStatsMeta).toString());
 
         getConnectContext().getGlobalStateMgr().getAnalyzeMgr().addHistogramStatsMeta(histogramStatsMeta);
         res = ShowExecutor.execute(showHistogramStatsMetaStmt, getConnectContext()).getResultRows().toString();
@@ -556,7 +558,8 @@ public class AnalyzeStmtTest {
 
         sql = "analyze table t0 drop histogram on v1";
         DropHistogramStmt dropHistogramStmt = (DropHistogramStmt) analyzeSuccess(sql);
-        Assertions.assertEquals(dropHistogramStmt.getTableName().toSql(), "`test`.`t0`");
+        Assertions.assertEquals("test", dropHistogramStmt.getDbName());
+        Assertions.assertEquals("t0", dropHistogramStmt.getTableName());
         Assertions.assertEquals(dropHistogramStmt.getColumnNames().toString(), "[v1]");
     }
 
@@ -595,7 +598,7 @@ public class AnalyzeStmtTest {
     public void testDropStats() {
         String sql = "drop stats t0";
         DropStatsStmt dropStatsStmt = (DropStatsStmt) analyzeSuccess(sql);
-        Assertions.assertEquals("t0", dropStatsStmt.getTableName().getTbl());
+        Assertions.assertEquals("t0", dropStatsStmt.getTableName());
 
         Assertions.assertEquals("DELETE FROM table_statistic_v1 WHERE TABLE_ID = 10004",
                 StatisticSQLBuilder.buildDropStatisticsSQL(10004L, StatsConstants.AnalyzeType.SAMPLE));
@@ -607,7 +610,7 @@ public class AnalyzeStmtTest {
     public void testDropTableOnMultiColumnStats() {
         String sql = "drop multiple columns stats t0";
         DropStatsStmt dropStatsStmt = (DropStatsStmt) analyzeSuccess(sql);
-        Assertions.assertEquals("t0", dropStatsStmt.getTableName().getTbl());
+        Assertions.assertEquals("t0", dropStatsStmt.getTableName());
         Assertions.assertTrue(dropStatsStmt.isMultiColumn());
         Assertions.assertEquals("DELETE FROM multi_column_statistics WHERE TABLE_ID = 10004",
                 StatisticSQLBuilder.buildDropMultipleStatisticsSQL(10004L));
@@ -624,6 +627,60 @@ public class AnalyzeStmtTest {
         GlobalStateMgr.getCurrentState().getAnalyzeMgr().unregisterConnection(1, true);
         Assertions.assertThrows(SemanticException.class,
                 () -> GlobalStateMgr.getCurrentState().getAnalyzeMgr().unregisterConnection(1, true));
+    }
+
+    @Test
+    public void testKillAnalyzeWithUserVariable() throws Exception {
+        // Set user variable
+        String setSql = "set @analyze_id = 123";
+        SetStmt setStmt = (SetStmt) analyzeSuccess(setSql);
+        SetExecutor setExecutor = new SetExecutor(getConnectContext(), setStmt);
+        setExecutor.execute();
+
+        // Test parsing and analyzing kill analyze with user variable
+        String killSql = "kill analyze @analyze_id";
+        KillAnalyzeStmt killAnalyzeStmt = (KillAnalyzeStmt) analyzeSuccess(killSql);
+        Assertions.assertTrue(killAnalyzeStmt.hasUserVariable());
+        Assertions.assertNotNull(killAnalyzeStmt.getUserVariableExpr());
+        Assertions.assertEquals("analyze_id", killAnalyzeStmt.getUserVariableExpr().getName());
+
+        // Test execution
+        GlobalStateMgr.getCurrentState().getAnalyzeMgr().registerConnection(123, getConnectContext());
+        StmtExecutor executor = StmtExecutor.newInternalExecutor(getConnectContext(), killAnalyzeStmt);
+        executor.execute();
+        Assertions.assertNull(getConnectContext().getState().getErrorCode());
+        Assertions.assertEquals(
+                "Getting analyzing error. Detail message: User variable 'analyze_id' must be an integer, but got " +
+                        "varchar.",
+                getConnectContext().getState().getErrorMessage());
+    }
+
+    @Test
+    public void testKillAnalyzeWithUserVariableNotSet() throws Exception {
+        // Test with unset user variable
+        String killSql = "kill analyze @unset_var";
+        KillAnalyzeStmt killAnalyzeStmt = (KillAnalyzeStmt) analyzeSuccess(killSql);
+        StmtExecutor executor = StmtExecutor.newInternalExecutor(getConnectContext(), killAnalyzeStmt);
+        executor.execute();
+        String message = getConnectContext().getState().getErrorMessage();
+        Assertions.assertTrue(message.contains("is not set"), message);
+    }
+
+    @Test
+    public void testKillAnalyzeWithUserVariableNonInteger() throws Exception {
+        // Set user variable to string
+        String setSql = "set @analyze_id = 'not_a_number'";
+        SetStmt setStmt = (SetStmt) analyzeSuccess(setSql);
+        SetExecutor setExecutor = new SetExecutor(getConnectContext(), setStmt);
+        setExecutor.execute();
+
+        // Test kill analyze with non-integer user variable
+        String killSql = "kill analyze @analyze_id";
+        KillAnalyzeStmt killAnalyzeStmt = (KillAnalyzeStmt) analyzeSuccess(killSql);
+        StmtExecutor executor = StmtExecutor.newInternalExecutor(getConnectContext(), killAnalyzeStmt);
+        executor.execute();
+        String message = getConnectContext().getState().getErrorMessage();
+        Assertions.assertTrue(message.contains("must be an integer"), message);
     }
 
     @Test

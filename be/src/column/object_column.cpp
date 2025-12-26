@@ -43,6 +43,18 @@ size_t ObjectColumn<T>::byte_size(size_t idx) const {
 }
 
 template <typename T>
+void ObjectColumn<T>::resize(size_t n) {
+    _pool.resize(n);
+    _cache_ok = false;
+}
+
+template <typename T>
+void ObjectColumn<T>::reserve(size_t n) {
+    _pool.reserve(n);
+    _cache_ok = false;
+}
+
+template <typename T>
 void ObjectColumn<T>::assign(size_t n, size_t idx) {
     if (idx != 0) {
         _pool[0] = std::move(_pool[idx]);
@@ -116,10 +128,10 @@ bool ObjectColumn<T>::append_strings(const Slice* data, size_t size) {
     _pool.reserve(_pool.size() + size);
     for (size_t i = 0; i < size; i++) {
         const auto& s = data[i];
-        if constexpr (std::is_same_v<T, VariantValue>) {
+        if constexpr (std::is_same_v<T, VariantRowValue>) {
             auto variant_result = T::create(s);
             if (!variant_result.ok()) {
-                LOG(WARNING) << "Failed to create VariantValue from Slice: " << variant_result.status().to_string();
+                LOG(WARNING) << "Failed to create VariantRowValue from Slice: " << variant_result.status().to_string();
                 return false;
             }
             _pool.emplace_back(std::move(*variant_result));
@@ -214,15 +226,18 @@ const uint8_t* ObjectColumn<T>::deserialize_and_append(const uint8_t* pos) {
 
 template <typename T>
 bool ObjectColumn<T>::deserialize_and_append(const Slice& src) {
+    bool res = false;
     if constexpr (std::is_same_v<T, BitmapValue>) {
-        return _pool.emplace_back().valid_and_deserialize(src.data, src.size);
+        res = _pool.emplace_back().valid_and_deserialize(src.data, src.size);
     } else if constexpr (std::is_same_v<T, HyperLogLog>) {
-        return _pool.emplace_back().deserialize(src);
+        res = _pool.emplace_back().deserialize(src);
     } else if constexpr (std::is_same_v<T, PercentileValue>) {
         _pool.emplace_back(src);
-        return true;
+        res = true;
     }
-    return false;
+
+    _cache_ok = false;
+    return res;
 }
 
 template <typename T>
@@ -253,6 +268,7 @@ size_t ObjectColumn<T>::filter_range(const Filter& filter, size_t from, size_t t
         }
     }
     _pool.resize(new_sz);
+    _cache_ok = false;
     return new_sz;
 }
 
@@ -324,7 +340,7 @@ std::string ObjectColumn<BitmapValue>::debug_item(size_t idx) const {
 }
 
 template <typename T>
-StatusOr<ColumnPtr> ObjectColumn<T>::upgrade_if_overflow() {
+StatusOr<MutableColumnPtr> ObjectColumn<T>::upgrade_if_overflow() {
     RETURN_IF_ERROR(capacity_limit_reached());
     return nullptr;
 }
@@ -333,6 +349,6 @@ template class ObjectColumn<HyperLogLog>;
 template class ObjectColumn<BitmapValue>;
 template class ObjectColumn<PercentileValue>;
 template class ObjectColumn<JsonValue>;
-template class ObjectColumn<VariantValue>;
+template class ObjectColumn<VariantRowValue>;
 
 } // namespace starrocks

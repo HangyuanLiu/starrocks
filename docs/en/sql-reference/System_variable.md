@@ -861,8 +861,6 @@ If a Join (other than Broadcast Join and Replicated Join) has multiple equi-join
 * **Data Type**: boolean
 * **Introduced in**: v3.2.0
 
-(Used in: `fe-core/src/main/java/com/starrocks/qe/SessionVariable.java`, `fe-core/src/main/java/com/starrocks/qe/scheduler/TFragmentInstanceFactory.java`)
-
 ### enable_short_circuit
 
 * **Description**: Whether to enable short circuiting for queries. Default: `false`. If it is set to `true`, when the query meets the criteria (to evaluate whether the query is a point query): the conditional columns in the WHERE clause include all primary key columns, and the operators in the WHERE clause are `=` or `IN`, the query takes the short circuit.
@@ -1172,7 +1170,7 @@ Specifies the query rewrite mode of asynchronous materialized views. Valid value
 * `force`: Enable automatic query rewrite of asynchronous materialized views, and the optimizer prioritizes query rewrite using the materialized view. If the query cannot be rewritten, it directly scans the data in the base table.
 * `force_or_error`: Enable automatic query rewrite of asynchronous materialized views, and the optimizer prioritizes query rewrite using the materialized view. If the query cannot be rewritten, an error is returned.
 
-### materialized_view_subuqery_text_match_max_count
+### materialized_view_subquery_text_match_max_count
 
 * **Description**: Specifies the maximum number of times that the system checks whether a query's sub-query matches the materialized views' definition.
 * **Default**: 4

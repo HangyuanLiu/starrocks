@@ -56,6 +56,7 @@ set(EXEC_FILES
         ./fs/poco_http_client_test.cpp
         ./fs/bundle_file_test.cpp
         ./exec/column_value_range_test.cpp
+        ./exec/range_router_test.cpp
         ./exec/es/es_query_builder_test.cpp
         ./exec/es/es_scan_reader_test.cpp
         ./exec/es/es_scroll_parser_test.cpp
@@ -79,12 +80,14 @@ set(EXEC_FILES
         ./exec/pipeline/local_bucket_shuffle_test.cpp
         ./exec/pipeline/mem_limited_chunk_queue_test.cpp
         ./exec/pipeline/exec_group_test.cpp
+        ./exec/query_spill_manager_test.cpp
         ./exec/query_cache/query_cache_test.cpp
         ./exec/query_cache/transform_operator.cpp
         ./exec/schema_columns_scanner_test.cpp
         ./exec/schema_fe_tablet_schedules_scanner_test.cpp
         ./exec/schema_materialized_views_scanner_test.cpp
         ./exec/schema_task_runs_scanner_test.cpp
+	    ./exec/schema_scanner/schema_be_tablet_write_log_scanner_test.cpp
         ./exec/sink/connector_sink_operator_test.cpp
         ./exec/sink/sink_io_buffer_test.cpp
         ./exec/stream/mem_state_table_test.cpp
@@ -111,6 +114,7 @@ set(EXEC_FILES
         ./exec/repeat_node_test.cpp
         ./exec/sorting_test.cpp
         ./exec/tablet_sink_index_channel_test.cpp
+        ./exec/tablet_sink_sender_range_test.cpp
         ./exec/table_function_node_test.cpp
         ./exec/olap_scan_prepare_test.cpp
         ./exec/file_scanner/avro_cpp_scanner_test.cpp
@@ -251,6 +255,7 @@ set(EXEC_FILES
         ./formats/parquet/parquet_cli_reader_test.cpp
         ./formats/parquet/parquet_ut_base.cpp
         ./formats/parquet/parquet_variant_test.cpp
+        ./formats/parquet/parquet_pos_reader_test.cpp
         ./formats/parquet/page_index_test.cpp
         ./formats/parquet/dict_encoding_test.cpp
         ./formats/disk_range_test.cpp
@@ -388,6 +393,7 @@ set(EXEC_FILES
         ./util/tdigest_test.cpp
         ./util/thread_test.cpp
         ./util/threadpool_test.cpp
+        ./util/thrift_customize_test.cpp
         ./util/trace_test.cpp
         ./util/uid_util_test.cpp
         ./util/utf8_check_test.cpp
@@ -501,8 +507,10 @@ SET(DW_TEST_FILES
     ./storage/lake/compaction_task_context_test.cpp
     ./storage/lake/condition_update_test.cpp
     ./storage/lake/delta_writer_test.cpp
+    ./storage/lake/filenames_test.cpp
     ./storage/lake/lake_data_source_test.cpp
     ./storage/lake/lake_delvec_loader_test.cpp
+    ./storage/lake/lake_meta_reader_test.cpp
     ./storage/lake/lake_persistent_index_test.cpp
     ./storage/lake/lake_primary_key_consistency_test.cpp
     ./storage/lake/lake_scan_node_test.cpp
@@ -516,6 +524,7 @@ SET(DW_TEST_FILES
     ./storage/lake/replication_txn_manager_test.cpp
     ./storage/lake/rowset_test.cpp
     ./storage/lake/schema_change_test.cpp
+    ./storage/lake/lake_replication_txn_manager_test.cpp
     ./storage/lake/spill_mem_table_sink_test.cpp
     ./storage/lake/starlet_location_provider_test.cpp
     ./storage/lake/tablet_manager_test.cpp
@@ -528,12 +537,17 @@ SET(DW_TEST_FILES
     ./storage/lake/txn_log_applier_test.cpp
     ./storage/lake/vacuum_test.cpp
     ./storage/lake/write_combined_txn_log_test.cpp
+    ./storage/lake/lake_persistent_index_fileset_test.cpp
+    ./storage/lake/lake_persistent_index_parallel_compact_mgr_test.cpp
+    ./storage/lake/lake_persistent_index_size_tiered_compaction_strategy_test.cpp
+    ./storage/lake/tablet_write_log_manager_test.cpp
     ./storage/load_spill_block_manager_test.cpp
     ./storage/memtable_flush_executor_test.cpp
     ./storage/memtable_test.cpp
     ./storage/merge_iterator_test.cpp
     ./storage/metadata_util_test.cpp
     ./storage/meta_reader_test.cpp
+    ./storage/olap_meta_reader_test.cpp
     ./storage/olap_runtime_range_pruner_test.cpp
     ./storage/options_test.cpp
     ./storage/persistent_index_consistency_test.cpp
@@ -621,6 +635,8 @@ SET(DW_TEST_FILES
     ./storage/update_manager_test.cpp
     ./storage/utils_test.cpp
     ./storage/version_graph_test.cpp
+    ./storage/lake/table_schema_service_test.cpp
+    ./storage/lake/fast_schema_evolution_v2_test.cpp
 )
 
 if ("${WITH_STARCACHE}" STREQUAL "ON")

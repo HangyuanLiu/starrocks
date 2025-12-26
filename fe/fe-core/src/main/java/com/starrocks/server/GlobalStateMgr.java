@@ -137,6 +137,7 @@ import com.starrocks.journal.JournalWriter;
 import com.starrocks.journal.bdbje.Timestamp;
 import com.starrocks.lake.StarMgrMetaSyncer;
 import com.starrocks.lake.StarOSAgent;
+import com.starrocks.lake.TabletWriteLogHistorySyncer;
 import com.starrocks.lake.compaction.CompactionControlScheduler;
 import com.starrocks.lake.compaction.CompactionMgr;
 import com.starrocks.lake.snapshot.ClusterSnapshotMgr;
@@ -169,6 +170,7 @@ import com.starrocks.load.streamload.StreamLoadMgr;
 import com.starrocks.memory.MemoryUsageTracker;
 import com.starrocks.memory.ProcProfileCollector;
 import com.starrocks.meta.SqlBlackList;
+import com.starrocks.meta.SqlDigestBlackList;
 import com.starrocks.metric.MetricRepo;
 import com.starrocks.persist.BackendIdsUpdateInfo;
 import com.starrocks.persist.EditLog;
@@ -215,6 +217,7 @@ import com.starrocks.sql.analyzer.AuthorizerStmtVisitor;
 import com.starrocks.sql.ast.RefreshTableStmt;
 import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.SystemVariable;
+import com.starrocks.sql.ast.TableRef;
 import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.optimizer.statistics.CachedStatisticStorage;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
@@ -408,6 +411,7 @@ public class GlobalStateMgr {
 
     private final LoadTimeoutChecker loadTimeoutChecker;
     private final LoadsHistorySyncer loadsHistorySyncer;
+    private final TabletWriteLogHistorySyncer tabletWriteLogHistorySyncer;
     private final LoadEtlChecker loadEtlChecker;
     private final LoadLoadingChecker loadLoadingChecker;
     private final LockChecker lockChecker;
@@ -530,6 +534,7 @@ public class GlobalStateMgr {
     private final ClusterSnapshotMgr clusterSnapshotMgr;
 
     private final SqlBlackList sqlBlackList;
+    private final SqlDigestBlackList sqlDigestBlackList;
     private final ReportHandler reportHandler;
     private final TabletCollector tabletCollector;
     private final SQLPlanStorage sqlPlanStorage;
@@ -739,6 +744,7 @@ public class GlobalStateMgr {
         this.loadMgr = new LoadMgr(loadJobScheduler);
         this.loadTimeoutChecker = new LoadTimeoutChecker(loadMgr);
         this.loadsHistorySyncer = new LoadsHistorySyncer();
+        this.tabletWriteLogHistorySyncer = new TabletWriteLogHistorySyncer();
         this.loadEtlChecker = new LoadEtlChecker(loadMgr);
         this.loadLoadingChecker = new LoadLoadingChecker(loadMgr);
         this.lockChecker = new LockChecker();
@@ -851,6 +857,7 @@ public class GlobalStateMgr {
         this.ddlStmtExecutor = new DDLStmtExecutor(DDLStmtExecutor.StmtExecutorVisitor.getInstance());
         this.showExecutor = new ShowExecutor(ShowExecutor.ShowExecutorVisitor.getInstance());
         this.sqlBlackList = new SqlBlackList();
+        this.sqlDigestBlackList = new SqlDigestBlackList();
         this.temporaryTableCleaner = new TemporaryTableCleaner();
         this.queryDeployExecutor =
                 ThreadPoolManager.newDaemonFixedThreadPool(Config.query_deploy_threadpool_size, Integer.MAX_VALUE,
@@ -1408,6 +1415,7 @@ public class GlobalStateMgr {
         loadJobScheduler.start();
         loadTimeoutChecker.start();
         loadsHistorySyncer.start();
+        tabletWriteLogHistorySyncer.start();
         loadEtlChecker.start();
         loadLoadingChecker.start();
         // Export checker
@@ -1461,6 +1469,9 @@ public class GlobalStateMgr {
             // Need to rebuild active lake compaction transactions before lake scheduler starting to run
             // Lake compactionMgr is started on all FE nodes and scheduler only starts to run when the FE is leader
             compactionMgr.buildActiveCompactionTransactionMap();
+            // restore storage volumes to virtual tablet group mappings while FE is leader
+            // (include after transferring to leader role)
+            ((SharedDataStorageVolumeMgr) storageVolumeMgr).restoreStorageVolumeToVTabletGroupMappings();
 
             starMgrMetaSyncer.start();
             autovacuumDaemon.start();
@@ -1626,6 +1637,7 @@ public class GlobalStateMgr {
                 .put(SRMetaBlockID.WAREHOUSE_MGR, warehouseMgr::load)
                 .put(SRMetaBlockID.CLUSTER_SNAPSHOT_MGR, clusterSnapshotMgr::load)
                 .put(SRMetaBlockID.BLACKLIST_MGR, sqlBlackList::load)
+                .put(SRMetaBlockID.DIGEST_BLACKLIST_MGR, sqlDigestBlackList::load)
                 .put(SRMetaBlockID.HISTORICAL_NODE_MGR, historicalNodeMgr::load)
                 .put(SRMetaBlockID.TABLET_RESHARD_JOB_MGR, tabletReshardJobMgr::load)
                 .build();
@@ -1856,6 +1868,7 @@ public class GlobalStateMgr {
                 clusterSnapshotMgr.save(imageWriter);
                 historicalNodeMgr.save(imageWriter);
                 tabletReshardJobMgr.save(imageWriter);
+                sqlDigestBlackList.save(imageWriter);
             } catch (SRMetaBlockException e) {
                 LOG.error("Save meta block failed ", e);
                 throw new IOException("Save meta block failed ", e);
@@ -2295,6 +2308,10 @@ public class GlobalStateMgr {
         return this.sqlBlackList;
     }
 
+    public SqlDigestBlackList getSqlDigestBlackList() {
+        return this.sqlDigestBlackList;
+    }
+
     public MaterializedViewMgr getMaterializedViewMgr() {
         return this.materializedViewMgr;
     }
@@ -2504,7 +2521,12 @@ public class GlobalStateMgr {
     }
 
     public void refreshExternalTable(ConnectContext context, RefreshTableStmt stmt) throws DdlException {
-        TableName tableName = stmt.getTableName();
+        TableRef tableRef = stmt.getTableRef();
+        if (tableRef == null) {
+            throw new DdlException("Table ref is null");
+        }
+        TableName tableName = new TableName(tableRef.getCatalogName(), tableRef.getDbName(),
+                tableRef.getTableName(), tableRef.getPos());
         List<String> partitionNames = stmt.getPartitions();
         refreshExternalTable(context, tableName, partitionNames);
         refreshOthersFeTable(tableName, partitionNames, true);

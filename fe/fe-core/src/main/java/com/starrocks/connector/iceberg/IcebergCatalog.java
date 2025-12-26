@@ -237,8 +237,12 @@ public interface IcebergCatalog extends MemoryTrackable {
         return new StarRocksIcebergTableScan(
                 table,
                 table.schema(),
-                newTableScanContext(table),
+                newTableScanContext(table, srScanContext),
                 srScanContext);
+    }
+
+    default Map<String, String> getCatalogProperties() {
+        return new HashMap<>();
     }
 
     default String defaultTableLocation(ConnectContext context, Namespace ns, String tableName) {

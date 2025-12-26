@@ -17,12 +17,14 @@ package com.starrocks.sql.plan;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.starrocks.analysis.RowPositionDescriptor;
 import com.starrocks.catalog.AggregateFunction;
 import com.starrocks.catalog.ColocateTableIndex;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.ColumnAccessPath;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
+import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.JDBCTable;
 import com.starrocks.catalog.MaterializedIndex;
 import com.starrocks.catalog.MaterializedIndexMeta;
@@ -67,6 +69,7 @@ import com.starrocks.planner.ExceptNode;
 import com.starrocks.planner.ExchangeNode;
 import com.starrocks.planner.ExecGroup;
 import com.starrocks.planner.ExecGroupSets;
+import com.starrocks.planner.FetchNode;
 import com.starrocks.planner.FileScanNode;
 import com.starrocks.planner.FileTableScanNode;
 import com.starrocks.planner.FragmentNormalizer;
@@ -79,11 +82,13 @@ import com.starrocks.planner.IntersectNode;
 import com.starrocks.planner.JDBCScanNode;
 import com.starrocks.planner.JoinNode;
 import com.starrocks.planner.KuduScanNode;
+import com.starrocks.planner.LookUpNode;
 import com.starrocks.planner.MergeJoinNode;
 import com.starrocks.planner.MetaScanNode;
 import com.starrocks.planner.MultiCastPlanFragment;
 import com.starrocks.planner.MysqlScanNode;
 import com.starrocks.planner.NestLoopJoinNode;
+import com.starrocks.planner.NoopSink;
 import com.starrocks.planner.OdpsScanNode;
 import com.starrocks.planner.OlapScanNode;
 import com.starrocks.planner.OlapTableSink;
@@ -177,6 +182,7 @@ import com.starrocks.sql.optimizer.operator.physical.PhysicalJDBCScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalKuduScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalLimitOperator;
+import com.starrocks.sql.optimizer.operator.physical.PhysicalLookUpOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalMergeJoinOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalMetaScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalMysqlScanOperator;
@@ -299,7 +305,7 @@ public class PlanFragmentBuilder {
         // Create a fake table sink here, replaced it after created the MV
         PartitionInfo partitionInfo = LocalMetastore.buildPartitionInfo(createStmt, null);
         long mvId = GlobalStateMgr.getCurrentState().getNextId();
-        long dbId = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb(createStmt.getTableName().getDb()).getId();
+        long dbId = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb(createStmt.getDbName()).getId();
         MaterializedView view = GlobalStateMgr.getCurrentState().getMaterializedViewMgr()
                 .createSinkTable(createStmt, partitionInfo, mvId, dbId);
         TupleDescriptor tupleDesc = buildTupleDesc(execPlan, view);
@@ -1090,7 +1096,7 @@ public class PlanFragmentBuilder {
                     ConnectContext.get().getCurrentComputeResource() : WarehouseManager.DEFAULT_RESOURCE;
 
             MetaScanNode scanNode = new MetaScanNode(context.getNextNodeId(),
-                    tupleDescriptor, (OlapTable) scan.getTable(), scan.getAggColumnIdToNames(),
+                    tupleDescriptor, (OlapTable) scan.getTable(), scan.getAggColumnIdToColumns(),
                     scan.getSelectPartitionNames(), scan.getSelectedIndexId(),
                     context.getConnectContext().getCurrentComputeResource());
 
@@ -2489,9 +2495,14 @@ public class PlanFragmentBuilder {
                     replaceExpr.setType(functionCallExpr.getType());
                 } else if (functionName.equals(FunctionSet.ARRAY_AGG)) {
                     replaceExpr = new FunctionCallExpr(FunctionSet.ARRAY_AGG_DISTINCT, functionCallExpr.getParams());
-                    replaceExpr.setFn(ExprUtils.getBuiltinFunction(FunctionSet.ARRAY_AGG_DISTINCT,
-                            functionCallExpr.getFn().getArgs(),
-                            IS_NONSTRICT_SUPERTYPE_OF));
+                    AggregateFunction fn =
+                            (AggregateFunction) ExprUtils.getBuiltinFunction(FunctionSet.ARRAY_AGG_DISTINCT,
+                                    functionCallExpr.getFn().getArgs(),
+                                    IS_NONSTRICT_SUPERTYPE_OF);
+                    fn = DecimalV3FunctionAnalyzer.rectifyAggregationFunction(
+                            fn, functionCallExpr.getFn().getArgs()[0], functionCallExpr.getFn().getReturnType());
+
+                    replaceExpr.setFn(fn);
                     replaceExpr.getParams().setIsDistinct(false);
                     replaceExpr.setType(functionCallExpr.getType());
                 }
@@ -2537,16 +2548,26 @@ public class PlanFragmentBuilder {
             return fragment;
         }
 
+        private int calcParallelMergeInputRowsThreshold() {
+            ConnectContext connectContext = ConnectContext.get();
+            if (connectContext == null) {
+                return -1;
+            }
+
+            SessionVariable sv = connectContext.getSessionVariable();
+            if (!sv.isEnableParallelMerge()) {
+                return -1;
+            }
+
+            return sv.getDegreeOfParallelism(connectContext.getCurrentWarehouseId()) * sv.getChunkSize();
+        }
+
         private boolean isUseParallelMerge(OptExpression optExpr, long limit, long offset) {
             long inputRowCount = Optional.ofNullable(optExpr.inputAt(0).getStatistics())
                     .map(stat -> (long) stat.getOutputRowCount()).orElse(-1L);
 
             long topN = limit == Operator.DEFAULT_LIMIT ? Operator.DEFAULT_LIMIT : limit + offset;
-            int parallelMergeInputRowsThreshold = Optional.ofNullable(ConnectContext.get())
-                    .map(ConnectContext::getSessionVariable)
-                    .map(sv ->
-                            sv.isEnableParallelMerge() ? sv.getDegreeOfParallelism() * sv.getChunkSize() : -1
-                    ).orElse(-1);
+            int parallelMergeInputRowsThreshold = calcParallelMergeInputRowsThreshold();
             // this threshold == -1 indidcates that enable_parallel_merge is off
             if (parallelMergeInputRowsThreshold == -1) {
                 return false;
@@ -3158,9 +3179,28 @@ public class PlanFragmentBuilder {
                         new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr()));
                 // if local partition topn can preAgg, then it's output is binary format
                 // which means analytic node should call function's merge method instead of update
+                FunctionCallExpr call = (FunctionCallExpr) analyticFunction;
                 if (node.isInputIsBinary()) {
-                    ((FunctionCallExpr) analyticFunction).setMergeAggFn();
+                    call.setMergeAggFn();
                 }
+
+                // Only boolean/numeric/string type can be optimized via array_agg_distinct
+                if (call.isDistinct() && call.getFunctionName().equals(FunctionSet.ARRAY_AGG) &&
+                        call.getFnParams().exprs().size() == 1 && (
+                        call.getFn().getArgs()[0].isNumericType() || call.getFn().getArgs()[0].isStringType() ||
+                                call.getFn().getArgs()[0].isBoolean())) {
+                    FunctionCallExpr newCall = new FunctionCallExpr(FunctionSet.ARRAY_AGG_DISTINCT, call.getParams());
+                    AggregateFunction fn =
+                            (AggregateFunction) ExprUtils.getBuiltinFunction(FunctionSet.ARRAY_AGG_DISTINCT,
+                                    call.getFn().getArgs(), IS_NONSTRICT_SUPERTYPE_OF);
+                    fn = DecimalV3FunctionAnalyzer.rectifyAggregationFunction(
+                            fn, call.getFn().getArgs()[0], call.getFn().getReturnType());
+                    newCall.setFn(fn);
+                    newCall.getParams().setIsDistinct(false);
+                    newCall.setType(call.getType());
+                    analyticFunction = newCall;
+                }
+
                 analyticFnCalls.add(analyticFunction);
 
                 SlotDescriptor slotDesc = context.getDescTbl()
@@ -4126,7 +4166,8 @@ public class PlanFragmentBuilder {
                         INTERNAL_ERROR);
             }
 
-            int dop = ConnectContext.get().getSessionVariable().getSinkDegreeOfParallelism();
+            ConnectContext connectContext = ConnectContext.get();
+            int dop = connectContext.getSessionVariable().getSinkDegreeOfParallelism(connectContext.getCurrentWarehouseId());
             scanNode.setLoadInfo(-1, -1, table, new BrokerDesc(table.getProperties()), fileGroups, table.isStrictMode(), dop);
             scanNode.setUseVectorizedLoad(true);
             scanNode.setFlexibleColumnMapping(table.isFlexibleColumnMapping());
@@ -4392,5 +4433,116 @@ public class PlanFragmentBuilder {
             return true;
         }
 
+        @Override
+        public PlanFragment visitPhysicalFetch(OptExpression optExpression, ExecPlan context) {
+            PlanFragment childFragment = visit(optExpression.getInputs().get(0), context);
+            PlanFragment lookUpFragment = visit(optExpression.getInputs().get(1), context);
+
+            LookUpNode lookupNode = (LookUpNode) lookUpFragment.getPlanRoot();
+
+            ComputeResource computeResource = ConnectContext.get() != null ?
+                    ConnectContext.get().getCurrentComputeResource() : WarehouseManager.DEFAULT_RESOURCE;
+            // ROW_ID column may become nullable after passing through outer join node,
+            // so we need to change nullable property for late-materialized columns too,
+            for (TupleDescriptor tupleDescriptor : lookupNode.getDescs()) {
+                RowPositionDescriptor rowPositionDescriptor = lookupNode.getRowPosDescs().get(tupleDescriptor.getId());
+                // mark all related column to nullable
+                SlotDescriptor rowSourceSlotDesc = context.getDescTbl().getSlotDesc(rowPositionDescriptor.getRowSourceSlot());
+                if (rowSourceSlotDesc.getIsNullable()) {
+                    tupleDescriptor.getSlots().forEach(slotDescriptor -> slotDescriptor.setIsNullable(true));
+                }
+            }
+
+            FetchNode fetchNode = new FetchNode(context.getNextNodeId(),
+                    childFragment.getPlanRoot(), lookupNode.getId(),
+                    lookupNode.getDescs(), lookupNode.getRowPosDescs(), computeResource);
+            currentExecGroup.add(fetchNode);
+            childFragment.setPlanRoot(fetchNode);
+            childFragment.addChild(lookUpFragment);
+            lookUpFragment.setQueryGlobalDicts(childFragment.getQueryGlobalDicts());
+            lookUpFragment.setQueryGlobalDictExprs(childFragment.getQueryGlobalDictExprs());
+            context.getFragments().remove(childFragment);
+            context.getFragments().remove(lookUpFragment);
+            context.getFragments().add(lookUpFragment);
+            context.getFragments().add(childFragment);
+            return childFragment;
+        }
+
+        private RowPositionDescriptor buildRowPositionDescriptor(Table table,
+                                                                 SlotId sourceNodeSlot,
+                                                                 List<SlotId> fetchRefSlots,
+                                                                 List<SlotId> lookupRefSlots) {
+            if (table instanceof IcebergTable) {
+                return new RowPositionDescriptor(
+                        RowPositionDescriptor.Type.ICEBERG_V3, sourceNodeSlot, fetchRefSlots, lookupRefSlots);
+            }
+            return null;
+        }
+
+        @Override
+        public PlanFragment visitPhysicalLookUp(OptExpression optExpression, ExecPlan context) {
+            PhysicalLookUpOperator lookUpOperator = (PhysicalLookUpOperator) optExpression.getOp();
+
+            Map<ColumnRefOperator, Table> rowIdToTable = lookUpOperator.getRowIdToTable();
+            Map<ColumnRefOperator, List<ColumnRefOperator>> rowIdToFetchRefColumns =
+                    lookUpOperator.getRowIdToFetchRefColumns();
+            Map<ColumnRefOperator, List<ColumnRefOperator>> rowIdToLookUpRefColumns =
+                    lookUpOperator.getRowIdToLookUpRefColumns();
+            Map<ColumnRefOperator, Set<ColumnRefOperator>> rowIdToLazyColumns = lookUpOperator.getRowIdToLazyColumns();
+            Map<ColumnRefOperator, Column> columnRefOperatorColumnMap = lookUpOperator.getColumnRefOperatorColumnMap();
+
+            List<TupleDescriptor> tupleDescriptors = Lists.newArrayList();
+            List<Table> tables = Lists.newArrayList();
+            Map<TupleId, RowPositionDescriptor> rowPositionDescriptorMap = new HashMap<>();
+            for (Map.Entry<ColumnRefOperator, Set<ColumnRefOperator>> entry : rowIdToLazyColumns.entrySet()) {
+                Preconditions.checkState(rowIdToTable.containsKey(entry.getKey()));
+                Table table = rowIdToTable.get(entry.getKey());
+                Set<ColumnRefOperator> lazyColumns = entry.getValue();
+
+                TupleDescriptor tupleDescriptor = context.getDescTbl().createTupleDescriptor();
+                tupleDescriptor.setTable(table);
+                tupleDescriptor.setIsMaterialized(true);
+
+                for (ColumnRefOperator columnRefOperator : lazyColumns) {
+                    SlotDescriptor slotDescriptor =
+                            context.getDescTbl().addSlotDescriptor(tupleDescriptor, new SlotId(columnRefOperator.getId()));
+                    slotDescriptor.setColumn(columnRefOperatorColumnMap.get(columnRefOperator));
+                    slotDescriptor.setIsMaterialized(true);
+                    slotDescriptor.setIsNullable(columnRefOperator.isNullable());
+                    context.getColRefToExpr().put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDescriptor));
+                }
+
+                List<ColumnRefOperator> lookupRefColumns = rowIdToLookUpRefColumns.get(entry.getKey());
+                for (ColumnRefOperator columnRefOperator : lookupRefColumns) {
+                    SlotDescriptor slotDescriptor =
+                            context.getDescTbl().addSlotDescriptor(tupleDescriptor, new SlotId(columnRefOperator.getId()));
+                    slotDescriptor.setColumn(columnRefOperatorColumnMap.get(columnRefOperator));
+                    slotDescriptor.setIsMaterialized(true);
+                    slotDescriptor.setIsNullable(columnRefOperator.isNullable());
+                    context.getColRefToExpr().put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDescriptor));
+                }
+                List<ColumnRefOperator> fetchRefColumns = rowIdToFetchRefColumns.get(entry.getKey());
+                List<SlotId> fetchRefSlotIds = fetchRefColumns.stream()
+                        .map(columnRefOperator -> new SlotId(columnRefOperator.getId())).collect(Collectors.toList());
+                List<SlotId> lookupRefSlotIds = lookupRefColumns.stream()
+                        .map(columnRefOperator -> new SlotId(columnRefOperator.getId())).collect(Collectors.toList());
+
+                RowPositionDescriptor rowPositionDescriptor = buildRowPositionDescriptor(
+                        table, new SlotId(entry.getKey().getId()), fetchRefSlotIds, lookupRefSlotIds);
+                rowPositionDescriptorMap.put(tupleDescriptor.getId(), rowPositionDescriptor);
+
+                tupleDescriptor.computeMemLayout();
+                tables.add(table);
+                tupleDescriptors.add(tupleDescriptor);
+
+            }
+
+            LookUpNode lookUpNode = new LookUpNode(context.getNextNodeId(), tupleDescriptors, rowPositionDescriptorMap);
+            PlanFragment fragment = new PlanFragment(context.getNextFragmentId(), lookUpNode, DataPartition.RANDOM);
+            fragment.setPlanRoot(lookUpNode);
+            fragment.setSink(new NoopSink());
+            context.getFragments().add(fragment);
+            return fragment;
+        }
     }
 }

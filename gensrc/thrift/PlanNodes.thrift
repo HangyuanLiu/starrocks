@@ -85,7 +85,9 @@ enum TPlanNodeType {
   STREAM_AGG_NODE,
   LAKE_META_SCAN_NODE,
   CAPTURE_VERSION_NODE,
-  RAW_VALUES_NODE
+  RAW_VALUES_NODE,
+  FETCH_NODE,
+  LOOKUP_NODE,
 }
 
 // phases of an execution node
@@ -655,12 +657,6 @@ struct TJDBCScanNode {
   5: optional i64 limit
 }
 
-struct TTableSchemaMeta {
-  1: optional i64 db_id
-  2: optional i64 table_id
-  3: optional i64 schema_id
-}
-
 // If you find yourself changing this struct, see also TOlapScanNode
 struct TLakeScanNode {
   1: required Types.TTupleId tuple_id
@@ -692,7 +688,7 @@ struct TLakeScanNode {
   41: optional i64 back_pressure_throttle_time_upper_bound
   42: optional i64 back_pressure_num_rows
 
-  43: optional TTableSchemaMeta schema_meta
+  43: optional Descriptors.TTableSchemaKey schema_key
 }
 
 struct TEqJoinCondition {
@@ -1294,7 +1290,9 @@ struct TMetaScanNode {
     2: optional list<Descriptors.TColumn> columns
     3: optional i32 low_cardinality_threshold
     4: optional list<TColumnAccessPath> column_access_paths
+    // deprecated. use schema key instead
     5: optional i64 schema_id
+    6: optional Descriptors.TTableSchemaKey schema_key
 }
 
 struct TDecodeNode {
@@ -1384,6 +1382,17 @@ struct TPlanNodeCommon {
   // it is evaluated by ScanNode's ChunkSource in io threads.
   1: optional map<Types.TSlotId, Exprs.TExpr> heavy_exprs
 }
+
+struct TFetchNode {
+  1: optional i32 target_node_id
+  2: optional map<Types.TTupleId, Descriptors.TRowPositionDescriptor> row_pos_descs;
+  3: optional Descriptors.TNodesInfo nodes_info
+}
+
+struct TLookUpNode {
+  1: optional map<Types.TTupleId, Descriptors.TRowPositionDescriptor> row_pos_descs;
+}
+
 // This is essentially a union of all messages corresponding to subclasses
 // of PlanNode.
 struct TPlanNode {
@@ -1461,7 +1470,9 @@ struct TPlanNode {
   71: optional TStreamJoinNode stream_join_node;
   72: optional TStreamAggregationNode stream_agg_node;
 
-  81: optional TSelectNode select_node;
+  81: optional TSelectNode select_node; 
+  82: optional TFetchNode fetch_node;
+  83: optional TLookUpNode look_up_node;
 }
 
 // A flattened representation of a tree of PlanNodes, obtained by depth-first

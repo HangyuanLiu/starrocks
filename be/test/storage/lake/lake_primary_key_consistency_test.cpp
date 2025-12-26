@@ -76,8 +76,8 @@ public:
 
     class ReplayEntry {
     public:
-        ReplayEntry(const ReplayerOP& o, const ChunkPtr& cp, const string& cc)
-                : op(o), chunk_ptr(cp), condition_col(cc) {}
+        ReplayEntry(ReplayerOP o, ChunkPtr cp, string cc)
+                : op(std::move(o)), chunk_ptr(std::move(cp)), condition_col(std::move(cc)) {}
         // Operation type
         ReplayerOP op;
         // Replay data
@@ -339,7 +339,7 @@ public:
             key_col_str.emplace_back(std::to_string(cols[0][i]));
         }
         for (const auto& s : key_col_str) {
-            key_col.emplace_back(Slice(s));
+            key_col.emplace_back(s);
         }
 
         auto c0 = BinaryColumn::create();
@@ -370,7 +370,7 @@ public:
             key_col_str.emplace_back(std::to_string(cols[0][i]));
         }
         for (const auto& s : key_col_str) {
-            key_col.emplace_back(Slice(s));
+            key_col.emplace_back(s);
         }
 
         auto c0 = BinaryColumn::create();
@@ -539,7 +539,7 @@ public:
         std::vector<int64_t> txn_ids;
         for (int i = 0; i < batch_cnt; i++) {
             auto txn_id = next_id();
-            txn_ids.push_back(txn_id);
+            txn_ids.emplace_back(txn_id);
             ASSIGN_OR_ABORT(auto delta_writer, DeltaWriterBuilder()
                                                        .set_tablet_manager(_tablet_mgr.get())
                                                        .set_tablet_id(_tablet_metadata->id())

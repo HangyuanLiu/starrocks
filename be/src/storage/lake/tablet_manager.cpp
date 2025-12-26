@@ -38,6 +38,7 @@
 #include "storage/lake/meta_file.h"
 #include "storage/lake/metacache.h"
 #include "storage/lake/options.h"
+#include "storage/lake/table_schema_service.h"
 #include "storage/lake/tablet.h"
 #include "storage/lake/tablet_metadata.h"
 #include "storage/lake/txn_log.h"
@@ -71,17 +72,40 @@ static bvar::Adder<int64_t> g_read_bundle_tablet_meta_real_access_cnt("lake",
                                                                       "lake_read_bundle_tablet_meta_real_access_cnt");
 static bvar::LatencyRecorder g_read_bundle_tablet_meta_latency("lake", "lake_read_bundle_tablet_meta_latency");
 
+#if defined(USE_STAROS) && !defined(BUILD_FORMAT_LIB)
+static std::pair<int64_t, int64_t> get_table_partition_id(const staros::starlet::ShardInfo& shard_info) {
+    const auto& properties = shard_info.properties;
+
+    int64_t table_id = -1;
+    auto table_id_iter = properties.find("tableId");
+    if (table_id_iter != properties.end()) {
+        table_id = std::atol(table_id_iter->second.data());
+    }
+
+    int64_t partition_id = -1;
+    auto partition_id_iter = properties.find("partitionId");
+    if (partition_id_iter != properties.end()) {
+        partition_id = std::atol(partition_id_iter->second.data());
+    }
+
+    return std::make_pair(table_id, partition_id);
+}
+#endif
+
 TabletManager::TabletManager(std::shared_ptr<LocationProvider> location_provider, UpdateManager* update_mgr,
                              int64_t cache_capacity)
         : _location_provider(std::move(location_provider)),
           _metacache(std::make_unique<Metacache>(cache_capacity)),
           _compaction_scheduler(std::make_unique<CompactionScheduler>(this)),
-          _update_mgr(update_mgr) {
+          _update_mgr(update_mgr),
+          _table_schema_service(std::make_unique<TableSchemaService>(this)) {
     _update_mgr->set_tablet_mgr(this);
 }
 
 TabletManager::TabletManager(std::shared_ptr<LocationProvider> location_provider, int64_t cache_capacity)
-        : _location_provider(std::move(location_provider)), _metacache(std::make_unique<Metacache>(cache_capacity)) {}
+        : _location_provider(std::move(location_provider)),
+          _metacache(std::make_unique<Metacache>(cache_capacity)),
+          _table_schema_service(std::make_unique<TableSchemaService>(this)) {}
 
 TabletManager::~TabletManager() = default;
 
@@ -164,18 +188,9 @@ Status TabletManager::drop_local_cache(const std::string& path) {
 }
 
 // current lru cache does not support updating value size, so use refill to update.
-void TabletManager::update_segment_cache_size(std::string_view key, intptr_t segment_addr_hint) {
-    // use write lock to protect parallel segment size update
-    std::unique_lock wrlock(_meta_lock);
-    auto segment = _metacache->lookup_segment(key);
-    if (segment == nullptr) {
-        return;
-    }
-    if (segment_addr_hint != 0 && segment_addr_hint != reinterpret_cast<intptr_t>(segment.get())) {
-        // the segment in cache is not the one as expected, skip the cache update
-        return;
-    }
-    _metacache->cache_segment(key, std::move(segment));
+void TabletManager::update_segment_cache_size(std::string_view key, size_t mem_cost, intptr_t segment_addr_hint) {
+    TEST_SYNC_POINT_CALLBACK("lake::TabletManager::update_segment_cache_size", nullptr);
+    _metacache->cache_segment_if_present(key, mem_cost, segment_addr_hint);
 }
 
 void TabletManager::prune_metacache() {
@@ -1104,6 +1119,21 @@ StatusOr<TabletSchemaPtr> TabletManager::get_output_rowset_schema(std::vector<ui
 }
 
 StatusOr<CompactionTaskPtr> TabletManager::compact(CompactionTaskContext* context) {
+#if defined(USE_STAROS) && !defined(BUILD_FORMAT_LIB)
+    if (g_worker != nullptr && (context->table_id == 0 || context->partition_id == 0)) {
+        auto shard_info_or = g_worker->retrieve_shard_info(context->tablet_id);
+        if (shard_info_or.ok()) {
+            auto id_pair = get_table_partition_id(shard_info_or.value());
+            if (context->table_id == 0) {
+                context->table_id = id_pair.first;
+            }
+            if (context->partition_id == 0) {
+                context->partition_id = id_pair.second;
+            }
+        }
+    }
+#endif
+
     ASSIGN_OR_RETURN(auto tablet, get_tablet(context->tablet_id, context->version));
     auto tablet_metadata = tablet.metadata();
     ASSIGN_OR_RETURN(auto compaction_policy,
@@ -1243,7 +1273,7 @@ StatusOr<SegmentPtr> TabletManager::load_segment(const FileInfo& segment_info, i
         if (fill_meta_cache) {
             // NOTE: the returned segment may be not the same as the parameter passed in
             // Use the one in cache if the same key already exists
-            if (auto cached_segment = metacache()->cache_segment_if_absent(segment_info.path, segment);
+            if (auto cached_segment = _metacache->cache_segment_if_absent(segment_info.path, segment);
                 cached_segment != nullptr) {
                 segment = cached_segment;
             }
@@ -1265,24 +1295,6 @@ StatusOr<SegmentPtr> TabletManager::load_segment(const FileInfo& segment_info, i
 }
 
 #if defined(USE_STAROS) && !defined(BUILD_FORMAT_LIB)
-static std::pair<int64_t, int64_t> get_table_partition_id(const staros::starlet::ShardInfo& shard_info) {
-    const auto& properties = shard_info.properties;
-
-    int64_t table_id = -1;
-    auto table_id_iter = properties.find("tableId");
-    if (table_id_iter != properties.end()) {
-        table_id = std::atol(table_id_iter->second.data());
-    }
-
-    int64_t partition_id = -1;
-    auto partition_id_iter = properties.find("partitionId");
-    if (partition_id_iter != properties.end()) {
-        partition_id = std::atol(partition_id_iter->second.data());
-    }
-
-    return std::make_pair(table_id, partition_id);
-}
-
 StatusOr<TabletBasicInfo> TabletManager::get_tablet_basic_info(
         int64_t tablet_id, int64_t table_id, int64_t partition_id, const std::set<int64_t>& authorized_table_ids,
         const std::unordered_map<int64_t, int64_t>& partition_versions) {
@@ -1421,4 +1433,20 @@ StatusOr<TabletAndRowsets> TabletManager::capture_tablet_and_rowsets(int64_t tab
 
     return std::make_tuple(std::move(tablet_ptr), std::move(rowsets));
 }
+
+void TabletManager::cache_schema(const TabletSchemaPtr& schema) {
+    // GlobalTabletSchemaMap and metadata cache overlap in functionality, but because many places
+    // previously relied on GlobalTabletSchemaMap, caching is still performed in GlobalTabletSchemaMap
+    // here. In the future, it may be possible to refactor and remove GlobalTabletSchemaMap.
+    auto [cached_schema, inserted] = GlobalTabletSchemaMap::Instance()->emplace(schema);
+    auto cache_key = global_schema_cache_key(cached_schema->id());
+    auto cache_size = inserted ? cached_schema->mem_usage() : 0;
+    _metacache->cache_tablet_schema(cache_key, cached_schema, cache_size);
+}
+
+TabletSchemaPtr TabletManager::get_cached_schema(int64_t schema_id) {
+    auto cache_key = global_schema_cache_key(schema_id);
+    return _metacache->lookup_tablet_schema(cache_key);
+}
+
 } // namespace starrocks::lake

@@ -633,32 +633,50 @@ std::string MapColumn::debug_string() const {
     return ss.str();
 }
 
-StatusOr<ColumnPtr> MapColumn::upgrade_if_overflow() {
+StatusOr<MutableColumnPtr> MapColumn::upgrade_if_overflow() {
     if (_offsets->size() > Column::MAX_CAPACITY_LIMIT) {
         return Status::InternalError("Size of MapColumn exceed the limit");
     }
 
-    auto ret = upgrade_helper_func(&_keys);
+    auto ret = upgrade_helper_func(_keys->as_mutable_raw_ptr());
     if (!ret.ok()) {
         return ret;
     }
+    if (ret.value() != nullptr) {
+        _keys = std::move(ret.value());
+    }
 
-    return upgrade_helper_func(&_values);
+    ret = upgrade_helper_func(_values->as_mutable_raw_ptr());
+    if (ret.ok() && ret.value() != nullptr) {
+        _values = std::move(ret.value());
+    }
+
+    return ret;
 }
 
-StatusOr<ColumnPtr> MapColumn::downgrade() {
-    auto ret = downgrade_helper_func(&_keys);
+StatusOr<MutableColumnPtr> MapColumn::downgrade() {
+    auto ret = downgrade_helper_func(_keys->as_mutable_raw_ptr());
     if (!ret.ok()) {
         return ret;
     }
+    if (ret.value() != nullptr) {
+        _keys = std::move(ret.value());
+    }
 
-    return downgrade_helper_func(&_values);
+    ret = downgrade_helper_func(_values->as_mutable_raw_ptr());
+    if (ret.ok() && ret.value() != nullptr) {
+        _values = std::move(ret.value());
+    }
+
+    return ret;
 }
 
 Status MapColumn::unfold_const_children(const starrocks::TypeDescriptor& type) {
     DCHECK(type.children.size() == 2) << "Map schema does not match data's";
-    _keys = ColumnHelper::unfold_const_column(type.children[0], _keys->size(), _keys);
-    _values = ColumnHelper::unfold_const_column(type.children[1], _values->size(), _values);
+    size_t keys_size = _keys->size();
+    size_t values_size = _values->size();
+    _keys = ColumnHelper::unfold_const_column(type.children[0], keys_size, _keys);
+    _values = ColumnHelper::unfold_const_column(type.children[1], values_size, _values);
     return Status::OK();
 }
 

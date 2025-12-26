@@ -210,8 +210,8 @@ Status SpillPartitionChunkWriter::merge_blocks() {
         }
         return Status::OK();
     };
-    Status st = _load_chunk_spiller->merge_write(_max_file_size, _sort_ordering != nullptr, false /* do_agg */,
-                                                 write_func, flush_func);
+    Status st = _load_chunk_spiller->merge_write(_max_file_size, _max_file_size, _sort_ordering != nullptr,
+                                                 false /* do_agg */, write_func, flush_func);
     VLOG(2) << "finish merge blocks, query_id: " << _fragment_context->query_id() << ", status: " << st.message();
     return st;
 }
@@ -325,14 +325,14 @@ Status SpillPartitionChunkWriter::_merge_chunks() {
                                       [](int sum, const ChunkPtr& chunk) { return sum + chunk->num_rows(); });
     _result_chunk = _create_schema_chunk(_chunks.front(), num_rows);
 
-    std::unordered_map<Column*, size_t> col_ptr_index_map;
+    std::unordered_map<const Column*, size_t> col_ptr_index_map;
     auto& columns = _chunks.front()->columns();
     for (size_t i = 0; i < columns.size(); ++i) {
         col_ptr_index_map[columns[i]->get_ptr()] = i;
     }
     for (auto& chunk : _chunks) {
         for (size_t i = 0; i < _result_chunk->num_columns(); ++i) {
-            auto* dst_col = _result_chunk->get_column_by_index(i).get();
+            auto* dst_col = _result_chunk->get_column_raw_ptr_by_index(i);
             ColumnPtr src_col;
             if (_column_evaluators) {
                 ASSIGN_OR_RETURN(src_col, (*_column_evaluators)[i]->evaluate(chunk.get()));

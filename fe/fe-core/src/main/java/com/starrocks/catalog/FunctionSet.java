@@ -254,6 +254,7 @@ public class FunctionSet {
     public static final String PARSE_URL = "parse_url";
     public static final String TRIM = "trim";
     public static final String UPPER = "upper";
+    public static final String INITCAP = "initcap";
     public static final String SUBSTRING_INDEX = "substring_index";
     public static final String FIELD = "field";
 
@@ -273,10 +274,15 @@ public class FunctionSet {
     public static final String JSON_LENGTH = "json_length";
     public static final String JSON_REMOVE = "json_remove";
     public static final String JSON_SET = "json_set";
+    public static final String JSON_PRETTY = "json_pretty";
 
     // Variant functions:
     public static final String VARIANT_QUERY = "variant_query";
-
+    public static final String VARIANT_TYPEOF = "variant_typeof";
+    public static final String GET_VARIANT_BOOL = "get_variant_bool";
+    public static final String GET_VARIANT_INT = "get_variant_int";
+    public static final String GET_VARIANT_DOUBLE = "get_variant_double";
+    public static final String GET_VARIANT_STRING = "get_variant_string";
     // Matching functions:
     public static final String ILIKE = "ilike";
     public static final String LIKE = "like";
@@ -407,6 +413,7 @@ public class FunctionSet {
     public static final String ARRAY_MIN = "array_min";
     public static final String ARRAY_POSITION = "array_position";
     public static final String ARRAY_SORT = "array_sort";
+    public static final String ARRAY_SORT_LAMBDA = "array_sort_lambda";
     public static final String ARRAY_SUM = "array_sum";
     public static final String ARRAY_REMOVE = "array_remove";
     public static final String ARRAY_FILTER = "array_filter";
@@ -942,8 +949,8 @@ public class FunctionSet {
                 || functionName.equalsIgnoreCase(LEAD)
                 || functionName.equalsIgnoreCase(LAG)
                 || functionName.equalsIgnoreCase(APPROX_TOP_K)) {
-            final ScalarType descArgType = (ScalarType) descArgTypes[0];
-            final ScalarType candidateArgType = (ScalarType) candidateArgTypes[0];
+            final Type descArgType = descArgTypes[0];
+            final Type candidateArgType = candidateArgTypes[0];
             if (functionName.equalsIgnoreCase(LEAD) ||
                     functionName.equalsIgnoreCase(LAG) ||
                     functionName.equalsIgnoreCase(APPROX_TOP_K)) {
@@ -1266,7 +1273,7 @@ public class FunctionSet {
 
         addBuiltin(AggregateFunction.createBuiltin(ARRAY_AGG,
                 Lists.newArrayList(AnyElementType.ANY_ELEMENT), AnyArrayType.ANY_ARRAY, AnyStructType.ANY_STRUCT, true,
-                true, false, false));
+                true, true, false));
 
         addBuiltin(AggregateFunction.createBuiltin(GROUP_CONCAT,
                 Lists.newArrayList(AnyElementType.ANY_ELEMENT), VarcharType.VARCHAR, AnyStructType.ANY_STRUCT, true,
@@ -1707,24 +1714,24 @@ public class FunctionSet {
             Type arrayType = new ArrayType(type);
             addBuiltin(AggregateFunction.createBuiltin(FunctionSet.ARRAY_AGG_DISTINCT,
                     Lists.newArrayList(type), arrayType, arrayType,
-                    false, false, false));
+                    false, true, false));
         }
         for (ScalarType type : STRING_TYPES) {
             Type arrayType = new ArrayType(type);
             addBuiltin(AggregateFunction.createBuiltin(FunctionSet.ARRAY_AGG_DISTINCT,
                     Lists.newArrayList(type), arrayType, arrayType,
-                    false, false, false));
+                    false, true, false));
         }
 
         for (ScalarType type : DateType.DATE_TYPES) {
             Type arrayType = new ArrayType(type);
             addBuiltin(AggregateFunction.createBuiltin(FunctionSet.ARRAY_AGG_DISTINCT,
                     Lists.newArrayList(type), arrayType, arrayType,
-                    false, false, false));
+                    false, true, false));
         }
         addBuiltin(AggregateFunction.createBuiltin(FunctionSet.ARRAY_AGG_DISTINCT,
                 Lists.newArrayList(DateType.TIME), ArrayType.ARRAY_DATETIME, ArrayType.ARRAY_DATETIME,
-                false, false, false));
+                false, true, false));
     }
 
     private void registerBuiltinMapAggFunction() {

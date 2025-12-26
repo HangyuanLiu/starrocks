@@ -41,11 +41,7 @@ import com.starrocks.alter.AlterJobV2;
 import com.starrocks.alter.BatchAlterJobPersistInfo;
 import com.starrocks.alter.reshard.TabletReshardJob;
 import com.starrocks.authentication.AuthenticationMgr;
-import com.starrocks.authentication.UserAuthenticationInfo;
-import com.starrocks.authentication.UserProperty;
 import com.starrocks.authentication.UserPropertyInfo;
-import com.starrocks.authorization.RolePrivilegeCollectionV2;
-import com.starrocks.authorization.UserPrivilegeCollectionV2;
 import com.starrocks.backup.BackupJob;
 import com.starrocks.backup.Repository;
 import com.starrocks.backup.RestoreJob;
@@ -121,7 +117,6 @@ import org.apache.logging.log4j.Logger;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
@@ -339,7 +334,7 @@ public class EditLog {
                 case OperationType.OP_ALTER_MATERIALIZED_VIEW_PROPERTIES: {
                     ModifyTablePropertyOperationLog log =
                             (ModifyTablePropertyOperationLog) journal.data();
-                    globalStateMgr.getAlterJobMgr().replayAlterMaterializedViewProperties(opCode, log);
+                    globalStateMgr.getLocalMetastore().replayAlterMaterializedViewProperties(log);
                     break;
                 }
                 case OperationType.OP_ALTER_MATERIALIZED_VIEW_STATUS: {
@@ -1099,9 +1094,9 @@ public class EditLog {
                     GlobalStateMgr.getCurrentState().getMaterializedViewMgr().replayEpoch(epoch);
                     break;
                 }
-                case OperationType.OP_MODIFY_TABLE_ADD_OR_DROP_COLUMNS: {
-                    final TableAddOrDropColumnsInfo info = (TableAddOrDropColumnsInfo) journal.data();
-                    globalStateMgr.getSchemaChangeHandler().replayModifyTableAddOrDrop(info);
+                case OperationType.OP_FAST_ALTER_TABLE_COLUMNS: {
+                    final TableColumnAlterInfo info = (TableColumnAlterInfo) journal.data();
+                    globalStateMgr.getSchemaChangeHandler().replayFastSchemaEvolutionMetaChange(info);
                     break;
                 }
                 case OperationType.OP_SET_DEFAULT_STORAGE_VOLUME: {
@@ -1233,6 +1228,17 @@ public class EditLog {
                 case OperationType.OP_DELETE_SQL_QUERY_BLACK_LIST: {
                     DeleteSqlBlackLists deleteBlackListsRequest = (DeleteSqlBlackLists) journal.data();
                     GlobalStateMgr.getCurrentState().getSqlBlackList().delete(deleteBlackListsRequest.ids);
+                    break;
+                }
+                case OperationType.OP_ADD_SQL_DIGEST_BLACK_LIST: {
+                    SqlDigestBlackListPersistInfo addBlacklistRequest =
+                            (SqlDigestBlackListPersistInfo) journal.data();
+                    GlobalStateMgr.getCurrentState().getSqlDigestBlackList().put(addBlacklistRequest.digest);
+                    break;
+                }
+                case OperationType.OP_DELETE_SQL_DIGEST_BLACK_LIST: {
+                    DeleteSqlDigestBlackLists deleteBlackListsRequest = (DeleteSqlDigestBlackLists) journal.data();
+                    GlobalStateMgr.getCurrentState().getSqlDigestBlackList().deleteAll(deleteBlackListsRequest.digests);
                     break;
                 }
                 case OperationType.OP_CREATE_SECURITY_INTEGRATION: {
@@ -1756,12 +1762,12 @@ public class EditLog {
         logJsonObject(OperationType.OP_DROP_FUNCTION_V2, function, walApplier);
     }
 
-    public void logSetHasForbiddenGlobalDict(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_SET_FORBIDDEN_GLOBAL_DICT, info);
+    public void logSetHasForbiddenGlobalDict(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_SET_FORBIDDEN_GLOBAL_DICT, info, walApplier);
     }
 
-    public void logSetHasDelete(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_SET_HAS_DELETE, info);
+    public void logSetHasDelete(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_SET_HAS_DELETE, info, walApplier);
     }
 
     public void logBackendTabletsInfo(BackendTabletsInfo backendTabletsInfo) {
@@ -1837,52 +1843,52 @@ public class EditLog {
         logJsonObject(OperationType.OP_MODIFY_DISTRIBUTION_TYPE_V2, tableInfo);
     }
 
-    public void logDynamicPartition(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_DYNAMIC_PARTITION, info);
+    public void logDynamicPartition(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_DYNAMIC_PARTITION, info, walApplier);
     }
 
-    public void logModifyReplicationNum(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_REPLICATION_NUM, info);
+    public void logModifyReplicationNum(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_REPLICATION_NUM, info, walApplier);
     }
 
-    public void logModifyConstraint(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_TABLE_CONSTRAINT_PROPERTY, info);
+    public void logModifyConstraint(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_TABLE_CONSTRAINT_PROPERTY, info, walApplier);
     }
 
-    public void logModifyEnablePersistentIndex(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_ENABLE_PERSISTENT_INDEX, info);
+    public void logModifyEnablePersistentIndex(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_ENABLE_PERSISTENT_INDEX, info, walApplier);
     }
 
-    public void logModifyPrimaryIndexCacheExpireSec(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_PRIMARY_INDEX_CACHE_EXPIRE_SEC, info);
+    public void logModifyPrimaryIndexCacheExpireSec(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_PRIMARY_INDEX_CACHE_EXPIRE_SEC, info, walApplier);
     }
 
-    public void logModifyWriteQuorum(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_WRITE_QUORUM, info);
+    public void logModifyWriteQuorum(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_WRITE_QUORUM, info, walApplier);
     }
 
-    public void logModifyReplicatedStorage(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_REPLICATED_STORAGE, info);
+    public void logModifyReplicatedStorage(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_REPLICATED_STORAGE, info, walApplier);
     }
 
-    public void logModifyBucketSize(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_BUCKET_SIZE, info);
+    public void logModifyBucketSize(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_BUCKET_SIZE, info, walApplier);
     }
 
-    public void logModifyMutableBucketNum(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_MUTABLE_BUCKET_NUM, info);
+    public void logModifyMutableBucketNum(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_MUTABLE_BUCKET_NUM, info, walApplier);
     }
 
-    public void logModifyDefaultBucketNum(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_DEFAULT_BUCKET_NUM, info);
+    public void logModifyDefaultBucketNum(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_DEFAULT_BUCKET_NUM, info, walApplier);
     }
 
-    public void logModifyEnableLoadProfile(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_ENABLE_LOAD_PROFILE, info);
+    public void logModifyEnableLoadProfile(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_ENABLE_LOAD_PROFILE, info, walApplier);
     }
 
-    public void logModifyBaseCompactionForbiddenTimeRanges(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_MODIFY_BASE_COMPACTION_FORBIDDEN_TIME_RANGES, info);
+    public void logModifyBaseCompactionForbiddenTimeRanges(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_BASE_COMPACTION_FORBIDDEN_TIME_RANGES, info, walApplier);
     }
 
     public void logReplaceTempPartition(ReplacePartitionOperationLog info) {
@@ -2037,8 +2043,8 @@ public class EditLog {
         logJsonObject(OperationType.OP_CHANGE_MATERIALIZED_VIEW_REFRESH_SCHEME, log);
     }
 
-    public void logAlterMaterializedViewProperties(ModifyTablePropertyOperationLog log) {
-        logJsonObject(OperationType.OP_ALTER_MATERIALIZED_VIEW_PROPERTIES, log);
+    public void logAlterMaterializedViewProperties(ModifyTablePropertyOperationLog log, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_ALTER_MATERIALIZED_VIEW_PROPERTIES, log, walApplier);
     }
 
     public void logAddSQLBlackList(SqlBlackListPersistInfo addBlackList, WALApplier walApplier) {
@@ -2049,6 +2055,14 @@ public class EditLog {
         logJsonObject(OperationType.OP_DELETE_SQL_QUERY_BLACK_LIST, deleteBlacklists, walApplier);
     }
 
+    public void logAddSqlDigestBlackList(SqlDigestBlackListPersistInfo addBlackList, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_ADD_SQL_DIGEST_BLACK_LIST, addBlackList, walApplier);
+    }
+
+    public void logDeleteSqlDigestBlackList(DeleteSqlDigestBlackLists deleteBlacklists, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_DELETE_SQL_DIGEST_BLACK_LIST, deleteBlacklists, walApplier);
+    }
+
     public void logStarMgrOperation(StarMgrJournal journal) {
         logEdit(OperationType.OP_STARMGR, journal);
     }
@@ -2057,60 +2071,32 @@ public class EditLog {
         return submitLog(OperationType.OP_STARMGR, journal, -1);
     }
 
-    public void logCreateUser(
-            UserIdentity userIdentity,
-            UserAuthenticationInfo authenticationInfo,
-            UserProperty userProperty,
-            UserPrivilegeCollectionV2 privilegeCollection,
-            short pluginId,
-            short pluginVersion) {
-        CreateUserInfo info = new CreateUserInfo(
-                userIdentity, authenticationInfo, userProperty, privilegeCollection, pluginId, pluginVersion);
-        logJsonObject(OperationType.OP_CREATE_USER_V2, info);
+    public void logCreateUser(CreateUserInfo info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_CREATE_USER_V2, info, walApplier);
     }
 
-    public void logAlterUser(UserIdentity userIdentity, UserAuthenticationInfo authenticationInfo,
-                             Map<String, String> properties) {
-        AlterUserInfo info = new AlterUserInfo(userIdentity, authenticationInfo, properties);
-        logJsonObject(OperationType.OP_ALTER_USER_V2, info);
+    public void logAlterUser(AlterUserInfo info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_ALTER_USER_V2, info, walApplier);
     }
 
-    public void logUpdateUserPropertyV2(UserPropertyInfo propertyInfo) {
-        logJsonObject(OperationType.OP_UPDATE_USER_PROP_V3, propertyInfo);
+    public void logUpdateUserPropertyV2(UserPropertyInfo propertyInfo, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_UPDATE_USER_PROP_V3, propertyInfo, walApplier);
     }
 
-    public void logDropUser(UserIdentity userIdentity) {
-        logJsonObject(OperationType.OP_DROP_USER_V3, userIdentity);
+    public void logDropUser(UserIdentity userIdentity, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_DROP_USER_V3, userIdentity, walApplier);
     }
 
-    public void logUpdateUserPrivilege(
-            UserIdentity userIdentity,
-            UserPrivilegeCollectionV2 privilegeCollection,
-            short pluginId,
-            short pluginVersion) {
-        UserPrivilegeCollectionInfo info = new UserPrivilegeCollectionInfo(
-                userIdentity, privilegeCollection, pluginId, pluginVersion);
-        logJsonObject(OperationType.OP_UPDATE_USER_PRIVILEGE_V2, info);
+    public void logUpdateUserPrivilege(UserPrivilegeCollectionInfo info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_UPDATE_USER_PRIVILEGE_V2, info, walApplier);
     }
 
-    public void logUpdateRolePrivilege(
-            Map<Long, RolePrivilegeCollectionV2> rolePrivCollectionModified,
-            short pluginId,
-            short pluginVersion) {
-        RolePrivilegeCollectionInfo info = new RolePrivilegeCollectionInfo(rolePrivCollectionModified, pluginId, pluginVersion);
-        logUpdateRolePrivilege(info);
+    public void logUpdateRolePrivilege(RolePrivilegeCollectionInfo info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_UPDATE_ROLE_PRIVILEGE_V2, info, walApplier);
     }
 
-    public void logUpdateRolePrivilege(RolePrivilegeCollectionInfo info) {
-        logJsonObject(OperationType.OP_UPDATE_ROLE_PRIVILEGE_V2, info);
-    }
-
-    public void logDropRole(
-            Map<Long, RolePrivilegeCollectionV2> rolePrivCollectionModified,
-            short pluginId,
-            short pluginVersion) {
-        RolePrivilegeCollectionInfo info = new RolePrivilegeCollectionInfo(rolePrivCollectionModified, pluginId, pluginVersion);
-        logJsonObject(OperationType.OP_DROP_ROLE_V2, info);
+    public void logDropRole(RolePrivilegeCollectionInfo info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_DROP_ROLE_V2, info, walApplier);
     }
 
     public void logCreateSecurityIntegration(SecurityIntegrationPersistInfo info, WALApplier walApplier) {
@@ -2125,16 +2111,16 @@ public class EditLog {
         logJsonObject(OperationType.OP_DROP_SECURITY_INTEGRATION, info, walApplier);
     }
 
-    public void logModifyBinlogConfig(ModifyTablePropertyOperationLog log) {
-        logJsonObject(OperationType.OP_MODIFY_BINLOG_CONFIG, log);
+    public void logModifyBinlogConfig(ModifyTablePropertyOperationLog log, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_BINLOG_CONFIG, log, walApplier);
     }
 
-    public void logModifyFlatJsonConfig(ModifyTablePropertyOperationLog log) {
-        logJsonObject(OperationType.OP_MODIFY_FLAT_JSON_CONFIG, log);
+    public void logModifyFlatJsonConfig(ModifyTablePropertyOperationLog log, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_FLAT_JSON_CONFIG, log, walApplier);
     }
 
-    public void logModifyBinlogAvailableVersion(ModifyTablePropertyOperationLog log) {
-        logJsonObject(OperationType.OP_MODIFY_BINLOG_AVAILABLE_VERSION, log);
+    public void logModifyBinlogAvailableVersion(ModifyTablePropertyOperationLog log, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_MODIFY_BINLOG_AVAILABLE_VERSION, log, walApplier);
     }
 
     public void logMVJobState(MVMaintenanceJob job) {
@@ -2145,8 +2131,8 @@ public class EditLog {
         logJsonObject(OperationType.OP_MV_EPOCH_UPDATE, epoch);
     }
 
-    public void logAlterTableProperties(ModifyTablePropertyOperationLog info) {
-        logJsonObject(OperationType.OP_ALTER_TABLE_PROPERTIES, info);
+    public void logAlterTableProperties(ModifyTablePropertyOperationLog info, WALApplier walApplier) {
+        logJsonObject(OperationType.OP_ALTER_TABLE_PROPERTIES, info, walApplier);
     }
 
     public void logPipeOp(PipeOpEntry opEntry, WALApplier walApplier) {
@@ -2157,8 +2143,8 @@ public class EditLog {
         logJsonObject(OperationType.OP_ALTER_PIPE, log, walApplier);
     }
 
-    public void logModifyTableAddOrDrop(TableAddOrDropColumnsInfo info) {
-        logJsonObject(OperationType.OP_MODIFY_TABLE_ADD_OR_DROP_COLUMNS, info);
+    public void logModifyTableAddOrDrop(TableColumnAlterInfo info) {
+        logJsonObject(OperationType.OP_FAST_ALTER_TABLE_COLUMNS, info);
     }
 
     public void logAlterTask(AlterTaskInfo info, WALApplier applier) {

@@ -40,6 +40,7 @@ import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.ha.FrontendNodeType;
 import com.starrocks.meta.BlackListSql;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.qe.ConnectProcessor;
 import com.starrocks.qe.QueryState;
 import com.starrocks.qe.StmtExecutor;
 import com.starrocks.server.GlobalStateMgr;
@@ -55,6 +56,8 @@ import mockit.MockUp;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import java.util.List;
 
@@ -171,8 +174,10 @@ public class QueryPlannerTest {
                 connectContext.getSessionVariable().getSqlMode());
         StmtExecutor stmtExecutor2 = new StmtExecutor(connectContext, statement);
         stmtExecutor2.execute();
-        Assertions.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
-                connectContext.getState().getErrorMessage());
+        Assertions.assertTrue(
+                connectContext.getState().getErrorMessage()
+                        .contains("Access denied; This sql is in blacklist")
+        );
         connectContext.getState().setError("");
 
         String sqlWithLineSeparators = "select k1 \n" +
@@ -182,8 +187,10 @@ public class QueryPlannerTest {
                 SqlParser.parse(sqlWithLineSeparators, connectContext.getSessionVariable().getSqlMode()).get(0);
         StmtExecutor stmtExecutor4 = new StmtExecutor(connectContext, statement1);
         stmtExecutor4.execute();
-        Assertions.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
-                connectContext.getState().getErrorMessage());
+        Assertions.assertTrue(
+                connectContext.getState().getErrorMessage()
+                        .contains("Access denied; This sql is in blacklist")
+        );
         connectContext.getState().setError("");
 
         // for ctas
@@ -192,8 +199,10 @@ public class QueryPlannerTest {
                 connectContext.getSessionVariable().getSqlMode());
         StmtExecutor stmtExecutor5 = new StmtExecutor(connectContext, statement);
         stmtExecutor5.execute();
-        Assertions.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
-                connectContext.getState().getErrorMessage());
+        Assertions.assertTrue(
+                connectContext.getState().getErrorMessage()
+                        .contains("Access denied; This sql is in blacklist")
+        );
         connectContext.getState().setError("");
 
         String deleteBlackListSql = "delete sqlblacklist " + String.valueOf(id);
@@ -229,8 +238,10 @@ public class QueryPlannerTest {
         statement = SqlParser.parse(sql, connectContext.getSessionVariable().getSqlMode()).get(0);
         StmtExecutor stmtExecutor2 = new StmtExecutor(connectContext, statement);
         stmtExecutor2.execute();
-        Assertions.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
-                connectContext.getState().getErrorMessage());
+        Assertions.assertTrue(
+                connectContext.getState().getErrorMessage()
+                        .contains("Access denied; This sql is in blacklist")
+        );
         connectContext.getState().setError("");
 
         String sqlWithLineSeparators = "select k1 \n" +
@@ -240,8 +251,10 @@ public class QueryPlannerTest {
                 SqlParser.parse(sqlWithLineSeparators, connectContext.getSessionVariable().getSqlMode()).get(0);
         StmtExecutor stmtExecutor4 = new StmtExecutor(connectContext, statement1);
         stmtExecutor4.execute();
-        Assertions.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
-                connectContext.getState().getErrorMessage());
+        Assertions.assertTrue(
+                connectContext.getState().getErrorMessage()
+                        .contains("Access denied; This sql is in blacklist")
+        );
         connectContext.getState().setError("");
 
         String deleteBlackListSql = "delete sqlblacklist " + String.valueOf(id);
@@ -283,8 +296,10 @@ public class QueryPlannerTest {
         StatementBase statementBase = SqlParser.parse(sql, connectContext.getSessionVariable().getSqlMode()).get(0);
         StmtExecutor stmtExecutor2 = new StmtExecutor(connectContext, statementBase);
         stmtExecutor2.execute();
-        Assertions.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
-                connectContext.getState().getErrorMessage());
+        Assertions.assertTrue(
+                connectContext.getState().getErrorMessage()
+                        .contains("Access denied; This sql is in blacklist")
+        );
 
         String deleteBlackListSql = "delete sqlblacklist " + String.valueOf(id);
         statement = SqlParser.parseSingleStatement(deleteBlackListSql,
@@ -323,8 +338,10 @@ public class QueryPlannerTest {
         } catch (AnalysisException e) {
 
         }
-        Assertions.assertEquals("Access denied; This sql is in blacklist, please contact your admin",
-                connectContext.getState().getErrorMessage());
+        Assertions.assertTrue(
+                connectContext.getState().getErrorMessage()
+                        .contains("Access denied; This sql is in blacklist")
+        );
 
         String deleteBlackListSql = "delete sqlblacklist " + String.valueOf(id);
         statement = SqlParser.parseSingleStatement(deleteBlackListSql,
@@ -332,6 +349,56 @@ public class QueryPlannerTest {
         StmtExecutor stmtExecutor3 = new StmtExecutor(connectContext, statement);
         stmtExecutor3.execute();
         Assertions.assertEquals(0, GlobalStateMgr.getCurrentState().getSqlBlackList().getBlackLists().size());
+    }
+
+    @Test
+    public void testSqlDigestBlackList() throws Exception {
+        String setEnableSqlBlacklist = "admin set frontend config (\"enable_sql_blacklist\" = \"true\")";
+        StatementBase statement = SqlParser.parseSingleStatement(setEnableSqlBlacklist,
+                connectContext.getSessionVariable().getSqlMode());
+
+        StmtExecutor stmtExecutor0 = new StmtExecutor(connectContext, statement);
+        stmtExecutor0.execute();
+
+        String setEnableDigest = "admin set frontend config (\"enable_sql_digest\" = \"true\")";
+        statement = SqlParser.parseSingleStatement(setEnableDigest,
+                connectContext.getSessionVariable().getSqlMode());
+
+        stmtExecutor0 = new StmtExecutor(connectContext, statement);
+        stmtExecutor0.execute();
+
+        String sql = "select k1 from test.baseall";
+        StatementBase sqlStmt = SqlParser.parseSingleStatement(sql, connectContext.getSessionVariable().getSqlMode());
+        String digest = "389d2ef8d98994a4290b5d2e1d5838aa";
+        String addBlackListSql = "add sql digest blacklist " + digest;
+        statement = SqlParser.parseSingleStatement(addBlackListSql,
+                connectContext.getSessionVariable().getSqlMode());
+        StmtExecutor stmtExecutor1 = new StmtExecutor(connectContext, statement);
+        stmtExecutor1.execute();
+
+        Assertions.assertEquals(1,
+                GlobalStateMgr.getCurrentState().getSqlDigestBlackList().getDigests().size());
+        for (String d : GlobalStateMgr.getCurrentState().getSqlDigestBlackList().getDigests()) {
+            Assertions.assertEquals(digest, d);
+        }
+        try (MockedStatic<ConnectProcessor> digestMethod = Mockito.mockStatic(ConnectProcessor.class)) {
+            digestMethod.when(() -> ConnectProcessor.computeStatementDigest(Mockito.any())).thenReturn(digest);
+
+            StmtExecutor stmtExecutor2 = new StmtExecutor(connectContext, sqlStmt);
+            stmtExecutor2.execute();
+            Assertions.assertEquals("Access denied; This sql is in blacklist, please contact your admin. " +
+                            "Digest: 389d2ef8d98994a4290b5d2e1d5838aa",
+                    connectContext.getState().getErrorMessage());
+            connectContext.getState().setError("");
+        }
+
+        String deleteBlackListSql = "delete sql digest blacklist " + digest;
+        statement = SqlParser.parseSingleStatement(deleteBlackListSql,
+                connectContext.getSessionVariable().getSqlMode());
+        StmtExecutor stmtExecutor3 = new StmtExecutor(connectContext, statement);
+        stmtExecutor3.execute();
+        Assertions.assertEquals(0,
+                GlobalStateMgr.getCurrentState().getSqlDigestBlackList().getDigests().size());
     }
 
     @Test

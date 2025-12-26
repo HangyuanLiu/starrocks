@@ -323,6 +323,7 @@ vectorized_functions = [
     [30151, 'ucase', True, False, 'VARCHAR', ['VARCHAR'], 'StringFunctions::upper', 'StringFunctions::upper_prepare', 'StringFunctions::upper_close'],
 
     [30160, 'reverse', True, False, 'VARCHAR', ['VARCHAR'], 'StringFunctions::reverse'],
+    [30161, 'initcap', True, False, 'VARCHAR', ['VARCHAR'], 'StringFunctions::initcap'],
 
     [30170, 'trim', True, False, 'VARCHAR', ['VARCHAR'], 'StringFunctions::trim',
      'StringFunctions::trim_prepare', 'StringFunctions::trim_close'],
@@ -882,6 +883,7 @@ vectorized_functions = [
     [110024, "json_remove", False, False, "JSON", ["JSON", "VARCHAR", "..."], "JsonFunctions::json_remove",
      "JsonFunctions::native_json_path_prepare", "JsonFunctions::native_json_path_close"],
     [110025, "json_set", False, False, "JSON", ["JSON", "JSON", "..."], "JsonFunctions::json_set"],
+    [110026, "json_pretty", False, True, "VARCHAR", ["JSON"], "JsonFunctions::json_pretty"],
     [110100, "to_json", False, False, "JSON", ["ANY_MAP"], "JsonFunctions::to_json"],
     [110101, "to_json", False, False, "JSON", ["ANY_STRUCT"], "JsonFunctions::to_json"],
     [110112, "json_contains", False, False, "BOOLEAN", ["JSON", "JSON"], "JsonFunctions::json_contains"],
@@ -889,6 +891,17 @@ vectorized_functions = [
     # variant type function
     [110200, "variant_query", False, False, "VARIANT", ["VARIANT", "VARCHAR"], "VariantFunctions::variant_query",
      "VariantFunctions::variant_segments_prepare", "VariantFunctions::variant_segments_close"],
+    [110201, "get_variant_bool", False, False, "BOOLEAN", ["VARIANT", "VARCHAR"], "VariantFunctions::get_variant_bool",
+     "VariantFunctions::variant_segments_prepare", "VariantFunctions::variant_segments_close"],
+    [110202, "get_variant_int", False, False, "BIGINT", ["VARIANT", "VARCHAR"], "VariantFunctions::get_variant_int",
+     "VariantFunctions::variant_segments_prepare", "VariantFunctions::variant_segments_close"],
+    [110203, "get_variant_double", False, False, "DOUBLE", ["VARIANT", "VARCHAR"],
+     "VariantFunctions::get_variant_double",
+     "VariantFunctions::variant_segments_prepare", "VariantFunctions::variant_segments_close"],
+    [110204, "get_variant_string", False, True, "VARCHAR", ["VARIANT", "VARCHAR"],
+     "VariantFunctions::get_variant_string",
+     "VariantFunctions::variant_segments_prepare", "VariantFunctions::variant_segments_close"],
+    [110205, "variant_typeof", False, False, "VARCHAR", ["VARIANT"], "VariantFunctions::variant_typeof"],
 
     # aes and base64 function
     # aes_encrypt: 2-parameter version (data, key) for backward compatibility with old FE
@@ -1117,6 +1130,7 @@ vectorized_functions = [
      'ArrayFunctions::array_sort<TYPE_DATETIME>'],
     [150121, 'array_sort', True, False, 'ARRAY_DATE', ['ARRAY_DATE'], 'ArrayFunctions::array_sort<TYPE_DATE>'],
     [150122, 'array_sort', True, False, 'ARRAY_JSON', ['ARRAY_JSON'], 'ArrayFunctions::array_sort<TYPE_JSON>'],
+    [150126, 'array_sort_lambda', True, False, 'ANY_ARRAY', ['ANY_ARRAY', 'FUNCTION'], 'ArrayFunctions::array_sort_lambda'],
 
     [150130, 'reverse', True, False, 'ARRAY_BOOLEAN', ['ARRAY_BOOLEAN'], 'ArrayFunctions::array_reverse<TYPE_BOOLEAN>'],
     [150131, 'reverse', True, False, 'ARRAY_TINYINT', ['ARRAY_TINYINT'], 'ArrayFunctions::array_reverse<TYPE_TINYINT>'],

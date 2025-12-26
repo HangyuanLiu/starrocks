@@ -51,6 +51,7 @@ import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.Table;
+import com.starrocks.catalog.TableName;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
@@ -84,6 +85,7 @@ import com.starrocks.sql.analyzer.DeleteAnalyzer;
 import com.starrocks.sql.ast.DeleteStmt;
 import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.StatementBase;
+import com.starrocks.sql.ast.TableRef;
 import com.starrocks.sql.ast.expression.BinaryPredicate;
 import com.starrocks.sql.ast.expression.BinaryType;
 import com.starrocks.sql.ast.expression.DateLiteral;
@@ -163,8 +165,12 @@ public class DeleteMgr implements Writable, MemoryTrackable {
     }
 
     public void process(DeleteStmt stmt) throws DdlException, QueryStateException {
-        String dbName = stmt.getTableName().getDb();
-        String tableName = stmt.getTableName().getTbl();
+        TableRef tableRef = stmt.getTableRef();
+        if (tableRef == null) {
+            throw new DdlException("Table reference is null in delete statement");
+        }
+        String dbName = tableRef.getDbName();
+        String tableName = tableRef.getTableName();
 
         Database db = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb(dbName);
         if (db == null) {
@@ -309,7 +315,9 @@ public class DeleteMgr implements Writable, MemoryTrackable {
      * @return pruned partitions with delete conditions
      */
     private List<String> partitionPruneForDelete(DeleteStmt stmt, OlapTable table) {
-        String tableName = stmt.getTableName().toSql();
+        TableRef tableRef = stmt.getTableRef();
+        TableName tableNameObj = TableName.fromTableRef(tableRef);
+        String tableName = tableNameObj.toSql();
         String predicate = ExprToSql.toSql(stmt.getWherePredicate());
         String fakeSql = String.format("SELECT * FROM %s WHERE %s", tableName, predicate);
         PhysicalOlapScanOperator physicalOlapScanOperator;
@@ -510,7 +518,7 @@ public class DeleteMgr implements Writable, MemoryTrackable {
         Map<Long, List<Column>> indexIdToSchema = table.getIndexIdToSchema();
         PhysicalPartition partition = partitions.get(0).getDefaultPhysicalPartition();
         for (MaterializedIndex index : partition.getMaterializedIndices(MaterializedIndex.IndexExtState.VISIBLE)) {
-            if (table.getBaseIndexId() == index.getId()) {
+            if (table.getBaseIndexMetaId() == index.getId()) {
                 continue;
             }
             // check table has condition column
@@ -518,7 +526,7 @@ public class DeleteMgr implements Writable, MemoryTrackable {
             for (Column column : indexIdToSchema.get(index.getId())) {
                 indexColNameToColumn.put(column.getName(), column);
             }
-            String indexName = table.getIndexNameById(index.getId());
+            String indexName = table.getIndexNameByMetaId(index.getId());
             for (Predicate condition : conditions) {
                 String columnName = getSlotRef(condition).getColumnName();
                 Column column = indexColNameToColumn.get(columnName);
@@ -526,7 +534,7 @@ public class DeleteMgr implements Writable, MemoryTrackable {
                     ErrorReport
                             .reportDdlException(ErrorCode.ERR_BAD_FIELD_ERROR, columnName, "index[" + indexName + "]");
                 }
-                MaterializedIndexMeta indexMeta = table.getIndexIdToMeta().get(index.getId());
+                MaterializedIndexMeta indexMeta = table.getIndexMetaIdToMeta().get(index.getId());
                 if (indexMeta.getKeysType() != KeysType.DUP_KEYS && !column.isKey()) {
                     throw new DdlException("Column[" + columnName + "] is not key column in index[" + indexName + "]");
                 }

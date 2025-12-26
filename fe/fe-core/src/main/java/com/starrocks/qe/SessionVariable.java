@@ -45,6 +45,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.ToNumberPolicy;
 import com.starrocks.catalog.InternalCatalog;
+import com.starrocks.common.Config;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
 import com.starrocks.common.FeConstants;
@@ -314,6 +315,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_LOCAL_SHUFFLE_AGG = "enable_local_shuffle_agg";
 
     public static final String ENABLE_QUERY_TABLET_AFFINITY = "enable_query_tablet_affinity";
+    public static final String ENABLE_GATHER_FRAGMENT_LOCALITY_OPTIMIZATION = "enable_gather_fragment_locality_optimization";
 
     public static final String SKIP_LOCAL_DISK_CACHE = "skip_local_disk_cache";
 
@@ -660,12 +662,13 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_MATERIALIZED_VIEW_TEXT_MATCH_REWRITE =
             "enable_materialized_view_text_match_rewrite";
     public static final String MATERIALIZED_VIEW_SUBQUERY_TEXT_MATCH_MAX_COUNT =
-            "materialized_view_subuqery_text_match_max_count";
+            "materialized_view_subquery_text_match_max_count";
 
     public static final String LARGE_DECIMAL_UNDERLYING_TYPE = "large_decimal_underlying_type";
 
     public static final String ENABLE_ICEBERG_IDENTITY_COLUMN_OPTIMIZE = "enable_iceberg_identity_column_optimize";
     public static final String ENABLE_PIPELINE_LEVEL_SHUFFLE = "enable_pipeline_level_shuffle";
+    public static final String EXCHANGE_HASH_FUNCTION_VERSION = "exchange_hash_function_version";
 
     public static final String ENABLE_PLAN_SERIALIZE_CONCURRENTLY = "enable_plan_serialize_concurrently";
 
@@ -678,6 +681,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String ENABLE_PHASED_SCHEDULER = "enable_phased_scheduler";
     public static final String PHASED_SCHEDULER_MAX_CONCURRENCY = "phased_scheduler_max_concurrency";
+    public static final String ENABLE_SINGLE_NODE_SCHEDULE = "enable_single_node_schedule";
 
     public static final String CUSTOM_QUERY_ID = "custom_query_id";
 
@@ -835,6 +839,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     // control on/off of this bucketization optimization.
     public static final String DISTINCT_COLUMN_BUCKETS = "count_distinct_column_buckets";
     public static final String ENABLE_DISTINCT_COLUMN_BUCKETIZATION = "enable_distinct_column_bucketization";
+    public static final String DATA_SKEW_ROW_PERCENTAGE_THRESHOLD = "data_skew_row_percentage_threshold";
     public static final String HDFS_BACKEND_SELECTOR_SCAN_RANGE_SHUFFLE = "hdfs_backend_selector_scan_range_shuffle";
 
     public static final String SQL_QUOTE_SHOW_CREATE = "sql_quote_show_create";
@@ -1015,6 +1020,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_DEFER_PROJECT_AFTER_TOPN = "enable_defer_project_after_topn";
 
     public static final String ENABLE_MULTI_CAST_LIMIT_PUSH_DOWN = "enable_multi_cast_limit_push_down";
+    public static final String ENABLE_GLOBAL_LATE_MATERIALIZATION = "enable_global_late_materialization";
 
     public static final String ENABLE_DROP_TABLE_CHECK_MV_DEPENDENCY = "enable_drop_table_check_mv_dependency";
 
@@ -1025,6 +1031,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_INSERT_SELECT_EXTERNAL_AUTO_REFRESH = "enable_insert_select_external_auto_refresh";
 
     public static final String PUSH_DOWN_HEAVY_EXPRS = "push_down_heavy_exprs";
+
+    public static final String ARROW_FLIGHT_PROXY = "arrow_flight_proxy";
+    public static final String ARROW_FLIGHT_PROXY_ENABLED = "arrow_flight_proxy_enabled";
 
     public static final String ENABLE_PRE_AGG_TOP_N_PUSH_DOWN = "enable_pre_agg_top_n_push_down";
 
@@ -1111,6 +1120,15 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
      */
     @VariableMgr.VarAttr(name = ENABLE_QUERY_TABLET_AFFINITY)
     private boolean enableQueryTabletAffinity = false;
+
+    /**
+     * used for test
+     * Determines whether to enable gather fragment locality optimization. When enabled, 
+     * gather fragments will be assigned to the same node as other fragments if all 
+     * other fragments' instances are on the same node.
+     */
+    @VariableMgr.VarAttr(name = ENABLE_GATHER_FRAGMENT_LOCALITY_OPTIMIZATION)
+    private boolean enableGatherFragmentLocalityOptimization = false;
 
     @VariableMgr.VarAttr(name = SKIP_LOCAL_DISK_CACHE)
     private boolean skipLocalDiskCache = false;
@@ -2086,6 +2104,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     //                Fragment-1                                    Fragment-1
     @VarAttr(name = ENABLE_MULTI_CAST_LIMIT_PUSH_DOWN, flag = VariableMgr.INVISIBLE)
     private boolean enableMultiCastLimitPushDown = true;
+    @VarAttr(name = ENABLE_GLOBAL_LATE_MATERIALIZATION)
+    private boolean enableGlobalLateMaterialization = false;
 
     @VarAttr(name = ENABLE_DROP_TABLE_CHECK_MV_DEPENDENCY)
     public boolean enableDropTableCheckMvDependency = false;
@@ -2130,6 +2150,11 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = PUSH_DOWN_HEAVY_EXPRS)
     private boolean pushDownHeavyExprs = true;
+
+    @VarAttr(name = ARROW_FLIGHT_PROXY)
+    private String arrowFlightProxy = "";
+    @VarAttr(name = ARROW_FLIGHT_PROXY_ENABLED)
+    private boolean arrowFlightProxyEnabled = true;
 
     @VarAttr(name = ENABLE_PRE_AGG_TOP_N_PUSH_DOWN, flag = VariableMgr.INVISIBLE)
     private boolean enablePreAggTopNPushDown = true;
@@ -2308,12 +2333,17 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     }
 
     public void setExecMode(String execMode) {
+        final SessionVariable sv = DEFAULT_SESSION_VARIABLE;
         if (execMode.equalsIgnoreCase(SessionVariableConstants.ETL)) {
+            setEnableWaitDependentEvent(true);
             setEnablePhasedScheduler(true);
             setEnableSpill(true);
+            setEnableQueryQueue(Config.enable_query_queue_v2);
         } else {
-            setEnablePhasedScheduler(false);
-            setEnableSpill(false);
+            setEnableWaitDependentEvent(sv.enableWaitDependentEvent);
+            setEnablePhasedScheduler(sv.enablePhasedScheduler);
+            setEnableSpill(sv.enableSpill);
+            setEnableQueryQueue(sv.enableQueryQueue);
         }
         this.execMode = execMode;
     }
@@ -2332,6 +2362,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setEnableParallelMerge(boolean enableParallelMerge) {
         this.enableParallelMerge = enableParallelMerge;
+    }
+
+    public void setEnableQueryQueue(boolean enableQueryQueue) {
+        this.enableQueryQueue = enableQueryQueue;
     }
 
     public boolean isEnableQueryQueue() {
@@ -2651,6 +2685,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VariableMgr.VarAttr(name = ENABLE_DISTINCT_COLUMN_BUCKETIZATION)
     private boolean enableDistinctColumnBucketization = false;
+
+    @VariableMgr.VarAttr(name = DATA_SKEW_ROW_PERCENTAGE_THRESHOLD)
+    private double dataSkewRowPercentageThreshold = 0.2;
 
     @VariableMgr.VarAttr(name = HDFS_BACKEND_SELECTOR_SCAN_RANGE_SHUFFLE, flag = VariableMgr.INVISIBLE)
     private boolean hdfsBackendSelectorScanRangeShuffle = false;
@@ -3042,6 +3079,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VarAttr(name = ENABLE_PHASED_SCHEDULER)
     private boolean enablePhasedScheduler = false;
 
+    @VarAttr(name = ENABLE_SINGLE_NODE_SCHEDULE)
+    private boolean enableSingleNodeSchedule = true;
+
     @VarAttr(name = ENABLE_PIPELINE_EVENT_SCHEDULER)
     private boolean enablePipelineEventScheduler = true;
 
@@ -3062,12 +3102,28 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         this.phasedSchedulerMaxConcurrency = phasedSchedulerMaxConcurrency;
     }
 
+    public boolean enableWaitDependentEvent() {
+        return enableWaitDependentEvent;
+    }
+
+    public void setEnableWaitDependentEvent(boolean enableWaitDependentEvent) {
+        this.enableWaitDependentEvent = enableWaitDependentEvent;
+    }
+
     public boolean enablePhasedScheduler() {
         return enablePhasedScheduler;
     }
 
     public void setEnablePhasedScheduler(boolean enablePhasedScheduler) {
         this.enablePhasedScheduler = enablePhasedScheduler;
+    }
+
+    public boolean enableSingleNodeSchedule() {
+        return enableSingleNodeSchedule;
+    }
+
+    public void setEnableSingleNodeSchedule(boolean enableSingleNodeSchedule) {
+        this.enableSingleNodeSchedule = enableSingleNodeSchedule;
     }
 
     public void setFollowerQueryForwardMode(String mode) {
@@ -3088,6 +3144,12 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = ENABLE_PIPELINE_LEVEL_SHUFFLE, flag = VariableMgr.INVISIBLE)
     private boolean enablePipelineLevelShuffle = true;
+
+    // Hash function version for exchange shuffle
+    // 0: fnv_hash (reserved for backward compatibility)
+    // 1: xxh3_hash (default, faster)
+    @VarAttr(name = EXCHANGE_HASH_FUNCTION_VERSION, flag = VariableMgr.INVISIBLE)
+    private int exchangeHashFunctionVersion = 1;
 
     @VarAttr(name = ENABLE_CONSTANT_EXECUTE_IN_FE)
     private boolean enableConstantExecuteInFE = true;
@@ -3169,6 +3231,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnableDistinctColumnBucketization() {
         return enableDistinctColumnBucketization;
+    }
+
+    public void setDataSkewRowPercentageThreshold(double threshold) {
+        dataSkewRowPercentageThreshold = threshold;
+    }
+
+    public double getDataSkewRowPercentageThreshold() {
+        return dataSkewRowPercentageThreshold;
     }
 
     public boolean getHudiMORForceJNIReader() {
@@ -3289,6 +3359,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnableQueryTabletAffinity() {
         return enableQueryTabletAffinity;
+    }
+
+    public boolean isEnableGatherFragmentLocalityOptimization() {
+        return enableGatherFragmentLocalityOptimization;
     }
 
     public boolean isSkipLocalDiskCache() {
@@ -3581,29 +3655,29 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     // in case of pipeline_dop > 0: return pipeline_dop * parallelExecInstanceNum;
     // in case of pipeline_dop <= 0 and avgNumCores < 2: return 1;
     // in case of pipeline_dop <= 0 and avgNumCores >=2; return avgNumCores;
-    public int getDegreeOfParallelism() {
+    public int getDegreeOfParallelism(long warehouseId) {
         if (enablePipelineEngine) {
             if (pipelineDop > 0) {
                 return pipelineDop;
             }
             if (maxPipelineDop <= 0) {
-                return BackendResourceStat.getInstance().getDefaultDOP();
+                return BackendResourceStat.getInstance().getDefaultDOP(warehouseId);
             }
-            return Math.min(maxPipelineDop, BackendResourceStat.getInstance().getDefaultDOP());
+            return Math.min(maxPipelineDop, BackendResourceStat.getInstance().getDefaultDOP(warehouseId));
         } else {
             return parallelExecInstanceNum;
         }
     }
 
-    public int getSinkDegreeOfParallelism() {
+    public int getSinkDegreeOfParallelism(long warehouseId) {
         if (enablePipelineEngine) {
             if (pipelineDop > 0) {
                 return pipelineDop;
             }
             if (maxPipelineDop <= 0) {
-                return BackendResourceStat.getInstance().getSinkDefaultDOP();
+                return BackendResourceStat.getInstance().getSinkDefaultDOP(warehouseId);
             }
-            return Math.min(maxPipelineDop, BackendResourceStat.getInstance().getSinkDefaultDOP());
+            return Math.min(maxPipelineDop, BackendResourceStat.getInstance().getSinkDefaultDOP(warehouseId));
         } else {
             return parallelExecInstanceNum;
         }
@@ -5571,6 +5645,13 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public boolean isEnableMultiCastLimitPushDown() {
         return enableMultiCastLimitPushDown;
     }
+    public boolean isEnableGlobalLateMaterialization() {
+        return this.enableGlobalLateMaterialization;
+    }
+
+    public void setEnableGlobalLateMaterialization(boolean enableGlobalLateMaterialization) {
+        this.enableGlobalLateMaterialization = enableGlobalLateMaterialization;
+    }
 
     public boolean isEnableJSONV2Rewrite() {
         return cboJSONV2Rewrite;
@@ -5618,6 +5699,22 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isPushDownHeavyExprs() {
         return this.pushDownHeavyExprs;
+    }
+
+    public void setArrowFlightProxy(String proxy) {
+        this.arrowFlightProxy = proxy;
+    }
+
+    public String getArrowFlightProxy() {
+        return this.arrowFlightProxy;
+    }
+
+    public void setArrowFlightProxyEnabled(boolean flag) {
+        this.arrowFlightProxyEnabled = flag;
+    }
+
+    public boolean isArrowFlightProxyEnabled() {
+        return this.arrowFlightProxyEnabled;
     }
 
     public void setEnablePreAggTopNPushDown(boolean enablePreAggTopNPushDown) {
@@ -5736,6 +5833,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         tResult.setEnable_join_runtime_filter_pushdown(enableJoinRuntimeFilterPushDown);
         tResult.setEnable_join_runtime_bitset_filter(enableJoinRuntimeBitsetFilter);
         tResult.setLower_upper_support_utf8(lowerUpperSupportUTF8);
+        tResult.setEnable_global_late_materialization(enableGlobalLateMaterialization);
         tResult.setPipeline_dop(pipelineDop);
         if (pipelineProfileLevel == 2) {
             tResult.setPipeline_profile_level(TPipelineProfileLevel.DETAIL);
@@ -5783,6 +5881,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         tResult.setK_factor(kFactor);
         tResult.setEnable_collect_table_level_scan_stats(enableCollectTableLevelScanStats);
         tResult.setEnable_pipeline_level_shuffle(enablePipelineLevelShuffle);
+        tResult.setExchange_hash_function_version(exchangeHashFunctionVersion);
         tResult.setEnable_hyperscan_vec(enableHyperscanVec);
         tResult.setJit_level(jitLevel);
         tResult.setEnable_result_sink_accumulate(enableResultSinkAccumulate);

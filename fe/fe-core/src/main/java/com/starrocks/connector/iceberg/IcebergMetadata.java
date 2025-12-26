@@ -362,8 +362,15 @@ public class IcebergMetadata implements ConnectorMetadata {
         org.apache.iceberg.Table table = icebergCatalog.getTable(context, dbName, tableName);
 
         if (table == null) {
-            throw new StarRocksConnectorException(
-                    "Failed to load iceberg table: " + stmt.getTbl().toString());
+            String tableNameStr;
+            if (dbName != null && tableName != null) {
+                tableNameStr = dbName + "." + tableName;
+            } else if (tableName != null) {
+                tableNameStr = tableName;
+            } else {
+                tableNameStr = "unknown";
+            }
+            throw new StarRocksConnectorException("Failed to load iceberg table: " + tableNameStr);
         }
 
         IcebergAlterTableExecutor executor = new IcebergAlterTableExecutor(stmt, table, icebergCatalog, context, hdfsEnvironment);
@@ -469,7 +476,7 @@ public class IcebergMetadata implements ConnectorMetadata {
             return table;
         } catch (StarRocksConnectorException e) {
             LOG.error("Failed to get iceberg table {}", identifier, e);
-            return null;
+            throw e;
         } catch (NoSuchTableException e) {
             return getView(context, dbName, tblName);
         }
@@ -1573,6 +1580,11 @@ public class IcebergMetadata implements ConnectorMetadata {
     @Override
     public CloudConfiguration getCloudConfiguration() {
         return hdfsEnvironment.getCloudConfiguration();
+    }
+
+    @Override
+    public Map<String, String> getCatalogProperties() {
+        return icebergCatalog.getCatalogProperties();
     }
 
     @Override

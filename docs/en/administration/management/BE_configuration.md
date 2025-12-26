@@ -1160,6 +1160,15 @@ curl http://<BE_IP>:<BE_HTTP_PORT>/varz
 - Description: Specifies whether to log the HTTP requests and responses for Stream Load jobs.
 - Introduced in: v2.5.17, v3.0.9, v3.1.6, v3.2.1
 
+##### enable_load_spill_parallel_merge
+
+- Default: true
+- Type: Boolean
+- Unit: -
+- Is mutable: Yes
+- Description: Specifies whether to enable parallel spill merge within a single tablet. Enabling this can improve the performance of spill merge during data loading.
+- Introduced in: -
+
 ##### flush_thread_num_per_store
 
 - Default: 2
@@ -1175,7 +1184,7 @@ curl http://<BE_IP>:<BE_HTTP_PORT>/varz
 - Type: Int
 - Unit: -
 - Is mutable: Yes
-- Description: Number of threads that are used for flushing MemTable in each store in shared-data mode. 
+- Description: Number of threads that are used for flushing MemTable in each store in a shared-data cluster. 
 When this value is set to `0`, the system uses twice of the CPU core count as the value.
 When this value is set to less than `0`, the system uses the product of its absolute value and the CPU core count as the value.
 - Introduced in: v3.1.12, 3.2.7
@@ -1205,6 +1214,15 @@ When this value is set to less than `0`, the system uses the product of its abso
 - Unit: Bytes
 - Is mutable: No
 - Description: The maximum size limit of memory resources that can be taken up by all load processes on a BE node.
+- Introduced in: -
+
+##### load_spill_memory_usage_per_merge
+
+- Default: 1073741824
+- Type: Int
+- Unit: Bytes
+- Is mutable: Yes
+- Description: The maximum memory usage per merge operation during spill merge. Default is 1 GB (1073741824 bytes). This parameter controls the memory consumption of individual merge tasks during data loading spill merge to prevent excessive memory usage.
 - Introduced in: -
 
 ##### max_consumer_num_per_group
@@ -1388,6 +1406,15 @@ When this value is set to less than `0`, the system uses the product of its abso
 - Is mutable: No
 - Description: Sets the maximum pending-task queue size for the Load channel RPC thread pool created by LoadChannelMgr. This thread pool executes asynchronous `open` requests when `enable_load_channel_rpc_async` is enabled; the pool size is paired with `load_channel_rpc_thread_pool_num`. The large default (1024000) aligns with brpc workers' defaults to preserve behavior after switching from synchronous to asynchronous handling. If the queue is full, ThreadPool::submit() will fail and the incoming open RPC is cancelled with an error, causing the caller to receive a rejection. Increase this value to buffer larger bursts of concurrent `open` requests; reducing it tightens backpressure but may cause more rejections under load.
 - Introduced in: v3.5.0
+
+##### load_channel_abort_clean_up_delay_seconds
+
+- Default: 600
+- Type: Int
+- Unit: Seconds
+- Is mutable: Yes
+- Description: Controls how long (in seconds) LoadChannelMgr keeps the load IDs of aborted load channels before removing them from `_aborted_load_channels`. When a load job is cancelled or fails, the load ID stays recorded so any late-arriving load RPCs can be rejected immediately; once the delay expires, the entry is cleaned during the periodic background sweep (minimum sweep interval is 60 seconds). Setting the delay too low risks accepting stray RPCs after an abort, while setting it too high may retain state and consume resources longer than necessary. Tune this to balance correctness of late-request rejection and resource retention for aborted loads.
+- Introduced in: v3.5.11, v4.0.4
 
 ##### load_diagnose_rpc_timeout_profile_threshold_ms
 
@@ -1870,6 +1897,24 @@ When this value is set to less than `0`, the system uses the product of its abso
 - Description: Whether to allow new loading processes when the hard memory resource limit is reached. `true` indicates new loading processes will be allowed, and `false` indicates they will be rejected.
 - Introduced in: v3.3.2
 
+##### enable_pk_index_parallel_compaction
+
+- Default: false
+- Type: Boolean
+- Unit: -
+- Is mutable: Yes
+- Description: Whether to enable parallel Compaction for Primary Key index in a shared-data cluster.
+- Introduced in: -
+
+##### enable_pk_index_parallel_get
+
+- Default: false
+- Type: Boolean
+- Unit: -
+- Is mutable: Yes
+- Description: Whether to enable parallel GET for Primary Key index in a shared-data cluster.
+- Introduced in: -
+
 ##### enable_pk_parallel_execution
 
 - Default: true
@@ -2230,13 +2275,121 @@ When this value is set to less than `0`, the system uses the product of its abso
 - Description: The maximum concurrency of compaction on a disk. This addresses the issue of uneven I/O across disks due to compaction. This issue can cause excessively high I/O for certain disks.
 - Introduced in: v3.0.9
 
-##### pk_parallel_execution_threshold_bytes
+##### pk_index_compaction_score_ratio
 
-- Default: 314572800
-- Type: int
+- Default: 1.5
+- Type: Double
 - Unit: -
 - Is mutable: Yes
-- Description: When enable_pk_parallel_execution is set to true, the Primary Key table parallel execution strategy will be enabled if the data generated during import or compaction exceeds this threshold.
+- Description: Compaction score ratio for Primary Key index in a shared-data cluster. For example, if there are N filesets, the Compaction score will be `N * pk_index_compaction_score_ratio`.
+- Introduced in: -
+
+##### pk_index_ingest_sst_compaction_threshold
+
+- Default: 5
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: Ingest SST Compaction threshold for Primary Key index in a shared-data cluster.
+- Introduced in: -
+
+##### pk_index_memtable_flush_threadpool_max_threads
+
+- Default: 4
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The maximum number of threads in the thread pool for Primary Key index MemTable flush in a shared-data cluster.
+- Introduced in: -
+
+##### pk_index_memtable_max_count
+
+- Default: 3
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The maximum number of MemTables for Primary Key index in a shared-data cluster.
+- Introduced in: -
+
+##### pk_index_parallel_compaction_task_split_threshold_bytes
+
+- Default: 104857600
+- Type: Int
+- Unit: Bytes
+- Is mutable: Yes
+- Description: The splitting threshold for Primary Key index Compaction tasks. When the total size of the files involved in a task is smaller than this threshold, the task will not be split.
+- Introduced in: -
+
+##### pk_index_parallel_compaction_threadpool_max_threads
+
+- Default: 4
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The maximum number of threads in the thread pool for cloud native Primary Key index parallel Compaction in a shared-data cluster.
+- Introduced in: -
+
+##### pk_index_parallel_get_min_rows
+
+- Default: 16384
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The minimum rows threshold to enable parallel GET for Primary Key index in a shared-data cluster.
+- Introduced in: -
+
+##### pk_index_parallel_get_threadpool_max_threads
+
+- Default: 0
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The maximum number of threads in the thread pool for Primary Key index parallel GET in a shared-data cluster. `0` means adaptive configuration.
+- Introduced in: -
+
+##### pk_index_size_tiered_level_multiplier
+
+- Default: 10
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The level multiplier parameter for Primary Key index size-tiered Compaction strategy.
+- Introduced in: -
+
+##### pk_index_size_tiered_max_level
+
+- Default: 5
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The maximum level for Primary Key index size-tiered Compaction strategy.
+- Introduced in: -
+
+##### pk_index_size_tiered_min_level_size
+
+- Default: 131072
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The minimum level for Primary Key index size-tiered Compaction strategy.
+- Introduced in: -
+
+##### pk_index_target_file_size
+
+- Default: 67108864
+- Type: Int
+- Unit: Bytes
+- Is mutable: Yes
+- Description: The target file size for Primary Key index in a shared-data cluster.
+- Introduced in: -
+
+##### pk_parallel_execution_threshold_bytes
+
+- Default: 104857600
+- Type: Int
+- Unit: Bytes
+- Is mutable: Yes
+- Description: When `enable_pk_parallel_execution` is set to true, the Primary Key table parallel execution strategy will be enabled if the data generated during import or compaction exceeds this threshold.
 - Introduced in: -
 
 ##### primary_key_limit_size
@@ -2557,15 +2710,6 @@ When this value is set to less than `0`, the system uses the product of its abso
 - Description: The time interval at which to check compaction for Primary Key tables.
 - Introduced in: -
 
-##### update_compaction_chunk_size_for_row_store
-
-- Default: 0
-- Type: Int
-- Unit: Rows
-- Is mutable: Yes
-- Description: Overrides the chunk size (number of rows per chunk) used during update compaction for tablets that use column-with-row-store representation. By default (0) StarRocks computes per-column-group chunk size with CompactionUtils::get_read_chunk_size based on compaction memory limit, vector chunk size, total input rows and memory footprint. When this config is set to a positive integer and tablet.is_column_with_row_store() is true, RowsetMerger forces _chunk_size to this value in both horizontal and vertical update compaction paths (rowset_merger.cpp). Use a non-zero value only when the automatic calculation is producing suboptimal results; increasing the value can reduce writer/IO overhead but raises peak memory use, while decreasing it reduces memory pressure at the cost of more chunks and potential performance impact.
-- Introduced in: v3.2.3
-
 ##### update_compaction_delvec_file_io_amp_ratio
 
 - Default: 2
@@ -2747,6 +2891,15 @@ When this value is set to less than `0`, the system uses the product of its abso
 - Is mutable: Yes
 - Description: In a shared-data cluster, whether to tag files written to object storage with object storage tags for convenient custom file management.
 - Introduced in: v3.5.3
+
+##### table_schema_service_max_retries
+
+- Default: 3
+- Type: Int
+- Unit: -
+- Is mutable: Yes
+- Description: The maximum number of retries for Table Schema Service requests.
+- Introduced in: v4.1
 
 ### Data Lake
 
@@ -3149,4 +3302,3 @@ When this value is set to less than `0`, the system uses the product of its abso
 - Is mutable: No
 - Description: Maximum number of bytes to read from the INFO logfile and show on the BE debug webserver's log page. The handler uses this value to compute a seek offset (showing the last N bytes) to avoid reading or serving very large log files. If the logfile is smaller than this value the whole file is shown. Note: in the current implementation the code that reads and serves the INFO log is commented out and the handler reports that the INFO log file couldn't be opened, so this parameter may have no effect unless the log-serving code is enabled.
 - Introduced in: v3.2.0
-

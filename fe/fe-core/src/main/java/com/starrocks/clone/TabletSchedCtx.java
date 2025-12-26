@@ -142,7 +142,8 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
         FINISHED, // task is finished
         CANCELLED, // task is failed
         TIMEOUT, // task is timeout
-        UNEXPECTED // other unexpected errors
+        UNEXPECTED, // other unexpected errors
+        EXPIRED // tablet will be erased soon
     }
 
     private Type type;
@@ -1081,9 +1082,9 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
                 throw new SchedException(Status.UNRECOVERABLE, "index does not exist");
             }
 
-            if (schemaHash != olapTable.getSchemaHashByIndexId(indexId)) {
+            if (schemaHash != olapTable.getSchemaHashByIndexMetaId(indexId)) {
                 throw new SchedException(Status.UNRECOVERABLE, "schema hash is not consistent. index's: "
-                        + olapTable.getSchemaHashByIndexId(indexId)
+                        + olapTable.getSchemaHashByIndexMetaId(indexId)
                         + ", task's: " + schemaHash);
             }
 

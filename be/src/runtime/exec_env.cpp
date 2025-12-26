@@ -72,6 +72,7 @@
 #include "runtime/heartbeat_flags.h"
 #include "runtime/load_channel_mgr.h"
 #include "runtime/load_path_mgr.h"
+#include "runtime/lookup_stream_mgr.h"
 #include "runtime/mem_tracker.h"
 #include "runtime/memory/mem_chunk_allocator.h"
 #include "runtime/profile_report_worker.h"
@@ -86,6 +87,7 @@
 #include "runtime/stream_load/transaction_mgr.h"
 #include "service/staros_worker.h"
 #include "storage/lake/fixed_location_provider.h"
+#include "storage/lake/lake_persistent_index_parallel_compact_mgr.h"
 #include "storage/lake/replication_txn_manager.h"
 #include "storage/lake/starlet_location_provider.h"
 #include "storage/lake/tablet_manager.h"
@@ -320,6 +322,7 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
     _external_scan_context_mgr = new ExternalScanContextMgr(this);
     _metrics = StarRocksMetrics::instance()->metrics();
     _stream_mgr = new DataStreamMgr();
+    _lookup_dispatcher_mgr = new LookUpDispatcherMgr();
     _result_mgr = new ResultBufferMgr();
     _result_queue_mgr = new ResultQueueMgr();
     _backend_client_cache = new BackendServiceClientCache(config::max_client_cache_size_per_host);
@@ -573,6 +576,22 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
                             .set_max_queue_size(std::numeric_limits<int>::max())
                             .build(&_put_aggregate_metadata_thread_pool));
     REGISTER_THREAD_POOL_METRICS(put_aggregate_metadata, _put_aggregate_metadata_thread_pool);
+    _parallel_compact_mgr = std::make_unique<lake::LakePersistentIndexParallelCompactMgr>(_lake_tablet_manager);
+    RETURN_IF_ERROR_WITH_WARN(_parallel_compact_mgr->init(), "init ParallelCompactMgr failed");
+    max_thread_count = config::pk_index_parallel_get_threadpool_max_threads;
+    if (max_thread_count <= 0) {
+        max_thread_count = CpuInfo::num_cores();
+    }
+    RETURN_IF_ERROR(ThreadPoolBuilder("cloud_native_pk_index_get")
+                            .set_min_threads(1)
+                            .set_max_threads(std::max(1, max_thread_count))
+                            .set_max_queue_size(config::pk_index_parallel_get_threadpool_size)
+                            .build(&_pk_index_get_thread_pool));
+    RETURN_IF_ERROR(ThreadPoolBuilder("cloud_native_pk_index_flush")
+                            .set_min_threads(1)
+                            .set_max_threads(std::max(1, config::pk_index_memtable_flush_threadpool_max_threads))
+                            .set_max_queue_size(config::pk_index_memtable_flush_threadpool_size)
+                            .build(&_pk_index_memtable_flush_thread_pool));
 
 #elif defined(BE_TEST)
     _lake_location_provider = std::make_shared<lake::FixedLocationProvider>(_store_paths.front().path);
@@ -602,6 +621,8 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
 
     _spill_dir_mgr = std::make_shared<spill::DirManager>();
     RETURN_IF_ERROR(_spill_dir_mgr->init(config::spill_local_storage_dir));
+
+    _global_spill_manager = std::make_shared<spill::GlobalSpillManager>();
 
     _diagnose_daemon = new DiagnoseDaemon();
     RETURN_IF_ERROR(_diagnose_daemon->init());
@@ -660,6 +681,9 @@ void ExecEnv::stop() {
         _stream_mgr->close();
         component_times.emplace_back("stream_mgr", MonotonicMillis() - start);
     }
+    if (_lookup_dispatcher_mgr != nullptr) {
+        _lookup_dispatcher_mgr->close();
+    }
 
     if (_pipeline_sink_io_pool) {
         start = MonotonicMillis();
@@ -671,6 +695,24 @@ void ExecEnv::stop() {
         start = MonotonicMillis();
         _put_aggregate_metadata_thread_pool->shutdown();
         component_times.emplace_back("put_aggregate_metadata_thread_pool", MonotonicMillis() - start);
+    }
+
+    if (_parallel_compact_mgr) {
+        start = MonotonicMillis();
+        _parallel_compact_mgr->shutdown();
+        component_times.emplace_back("parallel_compact_mgr", MonotonicMillis() - start);
+    }
+
+    if (_pk_index_get_thread_pool) {
+        start = MonotonicMillis();
+        _pk_index_get_thread_pool->shutdown();
+        component_times.emplace_back("pk_index_get_thread_pool", MonotonicMillis() - start);
+    }
+
+    if (_pk_index_memtable_flush_thread_pool) {
+        start = MonotonicMillis();
+        _pk_index_memtable_flush_thread_pool->shutdown();
+        component_times.emplace_back("pk_index_memtable_flush_thread_pool", MonotonicMillis() - start);
     }
 
     if (_agent_server) {
@@ -822,6 +864,8 @@ void ExecEnv::destroy() {
     SAFE_DELETE(_query_rpc_pool);
     SAFE_DELETE(_datacache_rpc_pool);
     _load_rpc_pool.reset();
+    SAFE_DELETE(_stream_mgr);
+    SAFE_DELETE(_query_context_mgr);
     _workgroup_manager->destroy();
     _workgroup_manager.reset();
     SAFE_DELETE(_thread_pool);
@@ -832,7 +876,6 @@ void ExecEnv::destroy() {
         _lake_tablet_manager->prune_metacache();
     }
 
-    SAFE_DELETE(_query_context_mgr);
     // WorkGroupManager should release MemTracker of WorkGroups belongs to itself before deallocate
     // _query_pool_mem_tracker.
     SAFE_DELETE(_runtime_filter_cache);
@@ -851,7 +894,7 @@ void ExecEnv::destroy() {
     SAFE_DELETE(_backend_client_cache);
     SAFE_DELETE(_result_queue_mgr);
     SAFE_DELETE(_result_mgr);
-    SAFE_DELETE(_stream_mgr);
+    SAFE_DELETE(_lookup_dispatcher_mgr);
     SAFE_DELETE(_batch_write_mgr);
     SAFE_DELETE(_external_scan_context_mgr);
     SAFE_DELETE(_lake_tablet_manager);
@@ -863,6 +906,9 @@ void ExecEnv::destroy() {
     _dictionary_cache_pool.reset();
     _automatic_partition_pool.reset();
     _put_aggregate_metadata_thread_pool.reset();
+    _parallel_compact_mgr.reset();
+    _pk_index_get_thread_pool.reset();
+    _pk_index_memtable_flush_thread_pool.reset();
     _metrics = nullptr;
 }
 
