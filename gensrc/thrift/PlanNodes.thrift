@@ -77,8 +77,6 @@ enum TPlanNodeType {
   TABLE_FUNCTION_NODE,
   DECODE_NODE,
   JDBC_SCAN_NODE,
-  STARROCKS_SCAN_NODE,
-  CONNECTOR_SCAN_NODE,
   LAKE_SCAN_NODE,
   NESTLOOP_JOIN_NODE,
 
@@ -90,6 +88,7 @@ enum TPlanNodeType {
   RAW_VALUES_NODE,
   FETCH_NODE,
   LOOKUP_NODE,
+  STARROCKS_SCAN_NODE,
 }
 
 // phases of an execution node

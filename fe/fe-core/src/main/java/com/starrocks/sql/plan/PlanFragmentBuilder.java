@@ -54,7 +54,9 @@ import com.starrocks.common.Pair;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.connector.BucketProperty;
 import com.starrocks.connector.metadata.MetadataTable;
+import com.starrocks.connector.starrocks.StarRocksConnectorConfig;
 import com.starrocks.connector.starrocks.StarRocksExternalTable;
+import com.starrocks.connector.starrocks.StarRocksRestClient;
 import com.starrocks.load.BrokerFileGroup;
 import com.starrocks.planner.AggregateInfo;
 import com.starrocks.planner.AggregationNode;
@@ -1420,9 +1422,39 @@ public class PlanFragmentBuilder {
             currentExecGroup.add(scanNode, true);
             scanNode.setTupleId(tupleDescriptor.getId().asInt());
 
-            scanNode.setOpaquedQueryPlan(starRocksTable.getOpaquedQueryPlan());
+            String opaquedQueryPlan = starRocksTable.getOpaquedQueryPlan();
+            List<TScanRangeLocations> scanRanges = buildStarRocksScanRanges(starRocksTable);
+            try {
+                StarRocksConnectorConfig config = new StarRocksConnectorConfig();
+                Map<String, String> properties = starRocksTable.getExecutionProperties();
+                Map<String, String> configMap = new HashMap<>();
+                if (properties.containsKey("fe_http_urls")) configMap.put(StarRocksConnectorConfig.KEY_FE_HTTP_URL, properties.get("fe_http_urls"));
+                if (properties.containsKey("fe_jdbc_url")) configMap.put(StarRocksConnectorConfig.KEY_FE_JDBC_URL, properties.get("fe_jdbc_url"));
+                if (properties.containsKey("user")) configMap.put(StarRocksConnectorConfig.KEY_USER, properties.get("user"));
+                if (properties.containsKey("password")) configMap.put(StarRocksConnectorConfig.KEY_PASSWORD, properties.get("password"));
+                if (properties.containsKey("be_rpc_endpoints")) configMap.put(StarRocksConnectorConfig.KEY_BE_RPC_ENDPOINTS, properties.get("be_rpc_endpoints"));
+                if (properties.containsKey("fetch_mode")) configMap.put(StarRocksConnectorConfig.KEY_FETCH_MODE, properties.get("fetch_mode"));
+                if (properties.containsKey("request_retries")) configMap.put(StarRocksConnectorConfig.KEY_REQUEST_RETRIES, properties.get("request_retries"));
+                if (properties.containsKey("connect_timeout_ms")) configMap.put(StarRocksConnectorConfig.KEY_CONNECT_TIMEOUT, properties.get("connect_timeout_ms"));
+                if (properties.containsKey("read_timeout_ms")) configMap.put(StarRocksConnectorConfig.KEY_READ_TIMEOUT, properties.get("read_timeout_ms"));
+                config.loadConfig(configMap);
+
+                try (StarRocksRestClient client = StarRocksRestClient.create(config)) {
+                    String sql = buildStarRocksSql(tupleDescriptor, node.getPredicate(), starRocksTable, context.getColRefToExpr());
+                    StarRocksRestClient.QueryPlanResponse response = client.getQueryPlan(starRocksTable.getCatalogDBName(), starRocksTable.getCatalogTableName(), sql);
+                    if (response != null && !Strings.isNullOrEmpty(response.getOpaquedQueryPlan())) {
+                        opaquedQueryPlan = response.getOpaquedQueryPlan();
+                        scanRanges = buildScanRangesFromResponse(starRocksTable, response);
+                    }
+                }
+            } catch (Exception e) {
+                 LOG.warn("Failed to fetch optimized plan for starrocks table {}.{}, fallback to default plan. Error: {}", 
+                        starRocksTable.getCatalogDBName(), starRocksTable.getCatalogTableName(), e.getMessage());
+            }
+
+            scanNode.setOpaquedQueryPlan(opaquedQueryPlan);
             scanNode.setExecutionProperties(starRocksTable.getExecutionProperties());
-            scanNode.setScanRanges(buildStarRocksScanRanges(starRocksTable));
+            scanNode.setScanRanges(scanRanges);
 
             ScalarOperatorToExpr.FormatterContext formatterContext =
                     new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr());
@@ -1528,6 +1560,85 @@ public class PlanFragmentBuilder {
                 }
             }
             return new TNetworkAddress(host, port);
+        }
+
+        private String buildStarRocksSql(TupleDescriptor tupleDesc, ScalarOperator predicate, StarRocksExternalTable table, 
+                                         Map<ColumnRefOperator, Expr> colRefToExpr) {
+            StringBuilder sql = new StringBuilder("SELECT ");
+            List<String> columns = new ArrayList<>();
+            for (SlotDescriptor slot : tupleDesc.getSlots()) {
+                if (slot.isMaterialized()) {
+                     columns.add("`" + slot.getColumn().getName().replace("`", "``") + "`");
+                }
+            }
+            if (columns.isEmpty()) {
+                 sql.append("*");
+            } else {
+                 sql.append(String.join(", ", columns));
+            }
+            sql.append(" FROM `").append(table.getCatalogDBName().replace("`", "``")).append("`.`")
+               .append(table.getCatalogTableName().replace("`", "``")).append("`");
+            
+            if (predicate != null) {
+                 List<ScalarOperator> conjuncts = Utils.extractConjuncts(predicate);
+                 if (!conjuncts.isEmpty()) {
+                      sql.append(" WHERE ");
+                      List<String> conditions = new ArrayList<>();
+                      
+                      ScalarOperatorToExpr.FormatterContext formatterContext =
+                            new ScalarOperatorToExpr.FormatterContext(colRefToExpr);
+
+                      for (ScalarOperator op : conjuncts) {
+                           Expr expr = ScalarOperatorToExpr.buildExecExpression(op, formatterContext);
+                           conditions.add(expr.toSql());
+                      }
+                      sql.append(String.join(" AND ", conditions));
+                 }
+            }
+            return sql.toString();
+        }
+
+        private List<TScanRangeLocations> buildScanRangesFromResponse(StarRocksExternalTable table, StarRocksRestClient.QueryPlanResponse response) {
+            List<TScanRangeLocations> ranges = new ArrayList<>();
+            for (Map.Entry<Long, StarRocksRestClient.QueryPlanResponse.TabletRouting> entry : response.getTablets().entrySet()) {
+                long tabletId = entry.getKey();
+                StarRocksRestClient.QueryPlanResponse.TabletRouting routing = entry.getValue();
+                
+                TInternalScanRange internalRange = new TInternalScanRange();
+                internalRange.setTablet_id(tabletId);
+                internalRange.setVersion(Long.toString(routing.getVersion()));
+                internalRange.setVersion_hash("0");
+                internalRange.setSchema_hash(Integer.toString(routing.getSchemaHash()));
+                internalRange.setDb_name(table.getCatalogDBName());
+                internalRange.setTable_name(table.getCatalogTableName());
+
+                List<TNetworkAddress> hosts = new ArrayList<>();
+                List<String> endpoints = new ArrayList<>(routing.getEndpoints());
+                
+                if (endpoints.isEmpty()) {
+                    String fallback = table.getExecutionProperties().get("be_rpc_endpoints");
+                     if (!Strings.isNullOrEmpty(fallback)) {
+                        STARROCKS_ENDPOINT_SPLITTER.split(fallback).forEach(endpoints::add);
+                     }
+                }
+                
+                for (String endpoint : endpoints) {
+                    TNetworkAddress address = parseNetworkAddress(endpoint);
+                    if (Strings.isNullOrEmpty(address.hostname) || address.port <= 0) {
+                        continue;
+                    }
+                    hosts.add(address);
+                }
+                internalRange.setHosts(hosts);
+
+                TScanRange scanRange = new TScanRange();
+                scanRange.setInternal_scan_range(internalRange);
+
+                TScanRangeLocations scanRangeLocations = new TScanRangeLocations();
+                scanRangeLocations.setScan_range(scanRange);
+                ranges.add(scanRangeLocations);
+            }
+            return ranges;
         }
 
         public PlanFragment visitPhysicalPaimonScan(OptExpression optExpression, ExecPlan context) {
