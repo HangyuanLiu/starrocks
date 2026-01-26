@@ -339,12 +339,22 @@ public class StarRocksMetadataCache implements AutoCloseable {
         }
 
         // Pass through fs.* properties from connector context (for object_store credentials)
+        // These properties are essential for accessing object storage (OSS, S3, etc.)
         if (context != null && context.getProperties() != null) {
+            int fsPropertiesCount = 0;
             for (Map.Entry<String, String> entry : context.getProperties().entrySet()) {
                 String key = entry.getKey();
                 if (key != null && key.startsWith("fs.")) {
                     builder.put(key, entry.getValue());
+                    fsPropertiesCount++;
+                    LOG.debug("Passing fs property to BE: {} = {}", key, 
+                             key.contains("secret") || key.contains("password") ? "***" : entry.getValue());
                 }
+            }
+            if ("object_store".equals(cfg.getFetchMode()) && fsPropertiesCount == 0) {
+                LOG.warn("object_store mode enabled but no fs.* properties found in catalog configuration. " +
+                        "Object storage access may fail. Please configure fs.* properties like " +
+                        "fs.oss.accessKeyId, fs.oss.accessKeySecret, fs.oss.endpoint, etc.");
             }
         }
 

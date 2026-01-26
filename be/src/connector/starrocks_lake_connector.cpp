@@ -21,6 +21,8 @@
 #include "common/logging.h"
 #include "connector/starrocks_connector.h"
 #include "exec/connector_scan_node.h"
+#include "fs/fs.h"
+#include "gen_cpp/CloudConfiguration_types.h"
 #include "gutil/strings/substitute.h"
 #include "runtime/descriptors.h"
 #include "runtime/runtime_state.h"
@@ -194,10 +196,67 @@ Status StarRocksLakeDataSource::parse_tablet_root_path(std::string* storage_path
     return Status::OK();
 }
 
+Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* cloud_conf) {
+    const auto& ctx = _provider->execution_context();
+    
+    // Extract fs.* properties and build cloud_properties map
+    std::map<std::string, std::string> cloud_properties;
+    bool has_fs_properties = false;
+    
+    for (const auto& [key, value] : ctx.properties) {
+        if (key.find("fs.") == 0) {
+            cloud_properties[key] = value;
+            has_fs_properties = true;
+        }
+    }
+    
+    if (!has_fs_properties) {
+        LOG(WARNING) << "No fs.* properties found for object_store mode. "
+                     << "Object storage access may fail without proper credentials.";
+        return Status::OK();  // Not an error, but will likely fail later
+    }
+    
+    // Set cloud_properties in TCloudConfiguration
+    cloud_conf->__set_cloud_properties(cloud_properties);
+    cloud_conf->__isset.cloud_properties = true;
+    
+    // Infer cloud_type from storage_path or properties
+    // For now, we'll leave cloud_type unset and let FileSystem infer from URI
+    
+    LOG(INFO) << "Built CloudConfiguration with " << cloud_properties.size() 
+              << " fs.* properties for object storage access";
+    
+    return Status::OK();
+}
+
 Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
     // Parse storage path for this tablet
     std::string storage_path;
     RETURN_IF_ERROR(parse_tablet_root_path(&storage_path));
+
+    // Build cloud configuration from fs.* properties
+    TCloudConfiguration cloud_conf;
+    RETURN_IF_ERROR(build_cloud_configuration(&cloud_conf));
+    
+    // Test FileSystem creation with credentials to ensure object storage is accessible
+    // This validates credentials before attempting to read tablet metadata
+    if (cloud_conf.__isset.cloud_properties && !cloud_conf.cloud_properties.empty()) {
+        FSOptions fs_options(&cloud_conf);
+        auto fs_result = FileSystem::CreateUniqueFromString(storage_path, fs_options);
+        if (!fs_result.ok()) {
+            return Status::InternalError(strings::Substitute(
+                "Failed to create FileSystem for storage path '$0' with credentials: $1. "
+                "Please verify fs.* properties (fs.oss.accessKeyId, fs.oss.accessKeySecret, fs.oss.endpoint, etc.) "
+                "are correctly configured in the catalog.",
+                storage_path, fs_result.status().message()));
+        }
+        LOG(INFO) << "Successfully validated FileSystem access to " << storage_path 
+                  << " with configured credentials";
+        // Note: Lake's TabletManager will create its own FileSystem instances via CreateSharedFromString.
+        // Those instances use thread-local cached FS which may not have our credentials.
+        // This is a limitation of the current Lake implementation.
+        // TODO: Enhance Lake to support passing FSOptions through LocationProvider or TabletManager
+    }
 
     // Create FixedLocationProvider with the storage root
     auto location_provider = std::make_shared<lake::FixedLocationProvider>(storage_path);
