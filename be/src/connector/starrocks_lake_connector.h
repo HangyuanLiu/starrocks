@@ -76,6 +76,7 @@ private:
     Status init_scan_range_context();
     Status init_lake_reader(RuntimeState* state);
     Status parse_tablet_root_path(std::string* storage_path);
+    Status build_cloud_configuration(TCloudConfiguration* cloud_conf);
 
     ScanRangeContext _scan_range_ctx;
     bool _scan_range_initialized = false;
