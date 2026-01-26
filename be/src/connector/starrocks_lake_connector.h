@@ -84,6 +84,7 @@ private:
     // Lake reader components
     std::shared_ptr<lake::TabletManager> _lake_tablet_manager;
     std::shared_ptr<ChunkIterator> _prj_iter;
+    std::shared_ptr<FileSystem> _fs_with_credentials;  // FileSystem with object storage credentials
     bool _lake_reader_opened = false;
     
     // Metrics

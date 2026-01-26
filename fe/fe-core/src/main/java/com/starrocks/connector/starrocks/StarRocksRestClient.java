@@ -267,13 +267,19 @@ public interface StarRocksRestClient extends Closeable {
                             }
 
                             String bodyString = response.body() != null ? response.body().string() : "";
+                            LOG.info("Partition API response for {}.{}.{}: {}", 
+                                    catalogName, dbName, tableName, bodyString);
                             PartitionPage page = parsePartitionResponse(bodyString, url.toString());
                             
                             // Collect tablet -> storagePath mapping
                             for (PartitionEntry partition : page.partitions) {
                                 if (partition.storagePath != null && partition.tablets != null) {
+                                    LOG.info("Partition storagePath: {}, tablets: {}", 
+                                            partition.storagePath, partition.tablets.size());
                                     for (TabletEntry tablet : partition.tablets) {
                                         tabletRoots.put(tablet.id, partition.storagePath);
+                                        LOG.info("Mapped tablet {} to storagePath: {}", 
+                                                tablet.id, partition.storagePath);
                                     }
                                 }
                             }
