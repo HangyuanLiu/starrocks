@@ -161,6 +161,7 @@ Status StarRocksLakeDataSource::parse_tablet_root_path(std::string* storage_path
     }
     
     std::string tablet_root_paths_json = it->second;
+    LOG(INFO) << "tablet_root_paths JSON: " << tablet_root_paths_json;
     
     // Parse JSON mapping to extract storage path for this tablet
     try {
@@ -175,6 +176,8 @@ Status StarRocksLakeDataSource::parse_tablet_root_path(std::string* storage_path
         }
         
         std::string tablet_id_key = std::to_string(_scan_range_ctx.tablet_id);
+        LOG(INFO) << "Looking for tablet_id: " << tablet_id_key << " in tablet_root_paths";
+        
         vpack::Slice path_slice = json_slice.get(tablet_id_key);
         
         if (path_slice.isNone() || !path_slice.isString()) {
@@ -183,6 +186,7 @@ Status StarRocksLakeDataSource::parse_tablet_root_path(std::string* storage_path
         }
         
         *storage_path = path_slice.copyString();
+        LOG(INFO) << "Extracted storage_path for tablet " << tablet_id_key << ": " << *storage_path;
     } catch (const std::exception& e) {
         return Status::InvalidArgument(strings::Substitute(
             "Failed to parse tablet storage path: $0", e.what()));
@@ -199,19 +203,87 @@ Status StarRocksLakeDataSource::parse_tablet_root_path(std::string* storage_path
 Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* cloud_conf) {
     const auto& ctx = _provider->execution_context();
     
-    // Extract fs.* properties and build cloud_properties map
+    // Extract cloud storage properties and build cloud_properties map
+    // Support multiple prefixes: fs.*, aws.s3.*, aliyun.oss.*
     std::map<std::string, std::string> cloud_properties;
-    bool has_fs_properties = false;
+    bool has_cloud_properties = false;
+    
+    LOG(INFO) << "=== Extracting cloud storage properties from execution context ===";
+    LOG(INFO) << "Total properties in context: " << ctx.properties.size();
     
     for (const auto& [key, value] : ctx.properties) {
-        if (key.find("fs.") == 0) {
-            cloud_properties[key] = value;
-            has_fs_properties = true;
+        // Check if it's a cloud storage property
+        bool is_fs_prop = key.find("fs.") == 0;
+        bool is_aws_prop = key.find("aws.s3.") == 0;
+        bool is_aliyun_prop = key.find("aliyun.oss.") == 0;
+        
+        if (is_fs_prop || is_aws_prop || is_aliyun_prop) {
+            has_cloud_properties = true;
+            // Print all cloud storage properties in plain text for debugging
+            LOG(INFO) << "  " << key << " = " << value;
+            
+            if (is_fs_prop) {
+                // Transform fs.oss.* to aws.s3.* and aliyun.oss.* for compatibility
+                if (key == "fs.oss.accessKeyId" || key == "fs.oss.access_key") {
+                    cloud_properties["aws.s3.access_key"] = value;
+                    cloud_properties["aliyun.oss.access_key"] = value;
+                } else if (key == "fs.oss.accessKeySecret" || key == "fs.oss.secret_key") {
+                    cloud_properties["aws.s3.secret_key"] = value;
+                    cloud_properties["aliyun.oss.secret_key"] = value;
+                } else if (key == "fs.oss.endpoint") {
+                    cloud_properties["aws.s3.endpoint"] = value;
+                    cloud_properties["aliyun.oss.endpoint"] = value;
+                } else if (key.find("fs.s3.") == 0) {
+                    // Transform fs.s3.* to aws.s3.*
+                    std::string aws_key = "aws." + key.substr(3); // Remove "fs." prefix
+                    cloud_properties[aws_key] = value;
+                } else {
+                    // Keep other fs.* properties as-is
+                    cloud_properties[key] = value;
+                }
+            } else if (is_aws_prop) {
+                // aws.s3.* properties: transform aws.s3.accessKeyId/accessKeySecret to standard keys
+                if (key == "aws.s3.accessKeyId") {
+                    cloud_properties["aws.s3.access_key"] = value;
+                } else if (key == "aws.s3.accessKeySecret") {
+                    cloud_properties["aws.s3.secret_key"] = value;
+                } else {
+                    // Keep other aws.s3.* properties as-is
+                    cloud_properties[key] = value;
+                }
+            } else if (is_aliyun_prop) {
+                // aliyun.oss.* properties: already in correct format, keep as-is
+                cloud_properties[key] = value;
+            }
         }
     }
     
-    if (!has_fs_properties) {
-        LOG(WARNING) << "No fs.* properties found for object_store mode. "
+    // Also set default S3-compatible settings for OSS
+    if (has_cloud_properties) {
+        // Set enable_path_style_access if not specified
+        if (cloud_properties.find("aws.s3.enable_path_style_access") == cloud_properties.end()) {
+            cloud_properties["aws.s3.enable_path_style_access"] = "true";
+            LOG(INFO) << "  Setting default: aws.s3.enable_path_style_access = true";
+        }
+        
+        // Auto-detect SSL setting from endpoint
+        auto endpoint_it = cloud_properties.find("aws.s3.endpoint");
+        if (endpoint_it != cloud_properties.end()) {
+            const std::string& endpoint = endpoint_it->second;
+            if (endpoint.find("http://") == 0) {
+                // HTTP endpoint, disable SSL
+                cloud_properties["aws.s3.enable_ssl"] = "false";
+                LOG(INFO) << "  Auto-detected HTTP endpoint, setting: aws.s3.enable_ssl = false";
+            } else if (endpoint.find("https://") == 0) {
+                // HTTPS endpoint, enable SSL
+                cloud_properties["aws.s3.enable_ssl"] = "true";
+                LOG(INFO) << "  Auto-detected HTTPS endpoint, setting: aws.s3.enable_ssl = true";
+            }
+        }
+    }
+    
+    if (!has_cloud_properties) {
+        LOG(WARNING) << "No cloud storage properties (fs.*, aws.s3.*, aliyun.oss.*) found for object_store mode. "
                      << "Object storage access may fail without proper credentials.";
         return Status::OK();  // Not an error, but will likely fail later
     }
@@ -220,11 +292,19 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
     cloud_conf->__set_cloud_properties(cloud_properties);
     cloud_conf->__isset.cloud_properties = true;
     
-    // Infer cloud_type from storage_path or properties
-    // For now, we'll leave cloud_type unset and let FileSystem infer from URI
-    
     LOG(INFO) << "Built CloudConfiguration with " << cloud_properties.size() 
-              << " fs.* properties for object storage access";
+              << " properties (including transformed keys) for object storage access";
+    
+    // Log final property keys for verification
+    LOG(INFO) << "Final cloud_properties keys:";
+    for (const auto& [k, v] : cloud_properties) {
+        bool is_secret = (k.find("secret") != std::string::npos || k.find("key") != std::string::npos);
+        if (is_secret && !v.empty()) {
+            LOG(INFO) << "    " << k << " = " << v.substr(0, 4) << "***";
+        } else {
+            LOG(INFO) << "    " << k << " = " << v;
+        }
+    }
     
     return Status::OK();
 }
@@ -238,8 +318,7 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
     TCloudConfiguration cloud_conf;
     RETURN_IF_ERROR(build_cloud_configuration(&cloud_conf));
     
-    // Test FileSystem creation with credentials to ensure object storage is accessible
-    // This validates credentials before attempting to read tablet metadata
+    // Create FileSystem with credentials for accessing object storage
     if (cloud_conf.__isset.cloud_properties && !cloud_conf.cloud_properties.empty()) {
         FSOptions fs_options(&cloud_conf);
         auto fs_result = FileSystem::CreateUniqueFromString(storage_path, fs_options);
@@ -250,12 +329,10 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
                 "are correctly configured in the catalog.",
                 storage_path, fs_result.status().message()));
         }
-        LOG(INFO) << "Successfully validated FileSystem access to " << storage_path 
-                  << " with configured credentials";
-        // Note: Lake's TabletManager will create its own FileSystem instances via CreateSharedFromString.
-        // Those instances use thread-local cached FS which may not have our credentials.
-        // This is a limitation of the current Lake implementation.
-        // TODO: Enhance Lake to support passing FSOptions through LocationProvider or TabletManager
+        _fs_with_credentials = std::move(fs_result).value();
+        LOG(INFO) << "Successfully created FileSystem with configured credentials for " << storage_path;
+    } else {
+        LOG(WARNING) << "No cloud credentials provided, will use default FileSystem (may fail for private storage)";
     }
 
     // Create FixedLocationProvider with the storage root
@@ -264,9 +341,14 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
     // Create local TabletManager with zero cache (ephemeral usage for external scan)
     _lake_tablet_manager = std::make_shared<lake::TabletManager>(location_provider, 0);
     
-    // Get VersionedTablet (not just Tablet)
-    ASSIGN_OR_RETURN(auto versioned_tablet, 
-                     _lake_tablet_manager->get_tablet(_scan_range_ctx.tablet_id, _scan_range_ctx.version));
+    // Get tablet metadata with our FileSystem that has credentials
+    // This ensures all metadata and data file access uses the correct credentials
+    ASSIGN_OR_RETURN(auto tablet_metadata,
+                     _lake_tablet_manager->get_tablet_metadata(_scan_range_ctx.tablet_id, _scan_range_ctx.version,
+                                                              true, 0, _fs_with_credentials));
+    
+    // Manually construct VersionedTablet with the metadata
+    lake::VersionedTablet versioned_tablet(_lake_tablet_manager.get(), std::move(tablet_metadata));
     
     // Get tablet schema (returns shared_ptr directly, not StatusOr)
     auto tablet_schema = versioned_tablet.get_schema();
@@ -310,6 +392,14 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
     params.profile = nullptr;  // Simplified: no detailed profiling
     params.runtime_state = state;
     params.use_page_cache = false;  // Simplified: no page cache for external read
+    
+    // CRITICAL: Pass FileSystem with credentials via LakeIOOptions
+    // This ensures all data file reads use the correct object storage credentials
+    if (_fs_with_credentials) {
+        params.lake_io_opts.fs = _fs_with_credentials;
+        params.lake_io_opts.location_provider = location_provider;
+        LOG(INFO) << "Passing FileSystem with credentials to TabletReader via lake_io_opts";
+    }
     
     // Initialize encoded schema and output schema
     // Use empty maps since we don't have global dicts or unused columns for external connector

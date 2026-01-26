@@ -338,23 +338,25 @@ public class StarRocksMetadataCache implements AutoCloseable {
             }
         }
 
-        // Pass through fs.* properties from connector context (for object_store credentials)
-        // These properties are essential for accessing object storage (OSS, S3, etc.)
+        // Pass through cloud storage properties from connector context (for object_store credentials)
+        // Support multiple property prefixes: fs.*, aws.s3.*, aliyun.oss.*
         if (context != null && context.getProperties() != null) {
-            int fsPropertiesCount = 0;
+            int cloudPropertiesCount = 0;
             for (Map.Entry<String, String> entry : context.getProperties().entrySet()) {
                 String key = entry.getKey();
-                if (key != null && key.startsWith("fs.")) {
+                if (key != null && (key.startsWith("fs.") || 
+                                   key.startsWith("aws.s3.") || 
+                                   key.startsWith("aliyun.oss."))) {
                     builder.put(key, entry.getValue());
-                    fsPropertiesCount++;
-                    LOG.debug("Passing fs property to BE: {} = {}", key, 
-                             key.contains("secret") || key.contains("password") ? "***" : entry.getValue());
+                    cloudPropertiesCount++;
+                    // Print all cloud storage properties in plain text for debugging
+                    LOG.info("Passing cloud storage property to BE: {} = {}", key, entry.getValue());
                 }
             }
-            if ("object_store".equals(cfg.getFetchMode()) && fsPropertiesCount == 0) {
-                LOG.warn("object_store mode enabled but no fs.* properties found in catalog configuration. " +
-                        "Object storage access may fail. Please configure fs.* properties like " +
-                        "fs.oss.accessKeyId, fs.oss.accessKeySecret, fs.oss.endpoint, etc.");
+            if ("object_store".equals(cfg.getFetchMode()) && cloudPropertiesCount == 0) {
+                LOG.warn("object_store mode enabled but no cloud storage properties found in catalog configuration. " +
+                        "Object storage access may fail. Please configure properties like " +
+                        "fs.oss.*, aws.s3.*, or aliyun.oss.* for credentials.");
             }
         }
 
