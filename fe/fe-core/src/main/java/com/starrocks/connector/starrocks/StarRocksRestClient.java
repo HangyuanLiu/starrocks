@@ -55,6 +55,12 @@ public interface StarRocksRestClient extends Closeable {
 
     QueryPlanResponse getQueryPlan(String dbName, String tableName, String sql);
 
+    /**
+     * Fetch partition metadata from Provider FE v2 API.
+     * Returns paginated list of PartitionView including storagePath and tablets.
+     */
+    PartitionMetadataResponse getPartitionMetadata(String catalogName, String dbName, String tableName);
+
     @Override
     void close();
 
@@ -226,6 +232,178 @@ public interface StarRocksRestClient extends Closeable {
             httpClient.dispatcher().executorService().shutdown();
             httpClient.connectionPool().evictAll();
         }
+
+        @Override
+        public PartitionMetadataResponse getPartitionMetadata(String catalogName, String dbName, String tableName) {
+            Preconditions.checkNotNull(catalogName, "catalogName is null");
+            Preconditions.checkNotNull(dbName, "dbName is null");
+            Preconditions.checkNotNull(tableName, "tableName is null");
+
+            Map<Long, String> tabletRoots = new LinkedHashMap<>();
+            int pageNum = 0;
+            int pageSize = 100;
+
+            StarRocksConnectorException lastError = null;
+            while (true) {
+                for (int attempt = 0; attempt < retries; attempt++) {
+                    String endpoint = endpoints.get(attempt % endpoints.size());
+                    try {
+                        HttpUrl url = buildPartitionUrl(endpoint, catalogName, dbName, tableName, pageNum, pageSize);
+                        Request request = new Request.Builder()
+                                .url(url)
+                                .get()
+                                .addHeader("Authorization", authorizationHeader)
+                                .build();
+
+                        try (Response response = httpClient.newCall(request).execute()) {
+                            if (!response.isSuccessful()) {
+                                String responseBody = response.body() != null ? response.body().string() : "";
+                                lastError = new StarRocksConnectorException(
+                                        String.format(Locale.ROOT,
+                                                "HTTP %d when fetching partition metadata from %s: %s",
+                                                response.code(), url, responseBody));
+                                LOG.warn(lastError.getMessage());
+                                continue;
+                            }
+
+                            String bodyString = response.body() != null ? response.body().string() : "";
+                            PartitionPage page = parsePartitionResponse(bodyString, url.toString());
+                            
+                            // Collect tablet -> storagePath mapping
+                            for (PartitionEntry partition : page.partitions) {
+                                if (partition.storagePath != null && partition.tablets != null) {
+                                    for (TabletEntry tablet : partition.tablets) {
+                                        tabletRoots.put(tablet.id, partition.storagePath);
+                                    }
+                                }
+                            }
+
+                            // Check if more pages exist
+                            if (pageNum >= page.pages - 1) {
+                                return new PartitionMetadataResponse(tabletRoots);
+                            }
+                            pageNum++;
+                            break; // Success, proceed to next page
+                        }
+                    } catch (IOException e) {
+                        lastError = new StarRocksConnectorException(
+                                String.format(Locale.ROOT,
+                                        "Failed to call partition API on endpoint %s for %s.%s.%s",
+                                        endpoint, catalogName, dbName, tableName), e);
+                        LOG.warn("Attempt to fetch partition metadata from {} failed: {}", endpoint, e.getMessage());
+                    }
+                }
+
+                if (lastError != null) {
+                    throw lastError;
+                }
+            }
+        }
+
+        private static HttpUrl buildPartitionUrl(String endpoint, String catalogName, String dbName,
+                                                 String tableName, int pageNum, int pageSize) {
+            HttpUrl base = HttpUrl.parse(endpoint);
+            if (base == null) {
+                throw new StarRocksConnectorException("Invalid FE http endpoint: " + endpoint);
+            }
+            return base.newBuilder()
+                    .addPathSegment("api")
+                    .addPathSegment("v2")
+                    .addPathSegment("catalogs")
+                    .addPathSegment(catalogName)
+                    .addPathSegment("databases")
+                    .addPathSegment(dbName)
+                    .addPathSegment("tables")
+                    .addPathSegment(tableName)
+                    .addPathSegment("partition")
+                    .addQueryParameter("page_num", String.valueOf(pageNum))
+                    .addQueryParameter("page_size", String.valueOf(pageSize))
+                    .build();
+        }
+
+        private static PartitionPage parsePartitionResponse(String body, String url) {
+            try {
+                JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+                
+                // Check code field (v2 API uses "code" instead of "status")
+                if (root.has("code")) {
+                    String code = root.get("code").getAsString();
+                    if (!"0".equals(code)) {
+                        String message = root.has("message") ? root.get("message").getAsString() : body;
+                        throw new StarRocksConnectorException(
+                                String.format(Locale.ROOT, "FE %s returned code %s: %s", url, code, message));
+                    }
+                }
+
+                if (!root.has("result") || !root.get("result").isJsonObject()) {
+                    throw new StarRocksConnectorException("Missing 'result' in partition API response");
+                }
+
+                JsonObject result = root.getAsJsonObject("result");
+                int pages = result.has("pages") ? result.get("pages").getAsInt() : 1;
+                
+                List<PartitionEntry> partitions = new ArrayList<>();
+                if (result.has("items") && result.get("items").isJsonArray()) {
+                    for (JsonElement item : result.getAsJsonArray("items")) {
+                        if (!item.isJsonObject()) {
+                            continue;
+                        }
+                        JsonObject partitionJson = item.getAsJsonObject();
+                        String storagePath = partitionJson.has("storagePath") 
+                                ? partitionJson.get("storagePath").getAsString() : null;
+                        
+                        List<TabletEntry> tablets = new ArrayList<>();
+                        if (partitionJson.has("tablets") && partitionJson.get("tablets").isJsonArray()) {
+                            for (JsonElement tabletElem : partitionJson.getAsJsonArray("tablets")) {
+                                if (!tabletElem.isJsonObject()) {
+                                    continue;
+                                }
+                                JsonObject tabletJson = tabletElem.getAsJsonObject();
+                                if (tabletJson.has("id")) {
+                                    tablets.add(new TabletEntry(tabletJson.get("id").getAsLong()));
+                                }
+                            }
+                        }
+                        
+                        partitions.add(new PartitionEntry(storagePath, tablets));
+                    }
+                }
+
+                return new PartitionPage(pages, partitions);
+            } catch (StarRocksConnectorException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new StarRocksConnectorException("Failed to parse partition API response: " + body, e);
+            }
+        }
+
+        private static class PartitionPage {
+            final int pages;
+            final List<PartitionEntry> partitions;
+
+            PartitionPage(int pages, List<PartitionEntry> partitions) {
+                this.pages = pages;
+                this.partitions = partitions;
+            }
+        }
+
+        private static class PartitionEntry {
+            final String storagePath;
+            final List<TabletEntry> tablets;
+
+            PartitionEntry(String storagePath, List<TabletEntry> tablets) {
+                this.storagePath = storagePath;
+                this.tablets = tablets;
+            }
+        }
+
+        private static class TabletEntry {
+            final long id;
+
+            TabletEntry(long id) {
+                this.id = id;
+            }
+        }
     }
 
     final class QueryPlanResponse {
@@ -267,6 +445,21 @@ public interface StarRocksRestClient extends Closeable {
             public int getSchemaHash() {
                 return schemaHash;
             }
+        }
+    }
+
+    /**
+     * Partition metadata response from v2 partition API.
+     */
+    final class PartitionMetadataResponse {
+        private final Map<Long, String> tabletStoragePaths;
+
+        public PartitionMetadataResponse(Map<Long, String> tabletStoragePaths) {
+            this.tabletStoragePaths = ImmutableMap.copyOf(tabletStoragePaths);
+        }
+
+        public Map<Long, String> getTabletStoragePaths() {
+            return tabletStoragePaths;
         }
     }
 }

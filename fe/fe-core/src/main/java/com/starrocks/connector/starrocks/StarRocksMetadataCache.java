@@ -19,6 +19,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
+import com.google.gson.JsonObject;
 import com.starrocks.catalog.Column;
 import com.starrocks.connector.ConnectorContext;
 import com.starrocks.connector.ConnectorTableId;
@@ -178,6 +179,24 @@ public class StarRocksMetadataCache implements AutoCloseable {
                     + qualifiedName(key));
         }
         Map<Long, StarRocksExternalTable.Tablet> tablets = assembleTablets(restResponse, planInfo);
+        
+        // Fetch partition metadata for object_store mode
+        Map<Long, String> tabletStoragePaths = null;
+        if ("object_store".equals(config.getFetchMode())) {
+            try {
+                String catalogName = getCatalogNameForProviderFE();
+                StarRocksRestClient.PartitionMetadataResponse partitionMetadata =
+                        restClient.getPartitionMetadata(catalogName, key.dbName, key.tableName);
+                tabletStoragePaths = partitionMetadata.getTabletStoragePaths();
+                LOG.info("Fetched {} tablet storagePath mappings for table {}.{} in object_store mode",
+                        tabletStoragePaths.size(), key.dbName, key.tableName);
+            } catch (Exception e) {
+                LOG.warn("Failed to fetch partition metadata for {}.{} in object_store mode: {}",
+                        key.dbName, key.tableName, e.getMessage());
+                // Continue without storage paths; will rely on RPC fallback
+            }
+        }
+        
         ConnectorTableId tableId = tableIdCache.computeIfAbsent(key,
                 ignored -> ConnectorTableId.CONNECTOR_ID_GENERATOR.getNextId());
         return new StarRocksExternalTable(
@@ -189,7 +208,12 @@ public class StarRocksMetadataCache implements AutoCloseable {
                 restResponse.getOpaquedQueryPlan(),
                 tablets,
                 loadTimestamp,
-                buildExecutionProperties(config));
+                buildExecutionProperties(config, tabletStoragePaths));
+    }
+
+    private String getCatalogNameForProviderFE() {
+        // For now, default to "default_catalog"; could be made configurable later
+        return "default_catalog";
     }
 
     private String qualifiedName(TableCacheKey key) {
@@ -279,6 +303,11 @@ public class StarRocksMetadataCache implements AutoCloseable {
     }
 
     private Map<String, String> buildExecutionProperties(StarRocksConnectorConfig cfg) {
+        return buildExecutionProperties(cfg, null);
+    }
+
+    private Map<String, String> buildExecutionProperties(StarRocksConnectorConfig cfg,
+                                                        Map<Long, String> tabletStoragePaths) {
         ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
         if (!cfg.getFeHttpUrls().isEmpty()) {
             builder.put("fe_http_urls", String.join(";", cfg.getFeHttpUrls()));
@@ -295,6 +324,30 @@ public class StarRocksMetadataCache implements AutoCloseable {
         builder.put("request_retries", Integer.toString(cfg.getRequestRetries()));
         builder.put("connect_timeout_ms", Integer.toString(cfg.getConnectTimeoutMs()));
         builder.put("read_timeout_ms", Integer.toString(cfg.getReadTimeoutMs()));
+
+        // For object_store mode: include tablet storage path mapping
+        if ("object_store".equals(cfg.getFetchMode()) && tabletStoragePaths != null && !tabletStoragePaths.isEmpty()) {
+            try {
+                JsonObject mappingJson = new JsonObject();
+                for (Map.Entry<Long, String> entry : tabletStoragePaths.entrySet()) {
+                    mappingJson.addProperty(entry.getKey().toString(), entry.getValue());
+                }
+                builder.put("tablet_root_paths", mappingJson.toString());
+            } catch (Exception e) {
+                LOG.warn("Failed to serialize tablet_root_paths: {}", e.getMessage());
+            }
+        }
+
+        // Pass through fs.* properties from connector context (for object_store credentials)
+        if (context != null && context.getProperties() != null) {
+            for (Map.Entry<String, String> entry : context.getProperties().entrySet()) {
+                String key = entry.getKey();
+                if (key != null && key.startsWith("fs.")) {
+                    builder.put(key, entry.getValue());
+                }
+            }
+        }
+
         return builder.build();
     }
 

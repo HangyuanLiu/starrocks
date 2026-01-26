@@ -27,6 +27,7 @@
 #include "column/column_helper.h"
 #include "column/nullable_column.h"
 #include "common/logging.h"
+#include "connector/starrocks_lake_connector.h"
 #include "exec/arrow_to_starrocks_converter.h"
 #include "exec/arrow_type_traits.h"
 #include "exec/connector_scan_node.h"
@@ -125,7 +126,16 @@ StarRocksDataSourceProvider::StarRocksDataSourceProvider(ConnectorScanNode* scan
 }
 
 DataSourcePtr StarRocksDataSourceProvider::create_data_source(const TScanRange& scan_range) {
-    return std::make_unique<StarRocksDataSource>(this, scan_range);
+    // Determine which DataSource implementation to use based on fetch_mode
+    std::string fetch_mode = _execution_context.fetch_mode();
+    
+    if (fetch_mode == "object_store") {
+        // Use lake-based direct read for object_store mode
+        return std::make_unique<StarRocksLakeDataSource>(this, scan_range);
+    } else {
+        // Default to RPC mode for "rpc" or any other value
+        return std::make_unique<StarRocksDataSource>(this, scan_range);
+    }
 }
 
 const TupleDescriptor* StarRocksDataSourceProvider::tuple_descriptor(RuntimeState* state) const {
@@ -558,5 +568,7 @@ Status StarRocksDataSource::convert_arrow_to_chunk(const arrow::RecordBatch& bat
     *chunk = new_chunk;
     return Status::OK();
 }
+
+// ======================== Lake Reader (object_store mode) Implementation ========================
 
 } // namespace starrocks::connector
