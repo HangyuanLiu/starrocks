@@ -144,6 +144,7 @@ public class StarRocksConnectorConfig extends ConnectorConfig {
             throw new StarRocksConnectorException(
                     "Unsupported fetch mode '" + fetchMode + "', valid values are 'rpc' or 'object_store'");
         }
+        // RPC mode requires be_rpc_endpoints; object_store mode allows optional endpoints for fallback
         if ("rpc".equals(fetchModeLower) && Strings.isNullOrEmpty(beRpcEndpoints)) {
             throw new StarRocksConnectorException(
                     "Property '" + KEY_BE_RPC_ENDPOINTS + "' is required when fetch.mode = rpc");
