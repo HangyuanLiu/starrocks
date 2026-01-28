@@ -14,6 +14,9 @@
 
 #include "connector/starrocks_lake_connector.h"
 
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <string>
 #include <string_view>
 
@@ -207,6 +210,46 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
     // Support multiple prefixes: fs.*, aws.s3.*, aliyun.oss.*
     std::map<std::string, std::string> cloud_properties;
     bool has_cloud_properties = false;
+    bool has_s3_compatible_properties = false;
+
+    auto is_true_value = [](const std::string& value) -> bool {
+        if (value.empty()) {
+            return false;
+        }
+        std::string lower = value;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return lower == "true" || lower == "1";
+    };
+
+    auto prefer_virtual_host_style = [](const std::string& endpoint) -> bool {
+        if (endpoint.empty()) {
+            return false;
+        }
+        std::string lower = endpoint;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::string_view view = lower;
+        auto scheme_pos = view.find("://");
+        if (scheme_pos != std::string_view::npos) {
+            view.remove_prefix(scheme_pos + 3);
+        }
+        auto slash_pos = view.find('/');
+        if (slash_pos != std::string_view::npos) {
+            view = view.substr(0, slash_pos);
+        }
+
+        static const std::array<std::string_view, 8> kVirtualHostDomains = {
+                ".amazonaws.com", ".aliyuncs.com", ".myhuaweicloud.com", ".myqcloud.com",
+                ".volces.com", ".ivolces.com", ".ksyuncs.com", "storage.googleapis.com"};
+        for (const auto& suffix : kVirtualHostDomains) {
+            if (view.size() >= suffix.size() &&
+                view.compare(view.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                return true;
+            }
+        }
+        return false;
+    };
     
     LOG(INFO) << "=== Extracting cloud storage properties from execution context ===";
     LOG(INFO) << "Total properties in context: " << ctx.properties.size();
@@ -227,16 +270,20 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
                 if (key == "fs.oss.accessKeyId" || key == "fs.oss.access_key") {
                     cloud_properties["aws.s3.access_key"] = value;
                     cloud_properties["aliyun.oss.access_key"] = value;
+                    has_s3_compatible_properties = true;
                 } else if (key == "fs.oss.accessKeySecret" || key == "fs.oss.secret_key") {
                     cloud_properties["aws.s3.secret_key"] = value;
                     cloud_properties["aliyun.oss.secret_key"] = value;
+                    has_s3_compatible_properties = true;
                 } else if (key == "fs.oss.endpoint") {
                     cloud_properties["aws.s3.endpoint"] = value;
                     cloud_properties["aliyun.oss.endpoint"] = value;
+                    has_s3_compatible_properties = true;
                 } else if (key.find("fs.s3.") == 0) {
                     // Transform fs.s3.* to aws.s3.*
                     std::string aws_key = "aws." + key.substr(3); // Remove "fs." prefix
                     cloud_properties[aws_key] = value;
+                    has_s3_compatible_properties = true;
                 } else {
                     // Keep other fs.* properties as-is
                     cloud_properties[key] = value;
@@ -251,21 +298,27 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
                     // Keep other aws.s3.* properties as-is
                     cloud_properties[key] = value;
                 }
+                has_s3_compatible_properties = true;
             } else if (is_aliyun_prop) {
                 // aliyun.oss.* properties: already in correct format, keep as-is
                 cloud_properties[key] = value;
+                if (key == "aliyun.oss.access_key" &&
+                    cloud_properties.find("aws.s3.access_key") == cloud_properties.end()) {
+                    cloud_properties["aws.s3.access_key"] = value;
+                } else if (key == "aliyun.oss.secret_key" &&
+                           cloud_properties.find("aws.s3.secret_key") == cloud_properties.end()) {
+                    cloud_properties["aws.s3.secret_key"] = value;
+                } else if (key == "aliyun.oss.endpoint" &&
+                           cloud_properties.find("aws.s3.endpoint") == cloud_properties.end()) {
+                    cloud_properties["aws.s3.endpoint"] = value;
+                }
+                has_s3_compatible_properties = true;
             }
         }
     }
     
     // Also set default S3-compatible settings for OSS
     if (has_cloud_properties) {
-        // Set enable_path_style_access if not specified
-        if (cloud_properties.find("aws.s3.enable_path_style_access") == cloud_properties.end()) {
-            cloud_properties["aws.s3.enable_path_style_access"] = "true";
-            LOG(INFO) << "  Setting default: aws.s3.enable_path_style_access = true";
-        }
-        
         // Auto-detect SSL setting from endpoint
         auto endpoint_it = cloud_properties.find("aws.s3.endpoint");
         if (endpoint_it != cloud_properties.end()) {
@@ -280,6 +333,23 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
                 LOG(INFO) << "  Auto-detected HTTPS endpoint, setting: aws.s3.enable_ssl = true";
             }
         }
+
+        bool prefer_virtual_host = false;
+        if (endpoint_it != cloud_properties.end()) {
+            prefer_virtual_host = prefer_virtual_host_style(endpoint_it->second);
+        }
+
+        auto path_style_it = cloud_properties.find("aws.s3.enable_path_style_access");
+        if (prefer_virtual_host) {
+            if (path_style_it == cloud_properties.end() || is_true_value(path_style_it->second)) {
+                cloud_properties["aws.s3.enable_path_style_access"] = "false";
+                LOG(INFO) << "  Endpoint prefers virtual host style, setting: aws.s3.enable_path_style_access = false";
+            }
+        } else if (path_style_it == cloud_properties.end()) {
+            // Default to path style for compatibility with most S3-compatible providers.
+            cloud_properties["aws.s3.enable_path_style_access"] = "true";
+            LOG(INFO) << "  Setting default: aws.s3.enable_path_style_access = true";
+        }
     }
     
     if (!has_cloud_properties) {
@@ -288,6 +358,10 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
         return Status::OK();  // Not an error, but will likely fail later
     }
     
+    if (has_s3_compatible_properties) {
+        cloud_conf->__set_cloud_type(TCloudType::AWS);
+    }
+
     // Set cloud_properties in TCloudConfiguration
     cloud_conf->__set_cloud_properties(cloud_properties);
     cloud_conf->__isset.cloud_properties = true;
@@ -337,22 +411,30 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
 
     // Create FixedLocationProvider with the storage root
     auto location_provider = std::make_shared<lake::FixedLocationProvider>(storage_path);
+
+    const std::string tablet_meta_location =
+            location_provider->tablet_metadata_location(_scan_range_ctx.tablet_id, _scan_range_ctx.version);
+    const std::string bundle_meta_location =
+            location_provider->bundle_tablet_metadata_location(_scan_range_ctx.tablet_id, _scan_range_ctx.version);
+    LOG(INFO) << "Resolved tablet metadata location: " << tablet_meta_location;
+    LOG(INFO) << "Resolved bundle tablet metadata location: " << bundle_meta_location;
     
     // Create local TabletManager with zero cache (ephemeral usage for external scan)
     _lake_tablet_manager = std::make_shared<lake::TabletManager>(location_provider, 0);
     
-    // Get tablet metadata with our FileSystem that has credentials
-    // This ensures all metadata and data file access uses the correct credentials
+    // Resolve tablet metadata using the manager's detection logic (bundle vs per-tablet).
+    // This ensures we only read the correct metadata format for the tablet.
     ASSIGN_OR_RETURN(auto tablet_metadata,
-                     _lake_tablet_manager->get_tablet_metadata(_scan_range_ctx.tablet_id, _scan_range_ctx.version,
-                                                              true, 0, _fs_with_credentials));
+                     _lake_tablet_manager->get_single_tablet_metadata(_scan_range_ctx.tablet_id,
+                                                               _scan_range_ctx.version, true, 0,
+                                                               _fs_with_credentials));
     
     // Manually construct VersionedTablet with the metadata
     lake::VersionedTablet versioned_tablet(_lake_tablet_manager.get(), std::move(tablet_metadata));
-    
+    LOG(INFO) << "111";
     // Get tablet schema (returns shared_ptr directly, not StatusOr)
     auto tablet_schema = versioned_tablet.get_schema();
-    
+    LOG(INFO) << "22";
     // Build scanner columns from tuple descriptor (columns to read)
     std::vector<uint32_t> scanner_columns;
     for (const auto* slot : _tuple_desc->slots()) {

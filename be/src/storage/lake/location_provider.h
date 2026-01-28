@@ -114,7 +114,26 @@ public:
     }
 
 protected:
+    static bool is_absolute_path(std::string_view path) {
+        if (path.empty()) {
+            return false;
+        }
+        if (path.front() == '/') {
+            return true;
+        }
+        return path.find("://") != std::string_view::npos;
+    }
+
     static std::string join_path(std::string_view parent, std::string_view child) {
+        if (child.empty()) {
+            return std::string(parent);
+        }
+        if (is_absolute_path(child)) {
+            return std::string(child);
+        }
+        if (parent.empty()) {
+            return std::string(child);
+        }
         return fmt::format("{}/{}", parent, child);
     }
 };

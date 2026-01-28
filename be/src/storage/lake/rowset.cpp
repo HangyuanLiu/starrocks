@@ -495,6 +495,16 @@ Status Rowset::load_segments(std::vector<SegmentPtr>* segments, SegmentReadOptio
         return Status::OK();
     };
 
+    auto is_absolute_path = [](std::string_view path) -> bool {
+        if (path.empty()) {
+            return false;
+        }
+        if (path.front() == '/') {
+            return true;
+        }
+        return path.find("://") != std::string_view::npos;
+    };
+
     for (const auto& seg_name : metadata().segments()) {
         std::string segment_path;
         auto lake_io_opts = seg_options.lake_io_opts;
@@ -503,6 +513,12 @@ Status Rowset::load_segments(std::vector<SegmentPtr>* segments, SegmentReadOptio
         } else {
             segment_path = _tablet_mgr->segment_location(tablet_id(), seg_name);
         }
+        if (is_absolute_path(seg_name)) {
+            LOG(INFO) << "Segment name is absolute, using as-is. tablet=" << _tablet_id
+                      << " rowset=" << metadata().id() << " segment=" << seg_name;
+        }
+        LOG(INFO) << "Resolved segment path. tablet=" << _tablet_id << " rowset=" << metadata().id()
+                  << " segment=" << seg_name << " path=" << segment_path;
         auto segment_info = FileInfo{.path = segment_path, .fs = seg_options.fs};
         if (LIKELY(has_segment_size)) {
             segment_info.size = files_to_size.Get(index);
