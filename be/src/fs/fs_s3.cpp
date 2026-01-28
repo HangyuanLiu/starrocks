@@ -464,6 +464,8 @@ StatusOr<std::unique_ptr<RandomAccessFile>> S3FileSystem::new_random_access_file
     if (!uri.parse(path)) {
         return Status::InvalidArgument(fmt::format("Invalid S3 URI: {}", path));
     }
+    LOG(INFO) << "S3 open random access file. bucket=" << uri.bucket() << " key=" << uri.key()
+                           << " path=" << path;
     auto client = new_s3client(uri, _options);
     auto read_ahead_size = read_ahead_size_from_options(_options);
     auto input_stream =
@@ -477,6 +479,8 @@ StatusOr<std::unique_ptr<RandomAccessFile>> S3FileSystem::new_random_access_file
     if (!uri.parse(file_info.path)) {
         return Status::InvalidArgument(fmt::format("Invalid S3 URI: {}", file_info.path));
     }
+    LOG(INFO) << "S3 open random access file. bucket=" << uri.bucket() << " key=" << uri.key()
+                           << " path=" << file_info.path;
     auto client = new_s3client(uri, _options);
     auto read_ahead_size = read_ahead_size_from_options(_options);
     auto input_stream =

@@ -651,6 +651,12 @@ Status Rowset::load_segments(std::vector<SegmentPtr>* segments, SegmentReadOptio
         } else {
             segment_path = _tablet_mgr->segment_location(tablet_id(), seg_name);
         }
+        if (is_absolute_path(seg_name)) {
+            LOG(INFO) << "Segment name is absolute, using as-is. tablet=" << _tablet_id
+                      << " rowset=" << metadata().id() << " segment=" << seg_name;
+        }
+        LOG(INFO) << "Resolved segment path. tablet=" << _tablet_id << " rowset=" << metadata().id()
+                  << " segment=" << seg_name << " path=" << segment_path;
         auto segment_info = FileInfo{.path = segment_path, .fs = seg_options.fs};
         if (LIKELY(has_segment_size)) {
             segment_info.size = files_to_size.Get(index);
