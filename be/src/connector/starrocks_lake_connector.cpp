@@ -77,7 +77,7 @@ Status StarRocksLakeDataSource::get_next(RuntimeState* state, ChunkPtr* chunk) {
     
     RETURN_IF_ERROR(state->check_mem_limit("read chunk from lake storage"));
     
-    ASSIGN_OR_RETURN(auto chunk_ptr, 
+    ASSIGN_OR_RETURN(auto chunk_ptr,
                      ChunkHelper::new_chunk_pooled_checked(_prj_iter->output_schema(), state->chunk_size()));
     chunk->reset(chunk_ptr);
     
@@ -88,6 +88,16 @@ Status StarRocksLakeDataSource::get_next(RuntimeState* state, ChunkPtr* chunk) {
             _eos = true;
         }
         return status;
+    }
+
+    // Build slot_id to column index mapping for expression evaluation.
+    for (auto* slot : _materialized_slots) {
+        size_t column_index = chunk_ptr->schema()->get_field_index_by_name(slot->col_name());
+        if (column_index >= chunk_ptr->num_columns()) {
+            return Status::InternalError(strings::Substitute(
+                    "Column '$0' not found in chunk schema for slot_id $1", slot->col_name(), slot->id()));
+        }
+        chunk_ptr->set_slot_id_to_index(slot->id(), column_index);
     }
     
     // Update metrics
@@ -389,12 +399,12 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
     RETURN_IF_ERROR(parse_tablet_root_path(&storage_path));
 
     // Build cloud configuration from fs.* properties
-    TCloudConfiguration cloud_conf;
-    RETURN_IF_ERROR(build_cloud_configuration(&cloud_conf));
+    _cloud_conf = TCloudConfiguration();
+    RETURN_IF_ERROR(build_cloud_configuration(&_cloud_conf));
     
     // Create FileSystem with credentials for accessing object storage
-    if (cloud_conf.__isset.cloud_properties && !cloud_conf.cloud_properties.empty()) {
-        FSOptions fs_options(&cloud_conf);
+    if (_cloud_conf.__isset.cloud_properties && !_cloud_conf.cloud_properties.empty()) {
+        FSOptions fs_options(&_cloud_conf);
         auto fs_result = FileSystem::CreateUniqueFromString(storage_path, fs_options);
         if (!fs_result.ok()) {
             return Status::InternalError(strings::Substitute(
@@ -437,7 +447,8 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
     LOG(INFO) << "22";
     // Build scanner columns from tuple descriptor (columns to read)
     std::vector<uint32_t> scanner_columns;
-    for (const auto* slot : _tuple_desc->slots()) {
+    _materialized_slots.clear();
+    for (auto* slot : _tuple_desc->slots()) {
         if (slot->is_materialized()) {
             int32_t index = tablet_schema->field_index(slot->col_name());
             if (index < 0) {
@@ -445,6 +456,7 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
                     "Column '$0' not found in tablet schema", slot->col_name()));
             }
             scanner_columns.push_back(index);
+            _materialized_slots.push_back(slot);
         }
     }
     
