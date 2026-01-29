@@ -19,12 +19,14 @@
 #include <string>
 #include <vector>
 
-#include "connector/connector.h"
-#include "gen_cpp/QueryPlanExtra_types.h"
 #include "common/statusor.h"
+#include "connector/connector.h"
+#include "gen_cpp/CloudConfiguration_types.h"
+#include "gen_cpp/QueryPlanExtra_types.h"
 
 namespace starrocks {
 class TupleDescriptor;
+class SlotDescriptor;
 namespace lake {
 class TabletManager;
 } // namespace lake
@@ -85,6 +87,8 @@ private:
     std::shared_ptr<lake::TabletManager> _lake_tablet_manager;
     std::shared_ptr<ChunkIterator> _prj_iter;
     std::shared_ptr<FileSystem> _fs_with_credentials;  // FileSystem with object storage credentials
+    TCloudConfiguration _cloud_conf;
+    std::vector<SlotDescriptor*> _materialized_slots;
     bool _lake_reader_opened = false;
     
     // Metrics
