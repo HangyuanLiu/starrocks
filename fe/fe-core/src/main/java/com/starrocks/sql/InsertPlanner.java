@@ -40,6 +40,10 @@ import com.starrocks.common.profile.Timer;
 import com.starrocks.common.profile.Tracers;
 import com.starrocks.connector.ConnectorSinkShuffleMode;
 import com.starrocks.connector.ConnectorSinkSortScope;
+import com.starrocks.connector.starrocks.StarRocksConnectorMetadata;
+import com.starrocks.connector.starrocks.StarRocksExternalTable;
+import com.starrocks.http.rest.v2.vo.PartitionInfoView;
+import com.starrocks.http.rest.v2.vo.TableSchemaView;
 import com.starrocks.load.Load;
 import com.starrocks.planner.BlackHoleTableSink;
 import com.starrocks.planner.DataSink;
@@ -50,6 +54,7 @@ import com.starrocks.planner.MysqlTableSink;
 import com.starrocks.planner.OlapTableSink;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.SlotDescriptor;
+import com.starrocks.planner.StarRocksTableSink;
 import com.starrocks.planner.TableFunctionTableSink;
 import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.qe.ConnectContext;
@@ -292,6 +297,37 @@ public class InsertPlanner {
         }
     }
 
+    private StarRocksTableSink buildStarRocksTableSink(StarRocksExternalTable table,
+                                                       TupleDescriptor tupleDesc,
+                                                       InsertStmt insertStmt) {
+        String catalogName = table.getCatalogName();
+        String dbName = table.getCatalogDBName();
+        String tableName = table.getCatalogTableName();
+
+        java.util.Optional<com.starrocks.connector.ConnectorMetadata> optionalMetadata =
+                GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
+        if (optionalMetadata.isEmpty() || !(optionalMetadata.get() instanceof StarRocksConnectorMetadata)) {
+            throw new SemanticException("StarRocks connector metadata not available for catalog: " + catalogName);
+        }
+        StarRocksConnectorMetadata metadata = (StarRocksConnectorMetadata) optionalMetadata.get();
+        TableSchemaView schemaView = metadata.getTableSchemaView(dbName, tableName);
+        if (schemaView == null) {
+            throw new SemanticException("Failed to fetch StarRocks table schema for " + dbName + "." + tableName);
+        }
+
+        String tableType = schemaView.getTableType();
+        if (tableType == null || (!"LAKE".equalsIgnoreCase(tableType) && !"CLOUD_NATIVE".equalsIgnoreCase(tableType))) {
+            throw new SemanticException("Only shared-data StarRocks tables are supported for insert into external");
+        }
+
+        List<PartitionInfoView.PartitionView> partitions = metadata.listTablePartitions(dbName, tableName);
+        if (partitions == null || partitions.isEmpty()) {
+            throw new SemanticException("No partition metadata returned for StarRocks table " + dbName + "." + tableName);
+        }
+
+        return new StarRocksTableSink(table, tupleDesc, schemaView, partitions, insertStmt.getTxnId(), insertStmt.getLabel());
+    }
+
     public ExecPlan plan(InsertStmt insertStmt, ConnectContext session) {
         QueryRelation queryRelation = insertStmt.getQueryStatement().getQueryRelation();
         List<ColumnRefOperator> outputColumns = new ArrayList<>();
@@ -485,6 +521,8 @@ public class InsertPlanner {
             } else if (targetTable instanceof HiveTable) {
                 dataSink = new HiveTableSink((HiveTable) targetTable, tupleDesc,
                         isKeyPartitionStaticInsert(insertStmt, queryRelation), session.getSessionVariable());
+            } else if (targetTable instanceof StarRocksExternalTable) {
+                dataSink = buildStarRocksTableSink((StarRocksExternalTable) targetTable, tupleDesc, insertStmt);
             } else if (targetTable instanceof TableFunctionTable) {
                 dataSink = new TableFunctionTableSink((TableFunctionTable) targetTable);
             } else if (targetTable.isBlackHoleTable()) {
@@ -504,8 +542,11 @@ public class InsertPlanner {
 
             PlanFragment sinkFragment = execPlan.getFragments().get(0);
             if (canUsePipeline && (targetTable instanceof OlapTable || targetTable.isIcebergTable() ||
-                    targetTable.isHiveTable() || targetTable.isTableFunctionTable())) {
-                if (shuffleServiceEnable) {
+                    targetTable.isHiveTable() || targetTable instanceof StarRocksExternalTable ||
+                    targetTable.isTableFunctionTable())) {
+                if (targetTable instanceof StarRocksExternalTable) {
+                    sinkFragment.setPipelineDop(1);
+                } else if (shuffleServiceEnable) {
                     // For shuffle insert into, we only support tablet sink dop = 1
                     // because for tablet sink dop > 1, local passthourgh exchange will influence the order of sending,
                     // which may lead to inconsisten replica for primary key.
@@ -528,6 +569,8 @@ public class InsertPlanner {
                     sinkFragment.setHasHiveTableSink();
                 } else if (targetTable.isIcebergTable()) {
                     sinkFragment.setHasIcebergTableSink();
+                } else if (targetTable instanceof StarRocksExternalTable) {
+                    sinkFragment.setHasStarRocksTableSink();
                 } else if (targetTable.isTableFunctionTable()) {
                     sinkFragment.setHasTableFunctionTableSink();
                 }

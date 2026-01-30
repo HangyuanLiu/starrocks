@@ -90,7 +90,10 @@ import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.connector.ConnectorMetadata;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.connector.ConnectorMetadata;
 import com.starrocks.connector.iceberg.IcebergMetadata;
+import com.starrocks.connector.starrocks.StarRocksConnectorMetadata;
+import com.starrocks.connector.starrocks.StarRocksExternalTable;
 import com.starrocks.failpoint.FailPointExecutor;
 import com.starrocks.http.HttpConnectContext;
 import com.starrocks.http.HttpResultSender;
@@ -345,7 +348,7 @@ public class StmtExecutor {
     private HttpResultSender httpResultSender;
     private PrepareStmtContext prepareStmtContext = null;
     private boolean isInternalStmt = false;
-    
+
     // Store table query timeout info for error message
     private String tableQueryTimeoutTableName = null;
     private int tableQueryTimeoutValue = -1;
@@ -836,7 +839,7 @@ public class StmtExecutor {
         final boolean originSkipIcebergCache = context.isOnlyReadIcebergCache();
         if (parsedStmt instanceof InsertStmt || parsedStmt instanceof CreateTableAsSelectStmt) {
             context.setOnlyReadIcebergCache(true);
-        } else if (parsedStmt instanceof RefreshMaterializedViewStatement 
+        } else if (parsedStmt instanceof RefreshMaterializedViewStatement
                 || parsedStmt instanceof CreateMaterializedViewStatement) {
             context.setOnlyReadIcebergCache(true);
         }
@@ -1831,7 +1834,7 @@ public class StmtExecutor {
             if (!isSendFields && !isOutfileQuery && !isExplainAnalyze && !isPlanAdvisorAnalyze && !isArrowFlight) {
                 responseFields(rawScopedTimer, colNames, outputExprs);
             }
-            
+
             context.getAuditEventBuilder().setWriteClientTimeMs(rawScopedTimer.getTotalTime());
         }
 
@@ -3011,6 +3014,11 @@ public class StmtExecutor {
                     "External OLAP table only supports insert statement");
             String stmtLabel = ((InsertStmt) stmt).getLabel();
             label = Strings.isNullOrEmpty(stmtLabel) ? MetaUtils.genInsertLabel(context.getExecutionId()) : stmtLabel;
+        } else if (targetTable instanceof StarRocksExternalTable) {
+            Preconditions.checkState(stmt instanceof InsertStmt,
+                    "StarRocks external table only supports insert statement");
+            String stmtLabel = ((InsertStmt) stmt).getLabel();
+            label = Strings.isNullOrEmpty(stmtLabel) ? MetaUtils.genInsertLabel(context.getExecutionId()) : stmtLabel;
         } else if (targetTable instanceof OlapTable) {
             txnState = transactionMgr.getTransactionState(database.getId(), transactionId);
             if (txnState == null) {
@@ -3176,6 +3184,17 @@ public class StmtExecutor {
                             TransactionCommitFailedException.FILTER_DATA_ERR + ", tracking sql = " + trackingSql,
                             coord == null ? Collections.emptyList() : coord.getCommitInfos(),
                             coord == null ? Collections.emptyList() : coord.getFailInfos());
+                } else if (targetTable instanceof StarRocksExternalTable) {
+                    String stmtLabel = stmt instanceof InsertStmt ? ((InsertStmt) stmt).getLabel() : null;
+                    Optional<ConnectorMetadata> optionalMetadata =
+                            GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
+                    if (optionalMetadata.isPresent() && optionalMetadata.get() instanceof StarRocksConnectorMetadata) {
+                        StarRocksConnectorMetadata starrocksMetadata =
+                                (StarRocksConnectorMetadata) optionalMetadata.get();
+                        List<TSinkCommitInfo> commitInfos =
+                                coord == null ? Collections.emptyList() : coord.getSinkCommitInfos();
+                        starrocksMetadata.rollbackTransaction(dbName, tableName, stmtLabel, commitInfos);
+                    }
                 } else if (targetTable instanceof SystemTable || targetTable.isHiveTable() ||
                         targetTable.isIcebergTable() ||
                         targetTable.isTableFunctionTable() || targetTable.isBlackHoleTable()) {
@@ -3197,7 +3216,8 @@ public class StmtExecutor {
                 // if there is no data to load, the result of the insert statement is success
                 // otherwise, the result of the insert statement is failed
                 GlobalTransactionMgr mgr = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
-                if (!(targetTable instanceof ExternalOlapTable || targetTable instanceof OlapTable)) {
+                if (!(targetTable instanceof ExternalOlapTable || targetTable instanceof OlapTable
+                        || targetTable instanceof StarRocksExternalTable)) {
                     if (!(targetTable instanceof SystemTable || targetTable.isIcebergTable() ||
                             targetTable.isHiveTable() || targetTable.isTableFunctionTable() ||
                             targetTable.isBlackHoleTable())) {
@@ -3222,6 +3242,15 @@ public class StmtExecutor {
                     MetricRepo.COUNTER_LOAD_FINISHED.increase(1L);
                 } else {
                     txnStatus = TransactionStatus.COMMITTED;
+                }
+            } else if (targetTable instanceof StarRocksExternalTable) {
+                List<TSinkCommitInfo> commitInfos = coord.getSinkCommitInfos();
+                context.getGlobalStateMgr().getMetadataMgr()
+                        .finishSink(catalogName, dbName, tableName, commitInfos, null);
+                txnStatus = TransactionStatus.VISIBLE;
+                if (stmt instanceof InsertStmt) {
+                    String stmtLabel = ((InsertStmt) stmt).getLabel();
+                    label = Strings.isNullOrEmpty(stmtLabel) ? label : stmtLabel;
                 }
             } else if (targetTable instanceof SystemTable) {
                 // schema table does not need txn
@@ -3369,6 +3398,17 @@ public class StmtExecutor {
                             errMsg,
                             coord == null ? Collections.emptyList() : coord.getCommitInfos(),
                             coord == null ? Collections.emptyList() : coord.getFailInfos());
+                } else if (targetTable instanceof StarRocksExternalTable) {
+                    String stmtLabel = stmt instanceof InsertStmt ? ((InsertStmt) stmt).getLabel() : null;
+                    Optional<ConnectorMetadata> optionalMetadata =
+                            GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
+                    if (optionalMetadata.isPresent() && optionalMetadata.get() instanceof StarRocksConnectorMetadata) {
+                        StarRocksConnectorMetadata starrocksMetadata =
+                                (StarRocksConnectorMetadata) optionalMetadata.get();
+                        List<TSinkCommitInfo> commitInfos =
+                                coord == null ? Collections.emptyList() : coord.getSinkCommitInfos();
+                        starrocksMetadata.rollbackTransaction(dbName, tableName, stmtLabel, commitInfos);
+                    }
                 } else if (targetTable.isExternalTableWithFileSystem()) {
                     GlobalStateMgr.getCurrentState().getMetadataMgr().abortSink(
                             catalogName, dbName, tableName, coord.getSinkCommitInfos());

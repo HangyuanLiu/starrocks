@@ -615,6 +615,9 @@ struct THiveFileInfo {
 struct TSinkCommitInfo {
     1: optional TIcebergDataFile iceberg_data_file
     2: optional THiveFileInfo hive_file_info
+    3: optional TTabletCommitInfo starrocks_tablet_commit_info
+    4: optional string starrocks_label
+    5: optional i64 starrocks_txn_id
     // ... for other tables sink commit info
 
     100: optional bool is_overwrite;

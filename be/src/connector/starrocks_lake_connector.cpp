@@ -39,6 +39,32 @@
 #include "util/json.h"
 #include "velocypack/vpack.h"
 
+namespace {
+
+bool is_unsupported_object_storage_property(std::string_view key) {
+    static const std::array<std::string_view, 7> kUnsupportedPrefixes = {
+            "fs.s3a.", "fs.s3n.", "fs.s3.", "fs.oss.", "fs.cos.", "fs.obs.", "aliyun.oss."};
+    for (const auto& prefix : kUnsupportedPrefixes) {
+        if (key.rfind(prefix, 0) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string join_keys(const std::vector<std::string>& keys) {
+    std::string result;
+    for (size_t i = 0; i < keys.size(); ++i) {
+        if (i > 0) {
+            result.append(", ");
+        }
+        result.append(keys[i]);
+    }
+    return result;
+}
+
+} // namespace
+
 namespace starrocks::connector {
 
 StarRocksLakeDataSource::StarRocksLakeDataSource(const StarRocksDataSourceProvider* provider,
@@ -215,12 +241,12 @@ Status StarRocksLakeDataSource::parse_tablet_root_path(std::string* storage_path
 
 Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* cloud_conf) {
     const auto& ctx = _provider->execution_context();
-    
-    // Extract cloud storage properties and build cloud_properties map
-    // Support multiple prefixes: fs.*, aws.s3.*, aliyun.oss.*
+
+    // Extract cloud storage properties and build cloud_properties map.
+    // Only aws.s3.* properties are supported.
     std::map<std::string, std::string> cloud_properties;
+    std::vector<std::string> unsupported_keys;
     bool has_cloud_properties = false;
-    bool has_s3_compatible_properties = false;
 
     auto is_true_value = [](const std::string& value) -> bool {
         if (value.empty()) {
@@ -263,82 +289,43 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
     
     LOG(INFO) << "=== Extracting cloud storage properties from execution context ===";
     LOG(INFO) << "Total properties in context: " << ctx.properties.size();
-    
+
     for (const auto& [key, value] : ctx.properties) {
-        // Check if it's a cloud storage property
-        bool is_fs_prop = key.find("fs.") == 0;
-        bool is_aws_prop = key.find("aws.s3.") == 0;
-        bool is_aliyun_prop = key.find("aliyun.oss.") == 0;
-        
-        if (is_fs_prop || is_aws_prop || is_aliyun_prop) {
-            has_cloud_properties = true;
-            // Print all cloud storage properties in plain text for debugging
-            LOG(INFO) << "  " << key << " = " << value;
-            
-            if (is_fs_prop) {
-                // Transform fs.oss.* to aws.s3.* and aliyun.oss.* for compatibility
-                if (key == "fs.oss.accessKeyId" || key == "fs.oss.access_key") {
-                    cloud_properties["aws.s3.access_key"] = value;
-                    cloud_properties["aliyun.oss.access_key"] = value;
-                    has_s3_compatible_properties = true;
-                } else if (key == "fs.oss.accessKeySecret" || key == "fs.oss.secret_key") {
-                    cloud_properties["aws.s3.secret_key"] = value;
-                    cloud_properties["aliyun.oss.secret_key"] = value;
-                    has_s3_compatible_properties = true;
-                } else if (key == "fs.oss.endpoint") {
-                    cloud_properties["aws.s3.endpoint"] = value;
-                    cloud_properties["aliyun.oss.endpoint"] = value;
-                    has_s3_compatible_properties = true;
-                } else if (key.find("fs.s3.") == 0) {
-                    // Transform fs.s3.* to aws.s3.*
-                    std::string aws_key = "aws." + key.substr(3); // Remove "fs." prefix
-                    cloud_properties[aws_key] = value;
-                    has_s3_compatible_properties = true;
-                } else {
-                    // Keep other fs.* properties as-is
-                    cloud_properties[key] = value;
-                }
-            } else if (is_aws_prop) {
-                // aws.s3.* properties: transform aws.s3.accessKeyId/accessKeySecret to standard keys
-                if (key == "aws.s3.accessKeyId") {
-                    cloud_properties["aws.s3.access_key"] = value;
-                } else if (key == "aws.s3.accessKeySecret") {
-                    cloud_properties["aws.s3.secret_key"] = value;
-                } else {
-                    // Keep other aws.s3.* properties as-is
-                    cloud_properties[key] = value;
-                }
-                has_s3_compatible_properties = true;
-            } else if (is_aliyun_prop) {
-                // aliyun.oss.* properties: already in correct format, keep as-is
-                cloud_properties[key] = value;
-                if (key == "aliyun.oss.access_key" &&
-                    cloud_properties.find("aws.s3.access_key") == cloud_properties.end()) {
-                    cloud_properties["aws.s3.access_key"] = value;
-                } else if (key == "aliyun.oss.secret_key" &&
-                           cloud_properties.find("aws.s3.secret_key") == cloud_properties.end()) {
-                    cloud_properties["aws.s3.secret_key"] = value;
-                } else if (key == "aliyun.oss.endpoint" &&
-                           cloud_properties.find("aws.s3.endpoint") == cloud_properties.end()) {
-                    cloud_properties["aws.s3.endpoint"] = value;
-                }
-                has_s3_compatible_properties = true;
+        if (key.rfind("aws.s3.", 0) != 0) {
+            if (is_unsupported_object_storage_property(key)) {
+                unsupported_keys.push_back(key);
             }
+            continue;
+        }
+        has_cloud_properties = true;
+        LOG(INFO) << "  " << key << " = " << value;
+
+        if (key == "aws.s3.accessKeyId") {
+            cloud_properties["aws.s3.access_key"] = value;
+        } else if (key == "aws.s3.accessKeySecret") {
+            cloud_properties["aws.s3.secret_key"] = value;
+        } else {
+            cloud_properties[key] = value;
         }
     }
     
+    if (!unsupported_keys.empty()) {
+        return Status::InvalidArgument(
+                strings::Substitute("Unsupported object storage properties detected: [$0]. "
+                                    "Only aws.s3.* properties are supported for StarRocks external queries.",
+                                    join_keys(unsupported_keys)));
+    }
+
     // Also set default S3-compatible settings for OSS
     if (has_cloud_properties) {
-        // Auto-detect SSL setting from endpoint
         auto endpoint_it = cloud_properties.find("aws.s3.endpoint");
-        if (endpoint_it != cloud_properties.end()) {
+        auto ssl_it = cloud_properties.find("aws.s3.enable_ssl");
+        if (endpoint_it != cloud_properties.end() && ssl_it == cloud_properties.end()) {
             const std::string& endpoint = endpoint_it->second;
             if (endpoint.find("http://") == 0) {
-                // HTTP endpoint, disable SSL
                 cloud_properties["aws.s3.enable_ssl"] = "false";
                 LOG(INFO) << "  Auto-detected HTTP endpoint, setting: aws.s3.enable_ssl = false";
             } else if (endpoint.find("https://") == 0) {
-                // HTTPS endpoint, enable SSL
                 cloud_properties["aws.s3.enable_ssl"] = "true";
                 LOG(INFO) << "  Auto-detected HTTPS endpoint, setting: aws.s3.enable_ssl = true";
             }
@@ -356,28 +343,25 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
                 LOG(INFO) << "  Endpoint prefers virtual host style, setting: aws.s3.enable_path_style_access = false";
             }
         } else if (path_style_it == cloud_properties.end()) {
-            // Default to path style for compatibility with most S3-compatible providers.
             cloud_properties["aws.s3.enable_path_style_access"] = "true";
             LOG(INFO) << "  Setting default: aws.s3.enable_path_style_access = true";
         }
     }
-    
+
     if (!has_cloud_properties) {
-        LOG(WARNING) << "No cloud storage properties (fs.*, aws.s3.*, aliyun.oss.*) found for object_store mode. "
+        LOG(WARNING) << "No cloud storage properties (aws.s3.*) found for object_store mode. "
                      << "Object storage access may fail without proper credentials.";
         return Status::OK();  // Not an error, but will likely fail later
     }
-    
-    if (has_s3_compatible_properties) {
-        cloud_conf->__set_cloud_type(TCloudType::AWS);
-    }
+
+    cloud_conf->__set_cloud_type(TCloudType::AWS);
 
     // Set cloud_properties in TCloudConfiguration
     cloud_conf->__set_cloud_properties(cloud_properties);
     cloud_conf->__isset.cloud_properties = true;
     
-    LOG(INFO) << "Built CloudConfiguration with " << cloud_properties.size() 
-              << " properties (including transformed keys) for object storage access";
+    LOG(INFO) << "Built CloudConfiguration with " << cloud_properties.size()
+              << " aws.s3 properties for object storage access";
     
     // Log final property keys for verification
     LOG(INFO) << "Final cloud_properties keys:";
@@ -398,7 +382,7 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
     std::string storage_path;
     RETURN_IF_ERROR(parse_tablet_root_path(&storage_path));
 
-    // Build cloud configuration from fs.* properties
+    // Build cloud configuration from aws.s3.* properties
     _cloud_conf = TCloudConfiguration();
     RETURN_IF_ERROR(build_cloud_configuration(&_cloud_conf));
     
@@ -409,7 +393,7 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
         if (!fs_result.ok()) {
             return Status::InternalError(strings::Substitute(
                 "Failed to create FileSystem for storage path '$0' with credentials: $1. "
-                "Please verify fs.* properties (fs.oss.accessKeyId, fs.oss.accessKeySecret, fs.oss.endpoint, etc.) "
+                "Please verify aws.s3.* properties (aws.s3.access_key, aws.s3.secret_key, aws.s3.endpoint, etc.) "
                 "are correctly configured in the catalog.",
                 storage_path, fs_result.status().message()));
         }

@@ -18,10 +18,14 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.starrocks.connector.ConnectorContext;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.http.rest.v2.vo.PartitionInfoView;
+import com.starrocks.http.rest.v2.vo.TableSchemaView;
 import com.starrocks.rpc.ConfigurableSerDesFactory;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TQueryPlanInfo;
 import com.starrocks.thrift.TSlotDescriptor;
+import com.starrocks.thrift.TTabletCommitInfo;
+import com.starrocks.thrift.TTabletFailInfo;
 import com.starrocks.thrift.TTabletVersionInfo;
 import com.starrocks.thrift.TTupleDescriptor;
 import com.starrocks.type.IntegerType;
@@ -253,6 +257,45 @@ public class StarRocksMetadataCacheTest {
                         String.format(Locale.ROOT, "Unknown table %s.%s", dbName, tableName));
             }
             return response;
+        }
+
+        @Override
+        public PartitionMetadataResponse getPartitionMetadata(String catalogName, String dbName, String tableName) {
+            return null;
+        }
+
+        @Override
+        public TableSchemaView getTableSchema(String catalogName, String dbName, String tableName) {
+            return null;
+        }
+
+        @Override
+        public List<PartitionInfoView.PartitionView> listTablePartitions(
+                String catalogName, String dbName, String tableName) {
+            return List.of();
+        }
+
+        @Override
+        public TransactionResult beginTransaction(
+                String catalogName, String dbName, String tableName, String label, int timeoutSecs) {
+            return null;
+        }
+
+        @Override
+        public TransactionResult prepareTransaction(String catalogName, String dbName, String label,
+                List<TTabletCommitInfo> successTablets, List<TTabletFailInfo> failureTablets) {
+            return null;
+        }
+
+        @Override
+        public TransactionResult commitTransaction(String catalogName, String dbName, String label) {
+            return null;
+        }
+
+        @Override
+        public TransactionResult rollbackTransaction(
+                String catalogName, String dbName, String label, List<TTabletFailInfo> failureTablets) {
+            return null;
         }
 
         @Override

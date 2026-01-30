@@ -24,10 +24,14 @@ import com.starrocks.catalog.Column;
 import com.starrocks.connector.ConnectorContext;
 import com.starrocks.connector.ConnectorTableId;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.http.rest.v2.vo.PartitionInfoView;
+import com.starrocks.http.rest.v2.vo.TableSchemaView;
 import com.starrocks.rpc.ConfigurableSerDesFactory;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TQueryPlanInfo;
 import com.starrocks.thrift.TSlotDescriptor;
+import com.starrocks.thrift.TTabletCommitInfo;
+import com.starrocks.thrift.TTabletFailInfo;
 import com.starrocks.thrift.TTabletVersionInfo;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeDeserializer;
@@ -162,6 +166,53 @@ public class StarRocksMetadataCache implements AutoCloseable {
 
     public void invalidateTable(String dbName, String tableName) {
         tableCache.remove(TableCacheKey.of(dbName, tableName));
+    }
+
+    public TableSchemaView getTableSchemaView(String dbName, String tableName) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(dbName), "dbName is null or empty");
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(tableName), "tableName is null or empty");
+        String catalogName = getCatalogNameForProviderFE();
+        return restClient.getTableSchema(catalogName, dbName, tableName);
+    }
+
+    public List<PartitionInfoView.PartitionView> listTablePartitions(String dbName, String tableName) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(dbName), "dbName is null or empty");
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(tableName), "tableName is null or empty");
+        String catalogName = getCatalogNameForProviderFE();
+        return restClient.listTablePartitions(catalogName, dbName, tableName);
+    }
+
+    public StarRocksRestClient.TransactionResult beginTransaction(String dbName, String tableName, String label,
+                                                                  int timeoutSecs) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(dbName), "dbName is null or empty");
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(tableName), "tableName is null or empty");
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(label), "label is null or empty");
+        String catalogName = getCatalogNameForProviderFE();
+        return restClient.beginTransaction(catalogName, dbName, tableName, label, timeoutSecs);
+    }
+
+    public StarRocksRestClient.TransactionResult prepareTransaction(String dbName, String label,
+                                                                    List<TTabletCommitInfo> committedTablets,
+                                                                    List<TTabletFailInfo> failedTablets) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(dbName), "dbName is null or empty");
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(label), "label is null or empty");
+        String catalogName = getCatalogNameForProviderFE();
+        return restClient.prepareTransaction(catalogName, dbName, label, committedTablets, failedTablets);
+    }
+
+    public StarRocksRestClient.TransactionResult commitTransaction(String dbName, String label) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(dbName), "dbName is null or empty");
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(label), "label is null or empty");
+        String catalogName = getCatalogNameForProviderFE();
+        return restClient.commitTransaction(catalogName, dbName, label);
+    }
+
+    public StarRocksRestClient.TransactionResult rollbackTransaction(String dbName, String label,
+                                                                     List<TTabletFailInfo> failedTablets) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(dbName), "dbName is null or empty");
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(label), "label is null or empty");
+        String catalogName = getCatalogNameForProviderFE();
+        return restClient.rollbackTransaction(catalogName, dbName, label, failedTablets);
     }
 
     private StarRocksExternalTable loadTableMetadata(TableCacheKey key, long loadTimestamp) {
@@ -309,6 +360,7 @@ public class StarRocksMetadataCache implements AutoCloseable {
     private Map<String, String> buildExecutionProperties(StarRocksConnectorConfig cfg,
                                                         Map<Long, String> tabletStoragePaths) {
         ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
+        boolean objectStoreMode = "object_store".equals(cfg.getFetchMode());
         if (!cfg.getFeHttpUrls().isEmpty()) {
             builder.put("fe_http_urls", String.join(";", cfg.getFeHttpUrls()));
         }
@@ -339,28 +391,46 @@ public class StarRocksMetadataCache implements AutoCloseable {
         }
 
         // Pass through cloud storage properties from connector context (for object_store credentials)
-        // Support multiple property prefixes: fs.*, aws.s3.*, aliyun.oss.*
+        // Only aws.s3.* properties are supported.
         if (context != null && context.getProperties() != null) {
             int cloudPropertiesCount = 0;
+            List<String> unsupportedKeys = new ArrayList<>();
             for (Map.Entry<String, String> entry : context.getProperties().entrySet()) {
                 String key = entry.getKey();
-                if (key != null && (key.startsWith("fs.") || 
-                                   key.startsWith("aws.s3.") || 
-                                   key.startsWith("aliyun.oss."))) {
+                if (key == null) {
+                    continue;
+                }
+                if (key.startsWith("aws.s3.")) {
                     builder.put(key, entry.getValue());
                     cloudPropertiesCount++;
                     // Print all cloud storage properties in plain text for debugging
                     LOG.info("Passing cloud storage property to BE: {} = {}", key, entry.getValue());
+                } else if (objectStoreMode && isUnsupportedObjectStorageProperty(key)) {
+                    unsupportedKeys.add(key);
                 }
+            }
+            if (!unsupportedKeys.isEmpty()) {
+                throw new StarRocksConnectorException(
+                        "Only aws.s3.* properties are supported for object_store mode. Unsupported keys: "
+                                + String.join(", ", unsupportedKeys));
             }
             if ("object_store".equals(cfg.getFetchMode()) && cloudPropertiesCount == 0) {
                 LOG.warn("object_store mode enabled but no cloud storage properties found in catalog configuration. " +
-                        "Object storage access may fail. Please configure properties like " +
-                        "fs.oss.*, aws.s3.*, or aliyun.oss.* for credentials.");
+                        "Object storage access may fail. Please configure aws.s3.* properties for credentials.");
             }
         }
 
         return builder.build();
+    }
+
+    private static boolean isUnsupportedObjectStorageProperty(String key) {
+        return key.startsWith("fs.s3a.")
+                || key.startsWith("fs.s3n.")
+                || key.startsWith("fs.s3.")
+                || key.startsWith("fs.oss.")
+                || key.startsWith("fs.cos.")
+                || key.startsWith("fs.obs.")
+                || key.startsWith("aliyun.oss.");
     }
 
     @Override
