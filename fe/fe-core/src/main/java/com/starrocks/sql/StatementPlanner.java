@@ -35,6 +35,8 @@ import com.starrocks.common.FeConstants;
 import com.starrocks.common.LabelAlreadyUsedException;
 import com.starrocks.common.profile.Timer;
 import com.starrocks.common.profile.Tracers;
+import com.starrocks.connector.ConnectorMetadata;
+import com.starrocks.connector.starrocks.StarRocksConnectorMetadata;
 import com.starrocks.http.HttpConnectContext;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.ResultSink;
@@ -93,6 +95,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.starrocks.qe.StmtExecutor.buildExplainString;
@@ -582,6 +585,8 @@ public class StatementPlanner {
         GlobalTransactionMgr transactionMgr = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
         TransactionState.LoadJobSourceType sourceType = TransactionState.LoadJobSourceType.INSERT_STREAMING;
         long txnId = DmlStmt.INVALID_TXN_ID;
+        LOG.info("Begin transaction: catalog={}, db={}, table={}, tableType={}, stmtType={}",
+                catalogName, dbName, tableName, targetTable.getType(), stmt.getClass().getSimpleName());
         if (targetTable instanceof ExternalOlapTable) {
             if (!(stmt instanceof InsertStmt)) {
                 throw UnsupportedException.unsupportedException("External OLAP table only supports insert statement");
@@ -605,11 +610,29 @@ public class StatementPlanner {
                     tbl.getSourceTableHost(),
                     tbl.getSourceTablePort(),
                     authenticateParams);
+        } else if (targetTable.getType() == Table.TableType.STARROCKS) {
+            if (!(stmt instanceof InsertStmt)) {
+                throw UnsupportedException.unsupportedException("StarRocks external table only supports insert statement");
+            }
+            String stmtLabel = ((InsertStmt) stmt).getLabel();
+            label = Strings.isNullOrEmpty(stmtLabel) ? MetaUtils.genInsertLabel(session.getExecutionId()) : stmtLabel;
+            ((InsertStmt) stmt).setLabel(label);
+            LOG.info("Begin StarRocks external transaction via REST: catalog={}, db={}, table={}, label={}, timeoutSec={}",
+                    catalogName, dbName, tableName, label, session.getExecTimeout());
+
+            Optional<ConnectorMetadata> optionalMetadata =
+                    GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
+            if (optionalMetadata.isEmpty() || !(optionalMetadata.get() instanceof StarRocksConnectorMetadata)) {
+                throw new SemanticException("StarRocks connector metadata not available for catalog: " + catalogName);
+            }
+            StarRocksConnectorMetadata starrocksMetadata = (StarRocksConnectorMetadata) optionalMetadata.get();
+            txnId = starrocksMetadata.beginTransaction(dbName, tableName, label, session.getExecTimeout());
         } else if (targetTable instanceof SystemTable || targetTable.isIcebergTable() || targetTable.isHiveTable()
                 || targetTable.isTableFunctionTable() || targetTable.isBlackHoleTable()) {
             // schema table and iceberg and hive table does not need txn
         } else {
             long dbId = db.getId();
+            LOG.info("Begin local transaction: dbId={}, tableId={}, label={}", dbId, targetTable.getId(), label);
             txnId = transactionMgr.beginTransaction(
                     dbId,
                     Lists.newArrayList(targetTable.getId()),
@@ -654,6 +677,17 @@ public class StatementPlanner {
                 ExternalOlapTable tbl = (ExternalOlapTable) targetTable;
                 RemoteTransactionMgr.abortRemoteTransaction(tbl.getSourceTableDbId(), txnId, tbl.getSourceTableHost(),
                         tbl.getSourceTablePort(), errMsg, Collections.emptyList(), Collections.emptyList());
+            } else if (targetTable.getType() == Table.TableType.STARROCKS) {
+                String stmtLabel = stmt instanceof InsertStmt ? ((InsertStmt) stmt).getLabel() : null;
+                String label = Strings.isNullOrEmpty(stmtLabel)
+                        ? MetaUtils.genInsertLabel(session.getExecutionId())
+                        : stmtLabel;
+                Optional<ConnectorMetadata> optionalMetadata =
+                        GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
+                if (optionalMetadata.isPresent() && optionalMetadata.get() instanceof StarRocksConnectorMetadata) {
+                    StarRocksConnectorMetadata starrocksMetadata = (StarRocksConnectorMetadata) optionalMetadata.get();
+                    starrocksMetadata.rollbackTransaction(dbName, targetTable.getName(), label, Collections.emptyList());
+                }
             } else if (targetTable instanceof OlapTable) {
                 GlobalTransactionMgr transactionMgr = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
                 transactionMgr.abortTransaction(

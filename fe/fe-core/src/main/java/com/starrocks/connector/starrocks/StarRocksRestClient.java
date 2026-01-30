@@ -17,10 +17,19 @@ package com.starrocks.connector.starrocks;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.annotations.SerializedName;
+import com.google.gson.reflect.TypeToken;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.http.rest.v2.RestBaseResultV2;
+import com.starrocks.http.rest.v2.RestBaseResultV2.PagedResult;
+import com.starrocks.http.rest.v2.vo.PartitionInfoView;
+import com.starrocks.http.rest.v2.vo.TableSchemaView;
+import com.starrocks.thrift.TTabletCommitInfo;
+import com.starrocks.thrift.TTabletFailInfo;
 import okhttp3.Credentials;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
@@ -33,6 +42,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,10 +71,39 @@ public interface StarRocksRestClient extends Closeable {
      */
     PartitionMetadataResponse getPartitionMetadata(String catalogName, String dbName, String tableName);
 
+    TableSchemaView getTableSchema(String catalogName, String dbName, String tableName);
+
+    List<PartitionInfoView.PartitionView> listTablePartitions(String catalogName, String dbName, String tableName);
+
+    TransactionResult beginTransaction(String catalogName, String dbName, String tableName, String label, int timeoutSecs);
+
+    TransactionResult prepareTransaction(String catalogName, String dbName, String label,
+                                         List<TTabletCommitInfo> successTablets, List<TTabletFailInfo> failureTablets);
+
+    TransactionResult commitTransaction(String catalogName, String dbName, String label);
+
+    TransactionResult rollbackTransaction(String catalogName, String dbName, String label,
+                                          List<TTabletFailInfo> failureTablets);
+
     @Override
     void close();
 
     final class DefaultStarRocksRestClient implements StarRocksRestClient {
+
+        private static final int DEFAULT_PAGE_SIZE = 100;
+        private static final int BYPASS_WRITE_JOB_SOURCE_TYPE = 11;
+        private static final String HEADER_DATABASE = "db";
+        private static final String HEADER_TABLE = "table";
+        private static final String HEADER_LABEL = "label";
+        private static final String HEADER_TIMEOUT = "timeout";
+        private static final String PARAM_PAGE_NUM = "page_num";
+        private static final String PARAM_PAGE_SIZE = "page_size";
+        private static final String PARAM_TEMPORARY = "temporary";
+        private static final String PARAM_SOURCE_TYPE = "source_type";
+        private static final String BODY_COMMITTED_TABLETS = "committed_tablets";
+        private static final String BODY_FAILED_TABLETS = "failed_tablets";
+
+        private static final Gson GSON = new Gson();
 
         private final List<String> endpoints;
         private final OkHttpClient httpClient;
@@ -157,6 +196,134 @@ public interface StarRocksRestClient extends Closeable {
             throw new StarRocksConnectorException("Unknown error fetching query plan");
         }
 
+        @Override
+        public TableSchemaView getTableSchema(String catalogName, String dbName, String tableName) {
+            Preconditions.checkNotNull(catalogName, "catalogName is null");
+            Preconditions.checkNotNull(dbName, "dbName is null");
+            Preconditions.checkNotNull(tableName, "tableName is null");
+
+            StarRocksConnectorException lastError = null;
+            int attempt = 0;
+            int maxAttempts = Math.max(1, retries) * endpoints.size();
+            while (attempt < maxAttempts) {
+                String endpoint = endpoints.get(attempt % endpoints.size());
+                attempt++;
+                try {
+                    HttpUrl url = buildSchemaUrl(endpoint, catalogName, dbName, tableName);
+                    Request request = new Request.Builder()
+                            .url(url)
+                            .get()
+                            .addHeader("Authorization", authorizationHeader)
+                            .build();
+                    try (Response response = httpClient.newCall(request).execute()) {
+                        String bodyString = response.body() != null ? response.body().string() : "";
+                        if (!response.isSuccessful()) {
+                            String message = String.format(Locale.ROOT,
+                                    "HTTP %d when fetching schema from %s: %s",
+                                    response.code(), url, bodyString);
+                            lastError = new StarRocksConnectorException(message);
+                            LOG.warn(message);
+                            continue;
+                        }
+                        return parseSchemaResponse(bodyString, url.toString());
+                    }
+                } catch (IOException e) {
+                    lastError = new StarRocksConnectorException(
+                            String.format(Locale.ROOT,
+                                    "Failed to call schema API on endpoint %s for %s.%s.%s",
+                                    endpoint, catalogName, dbName, tableName), e);
+                    LOG.warn("Attempt to fetch schema from {} failed: {}", endpoint, e.getMessage());
+                }
+            }
+            if (lastError != null) {
+                throw lastError;
+            }
+            throw new StarRocksConnectorException("Unknown error fetching schema");
+        }
+
+        @Override
+        public List<PartitionInfoView.PartitionView> listTablePartitions(String catalogName, String dbName, String tableName) {
+            Preconditions.checkNotNull(catalogName, "catalogName is null");
+            Preconditions.checkNotNull(dbName, "dbName is null");
+            Preconditions.checkNotNull(tableName, "tableName is null");
+
+            List<PartitionInfoView.PartitionView> partitions = new ArrayList<>();
+            int pageNum = 0;
+            while (true) {
+                PagedResult<PartitionInfoView.PartitionView> page =
+                        fetchPartitionPage(catalogName, dbName, tableName, pageNum, DEFAULT_PAGE_SIZE);
+                if (page == null || page.getItems() == null) {
+                    break;
+                }
+                partitions.addAll(page.getItems());
+                Integer totalPages = page.getPages();
+                if (totalPages == null || totalPages <= 0) {
+                    break;
+                }
+                pageNum++;
+                if (pageNum >= totalPages) {
+                    break;
+                }
+            }
+            return partitions;
+        }
+
+        @Override
+        public TransactionResult beginTransaction(String catalogName, String dbName, String tableName, String label,
+                                                  int timeoutSecs) {
+            Preconditions.checkNotNull(catalogName, "catalogName is null");
+            Preconditions.checkNotNull(dbName, "dbName is null");
+            Preconditions.checkNotNull(tableName, "tableName is null");
+            Preconditions.checkNotNull(label, "label is null");
+
+            RequestBody body = RequestBody.create("", JSON);
+            return doTransaction("begin", dbName, tableName, label, timeoutSecs, body, BYPASS_WRITE_JOB_SOURCE_TYPE);
+        }
+
+        @Override
+        public TransactionResult prepareTransaction(String catalogName, String dbName, String label,
+                                                    List<TTabletCommitInfo> successTablets,
+                                                    List<TTabletFailInfo> failureTablets) {
+            Preconditions.checkNotNull(catalogName, "catalogName is null");
+            Preconditions.checkNotNull(dbName, "dbName is null");
+            Preconditions.checkNotNull(label, "label is null");
+
+            Map<String, Object> payload = new LinkedHashMap<>();
+            if (successTablets != null && !successTablets.isEmpty()) {
+                payload.put(BODY_COMMITTED_TABLETS, successTablets);
+            }
+            if (failureTablets != null && !failureTablets.isEmpty()) {
+                payload.put(BODY_FAILED_TABLETS, failureTablets);
+            }
+            RequestBody body = RequestBody.create(GSON.toJson(payload), JSON);
+            return doTransaction("prepare", dbName, null, label, null, body, null);
+        }
+
+        @Override
+        public TransactionResult commitTransaction(String catalogName, String dbName, String label) {
+            Preconditions.checkNotNull(catalogName, "catalogName is null");
+            Preconditions.checkNotNull(dbName, "dbName is null");
+            Preconditions.checkNotNull(label, "label is null");
+
+            RequestBody body = RequestBody.create("", JSON);
+            return doTransaction("commit", dbName, null, label, null, body, null);
+        }
+
+        @Override
+        public TransactionResult rollbackTransaction(String catalogName, String dbName, String label,
+                                                     List<TTabletFailInfo> failureTablets) {
+            Preconditions.checkNotNull(catalogName, "catalogName is null");
+            Preconditions.checkNotNull(dbName, "dbName is null");
+            Preconditions.checkNotNull(label, "label is null");
+
+            Map<String, Object> payload = new LinkedHashMap<>();
+            if (failureTablets != null && !failureTablets.isEmpty()) {
+                payload.put(BODY_FAILED_TABLETS, failureTablets);
+            }
+            RequestBody body = RequestBody.create(GSON.toJson(payload), JSON);
+            return doTransaction("rollback", dbName, null, label, null, body, null);
+        }
+
         private static HttpUrl buildUrl(String endpoint, String dbName, String tableName) {
             HttpUrl base = HttpUrl.parse(endpoint);
             if (base == null) {
@@ -167,6 +334,24 @@ public interface StarRocksRestClient extends Closeable {
                     .addPathSegment(dbName)
                     .addPathSegment(tableName)
                     .addPathSegment("_query_plan")
+                    .build();
+        }
+
+        private static HttpUrl buildSchemaUrl(String endpoint, String catalogName, String dbName, String tableName) {
+            HttpUrl base = HttpUrl.parse(endpoint);
+            if (base == null) {
+                throw new StarRocksConnectorException("Invalid FE http endpoint: " + endpoint);
+            }
+            return base.newBuilder()
+                    .addPathSegment("api")
+                    .addPathSegment("v2")
+                    .addPathSegment("catalogs")
+                    .addPathSegment(catalogName)
+                    .addPathSegment("databases")
+                    .addPathSegment(dbName)
+                    .addPathSegment("tables")
+                    .addPathSegment(tableName)
+                    .addPathSegment("schema")
                     .build();
         }
 
@@ -227,6 +412,27 @@ public interface StarRocksRestClient extends Closeable {
             return ImmutableMap.copyOf(result);
         }
 
+        private static TableSchemaView parseSchemaResponse(String body, String url) {
+            try {
+                Type type = new TypeToken<RestBaseResultV2<TableSchemaView>>() {
+                }.getType();
+                RestBaseResultV2<TableSchemaView> response = GSON.fromJson(body, type);
+                if (response == null) {
+                    throw new StarRocksConnectorException("Empty schema response: " + body);
+                }
+                if (response.getCode() != null && !"0".equals(response.getCode())) {
+                    String message = response.getMessage() != null ? response.getMessage() : body;
+                    throw new StarRocksConnectorException(
+                            String.format(Locale.ROOT, "FE %s returned code %s: %s", url, response.getCode(), message));
+                }
+                return response.getResult();
+            } catch (StarRocksConnectorException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new StarRocksConnectorException("Failed to parse schema response: " + body, e);
+            }
+        }
+
         @Override
         public void close() {
             httpClient.dispatcher().executorService().shutdown();
@@ -248,7 +454,7 @@ public interface StarRocksRestClient extends Closeable {
                 for (int attempt = 0; attempt < retries; attempt++) {
                     String endpoint = endpoints.get(attempt % endpoints.size());
                     try {
-                        HttpUrl url = buildPartitionUrl(endpoint, catalogName, dbName, tableName, pageNum, pageSize);
+                        HttpUrl url = buildPartitionUrl(endpoint, catalogName, dbName, tableName, pageNum, pageSize, false);
                         Request request = new Request.Builder()
                                 .url(url)
                                 .get()
@@ -307,7 +513,7 @@ public interface StarRocksRestClient extends Closeable {
         }
 
         private static HttpUrl buildPartitionUrl(String endpoint, String catalogName, String dbName,
-                                                 String tableName, int pageNum, int pageSize) {
+                                                 String tableName, int pageNum, int pageSize, boolean temporary) {
             HttpUrl base = HttpUrl.parse(endpoint);
             if (base == null) {
                 throw new StarRocksConnectorException("Invalid FE http endpoint: " + endpoint);
@@ -322,9 +528,158 @@ public interface StarRocksRestClient extends Closeable {
                     .addPathSegment("tables")
                     .addPathSegment(tableName)
                     .addPathSegment("partition")
-                    .addQueryParameter("page_num", String.valueOf(pageNum))
-                    .addQueryParameter("page_size", String.valueOf(pageSize))
+                    .addQueryParameter(PARAM_PAGE_NUM, String.valueOf(pageNum))
+                    .addQueryParameter(PARAM_PAGE_SIZE, String.valueOf(pageSize))
+                    .addQueryParameter(PARAM_TEMPORARY, String.valueOf(temporary))
                     .build();
+        }
+
+        private PagedResult<PartitionInfoView.PartitionView> fetchPartitionPage(String catalogName, String dbName,
+                                                                                String tableName, int pageNum,
+                                                                                int pageSize) {
+            StarRocksConnectorException lastError = null;
+            int attempt = 0;
+            int maxAttempts = Math.max(1, retries) * endpoints.size();
+            while (attempt < maxAttempts) {
+                String endpoint = endpoints.get(attempt % endpoints.size());
+                attempt++;
+                try {
+                    HttpUrl url = buildPartitionUrl(endpoint, catalogName, dbName, tableName, pageNum, pageSize, false);
+                    Request request = new Request.Builder()
+                            .url(url)
+                            .get()
+                            .addHeader("Authorization", authorizationHeader)
+                            .build();
+                    try (Response response = httpClient.newCall(request).execute()) {
+                        String bodyString = response.body() != null ? response.body().string() : "";
+                        if (!response.isSuccessful()) {
+                            lastError = new StarRocksConnectorException(
+                                    String.format(Locale.ROOT,
+                                            "HTTP %d when fetching partitions from %s: %s",
+                                            response.code(), url, bodyString));
+                            LOG.warn(lastError.getMessage());
+                            continue;
+                        }
+                        return parsePartitionPage(bodyString, url.toString());
+                    }
+                } catch (IOException e) {
+                    lastError = new StarRocksConnectorException(
+                            String.format(Locale.ROOT,
+                                    "Failed to call partition API on endpoint %s for %s.%s.%s",
+                                    endpoint, catalogName, dbName, tableName), e);
+                    LOG.warn("Attempt to fetch partitions from {} failed: {}", endpoint, e.getMessage());
+                }
+            }
+            if (lastError != null) {
+                throw lastError;
+            }
+            throw new StarRocksConnectorException("Unknown error fetching partitions");
+        }
+
+        private static PagedResult<PartitionInfoView.PartitionView> parsePartitionPage(String body, String url) {
+            try {
+                Type type = new TypeToken<RestBaseResultV2<PagedResult<PartitionInfoView.PartitionView>>>() {
+                }.getType();
+                RestBaseResultV2<PagedResult<PartitionInfoView.PartitionView>> response = GSON.fromJson(body, type);
+                if (response == null) {
+                    throw new StarRocksConnectorException("Empty partition response: " + body);
+                }
+                if (response.getCode() != null && !"0".equals(response.getCode())) {
+                    String message = response.getMessage() != null ? response.getMessage() : body;
+                    throw new StarRocksConnectorException(
+                            String.format(Locale.ROOT, "FE %s returned code %s: %s", url, response.getCode(), message));
+                }
+                return response.getResult();
+            } catch (StarRocksConnectorException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new StarRocksConnectorException("Failed to parse partition response: " + body, e);
+            }
+        }
+
+        private static HttpUrl buildTransactionUrl(String endpoint, String operation, Integer sourceType) {
+            HttpUrl base = HttpUrl.parse(endpoint);
+            if (base == null) {
+                throw new StarRocksConnectorException("Invalid FE http endpoint: " + endpoint);
+            }
+            HttpUrl.Builder builder = base.newBuilder()
+                    .addPathSegment("api")
+                    .addPathSegment("transaction")
+                    .addPathSegment(operation);
+            if (sourceType != null) {
+                builder.addQueryParameter(PARAM_SOURCE_TYPE, String.valueOf(sourceType));
+            }
+            return builder.build();
+        }
+
+        private TransactionResult doTransaction(String operation, String dbName, String tableName, String label,
+                                                Integer timeoutSecs, RequestBody body, Integer sourceType) {
+            StarRocksConnectorException lastError = null;
+            int attempt = 0;
+            int maxAttempts = Math.max(1, retries) * endpoints.size();
+            while (attempt < maxAttempts) {
+                String endpoint = endpoints.get(attempt % endpoints.size());
+                attempt++;
+                try {
+                    HttpUrl url = buildTransactionUrl(endpoint, operation, sourceType);
+                    Request.Builder builder = new Request.Builder()
+                            .url(url)
+                            .post(body)
+                            .addHeader("Authorization", authorizationHeader)
+                            .addHeader("Content-Type", "application/json")
+                            .addHeader(HEADER_DATABASE, dbName)
+                            .addHeader(HEADER_LABEL, label);
+                    if (tableName != null) {
+                        builder.addHeader(HEADER_TABLE, tableName);
+                    }
+                    if (timeoutSecs != null && timeoutSecs > 0) {
+                        builder.addHeader(HEADER_TIMEOUT, String.valueOf(timeoutSecs));
+                    }
+                    Request request = builder.build();
+                    try (Response response = httpClient.newCall(request).execute()) {
+                        String bodyString = response.body() != null ? response.body().string() : "";
+                        if (!response.isSuccessful()) {
+                            String message = String.format(Locale.ROOT,
+                                    "HTTP %d when executing transaction %s on %s: %s",
+                                    response.code(), operation, url, bodyString);
+                            lastError = new StarRocksConnectorException(message);
+                            LOG.warn(message);
+                            continue;
+                        }
+                        TransactionResult result = parseTransactionResult(bodyString, url.toString());
+                        if (result.isOk()) {
+                            return result;
+                        }
+                        String message = String.format(Locale.ROOT,
+                                "Transaction %s failed on %s: %s", operation, url, result.getMessage());
+                        lastError = new StarRocksConnectorException(message);
+                        LOG.warn(message);
+                    }
+                } catch (IOException e) {
+                    lastError = new StarRocksConnectorException(
+                            String.format(Locale.ROOT, "Failed to call transaction %s on endpoint %s",
+                                    operation, endpoint), e);
+                    LOG.warn("Attempt to execute transaction {} on {} failed: {}", operation, endpoint, e.getMessage());
+                }
+            }
+            if (lastError != null) {
+                throw lastError;
+            }
+            throw new StarRocksConnectorException("Unknown error executing transaction " + operation);
+        }
+
+        private static TransactionResult parseTransactionResult(String body, String url) {
+            try {
+                TransactionResult result = GSON.fromJson(body, TransactionResult.class);
+                if (result == null) {
+                    throw new StarRocksConnectorException("Empty transaction response: " + body);
+                }
+                return result;
+            } catch (StarRocksConnectorException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new StarRocksConnectorException("Failed to parse transaction response: " + body, e);
+            }
         }
 
         private static PartitionPage parsePartitionResponse(String body, String url) {
@@ -466,6 +821,40 @@ public interface StarRocksRestClient extends Closeable {
 
         public Map<Long, String> getTabletStoragePaths() {
             return tabletStoragePaths;
+        }
+    }
+
+    final class TransactionResult {
+        @SerializedName("Status")
+        private String status;
+
+        @SerializedName("Message")
+        private String message;
+
+        @SerializedName("Label")
+        private String label;
+
+        @SerializedName("TxnId")
+        private Long txnId;
+
+        public boolean isOk() {
+            return status != null && "OK".equalsIgnoreCase(status);
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+
+        public Long getTxnId() {
+            return txnId;
         }
     }
 }

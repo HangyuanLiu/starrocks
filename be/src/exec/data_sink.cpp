@@ -50,6 +50,7 @@
 #include "exec/file_builder.h"
 #include "exec/hdfs_scanner/hdfs_scanner_text.h"
 #include "exec/multi_olap_table_sink.h"
+#include "exec/starrocks_table_sink.h"
 #include "exec/pipeline/exchange/exchange_sink_operator.h"
 #include "exec/pipeline/exchange/multi_cast_local_exchange_sink_operator.h"
 #include "exec/pipeline/exchange/multi_cast_local_exchange_source_operator.h"
@@ -163,6 +164,13 @@ Status DataSink::create_data_sink(RuntimeState* state, const TDataSink& thrift_s
         Status status;
         DCHECK(thrift_sink.__isset.multi_olap_table_sinks);
         *sink = std::make_unique<MultiOlapTableSink>(state->obj_pool(), output_exprs);
+        break;
+    }
+    case TDataSinkType::STARROCKS_TABLE_SINK: {
+        Status status;
+        DCHECK(thrift_sink.__isset.starrocks_table_sink);
+        *sink = std::make_unique<StarRocksTableSink>(state->obj_pool(), output_exprs, &status, state);
+        RETURN_IF_ERROR(status);
         break;
     }
     case TDataSinkType::MULTI_CAST_DATA_STREAM_SINK: {
@@ -430,7 +438,8 @@ Status DataSink::decompose_data_sink_to_pipeline(pipeline::PipelineBuilderContex
             ops.emplace_back(sink_op);
             context->add_pipeline(std::move(ops));
         }
-    } else if (typeid(*this) == typeid(OlapTableSink) || typeid(*this) == typeid(MultiOlapTableSink)) {
+    } else if (typeid(*this) == typeid(OlapTableSink) || typeid(*this) == typeid(MultiOlapTableSink) ||
+               typeid(*this) == typeid(StarRocksTableSink)) {
         size_t desired_tablet_sink_dop = request.pipeline_sink_dop();
         DCHECK(desired_tablet_sink_dop > 0);
         runtime_state->set_num_per_fragment_instances(request.common().params.num_senders);
@@ -441,8 +450,12 @@ Status DataSink::decompose_data_sink_to_pipeline(pipeline::PipelineBuilderContex
             if (typeid(*this) == typeid(OlapTableSink)) {
                 sink = std::make_unique<OlapTableSink>(runtime_state->obj_pool(), output_exprs, &st, runtime_state);
                 RETURN_IF_ERROR(st);
-            } else {
+            } else if (typeid(*this) == typeid(MultiOlapTableSink)) {
                 sink = std::make_unique<MultiOlapTableSink>(runtime_state->obj_pool(), output_exprs);
+            } else {
+                sink = std::make_unique<StarRocksTableSink>(runtime_state->obj_pool(), output_exprs, &st,
+                                                            runtime_state);
+                RETURN_IF_ERROR(st);
             }
             if (sink != nullptr) {
                 RETURN_IF_ERROR(sink->init(thrift_sink, runtime_state));

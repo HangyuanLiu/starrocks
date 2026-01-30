@@ -14,6 +14,7 @@
 
 package com.starrocks.connector.starrocks;
 
+import com.google.common.base.Strings;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.Table;
 import com.starrocks.connector.ConnectorContext;
@@ -21,10 +22,17 @@ import com.starrocks.connector.ConnectorMetadatRequestContext;
 import com.starrocks.connector.ConnectorMetadata;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.credential.CloudConfiguration;
+import com.starrocks.http.rest.v2.vo.PartitionInfoView;
+import com.starrocks.http.rest.v2.vo.TableSchemaView;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.thrift.TSinkCommitInfo;
+import com.starrocks.thrift.TTabletCommitInfo;
+import com.starrocks.thrift.TTabletFailInfo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -127,6 +135,88 @@ public class StarRocksConnectorMetadata implements ConnectorMetadata, AutoClosea
         return null;
     }
 
+    public long beginTransaction(String dbName, String tableName, String label, int timeoutSecs) {
+        LOG.info("StarRocks REST beginTransaction request: catalog={}, db={}, table={}, label={}, timeoutSec={}",
+                context.getCatalogName(), dbName, tableName, label, timeoutSecs);
+        StarRocksRestClient.TransactionResult result =
+                requireCache().beginTransaction(dbName, tableName, label, timeoutSecs);
+        if (result == null || !result.isOk()) {
+            String message = result != null ? result.getMessage() : "null response";
+            throw new StarRocksConnectorException("Begin transaction failed: " + message);
+        }
+        Long txnId = result.getTxnId();
+        if (txnId == null) {
+            throw new StarRocksConnectorException("Begin transaction returned empty txn id");
+        }
+        LOG.info("StarRocks REST beginTransaction response: catalog={}, db={}, table={}, label={}, txnId={}",
+                context.getCatalogName(), dbName, tableName, label, txnId);
+        return txnId;
+    }
+
+    public TableSchemaView getTableSchemaView(String dbName, String tableName) {
+        return requireCache().getTableSchemaView(dbName, tableName);
+    }
+
+    public List<PartitionInfoView.PartitionView> listTablePartitions(String dbName, String tableName) {
+        return requireCache().listTablePartitions(dbName, tableName);
+    }
+
+    @Override
+    public void finishSink(String dbName, String tableName, List<TSinkCommitInfo> commitInfos, String branch) {
+        List<TSinkCommitInfo> infos = commitInfos == null ? Collections.emptyList() : commitInfos;
+        String label = resolveLabel(infos);
+        if (Strings.isNullOrEmpty(label)) {
+            throw new StarRocksConnectorException("Missing label for StarRocks sink commit");
+        }
+        List<TTabletCommitInfo> tabletCommitInfos = extractTabletCommitInfos(infos);
+        StarRocksRestClient.TransactionResult prepareResult =
+                requireCache().prepareTransaction(dbName, label, tabletCommitInfos, Collections.emptyList());
+        if (prepareResult == null || !prepareResult.isOk()) {
+            String message = prepareResult != null ? prepareResult.getMessage() : "null response";
+            throw new StarRocksConnectorException("Prepare transaction failed: " + message);
+        }
+        StarRocksRestClient.TransactionResult commitResult = requireCache().commitTransaction(dbName, label);
+        if (commitResult == null || !commitResult.isOk()) {
+            String message = commitResult != null ? commitResult.getMessage() : "null response";
+            throw new StarRocksConnectorException("Commit transaction failed: " + message);
+        }
+    }
+
+    @Override
+    public void finishSink(String dbName, String tableName, List<TSinkCommitInfo> commitInfos, String branch, Object extra) {
+        finishSink(dbName, tableName, commitInfos, branch);
+    }
+
+    @Override
+    public void abortSink(String dbName, String tableName, List<TSinkCommitInfo> commitInfos) {
+        rollbackTransaction(dbName, tableName, null, commitInfos);
+    }
+
+    public void rollbackTransaction(String dbName, String tableName, String label, List<TSinkCommitInfo> commitInfos) {
+        List<TSinkCommitInfo> infos = commitInfos == null ? Collections.emptyList() : commitInfos;
+        String resolvedLabel = Strings.isNullOrEmpty(label) ? resolveLabel(infos) : label;
+        if (Strings.isNullOrEmpty(resolvedLabel)) {
+            throw new StarRocksConnectorException("Missing label for StarRocks transaction rollback");
+        }
+        List<TTabletCommitInfo> tabletCommitInfos = extractTabletCommitInfos(infos);
+        List<TTabletFailInfo> failedTablets = new ArrayList<>();
+        for (TTabletCommitInfo commitInfo : tabletCommitInfos) {
+            if (commitInfo == null) {
+                continue;
+            }
+            TTabletFailInfo failInfo = new TTabletFailInfo();
+            failInfo.setTabletId(commitInfo.getTabletId());
+            failInfo.setBackendId(commitInfo.getBackendId());
+            failedTablets.add(failInfo);
+        }
+        StarRocksRestClient.TransactionResult result =
+                requireCache().rollbackTransaction(dbName, resolvedLabel, failedTablets);
+        if (result == null || !result.isOk()) {
+            String message = result != null ? result.getMessage() : "null response";
+            throw new StarRocksConnectorException("Rollback transaction failed: " + message);
+        }
+    }
+
     @Override
     public boolean tableExists(ConnectContext context, String dbName, String tblName) {
         return ConnectorMetadata.super.tableExists(context, dbName, tblName);
@@ -137,5 +227,34 @@ public class StarRocksConnectorMetadata implements ConnectorMetadata, AutoClosea
         if (metadataCache != null) {
             metadataCache.close();
         }
+    }
+
+    private static String resolveLabel(List<TSinkCommitInfo> commitInfos) {
+        String label = null;
+        for (TSinkCommitInfo info : commitInfos) {
+            if (info == null || !info.isSetStarrocks_label()) {
+                continue;
+            }
+            String candidate = info.getStarrocks_label();
+            if (label == null) {
+                label = candidate;
+            } else if (!label.equals(candidate)) {
+                throw new StarRocksConnectorException("Inconsistent starrocks label in commit infos");
+            }
+        }
+        return label;
+    }
+
+    private static List<TTabletCommitInfo> extractTabletCommitInfos(List<TSinkCommitInfo> commitInfos) {
+        if (commitInfos == null || commitInfos.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<TTabletCommitInfo> tabletCommitInfos = new ArrayList<>();
+        for (TSinkCommitInfo info : commitInfos) {
+            if (info != null && info.isSetStarrocks_tablet_commit_info()) {
+                tabletCommitInfos.add(info.getStarrocks_tablet_commit_info());
+            }
+        }
+        return tabletCommitInfos;
     }
 }
