@@ -41,6 +41,7 @@ class RuntimeState;
 namespace lake {
 class LocationProvider;
 class Tablet;
+class TabletManager;
 class TabletWriter;
 } // namespace lake
 
@@ -93,8 +94,11 @@ private:
         std::string root_path;
         std::shared_ptr<FileSystem> fs;
         std::shared_ptr<lake::LocationProvider> location_provider;
+        std::shared_ptr<lake::TabletManager> tablet_manager;
         std::unique_ptr<lake::Tablet> tablet;
         std::unique_ptr<lake::TabletWriter> writer;
+
+        ~TabletWriterContext();
     };
 
     Status _init_partitions();
@@ -104,6 +108,7 @@ private:
     void _compute_hashes(const Chunk* chunk, std::vector<uint32_t>* hashes);
     bool _part_contains(PartitionInfo* part, ChunkRow* key) const;
     Status _parse_tablet_root_paths();
+    Status _parse_tablet_versions();
 
     StatusOr<TabletWriterContext*> _get_or_create_writer(int64_t tablet_id, PartitionInfo* partition,
                                                          int64_t backend_id);
@@ -135,6 +140,7 @@ private:
 
     std::unordered_map<int64_t, std::unique_ptr<TabletWriterContext>> _tablet_writers;
     std::unordered_map<int64_t, std::string> _tablet_root_paths;
+    std::unordered_map<int64_t, int64_t> _tablet_versions;
     TCloudConfiguration _cloud_conf;
 
     int64_t _txn_id = 0;

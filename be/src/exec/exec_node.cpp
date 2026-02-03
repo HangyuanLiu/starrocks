@@ -513,10 +513,6 @@ Status ExecNode::create_vectorized_node(starrocks::RuntimeState* state, starrock
         *node = pool->add(new ConnectorScanNode(pool, new_node, descs));
         return Status::OK();
     }
-    case TPlanNodeType::CONNECTOR_SCAN_NODE: {
-        *node = pool->add(new ConnectorScanNode(pool, tnode, descs));
-        return Status::OK();
-    }
     case TPlanNodeType::HDFS_SCAN_NODE:
     case TPlanNodeType::KUDU_SCAN_NODE: {
         TPlanNode new_node = tnode;

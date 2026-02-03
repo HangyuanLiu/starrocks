@@ -18,14 +18,19 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.http.rest.v2.RestBaseResultV2;
 import com.starrocks.http.rest.v2.RestBaseResultV2.PagedResult;
+import com.starrocks.http.rest.v2.vo.ColumnView;
 import com.starrocks.http.rest.v2.vo.PartitionInfoView;
 import com.starrocks.http.rest.v2.vo.TableSchemaView;
 import com.starrocks.thrift.TTabletCommitInfo;
@@ -103,7 +108,33 @@ public interface StarRocksRestClient extends Closeable {
         private static final String BODY_COMMITTED_TABLETS = "committed_tablets";
         private static final String BODY_FAILED_TABLETS = "failed_tablets";
 
-        private static final Gson GSON = new Gson();
+        private static final Gson GSON = new GsonBuilder()
+                .registerTypeAdapter(ColumnView.TypeView.class, new ColumnTypeViewDeserializer())
+                .create();
+
+        private static final class ColumnTypeViewDeserializer implements JsonDeserializer<ColumnView.TypeView> {
+            @Override
+            public ColumnView.TypeView deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context)
+                    throws JsonParseException {
+                if (json == null || json.isJsonNull()) {
+                    return null;
+                }
+                if (!json.isJsonObject()) {
+                    throw new JsonParseException("Invalid column type view: " + json);
+                }
+                JsonObject obj = json.getAsJsonObject();
+                if (obj.has("itemType")) {
+                    return context.deserialize(json, ColumnView.ArrayTypeView.class);
+                }
+                if (obj.has("fields")) {
+                    return context.deserialize(json, ColumnView.StructTypeView.class);
+                }
+                if (obj.has("keyType") || obj.has("valueType")) {
+                    return context.deserialize(json, ColumnView.MapTypeView.class);
+                }
+                return context.deserialize(json, ColumnView.ScalarTypeView.class);
+            }
+        }
 
         private final List<String> endpoints;
         private final OkHttpClient httpClient;

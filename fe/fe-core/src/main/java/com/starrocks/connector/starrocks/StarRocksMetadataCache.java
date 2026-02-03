@@ -44,6 +44,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -233,6 +234,7 @@ public class StarRocksMetadataCache implements AutoCloseable {
         
         // Fetch partition metadata for object_store mode
         Map<Long, String> tabletStoragePaths = null;
+        Map<Long, Long> tabletVersions = null;
         if ("object_store".equals(config.getFetchMode())) {
             try {
                 String catalogName = getCatalogNameForProviderFE();
@@ -245,6 +247,19 @@ public class StarRocksMetadataCache implements AutoCloseable {
                 LOG.warn("Failed to fetch partition metadata for {}.{} in object_store mode: {}",
                         key.dbName, key.tableName, e.getMessage());
                 // Continue without storage paths; will rely on RPC fallback
+            }
+            if (tablets != null && !tablets.isEmpty()) {
+                tabletVersions = new LinkedHashMap<>();
+                for (Map.Entry<Long, StarRocksExternalTable.Tablet> entry : tablets.entrySet()) {
+                    StarRocksExternalTable.Tablet tablet = entry.getValue();
+                    if (tablet == null) {
+                        continue;
+                    }
+                    long version = tablet.getVersion();
+                    if (version > 0) {
+                        tabletVersions.put(entry.getKey(), version);
+                    }
+                }
             }
         }
         
@@ -259,7 +274,7 @@ public class StarRocksMetadataCache implements AutoCloseable {
                 restResponse.getOpaquedQueryPlan(),
                 tablets,
                 loadTimestamp,
-                buildExecutionProperties(config, tabletStoragePaths));
+                buildExecutionProperties(config, tabletStoragePaths, tabletVersions));
     }
 
     private String getCatalogNameForProviderFE() {
@@ -354,11 +369,12 @@ public class StarRocksMetadataCache implements AutoCloseable {
     }
 
     private Map<String, String> buildExecutionProperties(StarRocksConnectorConfig cfg) {
-        return buildExecutionProperties(cfg, null);
+        return buildExecutionProperties(cfg, null, null);
     }
 
     private Map<String, String> buildExecutionProperties(StarRocksConnectorConfig cfg,
-                                                        Map<Long, String> tabletStoragePaths) {
+                                                        Map<Long, String> tabletStoragePaths,
+                                                        Map<Long, Long> tabletVersions) {
         ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
         boolean objectStoreMode = "object_store".equals(cfg.getFetchMode());
         if (!cfg.getFeHttpUrls().isEmpty()) {
@@ -387,6 +403,21 @@ public class StarRocksMetadataCache implements AutoCloseable {
                 builder.put("tablet_root_paths", mappingJson.toString());
             } catch (Exception e) {
                 LOG.warn("Failed to serialize tablet_root_paths: {}", e.getMessage());
+            }
+        }
+
+        if ("object_store".equals(cfg.getFetchMode()) && tabletVersions != null && !tabletVersions.isEmpty()) {
+            try {
+                JsonObject versionJson = new JsonObject();
+                for (Map.Entry<Long, Long> entry : tabletVersions.entrySet()) {
+                    if (entry.getKey() == null || entry.getValue() == null) {
+                        continue;
+                    }
+                    versionJson.addProperty(entry.getKey().toString(), entry.getValue());
+                }
+                builder.put("tablet_versions", versionJson.toString());
+            } catch (Exception e) {
+                LOG.warn("Failed to serialize tablet_versions: {}", e.getMessage());
             }
         }
 

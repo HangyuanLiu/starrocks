@@ -132,6 +132,8 @@ StarRocksTableSink::StarRocksTableSink(ObjectPool* pool, const std::vector<TExpr
 
 StarRocksTableSink::~StarRocksTableSink() = default;
 
+StarRocksTableSink::TabletWriterContext::~TabletWriterContext() = default;
+
 Status StarRocksTableSink::init(const TDataSink& thrift_sink, RuntimeState* state) {
     DCHECK(thrift_sink.__isset.starrocks_table_sink);
     RETURN_IF_ERROR(DataSink::init(thrift_sink, state));
@@ -200,6 +202,20 @@ Status StarRocksTableSink::init(const TDataSink& thrift_sink, RuntimeState* stat
             _cloud_conf.__set_cloud_type(TCloudType::AWS);
             _cloud_conf.__set_cloud_properties(cloud_properties);
             _cloud_conf.__isset.cloud_properties = true;
+
+            LOG(INFO) << "StarRocksTableSink built CloudConfiguration with " << cloud_properties.size()
+                      << " aws.s3 properties";
+            for (const auto& [k, v] : cloud_properties) {
+                bool is_secret = (k.find("secret") != std::string::npos || k.find("key") != std::string::npos);
+                if (is_secret && !v.empty()) {
+                    LOG(INFO) << "    " << k << " = " << v.substr(0, 4) << "***";
+                } else {
+                    LOG(INFO) << "    " << k << " = " << v;
+                }
+            }
+        } else {
+            LOG(WARNING) << "StarRocksTableSink did not receive aws.s3.* properties; "
+                         << "object storage access may fail";
         }
 
         if (!unsupported_keys.empty()) {
@@ -210,7 +226,8 @@ Status StarRocksTableSink::init(const TDataSink& thrift_sink, RuntimeState* stat
         }
     }
 
-    return _parse_tablet_root_paths();
+    RETURN_IF_ERROR(_parse_tablet_root_paths());
+    return _parse_tablet_versions();
 }
 
 Status StarRocksTableSink::prepare(RuntimeState* state) {
@@ -684,6 +701,61 @@ Status StarRocksTableSink::_parse_tablet_root_paths() {
     return Status::OK();
 }
 
+Status StarRocksTableSink::_parse_tablet_versions() {
+    if (!_t_sink.__isset.properties) {
+        return Status::OK();
+    }
+
+    auto it = _t_sink.properties.find("tablet_versions");
+    if (it == _t_sink.properties.end()) {
+        return Status::OK();
+    }
+
+    auto json_value_or = JsonValue::parse_json_or_string(Slice(it->second));
+    if (!json_value_or.ok()) {
+        return Status::InvalidArgument("failed to parse tablet_versions JSON");
+    }
+
+    auto json_slice = json_value_or.value().to_vslice();
+    if (!json_slice.isObject()) {
+        return Status::InvalidArgument("tablet_versions is not a JSON object");
+    }
+
+    for (auto item : vpack::ObjectIterator(json_slice)) {
+        if (!item.key.isString()) {
+            return Status::InvalidArgument("tablet_versions contains non-string key");
+        }
+        std::string key = item.key.copyString();
+        int64_t tablet_id = 0;
+        try {
+            tablet_id = std::stoll(key);
+        } catch (const std::exception& e) {
+            return Status::InvalidArgument(fmt::format("invalid tablet id in tablet_versions: {}", key));
+        }
+
+        int64_t version = 0;
+        if (item.value.isInt() || item.value.isSmallInt()) {
+            version = item.value.getIntUnchecked();
+        } else if (item.value.isUInt()) {
+            version = static_cast<int64_t>(item.value.getUIntUnchecked());
+        } else if (item.value.isString()) {
+            try {
+                version = std::stoll(item.value.copyString());
+            } catch (const std::exception& e) {
+                return Status::InvalidArgument(fmt::format("invalid tablet version in tablet_versions: {}", key));
+            }
+        } else {
+            return Status::InvalidArgument("tablet_versions contains non-number value");
+        }
+
+        if (version > 0) {
+            _tablet_versions.emplace(tablet_id, version);
+        }
+    }
+
+    return Status::OK();
+}
+
 StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_create_writer(
         int64_t tablet_id, PartitionInfo* partition, int64_t backend_id) {
     auto it = _tablet_writers.find(tablet_id);
@@ -698,33 +770,43 @@ StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_c
 
     ASSIGN_OR_RETURN(auto fs, _create_fs(root_path));
 
-    auto* tablet_mgr = ExecEnv::GetInstance()->lake_tablet_manager();
-    if (tablet_mgr == nullptr) {
-        return Status::InternalError("lake tablet manager is not initialized");
-    }
-
     auto location_provider = std::make_shared<lake::FixedLocationProvider>(root_path);
+    auto tablet_manager = std::make_shared<lake::TabletManager>(location_provider, 0);
 
-    std::vector<std::string> objects;
-    std::string prefix = fmt::format("{:016X}_", tablet_id);
-    std::string metadata_root = location_provider->metadata_root_location(tablet_id);
-    auto scan_cb = [&](std::string_view name) {
-        if (name.size() >= prefix.size() && name.compare(0, prefix.size(), prefix) == 0) {
-            objects.emplace_back(lake::join_path(metadata_root, name));
+    TabletMetadataPtr tablet_metadata;
+    auto version_it = _tablet_versions.find(tablet_id);
+    if (version_it != _tablet_versions.end() && version_it->second > 0) {
+        auto meta_or = tablet_manager->get_single_tablet_metadata(tablet_id, version_it->second, true, 0, fs);
+        if (!meta_or.ok()) {
+            LOG(WARNING) << "Failed to load tablet metadata by version for tablet " << tablet_id
+                         << " version " << version_it->second << ": " << meta_or.status();
+        } else {
+            tablet_metadata = std::move(meta_or).value();
         }
-        return true;
-    };
-
-    RETURN_IF_ERROR(fs->iterate_dir(metadata_root, scan_cb));
-    if (objects.empty()) {
-        return Status::NotFound(fmt::format("tablet {} metadata not found", tablet_id));
     }
-    std::sort(objects.begin(), objects.end());
-    std::string metadata_location = objects.back();
 
-    ASSIGN_OR_RETURN(auto tablet_metadata, tablet_mgr->get_tablet_metadata(metadata_location, true, 0, fs));
+    if (tablet_metadata == nullptr) {
+        std::vector<std::string> objects;
+        std::string prefix = fmt::format("{:016X}_", tablet_id);
+        std::string metadata_root = location_provider->metadata_root_location(tablet_id);
+        auto scan_cb = [&](std::string_view name) {
+            if (name.size() >= prefix.size() && name.compare(0, prefix.size(), prefix) == 0) {
+                objects.emplace_back(lake::join_path(metadata_root, name));
+            }
+            return true;
+        };
+
+        RETURN_IF_ERROR(fs->iterate_dir(metadata_root, scan_cb));
+        if (objects.empty()) {
+            return Status::NotFound(fmt::format("tablet {} metadata not found", tablet_id));
+        }
+        std::sort(objects.begin(), objects.end());
+        std::string metadata_location = objects.back();
+
+        ASSIGN_OR_RETURN(tablet_metadata, tablet_manager->get_tablet_metadata(metadata_location, true, 0, fs));
+    }
     auto tablet_schema = std::make_shared<TabletSchema>(tablet_metadata->schema());
-    auto tablet = std::make_unique<lake::Tablet>(tablet_mgr, tablet_id, location_provider, tablet_schema);
+    auto tablet = std::make_unique<lake::Tablet>(tablet_manager.get(), tablet_id, location_provider, tablet_schema);
 
     ASSIGN_OR_RETURN(auto writer, tablet->new_writer(lake::WriterType::kHorizontal, _txn_id));
     writer->set_fs(fs);
@@ -737,6 +819,7 @@ StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_c
     writer_ctx->root_path = root_path;
     writer_ctx->fs = fs;
     writer_ctx->location_provider = std::move(location_provider);
+    writer_ctx->tablet_manager = std::move(tablet_manager);
     writer_ctx->tablet = std::move(tablet);
     writer_ctx->writer = std::move(writer);
 

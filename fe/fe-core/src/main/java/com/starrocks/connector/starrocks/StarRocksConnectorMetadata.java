@@ -17,6 +17,7 @@ package com.starrocks.connector.starrocks;
 import com.google.common.base.Strings;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.Table;
+import com.starrocks.connector.CatalogConnectorMetadata;
 import com.starrocks.connector.ConnectorContext;
 import com.starrocks.connector.ConnectorMetadatRequestContext;
 import com.starrocks.connector.ConnectorMetadata;
@@ -34,6 +35,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Metadata implementation for the StarRocks external catalog leveraging JDBC metadata and REST `_query_plan`.
@@ -68,6 +70,19 @@ public class StarRocksConnectorMetadata implements ConnectorMetadata, AutoClosea
         this.metadataCache = cacheFactory.create(context, config);
     }
 
+    public static StarRocksConnectorMetadata unwrap(ConnectorMetadata metadata, String dbName) {
+        if (metadata instanceof StarRocksConnectorMetadata) {
+            return (StarRocksConnectorMetadata) metadata;
+        }
+        if (metadata instanceof CatalogConnectorMetadata) {
+            ConnectorMetadata normal = ((CatalogConnectorMetadata) metadata).getMetadataForDb(dbName);
+            if (normal instanceof StarRocksConnectorMetadata) {
+                return (StarRocksConnectorMetadata) normal;
+            }
+        }
+        return null;
+    }
+
     private StarRocksMetadataCache requireCache() {
         if (metadataCache == null) {
             throw new StarRocksConnectorException(
@@ -89,11 +104,19 @@ public class StarRocksConnectorMetadata implements ConnectorMetadata, AutoClosea
     @Override
     public Database getDb(ConnectContext context, String name) {
         try {
-            if (listDbNames(context).contains(name)) {
-                return new Database(0, name);
-            } else {
+            if (name == null) {
                 return null;
             }
+            String normalized = name.toLowerCase(Locale.ROOT);
+            for (String dbName : listDbNames(context)) {
+                if (dbName == null) {
+                    continue;
+                }
+                if (dbName.equalsIgnoreCase(normalized)) {
+                    return new Database(0, dbName);
+                }
+            }
+            return null;
         } catch (StarRocksConnectorException e) {
             LOG.warn("Failed to get database {} from catalog {}: {}",
                     name, this.context.getCatalogName(), e.getMessage());
@@ -136,10 +159,11 @@ public class StarRocksConnectorMetadata implements ConnectorMetadata, AutoClosea
     }
 
     public long beginTransaction(String dbName, String tableName, String label, int timeoutSecs) {
+        int timeoutSec = timeoutSecs / 1000;
         LOG.info("StarRocks REST beginTransaction request: catalog={}, db={}, table={}, label={}, timeoutSec={}",
-                context.getCatalogName(), dbName, tableName, label, timeoutSecs);
+                context.getCatalogName(), dbName, tableName, label, timeoutSec);
         StarRocksRestClient.TransactionResult result =
-                requireCache().beginTransaction(dbName, tableName, label, timeoutSecs);
+                requireCache().beginTransaction(dbName, tableName, label, timeoutSec);
         if (result == null || !result.isOk()) {
             String message = result != null ? result.getMessage() : "null response";
             throw new StarRocksConnectorException("Begin transaction failed: " + message);

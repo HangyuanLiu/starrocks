@@ -105,9 +105,10 @@ Status StarRocksLakeDataSource::get_next(RuntimeState* state, ChunkPtr* chunk) {
     
     ASSIGN_OR_RETURN(auto chunk_ptr,
                      ChunkHelper::new_chunk_pooled_checked(_prj_iter->output_schema(), state->chunk_size()));
-    chunk->reset(chunk_ptr);
+    *chunk = std::move(chunk_ptr);
+    Chunk* output_chunk = chunk->get();
     
-    Status status = _prj_iter->get_next(chunk_ptr);
+    Status status = _prj_iter->get_next(output_chunk);
     
     if (!status.ok()) {
         if (status.is_end_of_file()) {
@@ -118,17 +119,17 @@ Status StarRocksLakeDataSource::get_next(RuntimeState* state, ChunkPtr* chunk) {
 
     // Build slot_id to column index mapping for expression evaluation.
     for (auto* slot : _materialized_slots) {
-        size_t column_index = chunk_ptr->schema()->get_field_index_by_name(slot->col_name());
-        if (column_index >= chunk_ptr->num_columns()) {
+        size_t column_index = output_chunk->schema()->get_field_index_by_name(slot->col_name());
+        if (column_index >= output_chunk->num_columns()) {
             return Status::InternalError(strings::Substitute(
                     "Column '$0' not found in chunk schema for slot_id $1", slot->col_name(), slot->id()));
         }
-        chunk_ptr->set_slot_id_to_index(slot->id(), column_index);
+        output_chunk->set_slot_id_to_index(slot->id(), column_index);
     }
     
     // Update metrics
-    _num_rows_read += chunk_ptr->num_rows();
-    _num_bytes_read += chunk_ptr->bytes_usage();
+    _num_rows_read += output_chunk->num_rows();
+    _num_bytes_read += output_chunk->bytes_usage();
     
     return Status::OK();
 }
