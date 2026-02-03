@@ -89,6 +89,14 @@ public class CatalogConnectorMetadata implements ConnectorMetadata {
         this.tableMetadata = tableMetadata;
     }
 
+    public ConnectorMetadata getNormalMetadata() {
+        return normal;
+    }
+
+    public ConnectorMetadata getMetadataForDb(String dbName) {
+        return metadataOfDb(dbName);
+    }
+
     private ConnectorMetadata metadataOfTable(String tableName) {
         // Paimon system table shares the same pattern, ignore it here
         if (getTableType() != Table.TableType.PAIMON && TableMetaMetadata.isMetadataTable(tableName)) {

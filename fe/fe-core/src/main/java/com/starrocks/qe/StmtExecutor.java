@@ -3071,7 +3071,7 @@ public class StmtExecutor {
             context.setStatisticsJob(AnalyzerUtils.isStatisticsJob(context, parsedStmt));
             InsertLoadJob loadJob = null;
             if (!(targetTable.isIcebergTable() || targetTable.isHiveTable() || targetTable.isTableFunctionTable() ||
-                    targetTable.isBlackHoleTable())) {
+                    targetTable.isBlackHoleTable() || targetTable instanceof StarRocksExternalTable)) {
                 InsertLoadTxnCallback insertLoadTxnCallback =
                         InsertLoadTxnCallbackFactory.of(context, database.getId(), targetTable);
                 // insert, update and delete job
@@ -3188,9 +3188,10 @@ public class StmtExecutor {
                     String stmtLabel = stmt instanceof InsertStmt ? ((InsertStmt) stmt).getLabel() : null;
                     Optional<ConnectorMetadata> optionalMetadata =
                             GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
-                    if (optionalMetadata.isPresent() && optionalMetadata.get() instanceof StarRocksConnectorMetadata) {
-                        StarRocksConnectorMetadata starrocksMetadata =
-                                (StarRocksConnectorMetadata) optionalMetadata.get();
+                    StarRocksConnectorMetadata starrocksMetadata = optionalMetadata
+                            .map(metadata -> StarRocksConnectorMetadata.unwrap(metadata, dbName))
+                            .orElse(null);
+                    if (starrocksMetadata != null) {
                         List<TSinkCommitInfo> commitInfos =
                                 coord == null ? Collections.emptyList() : coord.getSinkCommitInfos();
                         starrocksMetadata.rollbackTransaction(dbName, tableName, stmtLabel, commitInfos);
@@ -3402,9 +3403,10 @@ public class StmtExecutor {
                     String stmtLabel = stmt instanceof InsertStmt ? ((InsertStmt) stmt).getLabel() : null;
                     Optional<ConnectorMetadata> optionalMetadata =
                             GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
-                    if (optionalMetadata.isPresent() && optionalMetadata.get() instanceof StarRocksConnectorMetadata) {
-                        StarRocksConnectorMetadata starrocksMetadata =
-                                (StarRocksConnectorMetadata) optionalMetadata.get();
+                    StarRocksConnectorMetadata starrocksMetadata = optionalMetadata
+                            .map(metadata -> StarRocksConnectorMetadata.unwrap(metadata, dbName))
+                            .orElse(null);
+                    if (starrocksMetadata != null) {
                         List<TSinkCommitInfo> commitInfos =
                                 coord == null ? Collections.emptyList() : coord.getSinkCommitInfos();
                         starrocksMetadata.rollbackTransaction(dbName, tableName, stmtLabel, commitInfos);

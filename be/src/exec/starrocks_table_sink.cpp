@@ -17,12 +17,14 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <numeric>
 #include <utility>
 
 #include "column/chunk.h"
 #include "column/column_helper.h"
 #include "column/datum.h"
 #include "column/datum_convert.h"
+#include "column/nullable_column.h"
 #include "common/logging.h"
 #include "common/statusor.h"
 #include "exprs/expr.h"
@@ -30,6 +32,7 @@
 #include "runtime/exec_env.h"
 #include "runtime/mem_pool.h"
 #include "runtime/runtime_state.h"
+#include "storage/chunk_helper.h"
 #include "storage/lake/fixed_location_provider.h"
 #include "storage/lake/join_path.h"
 #include "storage/lake/tablet.h"
@@ -120,6 +123,31 @@ bool prefer_virtual_host_style(const std::string& endpoint) {
     return false;
 }
 
+std::string normalize_s3_endpoint(const std::string& endpoint, bool* enable_ssl) {
+    std::string_view view(endpoint);
+    if (view.rfind("http://", 0) == 0) {
+        if (enable_ssl != nullptr) {
+            *enable_ssl = false;
+        }
+        view.remove_prefix(sizeof("http://") - 1);
+    } else if (view.rfind("https://", 0) == 0) {
+        if (enable_ssl != nullptr) {
+            *enable_ssl = true;
+        }
+        view.remove_prefix(sizeof("https://") - 1);
+    }
+
+    // Strip any path component.
+    auto slash_pos = view.find('/');
+    if (slash_pos != std::string_view::npos) {
+        view = view.substr(0, slash_pos);
+    }
+    while (!view.empty() && view.back() == '/') {
+        view.remove_suffix(1);
+    }
+    return std::string(view);
+}
+
 } // namespace
 
 StarRocksTableSink::StarRocksTableSink(ObjectPool* pool, const std::vector<TExpr>& t_exprs, Status* status,
@@ -131,6 +159,8 @@ StarRocksTableSink::StarRocksTableSink(ObjectPool* pool, const std::vector<TExpr
 }
 
 StarRocksTableSink::~StarRocksTableSink() = default;
+
+StarRocksTableSink::TabletWriterContext::~TabletWriterContext() = default;
 
 Status StarRocksTableSink::init(const TDataSink& thrift_sink, RuntimeState* state) {
     DCHECK(thrift_sink.__isset.starrocks_table_sink);
@@ -174,12 +204,15 @@ Status StarRocksTableSink::init(const TDataSink& thrift_sink, RuntimeState* stat
         if (has_cloud_properties) {
             auto endpoint_it = cloud_properties.find("aws.s3.endpoint");
             auto ssl_it = cloud_properties.find("aws.s3.enable_ssl");
-            if (endpoint_it != cloud_properties.end() && ssl_it == cloud_properties.end()) {
+            if (endpoint_it != cloud_properties.end()) {
                 const std::string& endpoint = endpoint_it->second;
-                if (endpoint.find("http://") == 0) {
-                    cloud_properties["aws.s3.enable_ssl"] = "false";
-                } else if (endpoint.find("https://") == 0) {
-                    cloud_properties["aws.s3.enable_ssl"] = "true";
+                bool has_scheme = (endpoint.rfind("http://", 0) == 0) || (endpoint.rfind("https://", 0) == 0);
+                bool enable_ssl_from_endpoint = true;
+                endpoint_it->second = normalize_s3_endpoint(
+                        endpoint_it->second,
+                        (ssl_it == cloud_properties.end() && has_scheme) ? &enable_ssl_from_endpoint : nullptr);
+                if (ssl_it == cloud_properties.end() && has_scheme) {
+                    cloud_properties["aws.s3.enable_ssl"] = enable_ssl_from_endpoint ? "true" : "false";
                 }
             }
 
@@ -200,6 +233,20 @@ Status StarRocksTableSink::init(const TDataSink& thrift_sink, RuntimeState* stat
             _cloud_conf.__set_cloud_type(TCloudType::AWS);
             _cloud_conf.__set_cloud_properties(cloud_properties);
             _cloud_conf.__isset.cloud_properties = true;
+
+            LOG(INFO) << "StarRocksTableSink built CloudConfiguration with " << cloud_properties.size()
+                      << " aws.s3 properties";
+            for (const auto& [k, v] : cloud_properties) {
+                bool is_secret = (k.find("secret") != std::string::npos || k.find("key") != std::string::npos);
+                if (is_secret && !v.empty()) {
+                    LOG(INFO) << "    " << k << " = " << v.substr(0, 4) << "***";
+                } else {
+                    LOG(INFO) << "    " << k << " = " << v;
+                }
+            }
+        } else {
+            LOG(WARNING) << "StarRocksTableSink did not receive aws.s3.* properties; "
+                         << "object storage access may fail";
         }
 
         if (!unsupported_keys.empty()) {
@@ -210,7 +257,8 @@ Status StarRocksTableSink::init(const TDataSink& thrift_sink, RuntimeState* stat
         }
     }
 
-    return _parse_tablet_root_paths();
+    RETURN_IF_ERROR(_parse_tablet_root_paths());
+    return _parse_tablet_versions();
 }
 
 Status StarRocksTableSink::prepare(RuntimeState* state) {
@@ -296,14 +344,10 @@ Status StarRocksTableSink::send_chunk(RuntimeState* state, Chunk* chunk) {
         _output_chunk = std::make_unique<Chunk>();
         for (size_t i = 0; i < _output_expr_ctxs.size(); ++i) {
             ASSIGN_OR_RETURN(ColumnPtr tmp, _output_expr_ctxs[i]->evaluate(chunk));
-            MutableColumnPtr output_column = nullptr;
-            if (tmp->only_null()) {
-                output_column = ColumnHelper::create_column(_output_tuple_desc->slots()[i]->type(), true);
-                output_column->append_nulls(chunk->num_rows());
-            } else {
-                output_column = ColumnHelper::unpack_and_duplicate_const_column(chunk->num_rows(), std::move(tmp));
-            }
-            _output_chunk->append_column(std::move(output_column), _output_tuple_desc->slots()[i]->id());
+            SlotDescriptor* slot = _output_tuple_desc->slots()[i];
+            MutableColumnPtr output_column =
+                    ColumnHelper::align_return_type(std::move(tmp), slot->type(), chunk->num_rows(), slot->is_nullable());
+            _output_chunk->append_column(std::move(output_column), slot->id());
         }
         chunk = _output_chunk.get();
     } else {
@@ -342,15 +386,21 @@ Status StarRocksTableSink::send_chunk(RuntimeState* state, Chunk* chunk) {
         tablet_backends.emplace(tablet.tablet_id, tablet.backend_id);
     }
 
+    std::unordered_map<std::string, SlotDescriptor*> slots_by_name;
+    slots_by_name.reserve(_output_tuple_desc->slots().size());
+    for (auto* slot : _output_tuple_desc->slots()) {
+        if (slot == nullptr || slot->col_name().empty()) {
+            continue;
+        }
+        slots_by_name.emplace(to_lower(slot->col_name()), slot);
+    }
+
     for (auto& entry : tablet_rows) {
         int64_t tablet_id = entry.first;
         auto& indexes = entry.second;
         if (indexes.empty()) {
             continue;
         }
-        auto tablet_chunk = chunk->clone_empty_with_slot(indexes.size());
-        tablet_chunk->append_selective(*chunk, indexes.data(), 0, indexes.size());
-
         auto part_it = tablet_partitions.find(tablet_id);
         auto backend_it = tablet_backends.find(tablet_id);
         if (part_it == tablet_partitions.end() || backend_it == tablet_backends.end()) {
@@ -358,6 +408,49 @@ Status StarRocksTableSink::send_chunk(RuntimeState* state, Chunk* chunk) {
         }
 
         ASSIGN_OR_RETURN(auto writer_ctx, _get_or_create_writer(tablet_id, part_it->second, backend_it->second));
+        if (writer_ctx->chunk_schema == nullptr) {
+            return Status::InternalError(fmt::format("missing chunk schema for tablet writer {}", tablet_id));
+        }
+
+        ASSIGN_OR_RETURN(auto tablet_chunk, ChunkHelper::new_chunk_checked(*writer_ctx->chunk_schema, indexes.size()));
+        // Fill columns by schema order to match SegmentWriter's column writer order.
+        for (size_t col_idx = 0; col_idx < writer_ctx->chunk_schema->num_fields(); ++col_idx) {
+            const auto& field = writer_ctx->chunk_schema->field(col_idx);
+            if (field == nullptr) {
+                return Status::InternalError(fmt::format("null field in tablet schema at index {}", col_idx));
+            }
+
+            auto slot_it = slots_by_name.find(to_lower(std::string(field->name())));
+            if (slot_it == slots_by_name.end()) {
+                return Status::InternalError(
+                        fmt::format("column '{}' not found in sink output tuple for tablet {}", field->name(), tablet_id));
+            }
+            SlotDescriptor* src_slot = slot_it->second;
+            if (src_slot->type().type != field->type()->type()) {
+                return Status::InternalError(fmt::format(
+                        "column '{}' type mismatch when writing tablet {}: src_type={}, dest_type={}", field->name(),
+                        tablet_id, logical_type_to_string(src_slot->type().type), logical_type_to_string(field->type()->type())));
+            }
+
+            const ColumnPtr& src_col = chunk->get_column_by_slot_id(src_slot->id());
+            if (src_col == nullptr) {
+                return Status::InternalError(
+                        fmt::format("column '{}' is null in input chunk for tablet {}", field->name(), tablet_id));
+            }
+
+            const Column* src_data = src_col.get();
+            if (!field->is_nullable() && src_col->is_nullable()) {
+                if (src_col->has_null()) {
+                    return Status::InternalError(fmt::format(
+                            "non-nullable column '{}' contains null value when writing tablet {}", field->name(),
+                            tablet_id));
+                }
+                src_data = ColumnHelper::get_data_column(src_col.get());
+            }
+
+            tablet_chunk->columns()[col_idx]->as_mutable_raw_ptr()->append_selective(
+                    *src_data, indexes.data(), 0, static_cast<uint32_t>(indexes.size()));
+        }
         RETURN_IF_ERROR(writer_ctx->writer->write(*tablet_chunk));
     }
 
@@ -684,6 +777,61 @@ Status StarRocksTableSink::_parse_tablet_root_paths() {
     return Status::OK();
 }
 
+Status StarRocksTableSink::_parse_tablet_versions() {
+    if (!_t_sink.__isset.properties) {
+        return Status::OK();
+    }
+
+    auto it = _t_sink.properties.find("tablet_versions");
+    if (it == _t_sink.properties.end()) {
+        return Status::OK();
+    }
+
+    auto json_value_or = JsonValue::parse_json_or_string(Slice(it->second));
+    if (!json_value_or.ok()) {
+        return Status::InvalidArgument("failed to parse tablet_versions JSON");
+    }
+
+    auto json_slice = json_value_or.value().to_vslice();
+    if (!json_slice.isObject()) {
+        return Status::InvalidArgument("tablet_versions is not a JSON object");
+    }
+
+    for (auto item : vpack::ObjectIterator(json_slice)) {
+        if (!item.key.isString()) {
+            return Status::InvalidArgument("tablet_versions contains non-string key");
+        }
+        std::string key = item.key.copyString();
+        int64_t tablet_id = 0;
+        try {
+            tablet_id = std::stoll(key);
+        } catch (const std::exception& e) {
+            return Status::InvalidArgument(fmt::format("invalid tablet id in tablet_versions: {}", key));
+        }
+
+        int64_t version = 0;
+        if (item.value.isInt() || item.value.isSmallInt()) {
+            version = item.value.getIntUnchecked();
+        } else if (item.value.isUInt()) {
+            version = static_cast<int64_t>(item.value.getUIntUnchecked());
+        } else if (item.value.isString()) {
+            try {
+                version = std::stoll(item.value.copyString());
+            } catch (const std::exception& e) {
+                return Status::InvalidArgument(fmt::format("invalid tablet version in tablet_versions: {}", key));
+            }
+        } else {
+            return Status::InvalidArgument("tablet_versions contains non-number value");
+        }
+
+        if (version > 0) {
+            _tablet_versions.emplace(tablet_id, version);
+        }
+    }
+
+    return Status::OK();
+}
+
 StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_create_writer(
         int64_t tablet_id, PartitionInfo* partition, int64_t backend_id) {
     auto it = _tablet_writers.find(tablet_id);
@@ -698,33 +846,43 @@ StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_c
 
     ASSIGN_OR_RETURN(auto fs, _create_fs(root_path));
 
-    auto* tablet_mgr = ExecEnv::GetInstance()->lake_tablet_manager();
-    if (tablet_mgr == nullptr) {
-        return Status::InternalError("lake tablet manager is not initialized");
-    }
-
     auto location_provider = std::make_shared<lake::FixedLocationProvider>(root_path);
+    auto tablet_manager = std::make_shared<lake::TabletManager>(location_provider, 0);
 
-    std::vector<std::string> objects;
-    std::string prefix = fmt::format("{:016X}_", tablet_id);
-    std::string metadata_root = location_provider->metadata_root_location(tablet_id);
-    auto scan_cb = [&](std::string_view name) {
-        if (name.size() >= prefix.size() && name.compare(0, prefix.size(), prefix) == 0) {
-            objects.emplace_back(lake::join_path(metadata_root, name));
+    TabletMetadataPtr tablet_metadata;
+    auto version_it = _tablet_versions.find(tablet_id);
+    if (version_it != _tablet_versions.end() && version_it->second > 0) {
+        auto meta_or = tablet_manager->get_single_tablet_metadata(tablet_id, version_it->second, true, 0, fs);
+        if (!meta_or.ok()) {
+            LOG(WARNING) << "Failed to load tablet metadata by version for tablet " << tablet_id
+                         << " version " << version_it->second << ": " << meta_or.status();
+        } else {
+            tablet_metadata = std::move(meta_or).value();
         }
-        return true;
-    };
-
-    RETURN_IF_ERROR(fs->iterate_dir(metadata_root, scan_cb));
-    if (objects.empty()) {
-        return Status::NotFound(fmt::format("tablet {} metadata not found", tablet_id));
     }
-    std::sort(objects.begin(), objects.end());
-    std::string metadata_location = objects.back();
 
-    ASSIGN_OR_RETURN(auto tablet_metadata, tablet_mgr->get_tablet_metadata(metadata_location, true, 0, fs));
+    if (tablet_metadata == nullptr) {
+        std::vector<std::string> objects;
+        std::string prefix = fmt::format("{:016X}_", tablet_id);
+        std::string metadata_root = location_provider->metadata_root_location(tablet_id);
+        auto scan_cb = [&](std::string_view name) {
+            if (name.size() >= prefix.size() && name.compare(0, prefix.size(), prefix) == 0) {
+                objects.emplace_back(lake::join_path(metadata_root, name));
+            }
+            return true;
+        };
+
+        RETURN_IF_ERROR(fs->iterate_dir(metadata_root, scan_cb));
+        if (objects.empty()) {
+            return Status::NotFound(fmt::format("tablet {} metadata not found", tablet_id));
+        }
+        std::sort(objects.begin(), objects.end());
+        std::string metadata_location = objects.back();
+
+        ASSIGN_OR_RETURN(tablet_metadata, tablet_manager->get_tablet_metadata(metadata_location, true, 0, fs));
+    }
     auto tablet_schema = std::make_shared<TabletSchema>(tablet_metadata->schema());
-    auto tablet = std::make_unique<lake::Tablet>(tablet_mgr, tablet_id, location_provider, tablet_schema);
+    auto tablet = std::make_unique<lake::Tablet>(tablet_manager.get(), tablet_id, location_provider, tablet_schema);
 
     ASSIGN_OR_RETURN(auto writer, tablet->new_writer(lake::WriterType::kHorizontal, _txn_id));
     writer->set_fs(fs);
@@ -737,6 +895,15 @@ StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_c
     writer_ctx->root_path = root_path;
     writer_ctx->fs = fs;
     writer_ctx->location_provider = std::move(location_provider);
+    writer_ctx->tablet_manager = std::move(tablet_manager);
+    if (tablet_schema->num_columns() > 0 &&
+        tablet_schema->column(tablet_schema->num_columns() - 1).name() == Schema::FULL_ROW_COLUMN) {
+        std::vector<ColumnId> cids(tablet_schema->num_columns() - 1);
+        std::iota(cids.begin(), cids.end(), 0);
+        writer_ctx->chunk_schema = std::make_shared<Schema>(tablet_schema->schema(), cids);
+    } else {
+        writer_ctx->chunk_schema = std::make_shared<Schema>(ChunkHelper::convert_schema(tablet_schema));
+    }
     writer_ctx->tablet = std::move(tablet);
     writer_ctx->writer = std::move(writer);
 
@@ -747,7 +914,13 @@ StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_c
 
 StatusOr<std::shared_ptr<FileSystem>> StarRocksTableSink::_create_fs(const std::string& root_path) const {
     if (_cloud_conf.__isset.cloud_properties && !_cloud_conf.cloud_properties.empty()) {
-        return FileSystem::Create(root_path, FSOptions(&_cloud_conf));
+        // FileSystem::Create() will return a shared TLS FileSystem when FSOptions._fs_options is empty.
+        // That shared instance is constructed with default options and will ignore the per-sink cloud
+        // configuration. For external StarRocks writes we must always use the configured credentials.
+        //
+        // Use CreateUniqueFromString() to force creating a FileSystem with the provided TCloudConfiguration.
+        ASSIGN_OR_RETURN(auto fs_unique, FileSystem::CreateUniqueFromString(root_path, FSOptions(&_cloud_conf)));
+        return std::shared_ptr<FileSystem>(std::move(fs_unique));
     }
     return FileSystem::Create(root_path, FSOptions());
 }

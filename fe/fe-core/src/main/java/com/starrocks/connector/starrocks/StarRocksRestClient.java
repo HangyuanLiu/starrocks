@@ -18,14 +18,19 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.http.rest.v2.RestBaseResultV2;
 import com.starrocks.http.rest.v2.RestBaseResultV2.PagedResult;
+import com.starrocks.http.rest.v2.vo.ColumnView;
 import com.starrocks.http.rest.v2.vo.PartitionInfoView;
 import com.starrocks.http.rest.v2.vo.TableSchemaView;
 import com.starrocks.thrift.TTabletCommitInfo;
@@ -103,7 +108,33 @@ public interface StarRocksRestClient extends Closeable {
         private static final String BODY_COMMITTED_TABLETS = "committed_tablets";
         private static final String BODY_FAILED_TABLETS = "failed_tablets";
 
-        private static final Gson GSON = new Gson();
+        private static final Gson GSON = new GsonBuilder()
+                .registerTypeAdapter(ColumnView.TypeView.class, new ColumnTypeViewDeserializer())
+                .create();
+
+        private static final class ColumnTypeViewDeserializer implements JsonDeserializer<ColumnView.TypeView> {
+            @Override
+            public ColumnView.TypeView deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context)
+                    throws JsonParseException {
+                if (json == null || json.isJsonNull()) {
+                    return null;
+                }
+                if (!json.isJsonObject()) {
+                    throw new JsonParseException("Invalid column type view: " + json);
+                }
+                JsonObject obj = json.getAsJsonObject();
+                if (obj.has("itemType")) {
+                    return context.deserialize(json, ColumnView.ArrayTypeView.class);
+                }
+                if (obj.has("fields")) {
+                    return context.deserialize(json, ColumnView.StructTypeView.class);
+                }
+                if (obj.has("keyType") || obj.has("valueType")) {
+                    return context.deserialize(json, ColumnView.MapTypeView.class);
+                }
+                return context.deserialize(json, ColumnView.ScalarTypeView.class);
+            }
+        }
 
         private final List<String> endpoints;
         private final OkHttpClient httpClient;
@@ -290,10 +321,10 @@ public interface StarRocksRestClient extends Closeable {
 
             Map<String, Object> payload = new LinkedHashMap<>();
             if (successTablets != null && !successTablets.isEmpty()) {
-                payload.put(BODY_COMMITTED_TABLETS, successTablets);
+                payload.put(BODY_COMMITTED_TABLETS, toCommitTabletPayload(successTablets));
             }
             if (failureTablets != null && !failureTablets.isEmpty()) {
-                payload.put(BODY_FAILED_TABLETS, failureTablets);
+                payload.put(BODY_FAILED_TABLETS, toFailTabletPayload(failureTablets));
             }
             RequestBody body = RequestBody.create(GSON.toJson(payload), JSON);
             return doTransaction("prepare", dbName, null, label, null, body, null);
@@ -318,10 +349,37 @@ public interface StarRocksRestClient extends Closeable {
 
             Map<String, Object> payload = new LinkedHashMap<>();
             if (failureTablets != null && !failureTablets.isEmpty()) {
-                payload.put(BODY_FAILED_TABLETS, failureTablets);
+                payload.put(BODY_FAILED_TABLETS, toFailTabletPayload(failureTablets));
             }
             RequestBody body = RequestBody.create(GSON.toJson(payload), JSON);
             return doTransaction("rollback", dbName, null, label, null, body, null);
+        }
+
+        private static List<Map<String, Object>> toCommitTabletPayload(List<TTabletCommitInfo> tabletCommitInfos) {
+            List<Map<String, Object>> payload = new ArrayList<>();
+            for (TTabletCommitInfo info : tabletCommitInfos) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("tabletId", info.getTabletId());
+                item.put("backendId", info.getBackendId());
+                if (info.isSetInvalid_dict_cache_columns()) {
+                    item.put("invalidDictCacheColumns", info.getInvalid_dict_cache_columns());
+                    item.put("validDictCacheColumns", info.getValid_dict_cache_columns());
+                    item.put("validDictCollectedVersions", info.getValid_dict_collected_versions());
+                }
+                payload.add(item);
+            }
+            return payload;
+        }
+
+        private static List<Map<String, Object>> toFailTabletPayload(List<TTabletFailInfo> tabletFailInfos) {
+            List<Map<String, Object>> payload = new ArrayList<>();
+            for (TTabletFailInfo info : tabletFailInfos) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("tabletId", info.getTabletId());
+                item.put("backendId", info.getBackendId());
+                payload.add(item);
+            }
+            return payload;
         }
 
         private static HttpUrl buildUrl(String endpoint, String dbName, String tableName) {

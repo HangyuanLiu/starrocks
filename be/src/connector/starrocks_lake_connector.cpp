@@ -20,9 +20,11 @@
 #include <string>
 #include <string_view>
 
+#include "cache/cache_options.h"
 #include "column/chunk.h"
 #include "common/logging.h"
 #include "connector/starrocks_connector.h"
+#include "connector/starrocks_cache_fs.h"
 #include "exec/connector_scan_node.h"
 #include "fs/fs.h"
 #include "gen_cpp/CloudConfiguration_types.h"
@@ -61,6 +63,67 @@ std::string join_keys(const std::vector<std::string>& keys) {
         result.append(keys[i]);
     }
     return result;
+}
+
+bool parse_bool_property(const std::map<std::string, std::string>& properties, const std::string& key,
+                         bool default_value) {
+    auto it = properties.find(key);
+    if (it == properties.end()) {
+        return default_value;
+    }
+    std::string value = it->second;
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value == "true" || value == "1" || value == "yes";
+}
+
+int64_t parse_int64_property(const std::map<std::string, std::string>& properties, const std::string& key,
+                             int64_t default_value) {
+    auto it = properties.find(key);
+    if (it == properties.end()) {
+        return default_value;
+    }
+    try {
+        return std::stoll(it->second);
+    } catch (const std::exception& ex) {
+        LOG(WARNING) << "Invalid int64 value '" << it->second << "' for property '" << key
+                     << "', using default " << default_value << ": " << ex.what();
+        return default_value;
+    }
+}
+
+int32_t parse_int32_property(const std::map<std::string, std::string>& properties, const std::string& key,
+                             int32_t default_value) {
+    auto it = properties.find(key);
+    if (it == properties.end()) {
+        return default_value;
+    }
+    try {
+        return std::stoi(it->second);
+    } catch (const std::exception& ex) {
+        LOG(WARNING) << "Invalid int32 value '" << it->second << "' for property '" << key
+                     << "', using default " << default_value << ": " << ex.what();
+        return default_value;
+    }
+}
+
+DataCacheOptions parse_datacache_options(const std::map<std::string, std::string>& properties) {
+    DataCacheOptions options;
+    options.enable_datacache = parse_bool_property(properties, "datacache.enable", false);
+    options.enable_cache_select = parse_bool_property(properties, "datacache.cache_select", false);
+    options.enable_populate_datacache = parse_bool_property(properties, "datacache.populate", false);
+    options.enable_datacache_async_populate_mode =
+            parse_bool_property(properties, "datacache.async_populate", false);
+    options.enable_datacache_io_adaptor = parse_bool_property(properties, "datacache.io_adaptor", false);
+    int32_t priority = parse_int32_property(properties, "datacache.priority", 0);
+    priority = std::max<int32_t>(-128, std::min<int32_t>(127, priority));
+    options.datacache_priority = static_cast<int8_t>(priority);
+    options.datacache_ttl_seconds = parse_int64_property(properties, "datacache.ttl_seconds", 0);
+    options.modification_time = parse_int64_property(properties, "datacache.modification_time", 0);
+    if (options.enable_cache_select) {
+        options.enable_datacache = true;
+    }
+    return options;
 }
 
 } // namespace
@@ -106,8 +169,9 @@ Status StarRocksLakeDataSource::get_next(RuntimeState* state, ChunkPtr* chunk) {
     ASSIGN_OR_RETURN(auto chunk_ptr,
                      ChunkHelper::new_chunk_pooled_checked(_prj_iter->output_schema(), state->chunk_size()));
     chunk->reset(chunk_ptr);
+    Chunk* output_chunk = chunk_ptr;
     
-    Status status = _prj_iter->get_next(chunk_ptr);
+    Status status = _prj_iter->get_next(output_chunk);
     
     if (!status.ok()) {
         if (status.is_end_of_file()) {
@@ -118,17 +182,17 @@ Status StarRocksLakeDataSource::get_next(RuntimeState* state, ChunkPtr* chunk) {
 
     // Build slot_id to column index mapping for expression evaluation.
     for (auto* slot : _materialized_slots) {
-        size_t column_index = chunk_ptr->schema()->get_field_index_by_name(slot->col_name());
-        if (column_index >= chunk_ptr->num_columns()) {
+        size_t column_index = output_chunk->schema()->get_field_index_by_name(slot->col_name());
+        if (column_index >= output_chunk->num_columns()) {
             return Status::InternalError(strings::Substitute(
                     "Column '$0' not found in chunk schema for slot_id $1", slot->col_name(), slot->id()));
         }
-        chunk_ptr->set_slot_id_to_index(slot->id(), column_index);
+        output_chunk->set_slot_id_to_index(slot->id(), column_index);
     }
     
     // Update metrics
-    _num_rows_read += chunk_ptr->num_rows();
-    _num_bytes_read += chunk_ptr->bytes_usage();
+    _num_rows_read += output_chunk->num_rows();
+    _num_bytes_read += output_chunk->bytes_usage();
     
     return Status::OK();
 }
@@ -286,6 +350,29 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
         }
         return false;
     };
+
+    auto normalize_s3_endpoint = [](const std::string& endpoint, bool* enable_ssl) -> std::string {
+        std::string_view view(endpoint);
+        if (view.rfind("http://", 0) == 0) {
+            if (enable_ssl != nullptr) {
+                *enable_ssl = false;
+            }
+            view.remove_prefix(sizeof("http://") - 1);
+        } else if (view.rfind("https://", 0) == 0) {
+            if (enable_ssl != nullptr) {
+                *enable_ssl = true;
+            }
+            view.remove_prefix(sizeof("https://") - 1);
+        }
+        auto slash_pos = view.find('/');
+        if (slash_pos != std::string_view::npos) {
+            view = view.substr(0, slash_pos);
+        }
+        while (!view.empty() && view.back() == '/') {
+            view.remove_suffix(1);
+        }
+        return std::string(view);
+    };
     
     LOG(INFO) << "=== Extracting cloud storage properties from execution context ===";
     LOG(INFO) << "Total properties in context: " << ctx.properties.size();
@@ -320,14 +407,17 @@ Status StarRocksLakeDataSource::build_cloud_configuration(TCloudConfiguration* c
     if (has_cloud_properties) {
         auto endpoint_it = cloud_properties.find("aws.s3.endpoint");
         auto ssl_it = cloud_properties.find("aws.s3.enable_ssl");
-        if (endpoint_it != cloud_properties.end() && ssl_it == cloud_properties.end()) {
+        if (endpoint_it != cloud_properties.end()) {
             const std::string& endpoint = endpoint_it->second;
-            if (endpoint.find("http://") == 0) {
-                cloud_properties["aws.s3.enable_ssl"] = "false";
-                LOG(INFO) << "  Auto-detected HTTP endpoint, setting: aws.s3.enable_ssl = false";
-            } else if (endpoint.find("https://") == 0) {
-                cloud_properties["aws.s3.enable_ssl"] = "true";
-                LOG(INFO) << "  Auto-detected HTTPS endpoint, setting: aws.s3.enable_ssl = true";
+            bool has_scheme = (endpoint.rfind("http://", 0) == 0) || (endpoint.rfind("https://", 0) == 0);
+            bool enable_ssl_from_endpoint = true;
+            endpoint_it->second = normalize_s3_endpoint(
+                    endpoint_it->second,
+                    (ssl_it == cloud_properties.end() && has_scheme) ? &enable_ssl_from_endpoint : nullptr);
+            if (ssl_it == cloud_properties.end() && has_scheme) {
+                cloud_properties["aws.s3.enable_ssl"] = enable_ssl_from_endpoint ? "true" : "false";
+                LOG(INFO) << "  Auto-detected endpoint scheme, setting: aws.s3.enable_ssl = "
+                          << (enable_ssl_from_endpoint ? "true" : "false");
             }
         }
 
@@ -401,6 +491,13 @@ Status StarRocksLakeDataSource::init_lake_reader(RuntimeState* state) {
         LOG(INFO) << "Successfully created FileSystem with configured credentials for " << storage_path;
     } else {
         LOG(WARNING) << "No cloud credentials provided, will use default FileSystem (may fail for private storage)";
+    }
+
+    const auto& ctx = _provider->execution_context();
+    DataCacheOptions datacache_options = parse_datacache_options(ctx.properties);
+    if (_fs_with_credentials && datacache_options.enable_datacache) {
+        _fs_with_credentials = std::make_shared<StarRocksCacheFileSystem>(_fs_with_credentials, datacache_options);
+        LOG(INFO) << "StarRocks connector enabled DataCache for segment/data files";
     }
 
     // Create FixedLocationProvider with the storage root

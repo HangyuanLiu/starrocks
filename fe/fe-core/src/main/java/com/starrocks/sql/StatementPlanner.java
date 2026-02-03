@@ -629,10 +629,12 @@ public class StatementPlanner {
 
             Optional<ConnectorMetadata> optionalMetadata =
                     GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
-            if (optionalMetadata.isEmpty() || !(optionalMetadata.get() instanceof StarRocksConnectorMetadata)) {
+            StarRocksConnectorMetadata starrocksMetadata = optionalMetadata
+                    .map(metadata -> StarRocksConnectorMetadata.unwrap(metadata, dbName))
+                    .orElse(null);
+            if (starrocksMetadata == null) {
                 throw new SemanticException("StarRocks connector metadata not available for catalog: " + catalogName);
             }
-            StarRocksConnectorMetadata starrocksMetadata = (StarRocksConnectorMetadata) optionalMetadata.get();
             txnId = starrocksMetadata.beginTransaction(dbName, tableName, label, session.getExecTimeout());
         } else if (targetTable instanceof SystemTable || targetTable.isIcebergTable() || targetTable.isHiveTable()
                 || targetTable.isTableFunctionTable() || targetTable.isBlackHoleTable()) {
@@ -685,8 +687,10 @@ public class StatementPlanner {
                         : stmtLabel;
                 Optional<ConnectorMetadata> optionalMetadata =
                         GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
-                if (optionalMetadata.isPresent() && optionalMetadata.get() instanceof StarRocksConnectorMetadata) {
-                    StarRocksConnectorMetadata starrocksMetadata = (StarRocksConnectorMetadata) optionalMetadata.get();
+                StarRocksConnectorMetadata starrocksMetadata = optionalMetadata
+                        .map(metadata -> StarRocksConnectorMetadata.unwrap(metadata, dbName))
+                        .orElse(null);
+                if (starrocksMetadata != null) {
                     starrocksMetadata.rollbackTransaction(dbName, targetTable.getName(), label, Collections.emptyList());
                 }
             } else if (targetTable instanceof OlapTable) {

@@ -167,6 +167,11 @@ public class StarRocksExternalTable extends Table {
         return true;
     }
 
+    @Override
+    public boolean supportInsert() {
+        return true;
+    }
+
     /**
      * Tablet metadata returned from the {@code _query_plan} REST API.
      */

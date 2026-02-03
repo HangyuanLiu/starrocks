@@ -306,10 +306,12 @@ public class InsertPlanner {
 
         java.util.Optional<com.starrocks.connector.ConnectorMetadata> optionalMetadata =
                 GlobalStateMgr.getCurrentState().getMetadataMgr().getOptionalMetadata(catalogName);
-        if (optionalMetadata.isEmpty() || !(optionalMetadata.get() instanceof StarRocksConnectorMetadata)) {
+        StarRocksConnectorMetadata metadata = optionalMetadata
+                .map(m -> StarRocksConnectorMetadata.unwrap(m, dbName))
+                .orElse(null);
+        if (metadata == null) {
             throw new SemanticException("StarRocks connector metadata not available for catalog: " + catalogName);
         }
-        StarRocksConnectorMetadata metadata = (StarRocksConnectorMetadata) optionalMetadata.get();
         TableSchemaView schemaView = metadata.getTableSchemaView(dbName, tableName);
         if (schemaView == null) {
             throw new SemanticException("Failed to fetch StarRocks table schema for " + dbName + "." + tableName);

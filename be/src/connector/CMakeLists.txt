@@ -23,6 +23,7 @@ ADD_BE_LIB(Connector
         mysql_connector.cpp
         benchmark_connector.cpp
         starrocks_connector.cpp
+        starrocks_cache_fs.cpp
         starrocks_lake_connector.cpp
         file_connector.cpp
         binlog_connector.cpp

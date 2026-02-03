@@ -189,6 +189,9 @@ Status LakeDataSource::get_tablet(const TInternalScanRange& scan_range) {
     int64_t tablet_id = scan_range.tablet_id;
     int64_t version = strtoul(scan_range.version.c_str(), nullptr, 10);
     auto tablet_manager = ExecEnv::GetInstance()->lake_tablet_manager();
+    if (tablet_manager == nullptr) {
+        return Status::InternalError("lake tablet manager is not initialized");
+    }
     ASSIGN_OR_RETURN(_tablet, tablet_manager->get_tablet(tablet_id, version));
     auto& lake_scan_node = _provider->_t_lake_scan_node;
     if (lake_scan_node.__isset.schema_key) {
@@ -1155,8 +1158,13 @@ StatusOr<bool> LakeDataSourceProvider::_could_tablet_internal_parallel(
                                  tablet_scan_range.scan_range.internal_scan_range.tablet_id, version));
         num_table_rows += static_cast<int64_t>(tablet_num_rows);
 #else
+        auto* tablet_manager = ExecEnv::GetInstance()->lake_tablet_manager();
+        if (tablet_manager == nullptr) {
+            LOG(WARNING) << "lake tablet manager is not initialized, disable tablet internal parallel";
+            return false;
+        }
         ASSIGN_OR_RETURN(auto tablet_num_rows,
-                         ExecEnv::GetInstance()->lake_tablet_manager()->get_tablet_num_rows(
+                         tablet_manager->get_tablet_num_rows(
                                  tablet_scan_range.scan_range.internal_scan_range.tablet_id, version));
         num_table_rows += static_cast<int64_t>(tablet_num_rows);
 #endif
