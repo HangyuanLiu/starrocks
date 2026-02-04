@@ -215,6 +215,13 @@ list(APPEND CMAKE_PREFIX_PATH ${THIRDPARTY_DIR}/installed/lib/cmake)
 list(APPEND CMAKE_PREFIX_PATH ${THIRDPARTY_DIR}/installed/lib64/cmake)
 link_directories(${THIRDPARTY_DIR}/installed/lib ${THIRDPARTY_DIR}/installed/lib64)
 
+# Homebrew packages for AWS SDK / CRT / Poco (S3 support)
+list(APPEND CMAKE_PREFIX_PATH
+    ${HOMEBREW_PREFIX}/opt/aws-sdk-cpp
+    ${HOMEBREW_PREFIX}/opt/aws-crt-cpp
+    ${HOMEBREW_PREFIX}/opt/poco
+)
+
 # ==============================================================================
 # BOOST CONFIGURATION
 # ==============================================================================
@@ -255,6 +262,41 @@ message(STATUS "Boost configuration:")
 message(STATUS "  Version: ${Boost_VERSION}")
 message(STATUS "  Libraries: ${Boost_LIBRARIES}")
 message(STATUS "  Include dirs: ${Boost_INCLUDE_DIRS}")
+
+# ==============================================================================
+# AWS SDK + POCO CONFIGURATION (S3 support on macOS)
+# ==============================================================================
+set(CMAKE_FIND_LIBRARY_SUFFIXES_SAVED ${CMAKE_FIND_LIBRARY_SUFFIXES})
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".dylib" ".a")
+
+set(AWSSDK_ROOT_DIR "${HOMEBREW_PREFIX}/opt/aws-sdk-cpp")
+set(AWSSDK_USE_STATIC_LIBS OFF)
+find_package(AWSSDK REQUIRED COMPONENTS core s3 s3-crt transfer identity-management sts)
+include_directories(${AWSSDK_INCLUDE_DIRS})
+add_compile_definitions(STARROCKS_ENABLE_AWS_SDK)
+message(STATUS "AWS SDK enabled for macOS S3 support")
+
+# Enable Lake services on macOS for StarRocksTableSink and related features.
+add_compile_definitions(STARROCKS_ENABLE_LAKE)
+message(STATUS "Lake service enabled for macOS build")
+
+find_package(Poco REQUIRED COMPONENTS Foundation Net NetSSL Crypto)
+include_directories(${Poco_INCLUDE_DIRS})
+message(STATUS "Poco enabled for AWS SDK HTTP client on macOS")
+
+set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES_SAVED})
+
+set(POCO_LINK_LIBS "")
+if (TARGET Poco::Foundation)
+    list(APPEND POCO_LINK_LIBS Poco::Foundation Poco::Net Poco::NetSSL Poco::Crypto)
+else()
+    list(APPEND POCO_LINK_LIBS ${Poco_LIBRARIES})
+endif()
+
+if (TARGET AWS::aws-crt-cpp)
+    list(APPEND AWSSDK_LINK_LIBRARIES AWS::aws-crt-cpp)
+endif()
+list(REMOVE_DUPLICATES AWSSDK_LINK_LIBRARIES)
 
 # ==============================================================================
 # THIRD-PARTY STATIC LIBRARIES CONFIGURATION
@@ -655,6 +697,8 @@ list(APPEND STARROCKS_LINK_LIBS
     thriftnb
     libevent
     re2
+    ${POCO_LINK_LIBS}
+    ${AWSSDK_LINK_LIBRARIES}
     ${ABSL_BASE_LIB}
     ${ABSL_SPINLOCK_WAIT_LIB}
     ${ABSL_HASH_LIB}
@@ -908,10 +952,10 @@ list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*(avro|orc|parquet|iceberg).*\\.cp
 
 
 # ==============================================================================
-# EXCLUDE CLOUD STORAGE BACKENDS (S3, Azure, HDFS)
+# EXCLUDE CLOUD STORAGE BACKENDS (Azure, HDFS)
 # ==============================================================================
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/fs/(s3|hdfs|azure|cloud)/.*\\.cpp$")
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*(s3|aws|azure|hdfs|cloud).*\\.cpp$")
+list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/fs/(hdfs|azure|cloud)/.*\\.cpp$")
+list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*(azure|hdfs).*\\.cpp$")
 
 # ==============================================================================
 # EXCLUDE DISABLED RUNTIME COMPONENTS
@@ -1019,18 +1063,9 @@ list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/service/mem_hook\\.cpp$")
 list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/util/bfd_parser\\.cpp$")
 list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/util/buffered_stream\\.cpp$")
 
-# Completely exclude Lake and cloud native functionality on macOS
-# This includes all lake-related files to avoid dependency issues
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*lake.*\\.cpp$")
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/storage/lake/.*\\.cpp$")
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/runtime/lake.*\\.cpp$")
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/service/lake.*\\.cpp$")
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/exec/pipeline/sink/lake.*\\.cpp$")
+# Keep Lake sources enabled on macOS for StarRocksTableSink support.
 list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/exec/schema_scanner/schema_be_cloud_native.*\\.cpp$")
 list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/exec/schema_scanner/schema_be_datacache_metrics_scanner\\.cpp$")
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/storage/cloud.*\\.cpp$")
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/fs/cloud.*\\.cpp$")
-list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/exec/lake_meta_reader\\.cpp$")
 list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/exec/engine_alter_tablet_task\\.cpp$")
 list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/exec/update_config_action\\.cpp$")
 list(FILTER STARROCKS_SOURCES EXCLUDE REGEX ".*/engine_batch_load_task\\.cpp$")
@@ -1061,7 +1096,6 @@ set(MACOS_SHIM_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/shims/src/disabled_components_shim.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/shims/src/thrift_uuid_stub.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/shims/src/tracer_shim.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/shims/src/lake_manager_stub.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/shims/src/inverted_index_stub.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/shims/src/java_window_function_stub.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/shims/src/missing_symbols_shim.cpp"

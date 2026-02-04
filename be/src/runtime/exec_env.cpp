@@ -901,7 +901,7 @@ void ExecEnv::destroy() {
     if (HttpBrpcStubCache::getInstance() != nullptr) {
         HttpBrpcStubCache::getInstance()->shutdown();
     }
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
     if (LakeServiceBrpcStubCache::getInstance() != nullptr) {
         LakeServiceBrpcStubCache::getInstance()->shutdown();
     }

@@ -138,6 +138,7 @@ void PocoHttpClient::MakeRequestInternal(Aws::Http::HttpRequest& request,
 
             Poco::Net::HTTPResponse poco_response;
 
+#if !defined(__APPLE__)
             if (dynamic_cast<starrocks::io::S3ZeroCopyIOStream*>(&(response->GetResponseBody()))) {
                 poco_response.setResponseIOStream(
                         &(response->GetResponseBody()),
@@ -145,6 +146,7 @@ void PocoHttpClient::MakeRequestInternal(Aws::Http::HttpRequest& request,
                                 ->GetBuffer(),
                         (static_cast<starrocks::io::S3ZeroCopyIOStream&>(response->GetResponseBody())).getSize());
             }
+#endif
 
             auto& response_body_stream = session->receiveResponse(poco_response);
 
@@ -180,7 +182,12 @@ void PocoHttpClient::MakeRequestInternal(Aws::Http::HttpRequest& request,
                     response->SetResponseCode(Aws::Http::HttpResponseCode::INTERNAL_SERVER_ERROR);
                 }
 
-                if (!poco_response.isBodyFilled()) {
+#if !defined(__APPLE__)
+                const bool response_body_filled = poco_response.isBodyFilled();
+#else
+                const bool response_body_filled = false;
+#endif
+                if (!response_body_filled) {
                     response->GetResponseBody().write(response_string.data(), response_string.size());
                 }
             } else {
@@ -188,7 +195,13 @@ void PocoHttpClient::MakeRequestInternal(Aws::Http::HttpRequest& request,
                     // pass
                     // TODO, throttling
                 }
-                if (!poco_response.isBodyFilled()) {
+                const bool response_body_filled =
+#if !defined(__APPLE__)
+                        poco_response.isBodyFilled();
+#else
+                        false;
+#endif
+                if (!response_body_filled) {
                     Poco::StreamCopier::copyStream(response_body_stream, response->GetResponseBody());
                 }
             }

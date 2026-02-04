@@ -17,6 +17,7 @@
 #include <butil/time.h>
 #include <bvar/bvar.h>
 
+#include <ctime>
 #include <set>
 #include <string_view>
 #include <unordered_map>
@@ -1206,8 +1207,8 @@ static StatusOr<std::pair<int64_t, int64_t>> partition_datafile_gc(std::string_v
         files_to_delete.push_back(join_path(segment_root_location, name));
         transaction_ids.insert(extract_txn_id_prefix(name).value_or(0));
         bytes_to_delete += entry.size.value_or(0);
-        auto time = entry.mtime.value_or(0);
-        auto outtime = std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
+        std::time_t mtime = static_cast<std::time_t>(entry.mtime.value_or(0));
+        auto outtime = std::put_time(std::localtime(&mtime), "%Y-%m-%d %H:%M:%S");
         ++progress;
         if (audit_ostream) {
             audit_ostream << '(' << progress << '/' << orphan_data_files.size() << ") " << name

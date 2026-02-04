@@ -39,7 +39,7 @@
 #include "service/service_be/arrow_flight_sql_service.h"
 #include "service/service_be/http_service.h"
 #include "service/service_be/internal_service.h"
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
 #include "service/service_be/lake_service.h"
 #include "storage/lake/tablet_manager.h"
 #endif
@@ -188,7 +188,7 @@ void start_be(const std::vector<StorePath>& paths, bool as_cn) {
     auto brpc_server = std::make_unique<brpc::Server>();
 
     BackendInternalServiceImpl<PInternalService> internal_service(exec_env);
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
     LakeServiceImpl lake_service(exec_env, exec_env->lake_tablet_manager());
 
     brpc_server->AddService(&internal_service, brpc::SERVER_DOESNT_OWN_SERVICE);
@@ -207,7 +207,7 @@ void start_be(const std::vector<StorePath>& paths, bool as_cn) {
         sslOptions->default_cert.private_key = config::ssl_private_key_path;
     }
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
     const auto lake_service_max_concurrency = config::lake_service_max_concurrency;
     const auto service_name = "starrocks.LakeService";
     const auto methods = {"abort_txn",
@@ -334,7 +334,7 @@ void start_be(const std::vector<StorePath>& paths, bool as_cn) {
     LOG(INFO) << process_name << " exit step " << exit_step++ << ": staros worker exit successfully";
 #endif
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_AWS_SDK)
     if (config::enable_poco_client_for_aws_sdk) {
         starrocks::poco::HTTPSessionPools::instance().shutdown();
         LOG(INFO) << process_name << " exit step " << exit_step++ << ": poco connection pool shutdown successfully";

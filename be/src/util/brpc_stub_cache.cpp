@@ -16,7 +16,7 @@
 
 #include "common/config.h"
 #include "gen_cpp/internal_service.pb.h"
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
 #include "gen_cpp/lake_service.pb.h"
 #endif
 #include "runtime/exec_env.h"
@@ -216,7 +216,7 @@ void HttpBrpcStubCache::cleanup_expired(const butil::EndPoint& endpoint) {
     _stub_map.erase(endpoint);
 }
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
 
 LakeServiceBrpcStubCache* LakeServiceBrpcStubCache::getInstance() {
     static LakeServiceBrpcStubCache cache;
@@ -302,6 +302,6 @@ void LakeServiceBrpcStubCache::cleanup_expired(const butil::EndPoint& endpoint) 
     LOG(INFO) << "cleanup lake service brpc stub, endpoint:" << endpoint;
     _stub_map.erase(endpoint);
 }
-#endif
+#endif // !__APPLE__ || STARROCKS_ENABLE_LAKE
 
 } // namespace starrocks

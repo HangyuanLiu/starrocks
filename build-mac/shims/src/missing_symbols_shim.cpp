@@ -38,13 +38,6 @@ namespace starrocks {
         SchemaBeCloudNativeCompactionsScanner();
     };
 
-    namespace lake {
-        class TabletManager {
-        public:
-            ~TabletManager();
-        };
-    } // namespace lake
-
     namespace pipeline {
         class SpillableHashJoinBuildOperatorFactory {
         public:
@@ -76,8 +69,6 @@ starrocks::SchemaBeCloudNativeCompactionsScanner::SchemaBeCloudNativeCompactions
 int64_t starrocks::set_large_memory_alloc_failure_threshold(int64_t) { return 0; }
 
 std::string exec(const std::string& cmd) { return ""; }
-
-starrocks::lake::TabletManager::~TabletManager() {}
 
 // vtable implementations
 starrocks::pipeline::SpillableHashJoinBuildOperatorFactory::~SpillableHashJoinBuildOperatorFactory() = default;

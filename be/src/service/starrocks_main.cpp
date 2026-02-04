@@ -43,7 +43,7 @@
 #include <curl/curl.h>
 #include <thrift/TOutput.h>
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_AWS_SDK)
 #include <aws/core/Aws.h>
 
 #include "fs/s3/poco_http_client_factory.h"
@@ -96,7 +96,7 @@ static void thrift_output(const char* x) {
 }
 } // namespace starrocks
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_AWS_SDK)
 static Aws::Utils::Logging::LogLevel parse_aws_sdk_log_level(const std::string& s) {
     Aws::Utils::Logging::LogLevel levels[] = {
             Aws::Utils::Logging::LogLevel::Off,   Aws::Utils::Logging::LogLevel::Fatal,
@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
         exit(-1);
     }
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_AWS_SDK)
     Aws::SDKOptions aws_sdk_options;
     // it is already initialized beforehead
     aws_sdk_options.httpOptions.initAndCleanupCurl = false;
@@ -270,7 +270,7 @@ int main(int argc, char** argv) {
         exit(0);
     }
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_AWS_SDK)
     Aws::ShutdownAPI(aws_sdk_options);
 #endif
 

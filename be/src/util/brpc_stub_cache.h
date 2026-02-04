@@ -46,7 +46,7 @@
 #include "util/network_util.h"
 #include "util/spinlock.h"
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
 #include "util/lake_service_recoverable_stub.h"
 #endif
 
@@ -113,7 +113,7 @@ private:
     pipeline::PipelineTimer* _pipeline_timer;
 };
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
 class LakeServiceBrpcStubCache {
 public:
     static LakeServiceBrpcStubCache* getInstance();

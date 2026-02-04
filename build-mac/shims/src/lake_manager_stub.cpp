@@ -19,18 +19,31 @@
 #include "storage/lake/compaction_scheduler.h"
 #include "storage/lake/lake_persistent_index_parallel_compact_mgr.h"
 #include "storage/lake/lake_primary_index.h"
+#include "storage/lake/metacache.h"
 #include "storage/lake/replication_txn_manager.h"
 #include "storage/lake/rowset.h"
 #include "storage/lake/rowset_update_state.h"
 #include "storage/lake/schema_change.h"
+#include "storage/lake/table_schema_service.h"
 #include "storage/lake/tablet_manager.h"
 #include "storage/lake/tablet_reader.h"
+#include "storage/lake/tablet_writer.h"
 #include "storage/lake/tablet_write_log_manager.h"
 #include "storage/lake/update_compaction_state.h"
 #include "storage/lake/update_manager.h"
 #include "storage/options.h"
 
 namespace starrocks::lake {
+
+TabletManager::TabletManager(std::shared_ptr<LocationProvider> location_provider, UpdateManager* update_mgr,
+                             int64_t /*cache_capacity*/)
+        : _location_provider(std::move(location_provider)), _update_mgr(update_mgr) {}
+
+TabletManager::TabletManager(std::shared_ptr<LocationProvider> location_provider, int64_t /*cache_capacity*/)
+        : _location_provider(std::move(location_provider)) {}
+
+Metacache::~Metacache() = default;
+
 
 StatusOr<SegmentPtr> TabletManager::load_segment(const FileInfo& /*segment_info*/, int /*segment_id*/,
                                                  size_t* /*footer_size_hint*/, const LakeIOOptions& /*lake_io_opts*/,
@@ -58,6 +71,19 @@ StatusOr<TabletMetadataPtr> TabletManager::get_tablet_metadata(const std::string
     return Status::NotSupported("Lake storage is disabled on macOS");
 }
 
+StatusOr<TabletMetadataPtr> TabletManager::get_single_tablet_metadata(int64_t /*tablet_id*/, int64_t /*version*/,
+                                                                      bool /*fill_cache*/, int64_t /*expected_gtid*/,
+                                                                      const std::shared_ptr<FileSystem>& /*fs*/) {
+    return Status::NotSupported("Lake storage is disabled on macOS");
+}
+
+StatusOr<TabletMetadataPtr> TabletManager::get_single_tablet_metadata(int64_t /*tablet_id*/, int64_t /*version*/,
+                                                                      const CacheOptions& /*cache_opts*/,
+                                                                      int64_t /*expected_gtid*/,
+                                                                      const std::shared_ptr<FileSystem>& /*fs*/) {
+    return Status::NotSupported("Lake storage is disabled on macOS");
+}
+
 Status TabletManager::put_combined_txn_log(const CombinedTxnLogPB& /*log*/) {
     return Status::NotSupported("Lake storage is disabled on macOS");
 }
@@ -72,6 +98,24 @@ StatusOr<TabletAndRowsets> TabletManager::capture_tablet_and_rowsets(int64_t /*t
 }
 
 void TabletManager::clean_in_writing_data_size() {}
+
+StatusOr<std::unique_ptr<TabletWriter>> Tablet::new_writer(WriterType /*type*/, int64_t /*txn_id*/,
+                                                           uint32_t /*max_rows_per_segment*/,
+                                                           ThreadPool* /*flush_pool*/, bool /*is_compaction*/) {
+    return Status::NotSupported("Lake storage is disabled on macOS");
+}
+
+StatusOr<TabletMetadataPtr> Tablet::get_metadata(int64_t /*version*/) {
+    return Status::NotSupported("Lake storage is disabled on macOS");
+}
+
+const std::shared_ptr<const TabletSchema> Tablet::tablet_schema() const {
+    return nullptr;
+}
+
+size_t Tablet::num_rows() const {
+    return 0;
+}
 
 Status TabletReader::parse_seek_range(const TabletSchema& /*schema*/,
                                       TabletReaderParams::RangeStartOperation /*start_op*/,

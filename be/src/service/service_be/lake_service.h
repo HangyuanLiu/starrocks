@@ -15,7 +15,7 @@
 #pragma once
 #include <span>
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) || defined(STARROCKS_ENABLE_LAKE)
 #include "common/status.h"
 #include "gen_cpp/lake_service.pb.h"
 
@@ -136,4 +136,4 @@ private:
 std::string get_txn_ids_string(const PublishVersionRequest* request);
 
 } // namespace starrocks
-#endif // __APPLE__
+#endif // !__APPLE__ || STARROCKS_ENABLE_LAKE
