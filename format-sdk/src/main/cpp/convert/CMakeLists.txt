@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-add_library(convert STATIC
+add_library(convert_objs OBJECT
         column_converter.h
         primitive_converter.h
         binary_converter.h
@@ -24,3 +24,5 @@ add_library(convert STATIC
         starrocks_arrow_converter.h
         starrocks_arrow_converter.cpp
 )
+
+add_library(convert STATIC $<TARGET_OBJECTS:convert_objs>)

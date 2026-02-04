@@ -791,6 +791,10 @@ set(STARROCKS_SOURCE_DIRS
 # Create a library for all StarRocks sources
 file(GLOB_RECURSE STARROCKS_SOURCES
     ${SRC_DIR}/agent/*.cpp
+    ${SRC_DIR}/base/*.cpp
+    ${SRC_DIR}/base/*.cc
+    ${SRC_DIR}/base/**/*.cpp
+    ${SRC_DIR}/base/**/*.cc
     ${SRC_DIR}/common/*.cpp
     ${SRC_DIR}/column/*.cpp
     ${SRC_DIR}/exec/*.cpp

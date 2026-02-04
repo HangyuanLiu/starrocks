@@ -29,6 +29,10 @@ if [ -z "${STARROCKS_THIRDPARTY}" ]; then
 fi
 
 BUILD_TYPE=RELEASE
+STARCACHE_FLAG=ON
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  STARCACHE_FLAG=OFF
+fi
 
 # build format-sdk
 cd $STARROCKS_HOME/format-sdk
@@ -37,8 +41,24 @@ cmake -S src/main/cpp \
       -B target/build-jni/${BUILD_TYPE} \
       -DTARGET_NAME=starrocks_format_wrapper \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-      -DWITH_STARCACHE=ON
+      -DWITH_STARCACHE=${STARCACHE_FLAG} \
+      -DBUILD_JNI=ON \
+      -DBUILD_C_ABI=OFF
 
 cmake --build target/build-jni/${BUILD_TYPE} --config ${BUILD_TYPE}
 
 mkdir -p target/classes/native && cp target/build-jni/${BUILD_TYPE}/*.so target/classes/native
+
+# build C ABI static wrapper
+cmake -S src/main/cpp \
+      -B target/build-c-abi/${BUILD_TYPE} \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DWITH_STARCACHE=${STARCACHE_FLAG} \
+      -DBUILD_JNI=OFF \
+      -DBUILD_C_ABI=ON
+
+cmake --build target/build-c-abi/${BUILD_TYPE} --config ${BUILD_TYPE}
+
+OUTPUT_DIR=${STARROCKS_HOME}/output/format-sdk/lib
+mkdir -p ${OUTPUT_DIR}
+cp target/build-c-abi/${BUILD_TYPE}/libstarrocks_format_sdk_c.a ${OUTPUT_DIR}/

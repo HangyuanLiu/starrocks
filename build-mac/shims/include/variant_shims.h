@@ -35,7 +35,7 @@ class time_zone;
 namespace starrocks {
 
 // Forward declarations for BE types used by shim implementations
-class Slice;                // be/src/util/slice.h
+class Slice;                // be/src/base/string/slice.h
 class DateValue;            // be/src/types/date_value.h
 class DecimalV2Value;       // be/src/runtime/decimalv2_value.h
 

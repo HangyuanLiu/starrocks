@@ -16,6 +16,7 @@
 #include <arrow/type.h>
 
 #include "column/column.h"
+#include "column/nullable_column.h"
 #include "column/type_traits.h"
 #include "types/logical_type.h"
 
@@ -64,9 +65,10 @@ public:
     virtual arrow::Result<std::shared_ptr<arrow::Array>> toArrowArray(const ColumnPtr& column) = 0;
 
 protected:
-    arrow::Result<std::shared_ptr<arrow::Buffer>> convert_null_bitmap(const Buffer<uint8_t>& null_bytes);
+    arrow::Result<std::shared_ptr<arrow::Buffer>> convert_null_bitmap(const ImmutableNullData& null_bytes);
 
     static ColumnPtr get_data_column(const Column* column_ptr);
+    static MutableColumnPtr get_data_column_mutable(Column* column_ptr);
 
 protected:
     const std::shared_ptr<arrow::DataType> _arrow_type;

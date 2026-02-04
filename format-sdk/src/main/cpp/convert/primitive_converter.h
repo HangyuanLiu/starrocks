@@ -79,7 +79,7 @@ public:
         // copy data column
         const auto& real_arrow_type = arrow::internal::checked_pointer_cast<ArrowType>(_arrow_type);
         const auto& real_array = arrow::internal::checked_pointer_cast<const ArrowArrayType>(array);
-        auto data_column = SrColumnType::dynamic_pointer_cast(get_data_column(column.get()));
+        auto data_column = SrColumnType::dynamic_pointer_cast(get_data_column_mutable(column.get()));
         if constexpr (SR_TYPE == TYPE_DATE || SR_TYPE == TYPE_DATETIME) {
             for (size_t i = 0; i < num_rows; ++i) {
                 SrCppType value;

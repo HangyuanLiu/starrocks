@@ -61,7 +61,7 @@ public:
         const auto& nested_array = arrow::internal::checked_pointer_cast<ArrowArrayType>(array);
         ARROW_ASSIGN_OR_RAISE(arrow::ArrayVector arrow_children_arrays, get_children_arrays(nested_array));
 
-        auto data_column = SrColumnType::static_pointer_cast(get_data_column(column.get()));
+        auto data_column = SrColumnType::static_pointer_cast(get_data_column_mutable(column.get()));
         ARROW_ASSIGN_OR_RAISE(std::vector<starrocks::ColumnPtr> sr_sub_columns,
                               get_children_columns(data_column.get()));
 
@@ -88,8 +88,7 @@ public:
         if (column->is_nullable()) {
             size_t num_rows = array->length();
             auto nullable = down_cast<NullableColumn*>(column.get());
-            auto null_column = down_cast<NullColumn*>(nullable->null_column().get());
-            null_column->resize(num_rows);
+            nullable->null_column_data().resize(num_rows);
             for (size_t i = 0; i < num_rows; ++i) {
                 nullable->null_column_data()[i] = array->IsNull(i);
             }
@@ -120,7 +119,7 @@ public:
         std::shared_ptr<arrow::Buffer> null_bitmap;
         if (column->is_nullable()) {
             auto nullable = down_cast<const NullableColumn*>(column.get());
-            auto& null_bytes = nullable->immutable_null_column_data();
+            auto null_bytes = nullable->immutable_null_column_data();
             ARROW_ASSIGN_OR_RAISE(null_bitmap, convert_null_bitmap(null_bytes));
         }
 

@@ -30,7 +30,7 @@
 #include "format/format_utils.h"
 #include "types/logical_type.h"
 #include "util/json.h"
-#include "util/slice.h"
+#include "base/string/slice.h"
 
 namespace starrocks::lake::format {
 

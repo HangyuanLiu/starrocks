@@ -1213,7 +1213,9 @@ static StatusOr<std::pair<int64_t, int64_t>> partition_datafile_gc(std::string_v
         files_to_delete.push_back(join_path(segment_root_location, name));
         transaction_ids.insert(extract_txn_id_prefix(name).value_or(0));
         bytes_to_delete += entry.size.value_or(0);
-        auto time = entry.mtime.value_or(0);
+        // std::localtime expects time_t*, but DirEntry::mtime is stored as int64_t.
+        // On macOS, time_t is long while int64_t is long long, so take an explicit cast.
+        std::time_t time = static_cast<std::time_t>(entry.mtime.value_or(0));
         auto outtime = std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
         ++progress;
         if (audit_ostream) {

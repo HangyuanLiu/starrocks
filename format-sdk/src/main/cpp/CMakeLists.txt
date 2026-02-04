@@ -32,6 +32,9 @@ if (NOT DEFINED TARGET_NAME)
 endif ()
 message(STATUS "TARGET_NAME is ${TARGET_NAME}")
 
+option(BUILD_JNI "Build JNI wrapper" ON)
+option(BUILD_C_ABI "Build C ABI wrapper" OFF)
+
 # Set dirs
 set(BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}")
@@ -57,28 +60,71 @@ include_directories(
         ${GENSRC_DIR}/
 )
 
-set(JAVA_HOME ${THIRDPARTY_DIR}/open_jdk/)
-add_library(jvm SHARED IMPORTED)
-FILE(GLOB_RECURSE LIB_JVM ${JAVA_HOME}/lib/*/libjvm.so)
-set_target_properties(jvm PROPERTIES IMPORTED_LOCATION ${LIB_JVM})
-include_directories(${JAVA_HOME}/include)
-include_directories(${JAVA_HOME}/include/linux)
+if (BUILD_JNI)
+    set(JAVA_HOME ${THIRDPARTY_DIR}/open_jdk/)
+    add_library(jvm SHARED IMPORTED)
+    FILE(GLOB_RECURSE LIB_JVM ${JAVA_HOME}/lib/*/libjvm.so)
+    set_target_properties(jvm PROPERTIES IMPORTED_LOCATION ${LIB_JVM})
+    include_directories(${JAVA_HOME}/include)
+    include_directories(${JAVA_HOME}/include/linux)
+endif ()
 
 # The arrow include must before the be thirdparty includes.
 # add_library(arrow STATIC IMPORTED)
 # set_target_properties(arrow PROPERTIES IMPORTED_LOCATION ${BASE_DIR}/arrow/cpp/build/release/libarrow.a)
 # include_directories(SYSTEM ${BASE_DIR}/arrow/cpp/src/)
 
-add_library(arrow STATIC IMPORTED)
-set_target_properties(arrow PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libarrow.a)
+if (APPLE)
+    set(HOMEBREW_PREFIX "/opt/homebrew")
+    set(APACHE_ARROW_HOME "${HOMEBREW_PREFIX}/opt/apache-arrow")
+    if (EXISTS "${APACHE_ARROW_HOME}/lib/libarrow.dylib")
+        add_library(arrow SHARED IMPORTED)
+        set_target_properties(arrow PROPERTIES
+                IMPORTED_LOCATION "${APACHE_ARROW_HOME}/lib/libarrow.dylib"
+                INTERFACE_INCLUDE_DIRECTORIES "${APACHE_ARROW_HOME}/include")
+        add_library(parquet SHARED IMPORTED)
+        set_target_properties(parquet PROPERTIES
+                IMPORTED_LOCATION "${APACHE_ARROW_HOME}/lib/libparquet.dylib"
+                INTERFACE_INCLUDE_DIRECTORIES "${APACHE_ARROW_HOME}/include")
+        message(STATUS "Apache Arrow and Parquet found at: ${APACHE_ARROW_HOME}")
+    else()
+        message(FATAL_ERROR "Apache Arrow not found. Please install: brew install apache-arrow")
+    endif()
+else()
+    add_library(arrow STATIC IMPORTED)
+    set_target_properties(arrow PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libarrow.a)
+    add_library(parquet STATIC IMPORTED)
+    set_target_properties(parquet PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libparquet.a)
+endif ()
 
 include_directories(
         SYSTEM ${BE_SRC_DIR}
         SYSTEM ${THIRDPARTY_DIR}/include
         SYSTEM ${GPERFTOOLS_HOME}/include
 )
+if (APPLE)
+    include_directories(SYSTEM ${APACHE_ARROW_HOME}/include)
+    set(MAC_SHIMS_DIR "${STARROCKS_BASE_DIR}/build-mac/shims/include")
+    if (EXISTS "${MAC_SHIMS_DIR}/malloc.h")
+        include_directories(SYSTEM "${MAC_SHIMS_DIR}")
+    endif ()
+    include_directories(SYSTEM "${HOMEBREW_PREFIX}/include")
+    include_directories(SYSTEM "${HOMEBREW_PREFIX}/opt/re2/include")
+    add_compile_definitions(_LIBCPP_ENABLE_CXX20_REMOVED_UNCAUGHT_EXCEPTION)
+    add_compile_definitions(_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
+    add_compile_definitions(JEMALLOC_NO_DEMANGLE)
+    add_compile_definitions(GLOG_USE_GLOG_EXPORT)
+    add_compile_options(-UWITH_STARCACHE -UUSE_STAROS)
+    set(FMT_SHIMS "${STARROCKS_BASE_DIR}/build-mac/shims/include/starrocks_macos_fmt_shims.h")
+    if (EXISTS "${FMT_SHIMS}")
+        add_compile_options(-include "${FMT_SHIMS}")
+    endif ()
+endif ()
 
-if (NOT WITH_STARCACHE)
+if (APPLE)
+    set(WITH_STARCACHE OFF)
+endif ()
+if (NOT DEFINED WITH_STARCACHE)
     set(WITH_STARCACHE ON)
 endif ()
 message(STATUS "WITH_STARCACHE is ${WITH_STARCACHE}")
@@ -107,7 +153,9 @@ set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -Wall -Wno-sign-compare -Wno-unknown-p
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -Wno-strict-aliasing -fno-omit-frame-pointer")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -std=gnu++20 -D__STDC_FORMAT_MACROS")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -fPIC")
-set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -DUSE_STAROS")
+if (NOT APPLE)
+    set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -DUSE_STAROS")
+endif ()
 
 if (${WITH_STARCACHE} STREQUAL "ON")
     set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -DWITH_STARCACHE")
@@ -135,29 +183,50 @@ add_subdirectory(${SRC_DIR}/format)
 add_subdirectory(${SRC_DIR}/convert)
 
 # external dynamic dependencies
+if (APPLE)
+    set(STARROCKS_FORMAT_LIB "${STARROCKS_BASE_DIR}/output/format-lib/libstarrocks_format.dylib")
+else()
+    set(STARROCKS_FORMAT_LIB "${STARROCKS_BASE_DIR}/output/format-lib/libstarrocks_format.so")
+endif()
 add_library(starrocks_format SHARED IMPORTED)
 set_target_properties(starrocks_format
         PROPERTIES
-        IMPORTED_LOCATION ${STARROCKS_BASE_DIR}/output/format-lib/libstarrocks_format.so
+        IMPORTED_LOCATION ${STARROCKS_FORMAT_LIB}
 )
 
-# target
-add_library(${TARGET_NAME} SHARED ${SC_FILES})
+# JNI wrapper target
+if (BUILD_JNI)
+    add_library(${TARGET_NAME} SHARED ${SC_FILES})
 
-target_link_libraries(${TARGET_NAME}
-        -Wl,-Bsymbolic
-        format
-        convert
-        starrocks_format
-        -Wl,--whole-archive
-        arrow
-        -Wl,--no-whole-archive
-        -static-libstdc++
-        -static-libgcc
-)
+    target_link_libraries(${TARGET_NAME}
+            -Wl,-Bsymbolic
+            format
+            convert
+            starrocks_format
+            -Wl,--whole-archive
+            arrow
+            -Wl,--no-whole-archive
+            -static-libstdc++
+            -static-libgcc
+    )
 
-# copy dependency
-add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${STARROCKS_BASE_DIR}/output/format-lib/libstarrocks_format.so ${CMAKE_CURRENT_BINARY_DIR}
-)
+    # copy dependency
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${STARROCKS_FORMAT_LIB} ${CMAKE_CURRENT_BINARY_DIR}
+    )
+endif ()
+
+# C ABI static wrapper target
+if (BUILD_C_ABI)
+    add_library(starrocks_format_sdk_c STATIC
+            ${SRC_DIR}/shims/starrocks_format_c_abi.cpp
+            ${SRC_DIR}/shims/starrocks_format_c_abi.h
+    )
+    target_include_directories(starrocks_format_sdk_c PUBLIC ${SRC_DIR})
+    target_link_libraries(starrocks_format_sdk_c
+            starrocks_format
+            arrow
+    )
+    set_target_properties(starrocks_format_sdk_c PROPERTIES OUTPUT_NAME starrocks_format_sdk_c)
+endif ()

@@ -21,6 +21,8 @@
 #include <arrow/type_fwd.h>
 #include <arrow/util/key_value_metadata.h>
 
+#include <cstdlib>
+#include <strings.h>
 #include <utility>
 
 #include "fmt/format.h"
@@ -86,10 +88,20 @@ public:
          */
         auto fs_options = filter_map_by_key_prefix(_options, "fs.");
         auto provider = std::make_shared<FixedLocationProvider>(_tablet_root_path);
+        _tablet_manager = std::make_shared<TabletManager>(provider, 0);
         auto metadata_location = provider->tablet_metadata_location(_tablet_id, _version);
         FORMAT_ASSIGN_OR_RAISE_ARROW_STATUS(auto fs, FileSystem::Create(metadata_location, FSOptions(fs_options)));
-        FORMAT_ASSIGN_OR_RAISE_ARROW_STATUS(auto metadata,
-                                            _lake_tablet_manager->get_tablet_metadata(metadata_location, true, 0, fs));
+        // Try per-tablet metadata first, then fall back to bundle metadata if needed.
+        auto metadata_or = _tablet_manager->get_tablet_metadata(metadata_location, true, 0, fs);
+        if (!metadata_or.ok()) {
+            auto bundle_or = _tablet_manager->get_single_tablet_metadata(_tablet_id, _version, true, 0, fs);
+            if (bundle_or.ok()) {
+                metadata_or = std::move(bundle_or);
+            } else {
+                return to_arrow_status(metadata_or.status());
+            }
+        }
+        auto metadata = std::move(metadata_or).value();
 
         // get tablet schema;
         _tablet_schema = std::make_shared<TabletSchema>(metadata->schema());
@@ -114,7 +126,7 @@ public:
         std::sort(_scan_column_indexes.begin(), _scan_column_indexes.end());
         _scan_schema = std::make_shared<Schema>(ChunkHelper::convert_schema(_tablet_schema, _scan_column_indexes));
         // create tablet reader
-        _tablet = std::make_unique<VersionedTablet>(_lake_tablet_manager, metadata);
+        _tablet = std::make_unique<VersionedTablet>(_tablet_manager.get(), metadata);
         FORMAT_ASSIGN_OR_RAISE_ARROW_STATUS(_tablet_reader, _tablet->new_reader(*_scan_schema));
 
         // get output column index from tablet schema
@@ -262,10 +274,21 @@ private:
         uint32_t len = query_plan_info.size();
 
         // deserialize TQueryPlanInfo
-        TQueryPlanInfo t_query_plan_info;
-        RETURN_IF_ERROR(deserialize_thrift_msg(buf, &len, TProtocolType::BINARY, &t_query_plan_info));
+        const char* leak_flag = std::getenv("STARROCKS_FORMAT_LEAK_QUERY_PLAN");
+        const bool leak_plan = (leak_flag != nullptr) &&
+                               (strcmp(leak_flag, "1") == 0 || strcasecmp(leak_flag, "true") == 0);
+        std::unique_ptr<TQueryPlanInfo> owned_plan;
+        TQueryPlanInfo stack_plan;
+        TQueryPlanInfo* plan_info = &stack_plan;
+        if (leak_plan) {
+            plan_info = new TQueryPlanInfo();
+        } else {
+            owned_plan = std::make_unique<TQueryPlanInfo>();
+            plan_info = owned_plan.get();
+        }
+        RETURN_IF_ERROR(deserialize_thrift_msg(buf, &len, TProtocolType::BINARY, plan_info));
         TPlanNode* plan_node = nullptr;
-        for (auto& node : t_query_plan_info.plan_fragment.plan.nodes) {
+        for (auto& node : plan_info->plan_fragment.plan.nodes) {
             if (node.node_type == TPlanNodeType::LAKE_SCAN_NODE) {
                 if (!plan_node) {
                     plan_node = &node;
@@ -281,7 +304,7 @@ private:
         }
 
         // get tuple descriptor
-        RETURN_IF_ERROR(DescriptorTbl::create(_state.get(), &_obj_pool, t_query_plan_info.desc_tbl, &_desc_tbl, 4096));
+        RETURN_IF_ERROR(DescriptorTbl::create(_state.get(), &_obj_pool, plan_info->desc_tbl, &_desc_tbl, 4096));
         auto tuple_id = plan_node->lake_scan_node.tuple_id;
         _tuple_desc = _desc_tbl->get_tuple_descriptor(tuple_id);
         for (auto slot : _tuple_desc->slots()) {
@@ -443,6 +466,7 @@ private:
     std::unordered_map<std::string, std::string> _options;
 
     int32_t _chunk_size;
+    std::shared_ptr<TabletManager> _tablet_manager;
     std::shared_ptr<TabletSchema> _tablet_schema;
     std::unique_ptr<VersionedTablet> _tablet;
     std::shared_ptr<TabletReader> _tablet_reader;

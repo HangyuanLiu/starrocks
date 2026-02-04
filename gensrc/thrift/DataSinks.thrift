@@ -54,6 +54,7 @@ enum TDataSinkType {
     SCHEMA_TABLE_SINK,
     ICEBERG_TABLE_SINK,
     HIVE_TABLE_SINK,
+    STARROCKS_TABLE_SINK,
     TABLE_FUNCTION_TABLE_SINK,
     BLACKHOLE_TABLE_SINK,
     DICTIONARY_CACHE_SINK,
@@ -274,6 +275,44 @@ struct THiveTableSink {
     9: optional Descriptors.TTextFileDesc text_file_desc // for textfile format
 }
 
+enum TStarRocksPartitionType {
+    UNPARTITIONED,
+    RANGE,
+    LIST
+}
+
+struct TStarRocksTablet {
+    1: optional i64 tablet_id
+    2: optional i64 backend_id
+}
+
+struct TStarRocksPartition {
+    1: optional i64 id
+    2: optional string name
+    3: optional i32 bucket_num
+    4: optional string distribution_type
+    5: optional bool is_min_partition
+    6: optional bool is_max_partition
+    7: optional list<string> start_keys
+    8: optional list<string> end_keys
+    9: optional list<list<string>> in_keys
+    10: optional string storage_path
+    11: optional list<TStarRocksTablet> tablets
+}
+
+struct TStarRocksTableSink {
+    1: optional i64 txn_id
+    2: optional string label
+    3: optional i32 tuple_id
+    4: optional TStarRocksPartitionType partition_type
+    5: optional list<string> partition_column_names
+    6: optional list<string> distribution_column_names
+    7: optional list<TStarRocksPartition> partitions
+    8: optional map<string, string> properties
+    9: optional string db_name
+    10: optional string table_name
+}
+
 struct TTableFunctionTableSink {
     1: optional Descriptors.TTableFunctionTable target_table
     2: optional CloudConfiguration.TCloudConfiguration cloud_configuration
@@ -302,4 +341,5 @@ struct TDataSink {
   15: optional list<TDataSink> multi_olap_table_sinks
   16: optional i64 sink_id
   17: optional TSplitDataStreamSink split_stream_sink
+  18: optional TStarRocksTableSink starrocks_table_sink
 }

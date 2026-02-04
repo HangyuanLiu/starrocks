@@ -15,10 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-add_library(format STATIC
+add_library(format_objs OBJECT
         starrocks_format_writer.h
         starrocks_format_writer.cpp
         starrocks_format_reader.h
         starrocks_format_reader.cpp
         format_utils.h
 )
+
+add_library(format STATIC $<TARGET_OBJECTS:format_objs>)

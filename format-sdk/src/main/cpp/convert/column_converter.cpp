@@ -182,20 +182,24 @@ arrow::Result<ColumnConverterVector> ColumnConverter::create_children_converter(
  * - arrow use 0 as null indicator and use bit
  * - while sr use 1 as null indicator and use byte
  */
-arrow::Result<std::shared_ptr<arrow::Buffer>> ColumnConverter::convert_null_bitmap(const Buffer<uint8_t>& null_bytes) {
+arrow::Result<std::shared_ptr<arrow::Buffer>> ColumnConverter::convert_null_bitmap(
+        const ImmutableNullData& null_bytes) {
     std::shared_ptr<arrow::Buffer> null_bitmap;
+    auto bytes_span = arrow::util::span<const uint8_t>(null_bytes.data(), null_bytes.size());
     ARROW_ASSIGN_OR_RAISE(null_bitmap,
-                          arrow::internal::BytesToBits(reinterpret_cast<const std::vector<uint8_t>&>(null_bytes),
-                                                       const_cast<arrow::MemoryPool*>(_pool)));
+                          arrow::internal::BytesToBits(bytes_span, const_cast<arrow::MemoryPool*>(_pool)));
 
     uint8_t* out_buf = null_bitmap->mutable_data();
-    for (size_t i = 0; i < null_bitmap->capacity(); i++) {
+    for (size_t i = 0; i < null_bitmap->size(); i++) {
         out_buf[i] = ~out_buf[i];
     }
 
     // set unused bit to zero
     size_t num_rows = null_bytes.size();
-    arrow::bit_util::SetBitsTo(null_bitmap->mutable_data(), num_rows, null_bitmap->capacity() - num_rows, false);
+    const size_t total_bits = null_bitmap->size() * 8;
+    if (total_bits > num_rows) {
+        arrow::bit_util::SetBitsTo(null_bitmap->mutable_data(), num_rows, total_bits - num_rows, false);
+    }
     return null_bitmap;
 }
 
@@ -208,6 +212,20 @@ ColumnPtr ColumnConverter::get_data_column(const Column* column_ptr) {
     if (column_ptr->is_constant()) {
         auto* const_column = down_cast<const ConstColumn*>(column_ptr);
         return const_column->data_column();
+    }
+
+    return column_ptr->get_ptr();
+}
+
+MutableColumnPtr ColumnConverter::get_data_column_mutable(Column* column_ptr) {
+    if (column_ptr->is_nullable()) {
+        auto* nullable_column = down_cast<NullableColumn*>(column_ptr);
+        return nullable_column->data_column()->as_mutable_ptr();
+    }
+
+    if (column_ptr->is_constant()) {
+        auto* const_column = down_cast<ConstColumn*>(column_ptr);
+        return const_column->data_column()->as_mutable_ptr();
     }
 
     return column_ptr->get_ptr();
