@@ -74,12 +74,13 @@ StatusOr<TxnLogPtr> Tablet::get_txn_vlog(int64_t version) {
 
 StatusOr<std::unique_ptr<TabletWriter>> Tablet::new_writer(WriterType type, int64_t txn_id,
                                                            uint32_t max_rows_per_segment, ThreadPool* flush_pool,
-                                                           bool is_compaction) {
+                                                           bool is_compaction,
+                                                           BundleWritableFileContext* bundle_writable_file_context) {
     ASSIGN_OR_RETURN(auto tablet_schema, get_schema());
     if (tablet_schema->keys_type() == KeysType::PRIMARY_KEYS) {
         if (type == kHorizontal) {
             return std::make_unique<HorizontalPkTabletWriter>(_mgr, _id, tablet_schema, txn_id, flush_pool,
-                                                              is_compaction);
+                                                              is_compaction, bundle_writable_file_context);
         } else {
             DCHECK(type == kVertical);
             return std::make_unique<VerticalPkTabletWriter>(_mgr, _id, tablet_schema, txn_id, max_rows_per_segment,
@@ -88,7 +89,7 @@ StatusOr<std::unique_ptr<TabletWriter>> Tablet::new_writer(WriterType type, int6
     } else {
         if (type == kHorizontal) {
             return std::make_unique<HorizontalGeneralTabletWriter>(_mgr, _id, tablet_schema, txn_id, is_compaction,
-                                                                   flush_pool);
+                                                                   flush_pool, bundle_writable_file_context);
         } else {
             DCHECK(type == kVertical);
             return std::make_unique<VerticalGeneralTabletWriter>(_mgr, _id, tablet_schema, txn_id, max_rows_per_segment,

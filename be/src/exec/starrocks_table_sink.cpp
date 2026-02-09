@@ -28,6 +28,7 @@
 #include "common/logging.h"
 #include "common/statusor.h"
 #include "exprs/expr.h"
+#include "fs/bundle_file.h"
 #include "fmt/format.h"
 #include "runtime/exec_env.h"
 #include "runtime/mem_pool.h"
@@ -451,7 +452,8 @@ Status StarRocksTableSink::send_chunk(RuntimeState* state, Chunk* chunk) {
             tablet_chunk->columns()[col_idx]->as_mutable_raw_ptr()->append_selective(
                     *src_data, indexes.data(), 0, static_cast<uint32_t>(indexes.size()));
         }
-        RETURN_IF_ERROR(writer_ctx->writer->write(*tablet_chunk));
+        // Always mark eos=true so the first segment writer can choose bundle output.
+        RETURN_IF_ERROR(writer_ctx->writer->write(*tablet_chunk, nullptr, true));
     }
 
     return Status::OK();
@@ -470,6 +472,13 @@ Status StarRocksTableSink::close(RuntimeState* state, Status exec_status) {
         for (auto& entry : _tablet_writers) {
             if (entry.second && entry.second->writer) {
                 entry.second->writer->close();
+            }
+            if (entry.second != nullptr) {
+                auto st = _close_bundle_file_context(entry.second.get());
+                if (!st.ok()) {
+                    LOG(WARNING) << "Failed to close bundle file context for tablet " << entry.second->tablet_id
+                                 << ": " << st;
+                }
             }
         }
         return exec_status;
@@ -882,18 +891,14 @@ StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_c
         ASSIGN_OR_RETURN(tablet_metadata, tablet_manager->get_tablet_metadata(metadata_location, true, 0, fs));
     }
     auto tablet_schema = std::make_shared<TabletSchema>(tablet_metadata->schema());
-    auto tablet = std::make_unique<lake::Tablet>(tablet_manager.get(), tablet_id, location_provider, tablet_schema);
-
-    ASSIGN_OR_RETURN(auto writer, tablet->new_writer(lake::WriterType::kHorizontal, _txn_id));
-    writer->set_fs(fs);
-    writer->set_location_provider(location_provider);
-    RETURN_IF_ERROR(writer->open());
-
     auto writer_ctx = std::make_unique<TabletWriterContext>();
     writer_ctx->tablet_id = tablet_id;
     writer_ctx->backend_id = backend_id;
     writer_ctx->root_path = root_path;
     writer_ctx->fs = fs;
+    writer_ctx->bundle_wfile_ctx = std::make_unique<BundleWritableFileContext>();
+    writer_ctx->bundle_wfile_ctx->increase_active_writers();
+    writer_ctx->bundle_writer_registered = true;
     writer_ctx->location_provider = std::move(location_provider);
     writer_ctx->tablet_manager = std::move(tablet_manager);
     if (tablet_schema->num_columns() > 0 &&
@@ -904,12 +909,41 @@ StatusOr<StarRocksTableSink::TabletWriterContext*> StarRocksTableSink::_get_or_c
     } else {
         writer_ctx->chunk_schema = std::make_shared<Schema>(ChunkHelper::convert_schema(tablet_schema));
     }
+    auto tablet = std::make_unique<lake::Tablet>(writer_ctx->tablet_manager.get(), tablet_id, writer_ctx->location_provider,
+                                                 tablet_schema);
+    auto writer_or =
+            tablet->new_writer(lake::WriterType::kHorizontal, _txn_id, 0, nullptr, false, writer_ctx->bundle_wfile_ctx.get());
+    if (!writer_or.ok()) {
+        RETURN_IF_ERROR(_close_bundle_file_context(writer_ctx.get()));
+        return writer_or.status();
+    }
+    auto writer = std::move(writer_or).value();
+    // Disable auto flush to keep one bundled segment per tablet writer and avoid mixed rowset layout.
+    writer->set_auto_flush(false);
+    writer->set_fs(fs);
+    writer->set_location_provider(writer_ctx->location_provider);
+    auto st = writer->open();
+    if (!st.ok()) {
+        RETURN_IF_ERROR(_close_bundle_file_context(writer_ctx.get()));
+        return st;
+    }
+
     writer_ctx->tablet = std::move(tablet);
     writer_ctx->writer = std::move(writer);
 
     auto* writer_ctx_ptr = writer_ctx.get();
     _tablet_writers.emplace(tablet_id, std::move(writer_ctx));
     return writer_ctx_ptr;
+}
+
+Status StarRocksTableSink::_close_bundle_file_context(TabletWriterContext* writer_ctx) {
+    if (writer_ctx == nullptr || !writer_ctx->bundle_writer_registered || writer_ctx->bundle_writer_closed ||
+        writer_ctx->bundle_wfile_ctx == nullptr) {
+        return Status::OK();
+    }
+    RETURN_IF_ERROR(writer_ctx->bundle_wfile_ctx->decrease_active_writers());
+    writer_ctx->bundle_writer_closed = true;
+    return Status::OK();
 }
 
 StatusOr<std::shared_ptr<FileSystem>> StarRocksTableSink::_create_fs(const std::string& root_path) const {
@@ -927,12 +961,24 @@ StatusOr<std::shared_ptr<FileSystem>> StarRocksTableSink::_create_fs(const std::
 
 Status StarRocksTableSink::_finish_writer(TabletWriterContext* writer_ctx) {
     if (writer_ctx == nullptr || writer_ctx->writer == nullptr) {
+        RETURN_IF_ERROR(_close_bundle_file_context(writer_ctx));
         return Status::OK();
     }
-    RETURN_IF_ERROR(writer_ctx->writer->finish());
-    RETURN_IF_ERROR(_write_txn_log(writer_ctx));
+    auto st = writer_ctx->writer->finish();
+    if (st.ok()) {
+        st = _close_bundle_file_context(writer_ctx);
+    } else {
+        auto close_st = _close_bundle_file_context(writer_ctx);
+        if (!close_st.ok()) {
+            LOG(WARNING) << "Failed to close bundle file context after writer finish failure, tablet "
+                         << writer_ctx->tablet_id << ": " << close_st;
+        }
+    }
+    if (st.ok()) {
+        st = _write_txn_log(writer_ctx);
+    }
     writer_ctx->writer->close();
-    return Status::OK();
+    return st;
 }
 
 Status StarRocksTableSink::_write_txn_log(TabletWriterContext* writer_ctx) {
@@ -944,6 +990,9 @@ Status StarRocksTableSink::_write_txn_log(TabletWriterContext* writer_ctx) {
     for (const auto& segment : writer_ctx->writer->segments()) {
         op_write->mutable_rowset()->add_segments(segment.path);
         op_write->mutable_rowset()->add_segment_size(segment.size.value());
+        if (segment.bundle_file_offset.has_value() && segment.bundle_file_offset.value() >= 0) {
+            op_write->mutable_rowset()->add_bundle_file_offsets(segment.bundle_file_offset.value());
+        }
         auto* segment_meta = op_write->mutable_rowset()->add_segment_metas();
         segment.sort_key_min.to_proto(segment_meta->mutable_sort_key_min());
         segment.sort_key_max.to_proto(segment_meta->mutable_sort_key_max());

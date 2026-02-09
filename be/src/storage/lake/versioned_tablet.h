@@ -21,6 +21,7 @@
 #include "storage/rowset/base_rowset.h"
 
 namespace starrocks {
+class BundleWritableFileContext;
 struct TabletBasicInfo;
 class TabletSchema;
 class TabletMetadataPB;
@@ -72,11 +73,13 @@ public:
     // create a tablet writer with given `tablet_schema`
     StatusOr<std::unique_ptr<TabletWriter>> new_writer_with_schema(
             WriterType type, int64_t txn_id, uint32_t max_rows_per_segment, ThreadPool* flush_pool, bool is_compaction,
-            const std::shared_ptr<const TabletSchema>& tablet_schema);
+            const std::shared_ptr<const TabletSchema>& tablet_schema,
+            BundleWritableFileContext* bundle_writable_file_context = nullptr);
 
     StatusOr<std::unique_ptr<TabletWriter>> new_writer(WriterType type, int64_t txn_id,
                                                        uint32_t max_rows_per_segment = 0,
-                                                       ThreadPool* flush_pool = nullptr, bool is_compaction = false);
+                                                       ThreadPool* flush_pool = nullptr, bool is_compaction = false,
+                                                       BundleWritableFileContext* bundle_writable_file_context = nullptr);
 
     StatusOr<std::unique_ptr<TabletReader>> new_reader(Schema schema);
 

@@ -28,6 +28,7 @@
 #include "storage/lake/types_fwd.h"
 
 namespace starrocks {
+class BundleWritableFileContext;
 class TabletSchema;
 class TableSchemaKeyPB;
 class ThreadPool;
@@ -106,7 +107,8 @@ public:
     // NOTE: This method may update the version hint
     StatusOr<std::unique_ptr<TabletWriter>> new_writer(WriterType type, int64_t txn_id,
                                                        uint32_t max_rows_per_segment = 0,
-                                                       ThreadPool* flush_pool = nullptr, bool is_compaction = false);
+                                                       ThreadPool* flush_pool = nullptr, bool is_compaction = false,
+                                                       BundleWritableFileContext* bundle_writable_file_context = nullptr);
 
     const std::shared_ptr<const TabletSchema> tablet_schema() const override;
 

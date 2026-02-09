@@ -32,6 +32,7 @@
 
 namespace starrocks {
 
+class BundleWritableFileContext;
 class ExprContext;
 class FileSystem;
 class MemPool;
@@ -93,6 +94,9 @@ private:
         int64_t backend_id = 0;
         std::string root_path;
         std::shared_ptr<FileSystem> fs;
+        std::unique_ptr<BundleWritableFileContext> bundle_wfile_ctx;
+        bool bundle_writer_registered = false;
+        bool bundle_writer_closed = false;
         std::shared_ptr<lake::LocationProvider> location_provider;
         std::shared_ptr<lake::TabletManager> tablet_manager;
         std::shared_ptr<Schema> chunk_schema;
@@ -114,6 +118,7 @@ private:
     StatusOr<TabletWriterContext*> _get_or_create_writer(int64_t tablet_id, PartitionInfo* partition,
                                                          int64_t backend_id);
     StatusOr<std::shared_ptr<FileSystem>> _create_fs(const std::string& root_path) const;
+    Status _close_bundle_file_context(TabletWriterContext* writer_ctx);
     Status _finish_writer(TabletWriterContext* writer_ctx);
     Status _write_txn_log(TabletWriterContext* writer_ctx);
     std::string _resolve_tablet_root_path(int64_t tablet_id, PartitionInfo* partition) const;
