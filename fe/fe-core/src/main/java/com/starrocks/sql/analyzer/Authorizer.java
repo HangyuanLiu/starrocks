@@ -200,6 +200,7 @@ public class Authorizer {
             case ICEBERG:
             case ICEBERG_VIEW:
             case HUDI:
+            case STARROCKS:
             case JDBC:
             case DELTALAKE:
             case FILE:
