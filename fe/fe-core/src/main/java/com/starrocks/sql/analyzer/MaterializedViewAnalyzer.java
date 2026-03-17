@@ -55,6 +55,8 @@ import com.starrocks.common.Pair;
 import com.starrocks.common.util.DateUtils;
 import com.starrocks.common.util.PropertyAnalyzer;
 import com.starrocks.common.util.TimeUtils;
+import com.starrocks.connector.iceberg.IcebergPartitionTransform;
+import com.starrocks.connector.iceberg.IcebergPartitionUtils;
 import com.starrocks.mv.analyzer.MVPartitionSlotRefResolver;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.SlotId;
@@ -213,14 +215,9 @@ public class MaterializedViewAnalyzer {
                 continue;
             }
 
-            // Check if the table is an Iceberg table with partition evolution
-            if (table instanceof IcebergTable) {
-                IcebergTable icebergTable = (IcebergTable) table;
-                if (icebergTable.getNativeTable().specs().size() > 1) {
-                    throw new SemanticException("Do not support create materialized view when base iceberg table " +
-                            table.getName() + " has done partition evolution", tableNameInfo.getPos());
-                }
-            }
+            // Partition evolution check for Iceberg tables is deferred to
+            // visitCreateMaterializedViewStatement where we know whether the MV is partitioned.
+            // Non-partitioned MVs are immune to partition evolution (full refresh, no partition mapping).
 
             if (!FeConstants.isReplayFromQueryDump && !isSupportedExternalTables(table)) {
                 throw new SemanticException(
@@ -450,6 +447,44 @@ public class MaterializedViewAnalyzer {
                 Preconditions.checkState(pair.second < outputExpressions.size());
                 columnExprMap.put(pair.first, outputExpressions.get(pair.second));
             }
+            // For partitioned MVs, check Iceberg partition evolution.
+            // Non-partitioned MVs skip this check (they do full refresh without partition mapping).
+            // Safe evolution (MV partition column transform unchanged across all specs) is allowed.
+            if (CollectionUtils.isNotEmpty(statement.getPartitionByExprs())) {
+                // Extract column names referenced in partition expressions
+                List<String> partitionColumnNames = Lists.newArrayList();
+                for (Expr partitionByExpr : statement.getPartitionByExprs()) {
+                    List<SlotRef> slotRefs = Lists.newArrayList();
+                    partitionByExpr.collect(SlotRef.class, slotRefs);
+                    for (SlotRef slotRef : slotRefs) {
+                        partitionColumnNames.add(slotRef.getColumnName());
+                    }
+                }
+                for (Map.Entry<TableName, Table> aliasEntry : aliasTableMap.entrySet()) {
+                    Table baseTable = aliasEntry.getValue();
+                    if (baseTable instanceof IcebergTable) {
+                        IcebergTable icebergTable = (IcebergTable) baseTable;
+                        if (icebergTable.getNativeTable().specs().size() > 1) {
+                            // Check if evolution is safe for the MV's partition column
+                            boolean safe = false;
+                            for (String colName : partitionColumnNames) {
+                                Column col = icebergTable.getColumn(colName);
+                                if (col != null && IcebergPartitionUtils.isSafePartitionEvolution(
+                                        icebergTable, col)) {
+                                    safe = true;
+                                    break;
+                                }
+                            }
+                            if (!safe) {
+                                throw new SemanticException(
+                                        "Do not support create materialized view when base iceberg table " +
+                                                baseTable.getName() + " has done partition evolution");
+                            }
+                        }
+                    }
+                }
+            }
+
             // some check if partition exp exists
             if (CollectionUtils.isNotEmpty(statement.getPartitionByExprs())) {
                 // check partition expression all in column list and
@@ -1294,6 +1329,102 @@ public class MaterializedViewAnalyzer {
                 PartitionExprAnalyzer.analyzePartitionExpr(refTablePartitionExpr, partitionSlotRef);
             }
             MVPartitionSlotRefResolver.checkWindowFunction(statement, refTablePartitionExprs);
+        }
+
+        private void checkPartitionColumnWithBaseIcebergTable(CreateMaterializedViewStatement statement,
+                                                              Expr partitionByExpr,
+                                                              SlotRef slotRef,
+                                                              IcebergTable table) {
+            org.apache.iceberg.Table icebergTable = table.getNativeTable();
+            PartitionSpec partitionSpec = icebergTable.spec();
+            if (partitionSpec.isUnpartitioned()) {
+                throw new SemanticException("Materialized view partition column in partition exp " +
+                        "must be base table partition column");
+            } else {
+                if (icebergTable.specs().size() > 1) {
+                    Column partitionColumn = table.getColumn(slotRef.getColumnName());
+                    if (partitionColumn == null ||
+                            !IcebergPartitionUtils.isSafePartitionEvolution(table, partitionColumn)) {
+                        throw new SemanticException("Do not support create materialized view when " +
+                                "base iceberg table has partition evolution");
+                    }
+                }
+                boolean found = false;
+                for (PartitionField partitionField : partitionSpec.fields()) {
+                    IcebergPartitionTransform transform =
+                            IcebergPartitionTransform.fromString(partitionField.transform().toString());
+                    String partitionColumnName = icebergTable.schema().findColumnName(partitionField.sourceId());
+                    if (partitionColumnName.equalsIgnoreCase(slotRef.getColumnName())) {
+                        checkPartitionColumnType(table.getColumn(partitionColumnName));
+                        found = true;
+                        switch (transform) {
+                            case YEAR:
+                            case MONTH:
+                            case DAY:
+                            case HOUR:
+                                if (!isDateTruncWithUnit(partitionByExpr, transform.name())) {
+                                    throw new SemanticException("Materialized view partition expr %s " +
+                                            "must be the same with base table partition transform %s, please use date_trunc" +
+                                            "(<transform>, <partition_colum_name>) instead.", ExprToSql.toSql(partitionByExpr),
+                                            transform.name());
+                                }
+                                // mark the statement with partition transform to use list partition mv later.
+                                statement.setRefBaseTablePartitionWithTransform(true);
+                                break;
+                            case IDENTITY:
+                                if (!(partitionByExpr instanceof SlotRef) && !MvUtils.isStr2Date(partitionByExpr) &&
+                                        !MvUtils.isFuncCallExpr(partitionByExpr, FunctionSet.DATE_TRUNC)) {
+                                    throw new SemanticException("Materialized view partition expr %s: " +
+                                            "only support ref partition column for transform %s, please use " +
+                                            "<partition_column_name> instead.",
+                                            ExprToSql.toSql(partitionByExpr), transform.name());
+                                }
+                                break;
+                            default:
+                                throw new SemanticException("Do not support create materialized view when " +
+                                        "base iceberg table partition transform is: " + transform.name());
+                        }
+                        break;
+                    }
+                }
+                if (!found) {
+                    throw new SemanticException("Materialized view partition column in partition exp " +
+                            "must be base table partition column");
+                }
+            }
+        }
+
+        private boolean isDateTruncWithUnit(Expr partitionExpr, String timeUnit) {
+            if (MvUtils.isFuncCallExpr(partitionExpr, FunctionSet.DATE_TRUNC)) {
+                FunctionCallExpr functionCallExpr = (FunctionCallExpr) partitionExpr;
+                if (!(functionCallExpr.getChild(0) instanceof StringLiteral)) {
+                    return false;
+                }
+                StringLiteral stringLiteral = (StringLiteral) functionCallExpr.getChild(0);
+                return stringLiteral.getStringValue().equalsIgnoreCase(timeUnit);
+            }
+            return false;
+        }
+
+        @VisibleForTesting
+        public void checkPartitionColumnWithBasePaimonTable(SlotRef slotRef, PaimonTable table) {
+            if (table.isUnPartitioned()) {
+                throw new SemanticException("Materialized view partition column in partition exp " +
+                        "must be base table partition column");
+            } else {
+                boolean found = false;
+                for (String partitionColumnName : table.getPartitionColumnNames()) {
+                    if (partitionColumnName.equalsIgnoreCase(slotRef.getColumnName())) {
+                        checkPartitionColumnType(table.getColumn(partitionColumnName));
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    throw new SemanticException("Materialized view partition column in partition exp " +
+                            "must be base table partition column");
+                }
+            }
         }
 
         private SlotRef getSlotRef(Expr expr) {

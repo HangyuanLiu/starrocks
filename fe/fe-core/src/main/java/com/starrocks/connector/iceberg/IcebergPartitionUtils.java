@@ -245,6 +245,38 @@ public class IcebergPartitionUtils {
         }
     }
 
+    /**
+     * Check if the partition evolution of an Iceberg table is safe for partitioned MV refresh.
+     * Safe means: the MV's ref partition column has the same transform in all historical specs.
+     * This covers cases like adding/removing a BUCKET field on a different column while the
+     * MV's partition column transform remains unchanged.
+     *
+     * @param icebergTable    the Iceberg base table
+     * @param partitionColumn the MV's ref partition column (derived from base table)
+     * @return true if evolution is safe (all specs use the same transform for this column)
+     */
+    public static boolean isSafePartitionEvolution(IcebergTable icebergTable, Column partitionColumn) {
+        org.apache.iceberg.Table nativeTable = icebergTable.getNativeTable();
+        if (nativeTable.specs().size() <= 1) {
+            return true;
+        }
+        int sourceId;
+        try {
+            sourceId = nativeTable.schema().findField(partitionColumn.getName()).fieldId();
+        } catch (Exception e) {
+            return false;
+        }
+        java.util.Set<String> transforms = nativeTable.specs().values().stream()
+                .flatMap(spec -> spec.fields().stream())
+                .filter(f -> f.sourceId() == sourceId && !f.transform().isVoid())
+                .map(f -> f.transform().toString())
+                .collect(java.util.stream.Collectors.toSet());
+        // size == 0: column was never a partition column in any spec
+        // size == 1: all specs use the same transform -> safe
+        // size > 1:  transform changed across specs -> unsafe
+        return transforms.size() <= 1;
+    }
+
     public static boolean isSupportedConvertPartitionTransform(IcebergPartitionTransform transform) {
         return transform == IcebergPartitionTransform.IDENTITY ||
                 transform == YEAR ||

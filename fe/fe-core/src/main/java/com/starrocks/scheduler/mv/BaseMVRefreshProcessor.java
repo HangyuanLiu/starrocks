@@ -45,6 +45,7 @@ import com.starrocks.common.util.concurrent.lock.LockTimeoutException;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.connector.PartitionUtil;
+import com.starrocks.connector.iceberg.IcebergPartitionUtils;
 import com.starrocks.metric.IMaterializedViewMetricsEntity;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
@@ -705,14 +706,28 @@ public abstract class BaseMVRefreshProcessor {
                 // TODO: Implement a `SnapshotTable` later which can use the copied table or transfer to the real table.
                 final Table table = tableOpt.get();
 
-                // Check if the table is an Iceberg table with partition evolution
-                if (table instanceof IcebergTable) {
+                // Check if the table is an Iceberg table with partition evolution.
+                // Non-partitioned MVs are immune to partition evolution: they always do full refresh
+                // without partition mapping, so evolution in the base table doesn't affect correctness.
+                // Safe evolution (MV partition column transform unchanged across all specs) is allowed.
+                if (table instanceof IcebergTable && !mv.getPartitionInfo().isUnPartitioned()) {
                     IcebergTable icebergTable = (IcebergTable) table;
                     if (icebergTable.getNativeTable().specs().size() > 1) {
-                        throw new DmlException("Materialized view %s.%s refresh failed: base Iceberg table %s " +
-                                        "has undergone partition evolution (%d partition specs), which is not supported",
-                                db.getFullName(), mv.getName(), table.getName(),
-                                icebergTable.getNativeTable().specs().size());
+                        Map<Table, List<Column>> refPartitionColumns = mv.getRefBaseTablePartitionColumns();
+                        List<Column> partitionColumns = refPartitionColumns.get(icebergTable);
+                        boolean safe = false;
+                        if (partitionColumns != null) {
+                            for (Column col : partitionColumns) {
+                                if (IcebergPartitionUtils.isSafePartitionEvolution(icebergTable, col)) {
+                                    safe = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!safe) {
+                            throw new DmlException("Do not support refresh materialized view when base iceberg table " +
+                                    table.getName() + " has done partition evolution");
+                        }
                     }
                 }
 
