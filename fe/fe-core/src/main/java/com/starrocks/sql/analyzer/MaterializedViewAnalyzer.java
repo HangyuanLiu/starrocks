@@ -101,6 +101,7 @@ import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.ast.expression.TimestampArithmeticExpr;
 import com.starrocks.sql.ast.expression.TypeDef;
 import com.starrocks.sql.common.PListCell;
@@ -134,6 +135,7 @@ import com.starrocks.type.TypeFactory;
 import org.apache.commons.collections.map.CaseInsensitiveMap;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.iceberg.PartitionField;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.types.Types;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -447,44 +449,6 @@ public class MaterializedViewAnalyzer {
                 Preconditions.checkState(pair.second < outputExpressions.size());
                 columnExprMap.put(pair.first, outputExpressions.get(pair.second));
             }
-            // For partitioned MVs, check Iceberg partition evolution.
-            // Non-partitioned MVs skip this check (they do full refresh without partition mapping).
-            // Safe evolution (MV partition column transform unchanged across all specs) is allowed.
-            if (CollectionUtils.isNotEmpty(statement.getPartitionByExprs())) {
-                // Extract column names referenced in partition expressions
-                List<String> partitionColumnNames = Lists.newArrayList();
-                for (Expr partitionByExpr : statement.getPartitionByExprs()) {
-                    List<SlotRef> slotRefs = Lists.newArrayList();
-                    partitionByExpr.collect(SlotRef.class, slotRefs);
-                    for (SlotRef slotRef : slotRefs) {
-                        partitionColumnNames.add(slotRef.getColumnName());
-                    }
-                }
-                for (Map.Entry<TableName, Table> aliasEntry : aliasTableMap.entrySet()) {
-                    Table baseTable = aliasEntry.getValue();
-                    if (baseTable instanceof IcebergTable) {
-                        IcebergTable icebergTable = (IcebergTable) baseTable;
-                        if (icebergTable.getNativeTable().specs().size() > 1) {
-                            // Check if evolution is safe for the MV's partition column
-                            boolean safe = false;
-                            for (String colName : partitionColumnNames) {
-                                Column col = icebergTable.getColumn(colName);
-                                if (col != null && IcebergPartitionUtils.isSafePartitionEvolution(
-                                        icebergTable, col)) {
-                                    safe = true;
-                                    break;
-                                }
-                            }
-                            if (!safe) {
-                                throw new SemanticException(
-                                        "Do not support create materialized view when base iceberg table " +
-                                                baseTable.getName() + " has done partition evolution");
-                            }
-                        }
-                    }
-                }
-            }
-
             // some check if partition exp exists
             if (CollectionUtils.isNotEmpty(statement.getPartitionByExprs())) {
                 // check partition expression all in column list and
@@ -1109,8 +1073,12 @@ public class MaterializedViewAnalyzer {
                     }
                     slotRef = (SlotRef) newPartitionByExpr;
                 }
-                MVPartitionCheckContext context = new MVPartitionCheckContext(statement, expr, slotRef, table);
-                MVBaseTablePartitionHandlers.getHandler(table).checkPartitionColumn(context);
+                if (table.isIcebergTable()) {
+                    checkPartitionColumnWithBaseIcebergTable(statement, expr, slotRef, (IcebergTable) table);
+                } else {
+                    MVPartitionCheckContext context = new MVPartitionCheckContext(statement, expr, slotRef, table);
+                    MVBaseTablePartitionHandlers.getHandler(table).checkPartitionColumn(context);
+                }
                 replaceTableAlias(slotRef, statement, tableNameTableMap);
             }
         }
@@ -1204,11 +1172,16 @@ public class MaterializedViewAnalyzer {
                                                     List<Expr> mvPartitionByExprs,
                                                     Expr partitionRefTableExpr,
                                                     Column refPartitionCol) {
-            // for iceberg table with transform, use list partition since it needs to handle the transform with timezone
-            // original range partition mv cannot handle it correctly.
-            if (statement.isRefBaseTablePartitionWithTransform()) {
-                return true;
+            if (partitionRefTableExpr instanceof FunctionCallExpr) {
+                String functionName = ((FunctionCallExpr) partitionRefTableExpr).getFunctionName();
+                if (FunctionSet.ICEBERG_TRANSFORM_BUCKET.equalsIgnoreCase(functionName)
+                        || FunctionSet.ICEBERG_TRANSFORM_TRUNCATE.equalsIgnoreCase(functionName)) {
+                    return true;
+                }
             }
+            // Iceberg time transforms (YEAR/MONTH/DAY/HOUR) now use RANGE partition.
+            // Timezone is correctly handled by IcebergPartitionTraits.createPartitionKey()
+            // which calls normalizeTimePartitionName() for TIMESTAMPTZ columns.
             final Type partitionExprType = refPartitionCol.getType();
             if (partitionExprType.isStringType() &&
                     mvPartitionByExprs.stream().allMatch(t -> t instanceof SlotRef) &&
@@ -1294,9 +1267,16 @@ public class MaterializedViewAnalyzer {
                 FunctionCallExpr cloned = (FunctionCallExpr) partitionByExpr.clone();
                 Expr adjustedPartitionByExpr = getMVAdjustedPartitionByExpr(i, cloned, mvColumns,
                         mvTableName, tableNameTableMap, changedPartitionByExprs, partitionByExprToAdjustExprMap);
-                // if partition by expr is not changed, skip
-                if (adjustedPartitionByExpr == null || adjustedPartitionByExpr.equals(expr)) {
+                boolean isIcebergTransform = FunctionSet.ICEBERG_TRANSFORM_BUCKET
+                        .equalsIgnoreCase(partitionByExpr.getFunctionName())
+                        || FunctionSet.ICEBERG_TRANSFORM_TRUNCATE
+                        .equalsIgnoreCase(partitionByExpr.getFunctionName());
+                if (!isIcebergTransform
+                        && (adjustedPartitionByExpr == null || adjustedPartitionByExpr.equals(expr))) {
                     continue;
+                }
+                if (adjustedPartitionByExpr == null) {
+                    adjustedPartitionByExpr = cloned;
                 }
                 Column generatedCol = getGeneratedPartitionColumn(statement, adjustedPartitionByExpr, placeholder);
                 if (generatedCol == null) {
@@ -1337,19 +1317,52 @@ public class MaterializedViewAnalyzer {
                                                               IcebergTable table) {
             org.apache.iceberg.Table icebergTable = table.getNativeTable();
             PartitionSpec partitionSpec = icebergTable.spec();
+            Column partitionColumn = table.getColumn(slotRef.getColumnName());
             if (partitionSpec.isUnpartitioned()) {
-                throw new SemanticException("Materialized view partition column in partition exp " +
-                        "must be base table partition column");
+                if (icebergTable.specs().size() <= 1 || partitionColumn == null
+                        || !IcebergPartitionUtils.isSafePartitionEvolution(table, partitionColumn)) {
+                    throw new SemanticException("Materialized view partition column in partition exp " +
+                            "must be base table partition column");
+                }
+                Types.NestedField sourceField = icebergTable.schema().findField(slotRef.getColumnName());
+                boolean hasTimeEvolution = sourceField != null
+                        && IcebergPartitionUtils.isAllTimeTransforms(icebergTable, sourceField.fieldId());
+                if (hasTimeEvolution) {
+                    if (!MvUtils.isFuncCallExpr(partitionByExpr, FunctionSet.DATE_TRUNC)) {
+                        throw new SemanticException("Materialized view partition expr %s " +
+                                        "must use date_trunc for time-family partition evolution.",
+                                ExprToSql.toSql(partitionByExpr));
+                    }
+                    checkPartitionColumnType(partitionColumn);
+                    statement.setRefBaseTablePartitionWithTransform(true);
+                    return;
+                }
+                if (!(partitionByExpr instanceof SlotRef) && !MvUtils.isStr2Date(partitionByExpr)
+                        && !MvUtils.isFuncCallExpr(partitionByExpr, FunctionSet.DATE_TRUNC)) {
+                    throw new SemanticException("Materialized view partition expr %s: " +
+                                    "only support ref partition column for evolved unpartitioned Iceberg tables.",
+                            ExprToSql.toSql(partitionByExpr));
+                }
+                checkPartitionColumnType(partitionColumn);
+                return;
             } else {
                 if (icebergTable.specs().size() > 1) {
-                    Column partitionColumn = table.getColumn(slotRef.getColumnName());
+                    boolean alignedCurrentSpecFallback = isCurrentSpecFallbackPartitionExpr(Lists.newArrayList(partitionByExpr))
+                            && IcebergPartitionUtils.arePartitionExprsAlignedWithCurrentSpec(
+                            table, Lists.newArrayList(partitionByExpr));
                     if (partitionColumn == null ||
-                            !IcebergPartitionUtils.isSafePartitionEvolution(table, partitionColumn)) {
+                            (!IcebergPartitionUtils.isSafePartitionEvolution(table, partitionColumn)
+                                    && !alignedCurrentSpecFallback)) {
                         throw new SemanticException("Do not support create materialized view when " +
                                 "base iceberg table has partition evolution");
                     }
                 }
                 boolean found = false;
+                Types.NestedField sourceField = icebergTable.schema().findField(slotRef.getColumnName());
+                boolean hasTimeFamilyTransforms = sourceField != null
+                        && IcebergPartitionUtils.isAllTimeTransforms(icebergTable, sourceField.fieldId());
+                boolean hasTimeEvolution = icebergTable.specs().size() > 1 && hasTimeFamilyTransforms;
+
                 for (PartitionField partitionField : partitionSpec.fields()) {
                     IcebergPartitionTransform transform =
                             IcebergPartitionTransform.fromString(partitionField.transform().toString());
@@ -1362,10 +1375,17 @@ public class MaterializedViewAnalyzer {
                             case MONTH:
                             case DAY:
                             case HOUR:
-                                if (!isDateTruncWithUnit(partitionByExpr, transform.name())) {
+                                if (hasTimeFamilyTransforms) {
+                                    if (!MvUtils.isFuncCallExpr(partitionByExpr, FunctionSet.DATE_TRUNC)) {
+                                        throw new SemanticException("Materialized view partition expr %s " +
+                                                "must use date_trunc for time-family partition evolution.",
+                                                ExprToSql.toSql(partitionByExpr));
+                                    }
+                                } else if (!isDateTruncWithUnit(partitionByExpr, transform.name())) {
                                     throw new SemanticException("Materialized view partition expr %s " +
                                             "must be the same with base table partition transform %s, please use date_trunc" +
-                                            "(<transform>, <partition_colum_name>) instead.", ExprToSql.toSql(partitionByExpr),
+                                            "(<transform>, <partition_colum_name>) instead.",
+                                            ExprToSql.toSql(partitionByExpr),
                                             transform.name());
                                 }
                                 // mark the statement with partition transform to use list partition mv later.
@@ -1380,12 +1400,30 @@ public class MaterializedViewAnalyzer {
                                             ExprToSql.toSql(partitionByExpr), transform.name());
                                 }
                                 break;
+                            case BUCKET:
+                            case TRUNCATE:
+                                if (!IcebergPartitionUtils.arePartitionExprsAlignedWithCurrentSpec(
+                                        table, Lists.newArrayList(partitionByExpr))) {
+                                    throw new SemanticException("Materialized view partition expr %s " +
+                                                    "must match base table partition transform %s.",
+                                            ExprToSql.toSql(partitionByExpr), transform.name());
+                                }
+                                statement.setRefBaseTablePartitionWithTransform(true);
+                                break;
                             default:
                                 throw new SemanticException("Do not support create materialized view when " +
                                         "base iceberg table partition transform is: " + transform.name());
                         }
                         break;
                     }
+                }
+                // If not found in current spec but table has time-family evolution,
+                // the column may only exist in historical specs (void in current spec).
+                if (!found && hasTimeEvolution &&
+                        MvUtils.isFuncCallExpr(partitionByExpr, FunctionSet.DATE_TRUNC)) {
+                    checkPartitionColumnType(table.getColumn(slotRef.getColumnName()));
+                    statement.setRefBaseTablePartitionWithTransform(true);
+                    found = true;
                 }
                 if (!found) {
                     throw new SemanticException("Materialized view partition column in partition exp " +
@@ -1404,6 +1442,35 @@ public class MaterializedViewAnalyzer {
                 return stringLiteral.getStringValue().equalsIgnoreCase(timeUnit);
             }
             return false;
+        }
+
+        private boolean isCurrentSpecFallbackPartitionExpr(List<Expr> partitionExprs) {
+            if (CollectionUtils.isEmpty(partitionExprs)) {
+                return false;
+            }
+            for (Expr partitionExpr : partitionExprs) {
+                if (!(partitionExpr instanceof FunctionCallExpr)) {
+                    continue;
+                }
+                String functionName = ((FunctionCallExpr) partitionExpr).getFunctionName();
+                if (FunctionSet.ICEBERG_TRANSFORM_BUCKET.equalsIgnoreCase(functionName)
+                        || FunctionSet.ICEBERG_TRANSFORM_TRUNCATE.equalsIgnoreCase(functionName)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void checkPartitionColumnType(Column partitionColumn) {
+            if (partitionColumn == null) {
+                throw new SemanticException("Materialized view partition column in partition exp " +
+                        "must be base table partition column");
+            }
+            PrimitiveType type = partitionColumn.getPrimitiveType();
+            if (!type.isFixedPointType() && !type.isDateType() && !type.isStringType()) {
+                throw new SemanticException("Materialized view partition exp column:"
+                        + partitionColumn.getName() + " with type " + type + " not supported");
+            }
         }
 
         @VisibleForTesting
@@ -2072,6 +2139,11 @@ public class MaterializedViewAnalyzer {
     public static Expr getAdjustedIcebergPartitionExpr(List<Column> mvColumns, TableName mvTableName,
                                                        SlotRef slotRef, IcebergTable icebergTable,
                                                        Expr partitionByExpr) {
+        if (MvUtils.isFuncCallExpr(partitionByExpr, FunctionSet.ICEBERG_TRANSFORM_BUCKET)
+                || MvUtils.isFuncCallExpr(partitionByExpr, FunctionSet.ICEBERG_TRANSFORM_TRUNCATE)) {
+            tryToResolveRefToMVColumns(mvColumns, slotRef, mvTableName);
+            return partitionByExpr;
+        }
         if (!MvUtils.isFuncCallExpr(partitionByExpr, FunctionSet.DATE_TRUNC)) {
             return null;
         }

@@ -386,7 +386,7 @@ public final class ListPartitionDiffer extends PartitionDiffer {
         Map<Table, PartitionNameSetMap> externalPartitionMaps = Maps.newHashMap();
         if (!queryRewriteParams.isQueryRewrite()) {
             try {
-                collectExternalPartitionNameMapping(mv.getRefBaseTablePartitionColumns(), externalPartitionMaps);
+                collectExternalPartitionNameMapping(mv.getRefBaseTablePartitionColumns(), null, externalPartitionMaps);
             } catch (Exception e) {
                 LOG.warn("Get external partition column mapping failed.", DebugUtil.getStackTrace(e));
                 return null;

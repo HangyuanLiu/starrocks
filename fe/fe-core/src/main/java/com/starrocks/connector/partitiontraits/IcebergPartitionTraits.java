@@ -23,12 +23,16 @@ import com.starrocks.catalog.PartitionKey;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.tvr.TvrTableSnapshot;
 import com.starrocks.connector.ConnectorMetadatRequestContext;
+import com.starrocks.connector.MVPartitionCellBuilder;
 import com.starrocks.connector.PartitionInfo;
+import com.starrocks.connector.PartitionUtil;
 import com.starrocks.connector.iceberg.IcebergPartitionUtils;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.NullLiteral;
+import com.starrocks.sql.common.PCellSortedSet;
 import com.starrocks.type.Type;
 import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.Snapshot;
@@ -84,6 +88,11 @@ public class IcebergPartitionTraits extends DefaultTraits {
                 table.getCatalogName(), getCatalogDBName(), getTableName(), requestContext);
     }
 
+    public PCellSortedSet getPartitionKeyRange(Column partitionColumn, Expr partitionExpr)
+            throws AnalysisException {
+        return MVPartitionCellBuilder.getPartitionKeyRange(table, partitionColumn, partitionExpr);
+    }
+
     @Override
     public PartitionKey createPartitionKey(List<String> partitionValues, List<Column> partitionColumns)
             throws AnalysisException {
@@ -94,44 +103,28 @@ public class IcebergPartitionTraits extends DefaultTraits {
         IcebergTable icebergTable = (IcebergTable) table;
         List<PartitionField> partitionFields = Lists.newArrayList();
         for (Column column : partitionColumns) {
-            for (PartitionField field : icebergTable.getNativeTable().spec().fields()) {
-                String partitionFieldName = icebergTable.getNativeTable().schema().findColumnName(field.sourceId());
-                if (partitionFieldName.equalsIgnoreCase(column.getName())) {
-                    partitionFields.add(field);
-                }
+            PartitionField matched = findPartitionFieldForColumn(icebergTable, column.getName(),
+                    partitionValues.size() > partitionFields.size()
+                            ? partitionValues.get(partitionFields.size()) : null);
+            if (matched != null) {
+                partitionFields.add(matched);
             }
         }
         Preconditions.checkState(partitionFields.size() == partitionColumns.size(),
-                "columns size is %s, but partitionFields size is %s", partitionColumns.size(), partitionFields.size());
+                "columns size is %s, but partitionFields size is %s", partitionColumns.size(),
+                partitionFields.size());
 
-        PartitionKey partitionKey = createEmptyKey();
+        return IcebergPartitionUtils.createPartitionKey(icebergTable, partitionColumns, partitionValues, null);
+    }
 
-        // change string value to LiteralExpr,
-        for (int i = 0; i < partitionValues.size(); i++) {
-            String rawValue = partitionValues.get(i);
-            Column column = partitionColumns.get(i);
-            PartitionField field = partitionFields.get(i);
-            LiteralExpr exprValue;
-            // rawValue could be null for delta table
-            if (rawValue == null) {
-                rawValue = "null";
-            }
-            if (((NullablePartitionKey) partitionKey).nullPartitionValueList().contains(rawValue)) {
-                partitionKey.setNullPartitionValue(rawValue);
-                exprValue = NullLiteral.create(column.getType());
-            } else {
-                // transform year/month/day/hour dedup name is time
-                if (field.transform().dedupName().equalsIgnoreCase("time")) {
-                    rawValue = IcebergPartitionUtils.normalizeTimePartitionName(rawValue, field,
-                            icebergTable.getNativeTable().schema(), column.getType());
-                    exprValue = LiteralExprFactory.create(rawValue, column.getType());
-                } else {
-                    exprValue = LiteralExprFactory.create(rawValue, column.getType());
-                }
-            }
-            partitionKey.pushColumn(exprValue, column.getType().getPrimitiveType());
-        }
-        return partitionKey;
+    /**
+     * Find the matching PartitionField for a column across all specs.
+     * For single-spec tables, uses the current spec. For evolution tables,
+     * infers the correct spec by matching the partition value format to the transform.
+     */
+    private org.apache.iceberg.PartitionField findPartitionFieldForColumn(
+            IcebergTable icebergTable, String columnName, String partitionValue) {
+        return IcebergPartitionUtils.findPartitionFieldForColumn(icebergTable, columnName, partitionValue, null);
     }
 
     @Override
@@ -169,4 +162,3 @@ public class IcebergPartitionTraits extends DefaultTraits {
         return partitionKey;
     }
 }
-

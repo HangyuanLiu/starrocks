@@ -2033,7 +2033,8 @@ public class MvRefreshAndRewriteIcebergTest extends MVTestBase {
                 ")\n" +
                 "AS SELECT id, data, ts  FROM `iceberg0`.`partitioned_transforms_db`.`t0_month` as a;");
         final MaterializedView mv = getMv(mvName);
-        Assertions.assertTrue(mv.getPartitionInfo().isListPartition());
+        // Iceberg time transforms now use RANGE partition instead of LIST
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
     }
 
 
@@ -2049,6 +2050,39 @@ public class MvRefreshAndRewriteIcebergTest extends MVTestBase {
                 ")\n" +
                 "AS SELECT id, data, date_trunc('month', ts) as ds  " +
                 " FROM `iceberg0`.`partitioned_transforms_db`.`t0_month` as a;");
+        final MaterializedView mv = getMv(mvName);
+        // Iceberg time transforms now use RANGE partition instead of LIST
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
+    }
+
+    @Test
+    public void testCreateMvWithIcebergMonthToDayEvolutionUsesRangePartition() throws Exception {
+        String mvName = "test_mv1";
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW test_mv1\n" +
+                "PARTITION BY date_trunc('day', ts)\n" +
+                "DISTRIBUTED BY HASH(`id`) BUCKETS 10\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\n" +
+                "\"replication_num\" = \"1\"\n" +
+                ")\n" +
+                "AS SELECT id, data, ts  FROM `iceberg0`.`partitioned_transforms_db`." +
+                "`t0_month_to_day_evolution` as a;");
+        final MaterializedView mv = getMv(mvName);
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
+    }
+
+    @Test
+    public void testCreateMvWithIcebergBucketAlignmentUsesListPartition() throws Exception {
+        String mvName = "test_mv1";
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW test_mv1\n" +
+                "PARTITION BY __iceberg_transform_bucket(id, 32)\n" +
+                "DISTRIBUTED BY HASH(`id`) BUCKETS 10\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\n" +
+                "\"replication_num\" = \"1\"\n" +
+                ")\n" +
+                "AS SELECT id, data, ts  FROM `iceberg0`.`partitioned_transforms_db`." +
+                "`t0_bucket16_to_bucket32_evolution` as a;");
         final MaterializedView mv = getMv(mvName);
         Assertions.assertTrue(mv.getPartitionInfo().isListPartition());
     }

@@ -16,6 +16,7 @@ package com.starrocks.connector.iceberg;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.Column;
@@ -48,10 +49,13 @@ import com.starrocks.type.VariantType;
 import org.apache.commons.collections4.map.CaseInsensitiveMap;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataFiles;
+import org.apache.iceberg.Metrics;
+import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.types.Conversions;
 import org.apache.iceberg.types.Types;
 
 import java.io.File;
@@ -104,6 +108,14 @@ public class MockIcebergMetadata implements ConnectorMetadata {
     public static final String MOCKED_PARTITIONED_HOUR_TZ_TABLE_NAME = "t0_hour_tz";
     // partition table with partition evolutions
     public static final String MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME = "t0_date_month_identity_evolution";
+    // MONTH→DAY time-family evolution (safe for T2-2 per-spec interval)
+    public static final String MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME = "t0_month_to_day_evolution";
+    public static final String MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME =
+            "t0_month_to_truncate_evolution";
+    public static final String MOCKED_PARTITIONED_EVOLUTION_DAY_TO_BUCKET_TABLE_NAME =
+            "t0_day_to_bucket_evolution";
+    public static final String MOCKED_PARTITIONED_EVOLUTION_BUCKET16_TO_BUCKET32_TABLE_NAME =
+            "t0_bucket16_to_bucket32_evolution";
 
     private static final List<String> PARTITION_TABLE_NAMES = ImmutableList.of(MOCKED_PARTITIONED_TABLE_NAME1,
             MOCKED_PARTITIONED_TABLE_NAME2,
@@ -120,7 +132,11 @@ public class MockIcebergMetadata implements ConnectorMetadata {
                     MOCKED_PARTITIONED_TRUNCATE_TABLE_NAME,
                     MOCKED_PARTITIONED_YEAR_TZ_TABLE_NAME, MOCKED_PARTITIONED_MONTH_TZ_TABLE_NAME,
                     MOCKED_PARTITIONED_DAY_TZ_TABLE_NAME, MOCKED_PARTITIONED_HOUR_TZ_TABLE_NAME,
-                    MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME);
+                    MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME,
+                    MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME,
+                    MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME,
+                    MOCKED_PARTITIONED_EVOLUTION_DAY_TO_BUCKET_TABLE_NAME,
+                    MOCKED_PARTITIONED_EVOLUTION_BUCKET16_TO_BUCKET32_TABLE_NAME);
 
     private static final List<String> PARTITION_NAMES_0 = Lists.newArrayList("date=2020-01-01",
             "date=2020-01-02",
@@ -425,6 +441,67 @@ public class MockIcebergMetadata implements ConnectorMetadata {
                                 + MOCKED_PARTITIONED_HOUR_TZ_TABLE_NAME), MOCKED_PARTITIONED_HOUR_TZ_TABLE_NAME,
                         schema, spec, 1);
             }
+            case MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME: {
+                // MONTH(ts) → DAY(ts) evolution: spec 0 = MONTH, spec 1 = DAY
+                PartitionSpec specMonth =
+                        PartitionSpec.builderFor(schema).month("ts").build();
+                File fileEvol = new File(getStarRocksHome() + "/" + MOCKED_PARTITIONED_TRANSFORMS_DB_NAME + "/"
+                        + MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME);
+                TestTables.TestTable tableEvol = TestTables.create(
+                        fileEvol,
+                        MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME,
+                        schema, specMonth, 1);
+                TableMetadata evolMeta = tableEvol.ops().current().updatePartitionSpec(
+                        PartitionSpec.builderFor(tableEvol.ops().current().schema())
+                                .day("ts").build());
+                tableEvol.ops().commit(tableEvol.ops().current(), evolMeta);
+                return tableEvol;
+            }
+            case MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME: {
+                PartitionSpec specMonth =
+                        PartitionSpec.builderFor(schema).month("ts").build();
+                File fileEvol = new File(getStarRocksHome() + "/" + MOCKED_PARTITIONED_TRANSFORMS_DB_NAME + "/"
+                        + MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME);
+                TestTables.TestTable tableEvol = TestTables.create(
+                        fileEvol,
+                        MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME,
+                        schema, specMonth, 1);
+                TableMetadata evolMeta = tableEvol.ops().current().updatePartitionSpec(
+                        PartitionSpec.builderFor(tableEvol.ops().current().schema())
+                                .truncate("id", 10).build());
+                tableEvol.ops().commit(tableEvol.ops().current(), evolMeta);
+                return tableEvol;
+            }
+            case MOCKED_PARTITIONED_EVOLUTION_DAY_TO_BUCKET_TABLE_NAME: {
+                PartitionSpec specDay =
+                        PartitionSpec.builderFor(schema).day("ts").build();
+                File fileEvol = new File(getStarRocksHome() + "/" + MOCKED_PARTITIONED_TRANSFORMS_DB_NAME + "/"
+                        + MOCKED_PARTITIONED_EVOLUTION_DAY_TO_BUCKET_TABLE_NAME);
+                TestTables.TestTable tableEvol = TestTables.create(
+                        fileEvol,
+                        MOCKED_PARTITIONED_EVOLUTION_DAY_TO_BUCKET_TABLE_NAME,
+                        schema, specDay, 1);
+                TableMetadata evolMeta = tableEvol.ops().current().updatePartitionSpec(
+                        PartitionSpec.builderFor(tableEvol.ops().current().schema())
+                                .bucket("id", 16).build());
+                tableEvol.ops().commit(tableEvol.ops().current(), evolMeta);
+                return tableEvol;
+            }
+            case MOCKED_PARTITIONED_EVOLUTION_BUCKET16_TO_BUCKET32_TABLE_NAME: {
+                PartitionSpec specBucket16 =
+                        PartitionSpec.builderFor(schema).bucket("id", 16).build();
+                File fileEvol = new File(getStarRocksHome() + "/" + MOCKED_PARTITIONED_TRANSFORMS_DB_NAME + "/"
+                        + MOCKED_PARTITIONED_EVOLUTION_BUCKET16_TO_BUCKET32_TABLE_NAME);
+                TestTables.TestTable tableEvol = TestTables.create(
+                        fileEvol,
+                        MOCKED_PARTITIONED_EVOLUTION_BUCKET16_TO_BUCKET32_TABLE_NAME,
+                        schema, specBucket16, 1);
+                TableMetadata evolMeta = tableEvol.ops().current().updatePartitionSpec(
+                        PartitionSpec.builderFor(tableEvol.ops().current().schema())
+                                .bucket("id", 32).build());
+                tableEvol.ops().commit(tableEvol.ops().current(), evolMeta);
+                return tableEvol;
+            }
             case MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME: {
                 PartitionSpec spec =
                         PartitionSpec.builderFor(schema).month("ts").build();
@@ -435,9 +512,8 @@ public class MockIcebergMetadata implements ConnectorMetadata {
                         file,
                         MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME,
                         schema, spec, 1);
-                TableMetadata evolutionMetaData = TableMetadata.buildFrom(table.ops().current())
-                        .addPartitionSpec(PartitionSpec.builderFor(table.ops().current().schema()).identity("ts").build())
-                        .build();
+                TableMetadata evolutionMetaData = table.ops().current().updatePartitionSpec(
+                        PartitionSpec.builderFor(table.ops().current().schema()).identity("ts").build());
 
                 table.ops().commit(table.ops().current(), evolutionMetaData);
                 return table;
@@ -479,6 +555,20 @@ public class MockIcebergMetadata implements ConnectorMetadata {
             case MOCKED_PARTITIONED_TRUNCATE_TABLE_NAME:
                 return Lists.newArrayList("data_trunc=aaaaa", "data_trunc=bbbbb",
                         "data_trunc=ccccc", "data_trunc=ddddd", "data_trunc=eeeee");
+            case MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME:
+                // specId=0 (MONTH): 2 month partitions; specId=1 (DAY): 3 day partitions
+                return Lists.newArrayList(
+                        "ts_month=2024-01", "ts_month=2024-02",
+                        "ts_day=2024-03-01", "ts_day=2024-03-02", "ts_day=2024-03-03");
+            case MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME:
+                return Lists.newArrayList(
+                        "ts_month=2024-01", "ts_month=2024-02",
+                        "id_trunc=0", "id_trunc=10");
+            case MOCKED_PARTITIONED_EVOLUTION_DAY_TO_BUCKET_TABLE_NAME:
+                return Lists.newArrayList(
+                        "ts_day=2024-01-01", "ts_day=2024-01-02", "ts_day=2024-01-03");
+            case MOCKED_PARTITIONED_EVOLUTION_BUCKET16_TO_BUCKET32_TABLE_NAME:
+                return Lists.newArrayList("id_bucket=1", "id_bucket=2", "id_bucket=3");
             case MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME:
                 return Lists.newArrayList("ts=2024-01-01", "ts_month=2024-01",
                         "ts=2024-02", "ts=2024-03");
@@ -616,37 +706,122 @@ public class MockIcebergMetadata implements ConnectorMetadata {
     }
 
     public void addRowsToPartition(String dbName, String tableName, int rowCount, String partitionName) {
-        IcebergTable icebergTable = MOCK_TABLE_MAP.get(dbName).get(tableName).icebergTable;
+        addRowsToPartitionInternal(dbName, tableName, rowCount, partitionName, null, null, null, null);
+    }
+
+    public void addRowsToPartitionWithBounds(String dbName, String tableName, int rowCount,
+                                             String partitionName, int lowerBound, int upperBound) {
+        addRowsToPartitionInternal(dbName, tableName, rowCount, partitionName, null, lowerBound, upperBound, null);
+    }
+
+    public void addRowsToPartitionWithSyntheticValues(String dbName, String tableName, int rowCount,
+                                                      String partitionName, int specId, List<Integer> syntheticValues) {
+        addRowsToPartitionInternal(dbName, tableName, rowCount, partitionName, specId, null, null, syntheticValues);
+    }
+
+    private void addRowsToPartitionInternal(String dbName, String tableName, int rowCount, String partitionName,
+                                            Integer specId,
+                                            Integer lowerBound,
+                                            Integer upperBound,
+                                            List<Integer> syntheticValues) {
+        IcebergTableInfo tableInfo = MOCK_TABLE_MAP.get(dbName).get(tableName);
+        IcebergTable icebergTable = tableInfo.icebergTable;
         Table nativeTable = icebergTable.getNativeTable();
-        DataFile file = DataFiles.builder(nativeTable.spec())
-                .withPath("/path/to/data-a.parquet")
+        PartitionSpec spec = resolvePartitionSpec(nativeTable, partitionName, specId);
+        String path = String.format("/path/to/%s-%s%s-%d.parquet",
+                tableName,
+                partitionName.replace('/', '_'),
+                buildSyntheticPathSuffix(lowerBound, upperBound, syntheticValues),
+                System.nanoTime());
+
+        DataFiles.Builder builder = DataFiles.builder(spec)
+                .withPath(path)
                 .withFileSizeInBytes(10)
-                .withPartitionPath(partitionName) // easy way to set partition data for now
-                .withRecordCount(rowCount)
-                .build();
+                .withPartition(IcebergPartitionData.partitionDataFromPath(partitionName, spec))
+                .withRecordCount(rowCount);
+        if (lowerBound != null && upperBound != null) {
+            int fieldId = nativeTable.schema().findField("id").fieldId();
+            builder.withMetrics(new Metrics(
+                    (long) rowCount,
+                    null,
+                    null,
+                    null,
+                    null,
+                    ImmutableMap.of(fieldId, Conversions.toByteBuffer(Types.IntegerType.get(), lowerBound)),
+                    ImmutableMap.of(fieldId, Conversions.toByteBuffer(Types.IntegerType.get(), upperBound))));
+        }
+        DataFile file = builder.build();
+
         writeLock();
         try {
             nativeTable.newAppend().appendFile(file).commit();
+            tableInfo.touchPartition(partitionName, specId);
         } finally {
             writeUnlock();
         }
     }
 
+    private String buildSyntheticPathSuffix(Integer lowerBound, Integer upperBound, List<Integer> syntheticValues) {
+        StringBuilder suffix = new StringBuilder();
+        if (lowerBound != null && upperBound != null) {
+            suffix.append(String.format("-lb%d-ub%d", lowerBound, upperBound));
+        }
+        if (syntheticValues != null && !syntheticValues.isEmpty()) {
+            suffix.append("-sv").append(syntheticValues.stream()
+                    .map(String::valueOf)
+                    .collect(Collectors.joining("_")));
+        }
+        return suffix.toString();
+    }
+
+    private PartitionSpec resolvePartitionSpec(Table nativeTable, String partitionName, Integer specId) {
+        if (specId != null && nativeTable.specs().containsKey(specId)) {
+            return nativeTable.specs().get(specId);
+        }
+        List<String> actualFieldNames = Arrays.stream(partitionName.split("/"))
+                .map(part -> part.split("=", 2)[0])
+                .collect(Collectors.toList());
+        for (PartitionSpec spec : nativeTable.specs().values()) {
+            List<String> specFieldNames = spec.fields().stream()
+                    .filter(field -> !field.transform().isVoid())
+                    .map(PartitionField::name)
+                    .collect(Collectors.toList());
+            if (specFieldNames.equals(actualFieldNames)) {
+                return spec;
+            }
+        }
+
+        Schema schema = nativeTable.schema();
+        if (partitionName.startsWith("ts_month=")) {
+            return PartitionSpec.builderFor(schema).month("ts").build();
+        } else if (partitionName.startsWith("ts_day=")) {
+            return PartitionSpec.builderFor(schema).day("ts").build();
+        } else if (partitionName.startsWith("ts_year=")) {
+            return PartitionSpec.builderFor(schema).year("ts").build();
+        } else if (partitionName.startsWith("ts_hour=")) {
+            return PartitionSpec.builderFor(schema).hour("ts").build();
+        }
+        return nativeTable.spec();
+    }
+
     public void updatePartitions(String dbName, String tableName, List<String> partitionNames) {
         writeLock();
         try {
-            Map<String, PartitionInfo> partitionInfoMap = MOCK_TABLE_MAP.get(dbName).get(tableName).partitionInfoMap;
+            IcebergTableInfo tableInfo = MOCK_TABLE_MAP.get(dbName).get(tableName);
             for (String partitionName : partitionNames) {
-                if (partitionInfoMap.containsKey(partitionName)) {
-                    long modifyTime = partitionInfoMap.get(partitionName).getModifiedTime() + 1;
-                    partitionInfoMap.put(partitionName, new Partition(modifyTime));
-                } else {
-                    partitionInfoMap.put(partitionName, new Partition(PARTITION_INIT_VERSION));
-                }
+                tableInfo.touchPartition(partitionName);
             }
         } finally {
             writeUnlock();
         }
+    }
+
+    private int resolveSpecId(String tableName, String partitionName) {
+        IcebergTableInfo tableInfo = MOCK_TABLE_MAP.get(MOCKED_PARTITIONED_TRANSFORMS_DB_NAME).get(tableName);
+        if (tableInfo == null) {
+            return 0;
+        }
+        return tableInfo.resolveSpecId(tableName, partitionName);
     }
 
     private static class IcebergTableInfo {
@@ -670,10 +845,73 @@ public class MockIcebergMetadata implements ConnectorMetadata {
             if (partitionNames.isEmpty()) {
                 partitionInfoMap.put(icebergTable.getCatalogTableName(), new Partition(PARTITION_INIT_VERSION));
             } else {
+                String tblName = icebergTable.getCatalogTableName();
                 for (String partitionName : partitionNames) {
-                    partitionInfoMap.put(partitionName, new Partition(PARTITION_INIT_VERSION));
+                    int specId = resolveSpecId(tblName, partitionName);
+                    partitionInfoMap.put(partitionName,
+                            new Partition(PARTITION_INIT_VERSION, specId));
                 }
             }
+        }
+
+        private void touchPartition(String partitionName) {
+            touchPartition(partitionName, null);
+        }
+
+        private void touchPartition(String partitionName, Integer explicitSpecId) {
+            int specId = explicitSpecId != null
+                    ? explicitSpecId
+                    : resolveSpecId(icebergTable.getCatalogTableName(), partitionName);
+            if (!partitionNames.contains(partitionName)) {
+                partitionNames.add(partitionName);
+            }
+            if (partitionInfoMap.containsKey(partitionName)) {
+                long modifyTime = partitionInfoMap.get(partitionName).getModifiedTime() + 1;
+                partitionInfoMap.put(partitionName, new Partition(modifyTime, specId));
+            } else {
+                partitionInfoMap.put(partitionName, new Partition(PARTITION_INIT_VERSION, specId));
+            }
+        }
+
+        /**
+         * Resolve specId for a partition. For evolution tables, look up the actual
+         * specId from the native Iceberg table metadata by matching the partition name
+         * prefix to the transform type.
+         */
+        private int resolveSpecId(String tblName, String partitionName) {
+            if (icebergTable == null) {
+                return 0;
+            }
+            if (!MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME.equals(tblName)
+                    && !MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME.equals(tblName)
+                    && !MOCKED_PARTITIONED_EVOLUTION_DAY_TO_BUCKET_TABLE_NAME.equals(tblName)
+                    && !MOCKED_PARTITIONED_EVOLUTION_BUCKET16_TO_BUCKET32_TABLE_NAME.equals(tblName)) {
+                return 0;
+            }
+            try {
+                org.apache.iceberg.Table nativeTable = icebergTable.getNativeTable();
+                if (nativeTable == null || nativeTable.specs().size() <= 1) {
+                    return 0;
+                }
+                List<String> actualFieldNames = Arrays.stream(partitionName.split("/"))
+                        .map(part -> part.split("=", 2)[0])
+                        .collect(Collectors.toList());
+                if (actualFieldNames.isEmpty()) {
+                    return 0;
+                }
+                for (Map.Entry<Integer, PartitionSpec> entry : nativeTable.specs().entrySet()) {
+                    List<String> specFieldNames = entry.getValue().fields().stream()
+                            .filter(field -> !field.transform().isVoid())
+                            .map(PartitionField::name)
+                            .collect(Collectors.toList());
+                    if (specFieldNames.equals(actualFieldNames)) {
+                        return entry.getKey();
+                    }
+                }
+            } catch (Exception e) {
+                // fallback
+            }
+            return 0;
         }
     }
 

@@ -248,6 +248,7 @@ public final class MVPCTRefreshListPartitioner extends MVPCTRefreshPartitioner {
                 }
             }
             Expr mvPartitionExpr = mvPartitionExprs.get(0);
+            clearSlotRefTableNames(mvPartitionExpr);
             Expr inPredicate = MvUtils.convertToInPredicate(mvPartitionExpr, selectedPartitionValues);
             // NOTE: If target partition values contain `null partition`, the generated predicate should
             // contain `is null` predicate rather than `in (null) or = null` because the later one is not correct.
@@ -530,6 +531,15 @@ public final class MVPCTRefreshListPartitioner extends MVPCTRefreshPartitioner {
                         e, database.getFullName(), mv.getName(), database.getFullName(), e.getMessage());
             }
             Uninterruptibles.sleepUninterruptibly(Config.mv_create_partition_batch_interval_ms, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private static void clearSlotRefTableNames(Expr expr) {
+        if (expr instanceof SlotRef slotRef) {
+            slotRef.setTblName(null);
+        }
+        for (Expr child : expr.getChildren()) {
+            clearSlotRefTableNames(child);
         }
     }
 }

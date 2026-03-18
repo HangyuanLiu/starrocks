@@ -17,11 +17,13 @@ package com.starrocks.connector.iceberg;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.sql.ast.expression.BoolLiteral;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CompoundPredicateOperator;
@@ -217,6 +219,10 @@ public class ScalarOperatorToIcebergExpr {
         public Expression visitBinaryPredicate(BinaryPredicateOperator operator, IcebergContext context) {
             String columnName = getColumnName(operator.getChild(0));
             if (columnName == null) {
+                Expression transformExpr = tryConvertTransformPredicate(operator, context);
+                if (transformExpr != null) {
+                    return transformExpr;
+                }
                 return null;
             }
 
@@ -245,6 +251,50 @@ public class ScalarOperatorToIcebergExpr {
                     return notEqual(columnName, literalValue);
                 default:
                     return null;
+            }
+        }
+
+        private Expression tryConvertTransformPredicate(BinaryPredicateOperator operator, IcebergContext context) {
+            if (operator.getBinaryType() != com.starrocks.sql.ast.expression.BinaryType.EQ) {
+                return null;
+            }
+            ScalarOperator left = operator.getChild(0);
+            ScalarOperator right = operator.getChild(1);
+            if (!(left instanceof CallOperator funcCall) || !(right instanceof ConstantOperator valueOp)) {
+                return null;
+            }
+            String funcName = funcCall.getFnName();
+            boolean isBucket = FunctionSet.ICEBERG_TRANSFORM_BUCKET.equalsIgnoreCase(funcName);
+            boolean isTruncate = FunctionSet.ICEBERG_TRANSFORM_TRUNCATE.equalsIgnoreCase(funcName);
+            if (!isBucket && !isTruncate) {
+                return null;
+            }
+            if (funcCall.getChildren().size() != 2) {
+                return null;
+            }
+            String colName = getColumnName(funcCall.getChild(0));
+            if (colName == null) {
+                return null;
+            }
+            ScalarOperator paramOp = funcCall.getChild(1);
+            if (!(paramOp instanceof ConstantOperator parameter)) {
+                return null;
+            }
+            int param = ((Number) parameter.getValue()).intValue();
+            try {
+                if (isBucket) {
+                    int bucketId = ((Number) valueOp.getValue()).intValue();
+                    return Expressions.equal(Expressions.bucket(colName, param), bucketId);
+                }
+                Type sourceType = getResultType(colName, context);
+                Object truncateValue = getLiteralValue(valueOp, sourceType);
+                if (truncateValue == null) {
+                    return null;
+                }
+                return Expressions.equal(Expressions.truncate(colName, param), truncateValue);
+            } catch (Exception e) {
+                LOG.debug("Failed to convert iceberg transform predicate: {}", operator.debugString(), e);
+                return null;
             }
         }
 

@@ -709,7 +709,7 @@ public abstract class BaseMVRefreshProcessor {
                 // Check if the table is an Iceberg table with partition evolution.
                 // Non-partitioned MVs are immune to partition evolution: they always do full refresh
                 // without partition mapping, so evolution in the base table doesn't affect correctness.
-                // Safe evolution (MV partition column transform unchanged across all specs) is allowed.
+                // Safe evolution and current-spec-aligned fallback are allowed.
                 if (table instanceof IcebergTable && !mv.getPartitionInfo().isUnPartitioned()) {
                     IcebergTable icebergTable = (IcebergTable) table;
                     if (icebergTable.getNativeTable().specs().size() > 1) {
@@ -725,8 +725,12 @@ public abstract class BaseMVRefreshProcessor {
                             }
                         }
                         if (!safe) {
+                            safe = IcebergPartitionUtils.isMVPartitionAlignedWithCurrentSpec(mv, icebergTable);
+                        }
+                        if (!safe) {
                             throw new DmlException("Do not support refresh materialized view when base iceberg table " +
-                                    table.getName() + " has done partition evolution");
+                                    table.getName() + " has done partition evolution. Please realign the MV " +
+                                    "partition scheme with ALTER MATERIALIZED VIEW ... PARTITION BY ... first.");
                         }
                     }
                 }

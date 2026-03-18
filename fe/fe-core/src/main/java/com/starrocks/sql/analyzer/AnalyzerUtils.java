@@ -1991,7 +1991,17 @@ public class AnalyzerUtils {
             if (!(secondExpr instanceof StringLiteral)) {
                 throw new ParsingException(PARSER_ERROR_MSG.unsupportedExprWithInfo(ExprToSql.toSql(expr), "PARTITION BY"), pos);
             }
-
+        } else if (FunctionSet.ICEBERG_TRANSFORM_BUCKET.equals(functionName)
+                || FunctionSet.ICEBERG_TRANSFORM_TRUNCATE.equals(functionName)) {
+            if (paramsExpr.size() != 2) {
+                throw new ParsingException(PARSER_ERROR_MSG.unsupportedExprWithInfo(ExprToSql.toSql(expr), "PARTITION BY"), pos);
+            }
+            Expr firstExpr = paramsExpr.get(0);
+            if (firstExpr instanceof SlotRef) {
+                columnList.add(((SlotRef) firstExpr).getColumnName());
+            } else {
+                throw new ParsingException(PARSER_ERROR_MSG.unsupportedExprWithInfo(ExprToSql.toSql(expr), "PARTITION BY"), pos);
+            }
         } else {
             throw new ParsingException(PARSER_ERROR_MSG.unsupportedExprWithInfo(ExprToSql.toSql(expr), "PARTITION BY"), pos);
         }

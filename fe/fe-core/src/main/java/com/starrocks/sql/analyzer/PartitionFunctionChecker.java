@@ -43,6 +43,8 @@ public class PartitionFunctionChecker {
         // can add some other functions
         FN_NAME_TO_PATTERN.put("date_trunc", PartitionFunctionChecker::checkDateTrunc);
         FN_NAME_TO_PATTERN.put("str2date", PartitionFunctionChecker::checkStr2date);
+        FN_NAME_TO_PATTERN.put(FunctionSet.ICEBERG_TRANSFORM_BUCKET, PartitionFunctionChecker::checkIcebergTransform);
+        FN_NAME_TO_PATTERN.put(FunctionSet.ICEBERG_TRANSFORM_TRUNCATE, PartitionFunctionChecker::checkIcebergTransform);
     }
 
     public static boolean checkDateTrunc(Expr expr) {
@@ -105,6 +107,24 @@ public class PartitionFunctionChecker {
         String timeSliceFmt = ((StringLiteral) funcExpr.getChild(2)).getValue();
         return TIME_MAP.containsKey(timeSliceFmt) && TIME_MAP.containsKey(fmt) &&
                 TIME_MAP.get(timeSliceFmt) < TIME_MAP.get(fmt);
+    }
+
+    public static boolean checkIcebergTransform(Expr expr) {
+        if (!(expr instanceof FunctionCallExpr)) {
+            return false;
+        }
+        FunctionCallExpr fnExpr = (FunctionCallExpr) expr;
+        if (fnExpr.getChildren().size() != 2) {
+            return false;
+        }
+        if (!(fnExpr.getChild(0) instanceof SlotRef)) {
+            return false;
+        }
+        Expr parameterExpr = fnExpr.getChild(1);
+        if (parameterExpr instanceof com.starrocks.sql.ast.expression.IntLiteral intLiteral) {
+            return intLiteral.getLongValue() > 0;
+        }
+        return false;
     }
 
     public static boolean checkStr2date(Expr expr) {
