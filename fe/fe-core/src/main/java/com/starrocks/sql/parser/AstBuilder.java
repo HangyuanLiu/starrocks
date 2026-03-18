@@ -86,6 +86,7 @@ import com.starrocks.sql.ast.AlterDatabaseQuotaStmt;
 import com.starrocks.sql.ast.AlterDatabaseRenameStatement;
 import com.starrocks.sql.ast.AlterDatabaseSetStmt;
 import com.starrocks.sql.ast.AlterLoadStmt;
+import com.starrocks.sql.ast.AlterMVPartitionByClause;
 import com.starrocks.sql.ast.AlterMaterializedViewStatusClause;
 import com.starrocks.sql.ast.AlterMaterializedViewStmt;
 import com.starrocks.sql.ast.AlterResourceGroupStmt;
@@ -295,6 +296,7 @@ import com.starrocks.sql.ast.RefreshMaterializedViewStatement;
 import com.starrocks.sql.ast.RefreshSchemeClause;
 import com.starrocks.sql.ast.RefreshTableStmt;
 import com.starrocks.sql.ast.Relation;
+import com.starrocks.sql.ast.RemoveMVPartitionClause;
 import com.starrocks.sql.ast.ReorderColumnsClause;
 import com.starrocks.sql.ast.ReplacePartitionClause;
 import com.starrocks.sql.ast.ReplacePartitionColumnClause;
@@ -2449,7 +2451,17 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
         if (context.dropMVColumnClause() != null) {
             alterTableClause = (DropMVColumnClause) visit(context.dropMVColumnClause());
         }
-        
+
+        // alter partition by
+        if (context.alterMVPartitionByClause() != null) {
+            alterTableClause = (AlterMVPartitionByClause) visit(context.alterMVPartitionByClause());
+        }
+
+        // remove partitioning
+        if (context.removeMVPartitionClause() != null) {
+            alterTableClause = (RemoveMVPartitionClause) visit(context.removeMVPartitionClause());
+        }
+
         return new AlterMaterializedViewStmt(mvTableRef, alterTableClause, createPos(context));
     }
 
@@ -5201,6 +5213,19 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
     public ParseNode visitDropMVColumnClause(com.starrocks.sql.parser.StarRocksParser.DropMVColumnClauseContext context) {
         String columnName = getIdentifierName(context.identifier());
         return new DropMVColumnClause(columnName, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitAlterMVPartitionByClause(
+            com.starrocks.sql.parser.StarRocksParser.AlterMVPartitionByClauseContext context) {
+        List<Expr> partitionExprs = visit(context.mvPartitionExprs().primaryExpression(), Expr.class);
+        return new AlterMVPartitionByClause(partitionExprs, createPos(context));
+    }
+
+    @Override
+    public ParseNode visitRemoveMVPartitionClause(
+            com.starrocks.sql.parser.StarRocksParser.RemoveMVPartitionClauseContext context) {
+        return new RemoveMVPartitionClause(createPos(context));
     }
 
     @Override

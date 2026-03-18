@@ -724,6 +724,8 @@ public abstract class BaseMVRefreshProcessor {
                                 }
                             }
                         }
+                        // If not safe by column-level check, check if the MV's partition scheme
+                        // has been realigned with the Iceberg current spec (via ALTER PARTITION BY).
                         if (!safe) {
                             safe = IcebergPartitionUtils.isMVPartitionAlignedWithCurrentSpec(mv, icebergTable);
                         }

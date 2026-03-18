@@ -330,8 +330,8 @@ public final class ListPartitionDiffer extends PartitionDiffer {
                 refBaseTablePartitionMap.put(refBaseTable, basePartitionCells);
             }
         } catch (Exception e) {
-            LOG.warn("Materialized view compute partition difference with base table failed.",
-                    DebugUtil.getStackTrace(e));
+            LOG.warn("Materialized view compute partition difference with base table failed. " +
+                    "refBaseTablePartitionColumns={}", refBaseTablePartitionColumns, e);
             return null;
         }
         return refBaseTablePartitionMap;

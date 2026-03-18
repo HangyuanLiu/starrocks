@@ -110,10 +110,13 @@ public class MockIcebergMetadata implements ConnectorMetadata {
     public static final String MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME = "t0_date_month_identity_evolution";
     // MONTH→DAY time-family evolution (safe for T2-2 per-spec interval)
     public static final String MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME = "t0_month_to_day_evolution";
+    // MONTH(ts)→TRUNCATE(id,10) cross-dimension evolution (unsafe, requires ALTER PARTITION BY)
     public static final String MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME =
             "t0_month_to_truncate_evolution";
+    // DAY(ts)→BUCKET(id,16) cross-dimension evolution (unsafe, requires ALTER PARTITION BY)
     public static final String MOCKED_PARTITIONED_EVOLUTION_DAY_TO_BUCKET_TABLE_NAME =
             "t0_day_to_bucket_evolution";
+    // BUCKET(id,16)→BUCKET(id,32) same-transform parameter evolution (unsafe, requires ALTER PARTITION BY)
     public static final String MOCKED_PARTITIONED_EVOLUTION_BUCKET16_TO_BUCKET32_TABLE_NAME =
             "t0_bucket16_to_bucket32_evolution";
 
@@ -561,6 +564,7 @@ public class MockIcebergMetadata implements ConnectorMetadata {
                         "ts_month=2024-01", "ts_month=2024-02",
                         "ts_day=2024-03-01", "ts_day=2024-03-02", "ts_day=2024-03-03");
             case MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_TRUNCATE_TABLE_NAME:
+                // spec 0 (MONTH): 2 month partitions; spec 1 (TRUNCATE(id,10)): 2 truncate partitions
                 return Lists.newArrayList(
                         "ts_month=2024-01", "ts_month=2024-02",
                         "id_trunc=0", "id_trunc=10");

@@ -192,6 +192,7 @@ public class IcebergTable extends Table {
 
     public void clearMetadata() {
         this.nativeTable = null;
+        this.partitionColumns = null;
     }
 
     public List<Column> getPartitionColumnsIncludeTransformed() {

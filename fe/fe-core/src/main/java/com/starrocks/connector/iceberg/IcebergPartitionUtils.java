@@ -1418,6 +1418,8 @@ public class IcebergPartitionUtils {
             return ((ExpressionRangePartitionInfo) mv.getPartitionInfo()).getPartitionExprs(mv.getIdToColumn());
         } else if (mv.getPartitionInfo().getType() == PartitionType.EXPR_RANGE_V2) {
             return ((ExpressionRangePartitionInfoV2) mv.getPartitionInfo()).getPartitionExprs(mv.getIdToColumn());
+        } else if (mv.getPartitionInfo().isRangePartition()) {
+            return Optional.ofNullable(mv.getPartitionRefTableExprs()).orElse(ImmutableList.of());
         } else if (mv.getPartitionInfo().isListPartition()) {
             TableName tableName = new TableName(null, null, mv.getName());
             return ((ListPartitionInfo) mv.getPartitionInfo()).getPartitionExprs(tableName, mv.getIdToColumn());
