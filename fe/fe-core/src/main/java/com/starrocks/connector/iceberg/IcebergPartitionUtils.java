@@ -1388,6 +1388,7 @@ public class IcebergPartitionUtils {
             }
             return ExprUtils.compoundOr(result);
         } else {
+            // YEAR/MONTH/DAY/HOUR: range predicates via toPartitionRange
             List<Expr> result = Lists.newArrayList();
             for (Expr expr : exprs) {
                 if (!(expr instanceof LiteralExpr)) {
