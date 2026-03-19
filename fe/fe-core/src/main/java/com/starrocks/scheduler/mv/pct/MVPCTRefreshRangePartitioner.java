@@ -182,7 +182,6 @@ public final class MVPCTRefreshRangePartitioner extends MVPCTRefreshPartitioner 
             PRangeCell rangeCell = (PRangeCell) refBaseTablePartitionCells.get(table).getPCell(partitionName);
             sourceTablePartitionRange.add(rangeCell.getRange());
         }
-        sourceTablePartitionRange = MvUtils.mergeRanges(sourceTablePartitionRange);
 
         // Optimization: narrow the base table range using the MV partition ranges.
         // When the MV is finer-grained than the base table (e.g., MV daily, Iceberg monthly),
@@ -190,6 +189,7 @@ public final class MVPCTRefreshRangePartitioner extends MVPCTRefreshPartitioner 
         // [2024-01-15, 2024-01-16) by computing the intersection. This reduces row-level
         // filtering at the BE scan layer.
         sourceTablePartitionRange = narrowWithMVPartitionRanges(table, sourceTablePartitionRange);
+        sourceTablePartitionRange = MvUtils.mergeRanges(sourceTablePartitionRange);
         // for nested mv, the base table may be another mv, which is partition by str2date(dt, '%Y%m%d')
         // here we should convert date into '%Y%m%d' format
         Map<Table, List<Column>> partitionTableAndColumn = mv.getRefBaseTablePartitionColumns();

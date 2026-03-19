@@ -373,10 +373,32 @@ public class MVPartitionCellBuilder {
         if (!mappingContext.getBaseTable().isIcebergTable()) {
             return defaultInterval;
         }
-        return mappingContext.getPartitionInfo(basePartitionName)
+        PartitionUtil.DateTimeInterval resolvedInterval = mappingContext.getPartitionInfo(basePartitionName)
                 .map(partitionInfo -> IcebergPartitionUtils.getDateTimeIntervalFromPartition(
                         (IcebergTable) mappingContext.getBaseTable(), baseTablePartitionColumn, partitionInfo))
                 .orElse(defaultInterval);
+        if (mappingContext.getMvPartitionExpr() == null) {
+            return resolvedInterval;
+        }
+        PartitionUtil.DateTimeInterval exprInterval = IcebergPartitionUtils.getDateTimeIntervalFromPartitionExpr(
+                mappingContext.getMvPartitionExpr(), baseTablePartitionColumn.getType());
+        if (exprInterval == PartitionUtil.DateTimeInterval.NONE) {
+            return resolvedInterval;
+        }
+        int currentSpecId = ((IcebergTable) mappingContext.getBaseTable()).getNativeTable().spec().specId();
+        if (mappingContext.getPartitionInfo(basePartitionName)
+                .filter(com.starrocks.connector.iceberg.Partition.class::isInstance)
+                .map(com.starrocks.connector.iceberg.Partition.class::cast)
+                .filter(partition -> partition.getSpecId() >= 0
+                        && partition.getSpecId() != currentSpecId
+                        && resolvedInterval != PartitionUtil.DateTimeInterval.NONE)
+                .isPresent()) {
+            return resolvedInterval;
+        }
+        if (exprInterval != resolvedInterval) {
+            return exprInterval;
+        }
+        return resolvedInterval;
     }
 
     private static final class ResolvedPartitionKey {

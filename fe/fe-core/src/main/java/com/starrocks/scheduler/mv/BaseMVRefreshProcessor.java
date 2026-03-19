@@ -598,11 +598,24 @@ public abstract class BaseMVRefreshProcessor {
                     ? baseTableCandidatePartitions.get(snapshotInfo) : null;
             if (PCellUtils.isNotEmpty(basePartitions)) {
                 // only refresh referenced partitions, to reduce metadata overhead
-                final List<String> realPartitionNames = basePartitions.stream()
-                        .flatMap(pCell -> mvContext.getExternalTableRealPartitionName(table, pCell.name()).stream())
-                        .collect(Collectors.toList());
+                boolean missingRealPartitionNames = false;
+                final List<String> realPartitionNames = new ArrayList<>();
+                for (PCellWithName pCell : basePartitions.getPartitions()) {
+                    Set<String> mappedPartitionNames =
+                            mvContext.getExternalTableRealPartitionName(table, pCell.name());
+                    if (mappedPartitionNames == null || mappedPartitionNames.isEmpty()) {
+                        logger.info("Cannot resolve real partition names for table {} logical partition {}, " +
+                                        "fallback to full metadata refresh",
+                                table.getName(), pCell.name());
+                        missingRealPartitionNames = true;
+                        break;
+                    }
+                    realPartitionNames.addAll(mappedPartitionNames);
+                }
                 connectContext.getGlobalStateMgr().getMetadataMgr().refreshTable(baseTableInfo.getCatalogName(),
-                        baseTableInfo.getDbName(), table, realPartitionNames, false);
+                        baseTableInfo.getDbName(), table,
+                        missingRealPartitionNames ? Lists.newArrayList() : realPartitionNames,
+                        missingRealPartitionNames);
             } else {
                 // refresh the whole table, which may be costly in extreme case
                 // Hive/Hudi can refresh table-level cache incrementally. Other external connectors may still need a

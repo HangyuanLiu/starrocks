@@ -35,13 +35,17 @@ import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.common.PCellSortedSet;
 import com.starrocks.type.Type;
 import org.apache.iceberg.PartitionField;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Snapshot;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public class IcebergPartitionTraits extends DefaultTraits {
     @Override
@@ -74,11 +78,12 @@ public class IcebergPartitionTraits extends DefaultTraits {
 
     @Override
     public List<String> getPartitionNames() {
-        if (table.isUnPartitioned()) {
+        IcebergTable icebergTable = (IcebergTable) table;
+        org.apache.iceberg.Table nativeTable = icebergTable.getNativeTable();
+        if (table.isUnPartitioned() && nativeTable.specs().size() <= 1) {
             return Lists.newArrayList(table.getName());
         }
 
-        IcebergTable icebergTable = (IcebergTable) table;
         Optional<Long> snapshotId = Optional.ofNullable(icebergTable.getNativeTable().currentSnapshot())
                 .map(Snapshot::snapshotId);
         ConnectorMetadatRequestContext requestContext = new ConnectorMetadatRequestContext();
@@ -86,6 +91,42 @@ public class IcebergPartitionTraits extends DefaultTraits {
         requestContext.setTableVersionRange(TvrTableSnapshot.of(snapshotId));
         return GlobalStateMgr.getCurrentState().getMetadataMgr().listPartitionNames(
                 table.getCatalogName(), getCatalogDBName(), getTableName(), requestContext);
+    }
+
+    @Override
+    public List<Column> getPartitionColumns() {
+        List<Column> currentPartitionColumns = super.getPartitionColumns();
+        if (!currentPartitionColumns.isEmpty()) {
+            return currentPartitionColumns;
+        }
+
+        IcebergTable icebergTable = (IcebergTable) table;
+        org.apache.iceberg.Table nativeTable = icebergTable.getNativeTable();
+        if (!nativeTable.spec().isUnpartitioned() || nativeTable.specs().size() <= 1) {
+            return currentPartitionColumns;
+        }
+
+        Set<String> historicalPartitionColumnNames = new LinkedHashSet<>();
+        for (PartitionSpec spec : nativeTable.specs().values()) {
+            for (PartitionField field : spec.fields()) {
+                if (field.transform().isVoid()) {
+                    continue;
+                }
+                String columnName = nativeTable.schema().findColumnName(field.sourceId());
+                if (columnName != null) {
+                    historicalPartitionColumnNames.add(columnName);
+                }
+            }
+        }
+
+        List<Column> historicalPartitionColumns = new ArrayList<>();
+        for (String columnName : historicalPartitionColumnNames) {
+            Column column = icebergTable.getColumn(columnName);
+            if (column != null) {
+                historicalPartitionColumns.add(column);
+            }
+        }
+        return historicalPartitionColumns;
     }
 
     public PCellSortedSet getPartitionKeyRange(Column partitionColumn, Expr partitionExpr)

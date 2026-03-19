@@ -93,10 +93,17 @@ public class IcebergPartitionKeyResolver implements ExternalPartitionKeyResolver
         if (shouldForceSyntheticFallback(mappingContext, partitionInfo)) {
             List<PartitionKey> fallbackKeys = IcebergPartitionUtils.getFallbackPartitionKeys(
                     icebergTable, mvPartitionColumns, basePartitionName, getSpecId(partitionInfo));
-            if (!fallbackKeys.isEmpty()) {
-                return PartitionKeyResolutionResult.of(fallbackKeys, PartitionKeyResolutionPath.ICEBERG_SYNTHETIC_TRANSFORM);
-            }
             return PartitionKeyResolutionResult.of(fallbackKeys, PartitionKeyResolutionPath.ICEBERG_SYNTHETIC_TRANSFORM);
+        }
+        if (shouldForcePartitionExprFallback(mappingContext, partitionInfo)) {
+            List<PartitionKey> fallbackKeys = IcebergPartitionUtils.getPartitionExprFallbackKeys(
+                    icebergTable,
+                    mvPartitionColumns,
+                    basePartitionName,
+                    getSpecId(partitionInfo),
+                    mappingContext.getMvPartitionExpr());
+            return PartitionKeyResolutionResult.of(
+                    fallbackKeys, PartitionKeyResolutionPath.ICEBERG_PARTITION_EXPR_FALLBACK);
         }
 
         try {
@@ -108,6 +115,16 @@ public class IcebergPartitionKeyResolver implements ExternalPartitionKeyResolver
                     icebergTable, mvPartitionColumns, basePartitionName, getSpecId(partitionInfo));
             if (!fallbackKeys.isEmpty()) {
                 return PartitionKeyResolutionResult.of(fallbackKeys, PartitionKeyResolutionPath.ICEBERG_SYNTHETIC_TRANSFORM);
+            }
+            fallbackKeys = IcebergPartitionUtils.getPartitionExprFallbackKeys(
+                    icebergTable,
+                    mvPartitionColumns,
+                    basePartitionName,
+                    getSpecId(partitionInfo),
+                    mappingContext.getMvPartitionExpr());
+            if (!fallbackKeys.isEmpty()) {
+                return PartitionKeyResolutionResult.of(
+                        fallbackKeys, PartitionKeyResolutionPath.ICEBERG_PARTITION_EXPR_FALLBACK);
             }
             throw e;
         }
@@ -161,6 +178,44 @@ public class IcebergPartitionKeyResolver implements ExternalPartitionKeyResolver
         IcebergPartitionTransform currentPartitionTransform = IcebergPartitionTransform.fromString(currentTransform);
         return currentPartitionTransform == IcebergPartitionTransform.BUCKET
                 || currentPartitionTransform == IcebergPartitionTransform.TRUNCATE;
+    }
+
+    private boolean shouldForcePartitionExprFallback(ExternalPartitionMappingContext mappingContext,
+                                                     PartitionInfo partitionInfo) {
+        if (!(mappingContext.getBaseTable() instanceof IcebergTable icebergTable)) {
+            return false;
+        }
+        if (mappingContext.getMvPartitionExpr() == null || mappingContext.getMvRefBasePartitionColumns().size() != 1) {
+            return false;
+        }
+
+        Column refPartitionColumn = mappingContext.getMvRefBasePartitionColumns().get(0);
+        PartitionUtil.DateTimeInterval exprInterval = IcebergPartitionUtils.getDateTimeIntervalFromPartitionExpr(
+                mappingContext.getMvPartitionExpr(), refPartitionColumn.getType());
+        if (exprInterval == PartitionUtil.DateTimeInterval.NONE) {
+            return false;
+        }
+
+        org.apache.iceberg.Table nativeTable = icebergTable.getNativeTable();
+        org.apache.iceberg.types.Types.NestedField sourceField = nativeTable.schema().findField(refPartitionColumn.getName());
+        if (sourceField == null) {
+            return false;
+        }
+
+        Integer specId = getSpecId(partitionInfo);
+        org.apache.iceberg.PartitionSpec actualSpec = specId == null ? nativeTable.spec() : nativeTable.specs().get(specId);
+        if (actualSpec == null) {
+            actualSpec = nativeTable.spec();
+        }
+        PartitionUtil.DateTimeInterval actualInterval =
+                IcebergPartitionUtils.getIntervalFromSpec(actualSpec, sourceField.fieldId());
+        if (specId != null
+                && specId >= 0
+                && specId != nativeTable.spec().specId()
+                && actualInterval != PartitionUtil.DateTimeInterval.NONE) {
+            return false;
+        }
+        return actualInterval != exprInterval;
     }
 
     private Integer getSpecId(PartitionInfo partitionInfo) {
