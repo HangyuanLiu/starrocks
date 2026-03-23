@@ -48,7 +48,6 @@ import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.DeleteStmt;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.TableRef;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.Optimizer;
 import com.starrocks.sql.optimizer.OptimizerFactory;
@@ -299,7 +298,7 @@ public class DeletePlanner {
         DescriptorTable descriptorTable = execPlan.getDescTbl();
         TupleDescriptor deleteTuple = descriptorTable.createTupleDescriptor();
 
-        List<Expr> outputExprs = execPlan.getOutputExprs();
+        List<com.starrocks.planner.expression.ExecExpr> outputExprs = execPlan.getOutputExprs();
         Preconditions.checkArgument(colNames.size() == outputExprs.size(),
                 "output column size mismatch");
         for (int index = 0; index < colNames.size(); ++index) {

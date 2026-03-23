@@ -16,15 +16,16 @@ package com.starrocks.planner;
 
 import com.google.common.base.Preconditions;
 import com.starrocks.common.IdGenerator;
+import com.starrocks.planner.expression.ExecBinaryPredicate;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecExprUtils;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.ast.JoinOperator;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
-import com.starrocks.sql.ast.expression.ExprUtils;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.thrift.TNestLoopJoinNode;
 import com.starrocks.thrift.TNormalNestLoopJoinNode;
 import com.starrocks.thrift.TNormalPlanNode;
@@ -47,7 +48,7 @@ public class NestLoopJoinNode extends JoinNode implements RuntimeFilterBuildNode
     private static final Logger LOG = LogManager.getLogger(NestLoopJoinNode.class);
 
     public NestLoopJoinNode(PlanNodeId id, PlanNode outer, PlanNode inner,
-                            JoinOperator joinOp, List<Expr> eqJoinConjuncts, List<Expr> joinConjuncts) {
+                            JoinOperator joinOp, List<ExecExpr> eqJoinConjuncts, List<ExecExpr> joinConjuncts) {
         super("NESTLOOP JOIN", id, outer, inner, joinOp, eqJoinConjuncts, joinConjuncts);
     }
 
@@ -62,13 +63,13 @@ public class NestLoopJoinNode extends JoinNode implements RuntimeFilterBuildNode
         }
         SessionVariable sessionVariable = ConnectContext.get().getSessionVariable();
         PlanNode buildStageNode = this.getChild(1);
-        List<Expr> conjuncts = new ArrayList<>(otherJoinConjuncts);
-        conjuncts.addAll(getConjuncts());
-        for (int i = 0; i < conjuncts.size(); i++) {
-            Expr expr = conjuncts.get(i);
+        List<ExecExpr> allConjuncts = new ArrayList<>(otherJoinConjuncts);
+        allConjuncts.addAll(getConjuncts());
+        for (int i = 0; i < allConjuncts.size(); i++) {
+            ExecExpr expr = allConjuncts.get(i);
             if (canBuildFilter(expr)) {
-                Expr left = expr.getChild(0);
-                Expr right = expr.getChild(1);
+                ExecExpr left = expr.getChild(0);
+                ExecExpr right = expr.getChild(1);
 
                 RuntimeFilterDescription rf = new RuntimeFilterDescription(sessionVariable);
                 rf.setFilterId(generator.getNextId().asInt());
@@ -91,25 +92,25 @@ public class NestLoopJoinNode extends JoinNode implements RuntimeFilterBuildNode
 
     // Only binary op could build a filter
     // And some special cases are not suitable for build a filter, such as NOT_EQ
-    private boolean canBuildFilter(Expr joinExpr) {
-        if (joinExpr.getChildren().size() != 2) {
+    private boolean canBuildFilter(ExecExpr joinExpr) {
+        if (joinExpr.getNumChildren() != 2) {
             return false;
         }
-        Expr leftExpr = joinExpr.getChild(0);
-        Expr rightExpr = joinExpr.getChild(1);
+        ExecExpr leftExpr = joinExpr.getChild(0);
+        ExecExpr rightExpr = joinExpr.getChild(1);
         PlanNode leftChild = getChild(0);
         PlanNode rightChild = getChild(1);
 
-        if (!(leftExpr instanceof SlotRef)) {
+        if (!(leftExpr instanceof ExecSlotRef)) {
             return false;
         }
-        if (joinExpr instanceof BinaryPredicate && ((BinaryPredicate) joinExpr).getOp().isUnequivalence()) {
+        if (joinExpr instanceof ExecBinaryPredicate && ((ExecBinaryPredicate) joinExpr).getOp().isUnequivalence()) {
             return false;
         }
-        if (!ExprUtils.isBoundByTupleIds(leftExpr, leftChild.getTupleIds())) {
+        if (!ExecExprUtils.isBoundByTupleIds(leftExpr, leftChild.getTupleIds())) {
             return false;
         }
-        return ExprUtils.isBoundByTupleIds(rightExpr, rightChild.getTupleIds());
+        return ExecExprUtils.isBoundByTupleIds(rightExpr, rightChild.getTupleIds());
     }
 
     @Override
@@ -121,10 +122,11 @@ public class NestLoopJoinNode extends JoinNode implements RuntimeFilterBuildNode
         msg.nestloop_join_node.join_op = ExprToThrift.joinOperatorToThrift(joinOp);
 
         if (CollectionUtils.isNotEmpty(otherJoinConjuncts)) {
-            for (Expr e : otherJoinConjuncts) {
-                msg.nestloop_join_node.addToJoin_conjuncts(ExprToThrift.treeToThrift(e));
+            for (ExecExpr e : otherJoinConjuncts) {
+                msg.nestloop_join_node.addToJoin_conjuncts(ExecExprSerializer.serialize(e));
             }
-            String sqlJoinPredicate = otherJoinConjuncts.stream().map(ExprToSql::toSql).collect(Collectors.joining(","));
+            String sqlJoinPredicate = otherJoinConjuncts.stream().map(ExecExprExplain::explain)
+                    .collect(Collectors.joining(","));
             msg.nestloop_join_node.setSql_join_conjuncts(sqlJoinPredicate);
         }
         SessionVariable sv = ConnectContext.get().getSessionVariable();
@@ -139,7 +141,7 @@ public class NestLoopJoinNode extends JoinNode implements RuntimeFilterBuildNode
         }
         if (commonSlotMap != null) {
             commonSlotMap.forEach((key, value) ->
-                    msg.nestloop_join_node.putToCommon_slot_map(key.asInt(), ExprToThrift.treeToThrift(value)));
+                    msg.nestloop_join_node.putToCommon_slot_map(key.asInt(), ExecExprSerializer.serialize(value)));
         }
     }
 
@@ -147,7 +149,7 @@ public class NestLoopJoinNode extends JoinNode implements RuntimeFilterBuildNode
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         TNormalNestLoopJoinNode nlJoinNode = new TNormalNestLoopJoinNode();
         nlJoinNode.setJoin_op(ExprToThrift.joinOperatorToThrift(getJoinOp()));
-        nlJoinNode.setJoin_conjuncts(normalizer.normalizeExprs(otherJoinConjuncts));
+        nlJoinNode.setJoin_conjuncts(normalizer.normalizeExecExprs(otherJoinConjuncts));
         planNode.setNestloop_join_node(nlJoinNode);
         planNode.setNode_type(TPlanNodeType.NESTLOOP_JOIN_NODE);
         normalizeConjuncts(normalizer, planNode, conjuncts);

@@ -34,13 +34,14 @@
 
 package com.starrocks.planner;
 
+import com.starrocks.planner.expression.ExecBinaryPredicate;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExprOpcodeRegistry;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.JoinOperator;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.thrift.TEqJoinCondition;
 import com.starrocks.thrift.TMergeJoinNode;
 import com.starrocks.thrift.TPlanNode;
@@ -55,7 +56,7 @@ import java.util.List;
  */
 public class MergeJoinNode extends JoinNode {
     public MergeJoinNode(PlanNodeId id, PlanNode outer, PlanNode inner, JoinOperator joinOp,
-                         List<Expr> eqJoinConjuncts, List<Expr> otherJoinConjuncts) {
+                         List<ExecExpr> eqJoinConjuncts, List<ExecExpr> otherJoinConjuncts) {
         super("MERGE JOIN", id, outer, inner, joinOp, eqJoinConjuncts, otherJoinConjuncts);
     }
 
@@ -67,34 +68,34 @@ public class MergeJoinNode extends JoinNode {
         msg.merge_join_node.join_op = ExprToThrift.joinOperatorToThrift(joinOp);
         msg.merge_join_node.distribution_mode = distrMode.toThrift();
         StringBuilder sqlJoinPredicatesBuilder = new StringBuilder();
-        for (BinaryPredicate eqJoinPredicate : eqJoinConjuncts) {
+        for (ExecBinaryPredicate eqJoinPredicate : eqJoinConjuncts) {
             TEqJoinCondition eqJoinCondition = new TEqJoinCondition(
-                    ExprToThrift.treeToThrift(eqJoinPredicate.getChild(0)),
-                    ExprToThrift.treeToThrift(eqJoinPredicate.getChild(1)));
+                    ExecExprSerializer.serialize(eqJoinPredicate.getChild(0)),
+                    ExecExprSerializer.serialize(eqJoinPredicate.getChild(1)));
             eqJoinCondition.setOpcode(ExprOpcodeRegistry.getBinaryOpcode(eqJoinPredicate.getOp()));
             msg.merge_join_node.addToEq_join_conjuncts(eqJoinCondition);
             if (sqlJoinPredicatesBuilder.length() > 0) {
                 sqlJoinPredicatesBuilder.append(", ");
             }
-            sqlJoinPredicatesBuilder.append(ExprToSql.toSql(eqJoinPredicate));
+            sqlJoinPredicatesBuilder.append(ExecExprExplain.explain(eqJoinPredicate));
         }
-        for (Expr e : otherJoinConjuncts) {
-            msg.merge_join_node.addToOther_join_conjuncts(ExprToThrift.treeToThrift(e));
+        for (ExecExpr e : otherJoinConjuncts) {
+            msg.merge_join_node.addToOther_join_conjuncts(ExecExprSerializer.serialize(e));
             if (sqlJoinPredicatesBuilder.length() > 0) {
                 sqlJoinPredicatesBuilder.append(", ");
             }
-            sqlJoinPredicatesBuilder.append(ExprToSql.toSql(e));
+            sqlJoinPredicatesBuilder.append(ExecExprExplain.explain(e));
         }
         if (sqlJoinPredicatesBuilder.length() > 0) {
             msg.merge_join_node.setSql_join_predicates(sqlJoinPredicatesBuilder.toString());
         }
         if (!conjuncts.isEmpty()) {
             StringBuilder sqlPredicatesBuilder = new StringBuilder();
-            for (Expr e : conjuncts) {
+            for (ExecExpr e : conjuncts) {
                 if (sqlPredicatesBuilder.length() > 0) {
                     sqlPredicatesBuilder.append(", ");
                 }
-                sqlPredicatesBuilder.append(ExprToSql.toSql(e));
+                sqlPredicatesBuilder.append(ExecExprExplain.explain(e));
             }
             if (sqlPredicatesBuilder.length() > 0) {
                 msg.merge_join_node.setSql_predicates(sqlPredicatesBuilder.toString());
@@ -108,7 +109,7 @@ public class MergeJoinNode extends JoinNode {
         msg.merge_join_node.setBuild_runtime_filters_from_planner(
                 ConnectContext.get().getSessionVariable().getEnableGlobalRuntimeFilter());
         if (partitionExprs != null) {
-            msg.merge_join_node.setPartition_exprs(ExprToThrift.treesToThrift(partitionExprs));
+            msg.merge_join_node.setPartition_exprs(ExecExprSerializer.serializeList(partitionExprs));
         }
         msg.setFilter_null_value_columns(filter_null_value_columns);
 

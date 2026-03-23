@@ -138,25 +138,35 @@ public class MysqlScanNode extends ScanNode {
     private void createMySQLFilters() {
         if (conjuncts.isEmpty()) {
             return;
-
         }
-        List<SlotRef> slotRefs = Lists.newArrayList();
-        ExprUtils.collectList(conjuncts, SlotRef.class, slotRefs);
-        ExprSubstitutionMap sMap = new ExprSubstitutionMap();
-        for (SlotRef slotRef : slotRefs) {
-            SlotRef tmpRef = (SlotRef) slotRef.clone();
-            tmpRef.setTblName(null);
-
-            sMap.put(slotRef, tmpRef);
+        // Unwrap ExecAstExprWrapper conjuncts back to AST Expr for proper MySQL SQL generation
+        List<Expr> astConjuncts = new ArrayList<>();
+        for (com.starrocks.planner.expression.ExecExpr e : conjuncts) {
+            if (e instanceof com.starrocks.planner.expression.ExecAstExprWrapper) {
+                astConjuncts.add(((com.starrocks.planner.expression.ExecAstExprWrapper) e).getAstExpr());
+            }
         }
-        ArrayList<Expr> mysqlConjuncts = ExprUtils.cloneList(conjuncts, sMap);
-        // Filters instead of conjuncts are used in BE to filter rows, the types of conjuncts' children
-        // would be unmatched after remove cast operator in PushDownPredicateTOExternalTableScanRule, which
-        // would cause BE report error "VectorizedInPredicate type not same";
-        conjuncts.clear();
-        for (Expr p : mysqlConjuncts) {
-            p = ExprUtils.replaceLargeStringLiteral(p);
-            filters.add(ExprToSql.toMySql(p));
+        if (!astConjuncts.isEmpty()) {
+            List<SlotRef> slotRefs = Lists.newArrayList();
+            ExprUtils.collectList(astConjuncts, SlotRef.class, slotRefs);
+            ExprSubstitutionMap sMap = new ExprSubstitutionMap();
+            for (SlotRef slotRef : slotRefs) {
+                SlotRef tmpRef = (SlotRef) slotRef.clone();
+                tmpRef.setTblName(null);
+                sMap.put(slotRef, tmpRef);
+            }
+            ArrayList<Expr> mysqlConjuncts = ExprUtils.cloneList(astConjuncts, sMap);
+            conjuncts.clear();
+            for (Expr p : mysqlConjuncts) {
+                p = ExprUtils.replaceLargeStringLiteral(p);
+                filters.add(ExprToSql.toMySql(p));
+            }
+        } else {
+            // Fallback for native ExecExpr conjuncts
+            for (com.starrocks.planner.expression.ExecExpr p : conjuncts) {
+                filters.add(com.starrocks.planner.expression.ExecExprExplain.explain(p));
+            }
+            conjuncts.clear();
         }
     }
 

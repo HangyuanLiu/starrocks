@@ -41,6 +41,8 @@ import com.google.common.collect.Lists;
 import com.starrocks.catalog.Column;
 import com.starrocks.common.FeConstants;
 import com.starrocks.sql.analyzer.SemanticException;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.thrift.TSlotDescriptor;
@@ -232,6 +234,26 @@ public class SlotDescriptor {
         setType(expr.getType());
         // Vector query engine need the nullable info
         setIsNullable(expr.isNullable());
+    }
+
+    /**
+     * Initializes a slot from an ExecExpr (execution plan expression).
+     */
+    public void initFromExpr(ExecExpr expr) {
+        setLabel(ExecExprExplain.explain(expr));
+        Preconditions.checkState(expr.getType().isValid());
+        setType(expr.getType());
+        setIsNullable(expr.isNullable());
+    }
+
+    /**
+     * Sets the source expression from an ExecExpr.
+     * Note: ExecExpr source expressions are not stored in sourceExprs_ (which holds AST Expr).
+     * This method is used during sort materialization where the source tracking is informational.
+     */
+    public void setSourceExecExpr(ExecExpr expr) {
+        // ExecExpr source tracking - label is set for explain purposes
+        setLabel(ExecExprExplain.explain(expr));
     }
 
     // TODO

@@ -16,9 +16,10 @@ package com.starrocks.planner;
 
 import com.google.common.collect.Lists;
 import com.starrocks.common.Pair;
-import com.starrocks.planner.expression.ExprToThrift;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.thrift.TDecodeNode;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TNormalDecodeNode;
@@ -38,18 +39,18 @@ public class DecodeNode extends PlanNode {
     // The dict id int column ids to dict string column ids
     private final Map<Integer, Integer> dictIdToStringIds;
     // The string functions have applied global dict optimization
-    private final Map<SlotId, Expr> stringFunctions;
+    private final Map<SlotId, ExecExpr> stringFunctions;
 
     // TupleId is changed when DecodeNode is interpolated, so pushing down runtime filters
     // across DecodeNode requires that replace the output SlotRef with the input SlotRef.
-    private final Map<SlotRef, SlotRef> slotRefMap;
+    private final Map<ExecSlotRef, ExecSlotRef> slotRefMap;
 
     public DecodeNode(PlanNodeId id,
                       TupleDescriptor tupleDescriptor,
                       PlanNode child,
                       Map<Integer, Integer> dictIdToStringIds,
-                      Map<SlotId, Expr> stringFunctions,
-                      Map<SlotRef, SlotRef> slotRefMap
+                      Map<SlotId, ExecExpr> stringFunctions,
+                      Map<ExecSlotRef, ExecSlotRef> slotRefMap
     ) {
         super(id, tupleDescriptor.getId().asList(), "Decode");
         addChild(child);
@@ -69,7 +70,7 @@ public class DecodeNode extends PlanNode {
         msg.decode_node = new TDecodeNode();
         msg.decode_node.setDict_id_to_string_ids(dictIdToStringIds);
         stringFunctions.forEach(
-                (key, value) -> msg.decode_node.putToString_functions(key.asInt(), ExprToThrift.treeToThrift(value)));
+                (key, value) -> msg.decode_node.putToString_functions(key.asInt(), ExecExprSerializer.serialize(value)));
     }
 
     @Override
@@ -86,12 +87,12 @@ public class DecodeNode extends PlanNode {
         if (!stringFunctions.isEmpty()) {
             output.append(prefix);
             output.append("string functions:\n");
-            for (Map.Entry<SlotId, Expr> kv : stringFunctions.entrySet()) {
+            for (Map.Entry<SlotId, ExecExpr> kv : stringFunctions.entrySet()) {
                 output.append(prefix);
                 output.append("<function id ").
                         append(kv.getKey()).
                         append("> : ").
-                        append(explainExpr(kv.getValue())).
+                        append(ExecExprExplain.explain(kv.getValue())).
                         append("\n");
             }
         }
@@ -99,20 +100,21 @@ public class DecodeNode extends PlanNode {
     }
 
     @Override
-    public Optional<List<Expr>> candidatesOfSlotExpr(Expr expr, Function<Expr, Boolean> couldBound) {
-        if (!(expr instanceof SlotRef)) {
-            return Optional.empty();
-        }
+    public Optional<List<com.starrocks.planner.expression.ExecExpr>> candidatesOfSlotExpr(
+            com.starrocks.planner.expression.ExecExpr expr,
+            Function<com.starrocks.planner.expression.ExecExpr, Boolean> couldBound) {
+        // DecodeNode's slotRefMap uses AST SlotRef, cannot produce ExecExpr candidates.
+        // Return the expr itself if bound.
         if (!couldBound.apply(expr)) {
             return Optional.empty();
         }
-        return Optional.ofNullable(slotRefMap.get(expr)).map(Lists::newArrayList);
+        return Optional.of(Lists.newArrayList(expr));
     }
 
     @Override
     public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context,
-                                          Expr probeExpr,
-                                          List<Expr> partitionByExprs) {
+                                          com.starrocks.planner.expression.ExecExpr probeExpr,
+                                          List<com.starrocks.planner.expression.ExecExpr> partitionByExprs) {
         RuntimeFilterDescription description = context.getDescription();
         DescriptorTable descTbl = context.getDescTbl();
         if (!canPushDownRuntimeFilter()) {
@@ -141,8 +143,8 @@ public class DecodeNode extends PlanNode {
                 .collect(Collectors.toList());
         decodeNode.setFrom_dict_ids(fromDictIds);
         decodeNode.setTo_string_ids(toStringIds);
-        normalizer.addSlotsUseAggColumns(stringFunctions);
-        Pair<List<Integer>, List<ByteBuffer>> slotIdsAndExprs = normalizer.normalizeSlotIdsAndExprs(stringFunctions);
+        normalizer.addSlotsUseAggColumnsExec(stringFunctions);
+        Pair<List<Integer>, List<ByteBuffer>> slotIdsAndExprs = normalizer.normalizeSlotIdsAndExprs(stringFunctions, true);
         decodeNode.setSlot_ids(slotIdsAndExprs.first);
         decodeNode.setString_functions(slotIdsAndExprs.second);
         planNode.setNode_type(TPlanNodeType.DECODE_NODE);

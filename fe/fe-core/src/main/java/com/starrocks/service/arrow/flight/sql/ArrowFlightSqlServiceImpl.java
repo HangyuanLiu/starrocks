@@ -29,10 +29,10 @@ import com.starrocks.common.Pair;
 import com.starrocks.common.ThreadPoolManager;
 import com.starrocks.common.util.ArrowUtil;
 import com.starrocks.common.util.DebugUtil;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.qe.GlobalVariable;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.arrow.flight.sql.session.ArrowFlightSqlSessionManager;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.system.SystemInfoService;
@@ -904,9 +904,9 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
         List<Field> arrowFields = Lists.newArrayList();
 
         List<String> colNames = execPlan.getColNames();
-        List<Expr> outExprs = execPlan.getOutputExprs();
+        List<ExecExpr> outExprs = execPlan.getOutputExprs();
         for (int i = 0; i < colNames.size(); i++) {
-            Expr expr = outExprs.get(i);
+            ExecExpr expr = outExprs.get(i);
             Field arrowField = ArrowUtils.convertToArrowType(expr.getOriginType(), colNames.get(i), expr.isNullable());
             arrowFields.add(arrowField);
         }

@@ -58,8 +58,6 @@ import com.starrocks.sql.ast.AggregateType;
 import com.starrocks.sql.ast.BrokerDesc;
 import com.starrocks.sql.ast.ImportColumnDesc;
 import com.starrocks.sql.ast.KeysType;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
 import com.starrocks.sql.plan.ExecPlan;
@@ -340,9 +338,10 @@ public class LoadPlanner {
 
                 // Exchange node
                 List<Column> keyColumns = olapDestTable.getKeyColumnsByIndexMetaId(olapDestTable.getBaseIndexMetaId());
-                List<Expr> partitionExprs = Lists.newArrayList();
+                List<com.starrocks.planner.expression.ExecExpr> partitionExprs = Lists.newArrayList();
                 keyColumns.forEach(column -> {
-                    partitionExprs.add(new SlotRef(tupleDesc.getColumnSlot(column.getName())));
+                    partitionExprs.add(new com.starrocks.planner.expression.ExecSlotRef(
+                            tupleDesc.getColumnSlot(column.getName())));
                 });
 
                 DataPartition dataPartition = new DataPartition(TPartitionType.HASH_PARTITIONED, partitionExprs);

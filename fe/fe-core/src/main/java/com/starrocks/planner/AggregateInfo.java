@@ -37,9 +37,8 @@ package com.starrocks.planner;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprUtils;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecFunctionCall;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -66,19 +65,19 @@ public final class AggregateInfo extends AggregateInfoBase {
     private final AggPhase aggPhase_;
 
     // if set, a subset of groupingExprs_; set and used during planning
-    private List<Expr> partitionExprs_;
+    private List<ExecExpr> partitionExprs_;
 
-    private List<Expr> intermediateAggrExprs = Lists.newArrayList();
+    private List<ExecExpr> intermediateAggrExprs = Lists.newArrayList();
 
     // C'tor creates copies of groupingExprs and aggExprs.
     @VisibleForTesting
-    public AggregateInfo(ArrayList<Expr> groupingExprs,
-                         ArrayList<FunctionCallExpr> aggExprs, AggPhase aggPhase) {
+    public AggregateInfo(ArrayList<ExecExpr> groupingExprs,
+                         ArrayList<ExecFunctionCall> aggExprs, AggPhase aggPhase) {
         this(groupingExprs, aggExprs, aggPhase, false);
     }
 
-    private AggregateInfo(ArrayList<Expr> groupingExprs,
-                          ArrayList<FunctionCallExpr> aggExprs, AggPhase aggPhase, boolean isMultiDistinct) {
+    private AggregateInfo(ArrayList<ExecExpr> groupingExprs,
+                          ArrayList<ExecFunctionCall> aggExprs, AggPhase aggPhase, boolean isMultiDistinct) {
         super(groupingExprs, aggExprs);
         aggPhase_ = aggPhase;
     }
@@ -95,21 +94,25 @@ public final class AggregateInfo extends AggregateInfoBase {
             secondPhaseDistinctAggInfo_ = other.secondPhaseDistinctAggInfo_.clone();
         }
         aggPhase_ = other.aggPhase_;
-        partitionExprs_ =
-                (other.partitionExprs_ != null) ? ExprUtils.cloneList(other.partitionExprs_) : null;
+        if (other.partitionExprs_ != null) {
+            partitionExprs_ = Lists.newArrayList();
+            for (ExecExpr e : other.partitionExprs_) {
+                partitionExprs_.add(e.clone());
+            }
+        }
     }
 
-    public List<Expr> getPartitionExprs() {
+    public List<ExecExpr> getPartitionExprs() {
         return partitionExprs_;
     }
 
-    public void setPartitionExprs(List<Expr> exprs) {
+    public void setPartitionExprs(List<ExecExpr> exprs) {
         partitionExprs_ = exprs;
     }
 
 
-    public ArrayList<FunctionCallExpr> getMaterializedAggregateExprs() {
-        ArrayList<FunctionCallExpr> result = Lists.newArrayList();
+    public ArrayList<ExecFunctionCall> getMaterializedAggregateExprs() {
+        ArrayList<ExecFunctionCall> result = Lists.newArrayList();
         for (Integer i : materializedAggSlots) {
             result.add(aggregateExprs_.get(i));
         }
@@ -120,11 +123,11 @@ public final class AggregateInfo extends AggregateInfoBase {
         return aggPhase_.isMerge();
     }
 
-    public void setIntermediateAggrExprs(List<Expr> intermediateAggrExprs) {
+    public void setIntermediateAggrExprs(List<ExecExpr> intermediateAggrExprs) {
         this.intermediateAggrExprs = intermediateAggrExprs;
     }
 
-    public List<Expr> getIntermediateAggrExprs() { return intermediateAggrExprs; }
+    public List<ExecExpr> getIntermediateAggrExprs() { return intermediateAggrExprs; }
 
     public String debugString() {
         StringBuilder out = new StringBuilder(super.debugString());
@@ -155,7 +158,7 @@ public final class AggregateInfo extends AggregateInfoBase {
      * Below function is added by new analyzer
      */
     public static AggregateInfo create(
-            ArrayList<Expr> groupingExprs, ArrayList<FunctionCallExpr> aggExprs,
+            ArrayList<ExecExpr> groupingExprs, ArrayList<ExecFunctionCall> aggExprs,
             TupleDescriptor tupleDesc, TupleDescriptor intermediateTupleDesc, AggPhase phase) {
         AggregateInfo result = new AggregateInfo(groupingExprs, aggExprs, phase);
         result.outputTupleDesc_ = tupleDesc;

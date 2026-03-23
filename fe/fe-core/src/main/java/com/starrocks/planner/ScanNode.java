@@ -44,6 +44,7 @@ import com.starrocks.connector.BucketProperty;
 import com.starrocks.connector.RemoteFilesSampleStrategy;
 import com.starrocks.datacache.DataCacheOptions;
 import com.starrocks.server.WarehouseManager;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprCastFunction;
 import com.starrocks.sql.optimizer.ScanOptimizeOption;
@@ -81,7 +82,7 @@ public abstract class ScanNode extends PlanNode {
     // the scan node's version range to scan
     protected TvrVersionRange tvrVersionRange;
 
-    private Map<SlotId, Expr> heavyExprs = Maps.newHashMap();
+    private Map<SlotId, ExecExpr> heavyExprs = Maps.newHashMap();
 
     public ScanNode(PlanNodeId id, TupleDescriptor desc, String planNodeName) {
         super(id, desc.getId().asList(), planNodeName);
@@ -269,11 +270,11 @@ public abstract class ScanNode extends PlanNode {
         return output.toString();
     }
 
-    public void setHeavyExprs(Map<SlotId, Expr> heavyExprs) {
+    public void setHeavyExprs(Map<SlotId, ExecExpr> heavyExprs) {
         this.heavyExprs = heavyExprs;
     }
 
-    public Map<SlotId, Expr> getHeavyExprs() {
+    public Map<SlotId, ExecExpr> getHeavyExprs() {
         return heavyExprs;
     }
 }

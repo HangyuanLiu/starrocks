@@ -27,11 +27,11 @@ import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.PlanFragmentId;
 import com.starrocks.planner.PlanNodeId;
 import com.starrocks.planner.ScanNode;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.plugin.AuditEvent;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.Explain;
 import com.starrocks.sql.ast.StatementBase;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalHashJoinOperator;
@@ -50,9 +50,9 @@ public class ExecPlan {
     private final ConnectContext connectContext;
     private final List<String> colNames;
     private final List<ScanNode> scanNodes = new ArrayList<>();
-    private final List<Expr> outputExprs = new ArrayList<>();
+    private final List<ExecExpr> outputExprs = new ArrayList<>();
     private final DescriptorTable descTbl = new DescriptorTable();
-    private final Map<ColumnRefOperator, Expr> colRefToExpr = new HashMap<>();
+    private final Map<ColumnRefOperator, ExecExpr> colRefToExecExpr = new HashMap<>();
     private final ArrayList<PlanFragment> fragments = new ArrayList<>();
     private final List<PlanFragment> preExecutedFragments = new ArrayList<>();
     private final Map<Integer, PlanFragment> cteProduceFragments = Maps.newHashMap();
@@ -119,7 +119,7 @@ public class ExecPlan {
         return scanNodes;
     }
 
-    public List<Expr> getOutputExprs() {
+    public List<ExecExpr> getOutputExprs() {
         return outputExprs;
     }
 
@@ -160,8 +160,8 @@ public class ExecPlan {
         return fragmentIdGenerator.getNextId();
     }
 
-    public Map<ColumnRefOperator, Expr> getColRefToExpr() {
-        return colRefToExpr;
+    public Map<ColumnRefOperator, ExecExpr> getColRefToExecExpr() {
+        return colRefToExecExpr;
     }
 
     public void setPlanCount(int planCount) {

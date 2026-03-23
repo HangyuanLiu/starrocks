@@ -19,7 +19,7 @@ import com.starrocks.catalog.FunctionSet;
 import com.starrocks.common.FeConstants;
 import com.starrocks.planner.AnalyticEvalNode;
 import com.starrocks.planner.TableFunctionNode;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.planner.expression.ExecFunctionCall;
 import com.starrocks.utframe.StarRocksAssert;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
@@ -984,8 +984,8 @@ public class LowCardinalityArrayTest extends PlanTestBase {
             plan.getTopFragment().getPlanRoot().collect(AnalyticEvalNode.class, analyticEvalNodes);
             Assertions.assertEquals(1, analyticEvalNodes.size());
             Assertions.assertEquals(1, analyticEvalNodes.get(0).getAnalyticFnCalls().size());
-            FunctionCallExpr expr = (FunctionCallExpr) analyticEvalNodes.get(0).getAnalyticFnCalls().get(0);
-            Assertions.assertTrue(expr.getIgnoreNulls());
+            ExecFunctionCall expr = (ExecFunctionCall) analyticEvalNodes.get(0).getAnalyticFnCalls().get(0);
+            Assertions.assertTrue(expr.isIgnoreNulls());
         }
     }
 

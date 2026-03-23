@@ -25,7 +25,6 @@ import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.jmockit.Deencapsulation;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.plan.ConnectorPlanTestBase;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanTestBase;
@@ -209,7 +208,7 @@ public class StatisticsSQLTest extends PlanTestBase {
             String sql = sqls.get(i).get(0);
             starRocksAssert.useDatabase("_statistics_");
             ExecPlan plan = getExecPlan(sql);
-            List<Expr> output = plan.getOutputExprs();
+            var output = plan.getOutputExprs();
             Assertions.assertEquals(output.get(2).getType().getPrimitiveType(), StringType.STRING.getPrimitiveType());
             assertCContains(plan.getColNames().get(2).replace("\\", ""), columnNames.get(i));
         }
@@ -294,7 +293,7 @@ public class StatisticsSQLTest extends PlanTestBase {
             String sql = sqls.get(i).get(0);
             starRocksAssert.useDatabase("_statistics_");
             ExecPlan plan = getExecPlan(sql);
-            List<Expr> output = plan.getOutputExprs();
+            var output = plan.getOutputExprs();
             Assertions.assertEquals(output.get(2).getType().getPrimitiveType(), StringType.STRING.getPrimitiveType());
             assertCContains(plan.getColNames().get(2).replace("\\", ""), columnNames.get(i));
         }
@@ -316,7 +315,7 @@ public class StatisticsSQLTest extends PlanTestBase {
                     tabletSampleManager);
             starRocksAssert.useDatabase("_statistics_");
             ExecPlan plan = getExecPlan(sql);
-            List<Expr> output = plan.getOutputExprs();
+            var output = plan.getOutputExprs();
             Assertions.assertEquals(output.get(1).getType().getPrimitiveType(), StringType.STRING.getPrimitiveType());
             Assertions.assertEquals(output.get(3).getType().getPrimitiveType(), StringType.STRING.getPrimitiveType());
             Assertions.assertEquals(output.get(4).getType().getPrimitiveType(), StringType.STRING.getPrimitiveType());

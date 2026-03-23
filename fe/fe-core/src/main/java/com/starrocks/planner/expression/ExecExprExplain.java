@@ -43,9 +43,43 @@ public class ExecExprExplain implements ExecExprVisitor<String, Void> {
                 .collect(Collectors.joining(", "));
     }
 
+    /**
+     * Verbose explain format: [slotId: label, TYPE, nullable]
+     * Used for VERBOSE and COSTS EXPLAIN levels.
+     */
+    public static String verboseExplain(ExecExpr expr) {
+        if (expr instanceof ExecSlotRef) {
+            ExecSlotRef slot = (ExecSlotRef) expr;
+            // Match ExprVerboseVisitor.visitSlot format: [label, type, nullable]
+            // Use the ExecSlotRef's type (which may have been set from ColumnRefOperator)
+            // rather than the descriptor type (which is the physical column type)
+            if (slot.getLabel() != null) {
+                return "[" + slot.getLabel() + ", " + slot.getType() + ", " + slot.isNullable() + "]";
+            } else {
+                return "[" + slot.getSlotId().asInt() + ", " + slot.getType() + ", " + slot.isNullable() + "]";
+            }
+        }
+        if (expr instanceof ExecAstExprWrapper) {
+            return com.starrocks.sql.ast.expression.ExprToSql.explain(
+                    ((ExecAstExprWrapper) expr).getAstExpr());
+        }
+        return explain(expr);
+    }
+
+    public static String verboseExplainList(java.util.List<? extends ExecExpr> exprs) {
+        return exprs.stream()
+                .map(ExecExprExplain::verboseExplain)
+                .collect(Collectors.joining(", "));
+    }
+
     @Override
     public String visitExecExpr(ExecExpr expr, Void context) {
         return "<unknown-exec-expr>";
+    }
+
+    @Override
+    public String visitExecAstExprWrapper(ExecAstExprWrapper expr, Void context) {
+        return com.starrocks.sql.ast.expression.ExprToSql.explain(expr.getAstExpr());
     }
 
     @Override
@@ -65,7 +99,13 @@ public class ExecExprExplain implements ExecExprVisitor<String, Void> {
         Type t = expr.getType();
         if (t.isBoolean()) {
             return value.getBoolean() ? "TRUE" : "FALSE";
-        } else if (t.isIntegerType() || t.isTinyint() || t.isSmallint()) {
+        } else if (t.isTinyint()) {
+            return String.valueOf(value.getTinyInt());
+        } else if (t.isSmallint()) {
+            return String.valueOf(value.getSmallint());
+        } else if (t.isInt()) {
+            return String.valueOf(value.getInt());
+        } else if (t.isBigint()) {
             return String.valueOf(value.getBigint());
         } else if (t.isLargeint()) {
             return value.getLargeInt().toString();

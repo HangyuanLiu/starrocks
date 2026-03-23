@@ -28,7 +28,6 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.QueryStatisticsItem;
 import com.starrocks.qe.RowBatch;
 import com.starrocks.qe.scheduler.slot.LogicalSlot;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.common.RyuDouble;
 import com.starrocks.sql.common.RyuFloat;
 import com.starrocks.sql.optimizer.operator.Projection;
@@ -356,7 +355,7 @@ public class FeExecuteCoordinator extends Coordinator {
         } else {
             List<ScalarOperator> alignedRow = execPlan.getOutputExprs().stream()
                     .map(expr -> {
-                        int slotId = ((SlotRef) expr).getSlotId().asInt();
+                        int slotId = ((com.starrocks.planner.expression.ExecSlotRef) expr).getSlotId().asInt();
                         return valuesOperator.getProjection().getColumnRefMap().entrySet().stream()
                                 .filter(entry -> entry.getKey().getId() == slotId)
                                 .map(Map.Entry::getValue)

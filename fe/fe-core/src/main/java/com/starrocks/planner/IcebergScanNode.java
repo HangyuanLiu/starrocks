@@ -320,7 +320,7 @@ public class IcebergScanNode extends ScanNode {
         }
         if (!scanNodePredicates.getMinMaxConjuncts().isEmpty()) {
             output.append(prefix).append("MIN/MAX PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getMinMaxConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getMinMaxConjuncts())).append("\n");
         }
         if (tvrVersionRange != null) {
             output.append(prefix).append("TABLE VERSION: ").append(

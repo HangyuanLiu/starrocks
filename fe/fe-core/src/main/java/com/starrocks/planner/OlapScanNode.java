@@ -74,9 +74,12 @@ import com.starrocks.common.VectorSearchOptions;
 import com.starrocks.connector.BucketProperty;
 import com.starrocks.lake.LakeTablet;
 import com.starrocks.persist.ColumnIdExpr;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.rowstore.RowStoreUtils;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
 import com.starrocks.server.WarehouseManager;
@@ -144,7 +147,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
     private final List<String> unUsedOutputStringColumns = new ArrayList<>();
     // a bucket seq may map to many tablets, and each tablet has a TScanRangeLocations.
     public ArrayListMultimap<Integer, TScanRangeLocations> bucketSeq2locations = ArrayListMultimap.create();
-    public List<Expr> prunedPartitionPredicates = Lists.newArrayList();
+    public List<ExecExpr> prunedPartitionPredicates = Lists.newArrayList();
     /*
      * When the field value is ON, the storage engine can return the data directly without pre-aggregation.
      * When the field value is OFF, the storage engine needs to aggregate the data before returning to scan node.
@@ -182,7 +185,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
     private Optional<Boolean> partitionKeyAscHint = Optional.empty();
 
     private Map<Long, Integer> tabletId2BucketSeq = Maps.newHashMap();
-    private List<Expr> bucketExprs = Lists.newArrayList();
+    private List<ExecExpr> bucketExprs = Lists.newArrayList();
     private List<ColumnRefOperator> bucketColumns = Lists.newArrayList();
     // record the selected physical partition with the selected tablets belong to it
     private Map<Long, List<Long>> partitionToScanTabletMap;
@@ -294,7 +297,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
         return selectedPartitionVersions;
     }
 
-    public List<Expr> getPrunedPartitionPredicates() {
+    public List<ExecExpr> getPrunedPartitionPredicates() {
         return prunedPartitionPredicates;
     }
 
@@ -315,7 +318,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
         this.bucketColumns = bucketColumns;
     }
 
-    public List<Expr> getBucketExprs() {
+    public List<ExecExpr> getBucketExprs() {
         return bucketExprs;
     }
 
@@ -335,7 +338,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
         return Optional.empty();
     }
 
-    public void setBucketExprs(List<Expr> bucketExprs) {
+    public void setBucketExprs(List<ExecExpr> bucketExprs) {
         this.bucketExprs = bucketExprs;
     }
 
@@ -862,22 +865,22 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
 
         if (!getHeavyExprs().isEmpty()) {
             output.append(prefix).append("heavy exprs: ").append("\n");
-            List<Pair<SlotId, Expr>> outputColumns = new ArrayList<>();
-            for (Map.Entry<SlotId, Expr> kv : getHeavyExprs().entrySet()) {
+            List<Pair<SlotId, ExecExpr>> outputColumns = new ArrayList<>();
+            for (Map.Entry<SlotId, ExecExpr> kv : getHeavyExprs().entrySet()) {
                 outputColumns.add(new Pair<>(kv.getKey(), kv.getValue()));
             }
             outputColumns.sort(Comparator.comparingInt(o -> o.first.asInt()));
 
-            for (Pair<SlotId, Expr> kv : outputColumns) {
+            for (Pair<SlotId, ExecExpr> kv : outputColumns) {
                 output.append(prefix).append(prefix);
                 if (detailLevel == TExplainLevel.VERBOSE) {
                     output.append(kv.first).append(" <-> ")
-                            .append(ExprToSql.explain(kv.second)).append("\n");
+                            .append(ExecExprExplain.explain(kv.second)).append("\n");
                 } else {
                     output.append("<slot ").
                             append(kv.first).
                             append("> : ").
-                            append(explainExpr(kv.second)).
+                            append(ExecExprExplain.explain(kv.second)).
                             append("\n");
                 }
             }
@@ -1007,10 +1010,10 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
         for (RuntimeFilterDescription probeRuntimeFilter : probeRuntimeFilters) {
             if (RuntimeFilterDescription.RuntimeFilterType.TOPN_FILTER.equals(
                     probeRuntimeFilter.runtimeFilterType())) {
-                Expr expr = probeRuntimeFilter.getNodeIdToProbeExpr().get(getId().asInt());
-                if (expr instanceof SlotRef) {
+                ExecExpr expr = probeRuntimeFilter.getNodeIdToProbeExpr().get(getId().asInt());
+                if (expr instanceof ExecSlotRef) {
                     // check key columns
-                    SlotId cid = ((SlotRef) expr).getSlotId();
+                    SlotId cid = ((ExecSlotRef) expr).getSlotId();
                     String columnName = desc.getSlot(cid.asInt()).getColumn().getName();
                     if (!keyColumnNames.isEmpty() && keyColumnNames.get(0).equals(columnName)) {
                         sortKeyAscHint = outputAscHint;
@@ -1041,7 +1044,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
         if (!getHeavyExprs().isEmpty()) {
             TPlanNodeCommon common = new TPlanNodeCommon();
             getHeavyExprs().forEach(
-                    (key, value) -> common.putToHeavy_exprs(key.asInt(), ExprToThrift.treeToThrift(value)));
+                    (key, value) -> common.putToHeavy_exprs(key.asInt(), ExecExprSerializer.serialize(value)));
             msg.setCommon(common);
         }
 
@@ -1111,7 +1114,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
             }
 
             if (!bucketExprs.isEmpty()) {
-                msg.lake_scan_node.setBucket_exprs(ExprToThrift.treesToThrift(bucketExprs));
+                msg.lake_scan_node.setBucket_exprs(ExecExprSerializer.serializeList(bucketExprs));
             }
 
             if (CollectionUtils.isNotEmpty(columnAccessPaths)) {
@@ -1175,7 +1178,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
             msg.olap_scan_node.setOutput_asc_hint(sortKeyAscHint);
             partitionKeyAscHint.ifPresent(aBoolean -> msg.olap_scan_node.setPartition_order_hint(aBoolean));
             if (!bucketExprs.isEmpty()) {
-                msg.olap_scan_node.setBucket_exprs(ExprToThrift.treesToThrift(bucketExprs));
+                msg.olap_scan_node.setBucket_exprs(ExecExprSerializer.serializeList(bucketExprs));
             }
 
             if (CollectionUtils.isNotEmpty(columnAccessPaths)) {
@@ -1409,7 +1412,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
                         .collect(Collectors.toList());
         List<SlotId> slotIds = slotIdToColNames.stream().map(s -> s.first).collect(Collectors.toList());
         normalizer.remapSlotIds(slotIds);
-        planNode.setConjuncts(normalizer.normalizeExprs(normalizer.getConjunctsByPlanNodeId(this)));
+        planNode.setConjuncts(normalizer.normalizeExecExprs(normalizer.getConjunctsByPlanNodeId(this)));
     }
 
     // Partition by exprs as follows can be decomposed
@@ -1468,7 +1471,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
     }
 
     @Override
-    public void normalizeConjuncts(FragmentNormalizer normalizer, TNormalPlanNode planNode, List<Expr> conjuncts) {
+    public void normalizeConjuncts(FragmentNormalizer normalizer, TNormalPlanNode planNode, List<ExecExpr> execConjuncts) {
         if (!normalizer.isProcessingLeftNode()) {
             // take column names of HashJoin RHS into cache digest computation
             associateSlotIdsWithColumns(normalizer, planNode, Optional.empty());
@@ -1480,7 +1483,10 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
 
         if (isDecomposablePartitionInfo(partitionInfo)) {
             RangePartitionInfo rangePartitionInfo = (RangePartitionInfo) partitionInfo;
-            conjuncts = decomposeRangePredicates(partitionColumns, normalizer, planNode, rangePartitionInfo, conjuncts);
+            // decomposeRangePredicates works with Expr-based conjuncts from the normalizer
+            List<Expr> exprConjuncts = normalizer.getExprConjunctsByPlanNodeId(this);
+            exprConjuncts = decomposeRangePredicates(partitionColumns, normalizer, planNode, rangePartitionInfo, exprConjuncts);
+            planNode.setConjuncts(normalizer.normalizeExprs(exprConjuncts));
         } else {
             associateSlotIdsWithColumns(normalizer, planNode, Optional.empty());
             List<Long> physicalPartitionIds = new ArrayList<>();
@@ -1490,8 +1496,8 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
                         .map(PhysicalPartition::getId).collect(Collectors.toList()));
             }
             normalizer.createSimpleRangeMap(physicalPartitionIds);
+            planNode.setConjuncts(normalizer.normalizeExecExprs(execConjuncts));
         }
-        planNode.setConjuncts(normalizer.normalizeExprs(conjuncts));
     }
 
     // Only DUP_KEYS and AGG_KEYS without columns carrying REPLACE modifier can support
@@ -1589,7 +1595,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
         planNode.setNode_type(olapTable.isCloudNativeTableOrMaterializedView() ?
                 TPlanNodeType.LAKE_SCAN_NODE : TPlanNodeType.OLAP_SCAN_NODE);
         planNode.setOlap_scan_node(scanNode);
-        normalizeConjuncts(normalizer, planNode, conjuncts);
+        normalizeConjuncts(normalizer, planNode, normalizer.getConjunctsByPlanNodeId(this));
     }
 
     private Map<Long, List<Long>> mapTabletsToPartitions() {
@@ -1644,14 +1650,10 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
     }
 
     public void computePointScanRangeLocations() {
-        // must order in create table
-        List<String> keyColumns = olapTable.getKeyColumnsInOrder().stream().map(Column::getName)
-                .collect(Collectors.toList());
-        Optional<List<List<LiteralExpr>>> points = RowStoreUtils.extractPointsLiteral(conjuncts, keyColumns);
-
-        if (points.isPresent()) {
-            rowStoreKeyLiterals = points.get();
-        }
+        // TODO: Migrate RowStoreUtils.extractPointsLiteral to work with ExecExpr.
+        // After the Expr->ExecExpr migration, conjuncts are List<ExecExpr> and cannot be passed
+        // to RowStoreUtils.extractPointsLiteral which expects List<Expr>.
+        // For now, point scan optimization is disabled until RowStoreUtils is migrated.
     }
 
     public List<List<LiteralExpr>> getRowStoreKeyLiterals() {
@@ -1687,8 +1689,8 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
     }
 
     @Override
-    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, Expr probeExpr,
-                                          List<Expr> partitionByExprs) {
+    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, ExecExpr probeExpr,
+                                          List<ExecExpr> partitionByExprs) {
         boolean accept = super.pushDownRuntimeFilters(context, probeExpr, partitionByExprs);
         if (accept && context.getDescription().runtimeFilterType()
                 .equals(RuntimeFilterDescription.RuntimeFilterType.TOPN_FILTER)) {

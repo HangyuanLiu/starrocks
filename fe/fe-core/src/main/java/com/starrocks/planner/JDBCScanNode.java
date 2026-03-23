@@ -168,25 +168,36 @@ public class JDBCScanNode extends ScanNode {
         if (conjuncts.isEmpty()) {
             return;
         }
-        List<SlotRef> slotRefs = Lists.newArrayList();
-        ExprUtils.collectList(conjuncts, SlotRef.class, slotRefs);
-        ExprSubstitutionMap sMap = new ExprSubstitutionMap();
-        String identifier = getIdentifierSymbol();
-        for (SlotRef slotRef : slotRefs) {
-            SlotRef tmpRef = (SlotRef) slotRef.clone();
-            tmpRef.setTblName(null);
-            tmpRef.setLabel(identifier + tmpRef.getLabel() + identifier);
-            sMap.put(slotRef, tmpRef);
+        // Unwrap ExecAstExprWrapper conjuncts back to AST Expr for proper JDBC SQL generation
+        List<Expr> astConjuncts = new ArrayList<>();
+        for (com.starrocks.planner.expression.ExecExpr e : conjuncts) {
+            if (e instanceof com.starrocks.planner.expression.ExecAstExprWrapper) {
+                astConjuncts.add(((com.starrocks.planner.expression.ExecAstExprWrapper) e).getAstExpr());
+            }
         }
-
-        ArrayList<Expr> jdbcConjuncts = ExprUtils.cloneList(conjuncts, sMap);
-        // Filters instead of conjuncts are used in BE to filter rows, the types of conjuncts' children
-        // would be unmatched after remove cast operator in PushDownPredicateTOExternalTableScanRule, which
-        // would cause BE report error "VectorizedInPredicate type not same";
-        conjuncts.clear();
-        for (Expr p : jdbcConjuncts) {
-            p = ExprUtils.replaceLargeStringLiteral(p);
-            filters.add(AstToStringBuilder.toString(p));
+        if (!astConjuncts.isEmpty()) {
+            List<SlotRef> slotRefs = Lists.newArrayList();
+            ExprUtils.collectList(astConjuncts, SlotRef.class, slotRefs);
+            ExprSubstitutionMap sMap = new ExprSubstitutionMap();
+            String identifier = getIdentifierSymbol();
+            for (SlotRef slotRef : slotRefs) {
+                SlotRef tmpRef = (SlotRef) slotRef.clone();
+                tmpRef.setTblName(null);
+                tmpRef.setLabel(identifier + tmpRef.getLabel() + identifier);
+                sMap.put(slotRef, tmpRef);
+            }
+            ArrayList<Expr> jdbcConjuncts = ExprUtils.cloneList(astConjuncts, sMap);
+            conjuncts.clear();
+            for (Expr p : jdbcConjuncts) {
+                p = ExprUtils.replaceLargeStringLiteral(p);
+                filters.add(AstToStringBuilder.toString(p));
+            }
+        } else {
+            // Fallback for native ExecExpr conjuncts
+            for (com.starrocks.planner.expression.ExecExpr p : conjuncts) {
+                filters.add(com.starrocks.planner.expression.ExecExprExplain.explain(p));
+            }
+            conjuncts.clear();
         }
     }
 

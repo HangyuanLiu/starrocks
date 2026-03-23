@@ -17,11 +17,11 @@ package com.starrocks.planner;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.connector.BucketProperty;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.thrift.TBucketProperty;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TRuntimeFilterBuildJoinMode;
@@ -68,9 +68,9 @@ public class RuntimeFilterDescription {
     private int filterId;
     private int buildPlanNodeId;
     private PlanNode buildPlanNode;
-    private Expr buildExpr;
+    private ExecExpr buildExpr;
     private int exprOrder; // order of expr in eq conjuncts.
-    private final Map<Integer, Expr> nodeIdToProbeExpr;
+    private final Map<Integer, ExecExpr> nodeIdToProbeExpr;
     private boolean hasRemoteTargets;
     private final List<TNetworkAddress> mergeNodes;
     private JoinNode.DistributionMode joinMode;
@@ -111,7 +111,7 @@ public class RuntimeFilterDescription {
     private List<BucketProperty> bucketProperties = Lists.newArrayList();
     // partitionByExprs are used for computing partition ids in probe side when
     // join's equal conjuncts size > 1.
-    private final Map<Integer, List<Expr>> nodeIdToParitionByExprs = Maps.newHashMap();
+    private final Map<Integer, List<ExecExpr>> nodeIdToParitionByExprs = Maps.newHashMap();
 
     private SortInfo sortInfo;
 
@@ -148,7 +148,7 @@ public class RuntimeFilterDescription {
         return filterId;
     }
 
-    public void setBuildExpr(Expr expr) {
+    public void setBuildExpr(ExecExpr expr) {
         buildExpr = expr;
     }
 
@@ -316,15 +316,15 @@ public class RuntimeFilterDescription {
         return crossExchangeNodeTimes == 0;
     }
 
-    public void addProbeExpr(int nodeId, Expr expr) {
+    public void addProbeExpr(int nodeId, ExecExpr expr) {
         nodeIdToProbeExpr.put(nodeId, expr);
     }
 
-    public Map<Integer, Expr> getNodeIdToProbeExpr() {
+    public Map<Integer, ExecExpr> getNodeIdToProbeExpr() {
         return nodeIdToProbeExpr;
     }
 
-    public void addPartitionByExprsIfNeeded(int nodeId, Expr probeExpr, List<Expr> partitionByExprs) {
+    public void addPartitionByExprsIfNeeded(int nodeId, ExecExpr probeExpr, List<ExecExpr> partitionByExprs) {
         if (partitionByExprs.size() == 0) {
             return;
         }
@@ -496,23 +496,24 @@ public class RuntimeFilterDescription {
         StringBuilder sb = new StringBuilder();
         sb.append("filter_id = ").append(filterId);
         if (probeNodeId >= 0) {
-            sb.append(", probe_expr = (").append(ExprToSql.toSql(nodeIdToProbeExpr.get(probeNodeId))).append(")");
+            sb.append(", probe_expr = (").append(ExecExprExplain.explain(nodeIdToProbeExpr.get(probeNodeId)))
+                    .append(")");
             if (isCanUsePartitionByExprs() && nodeIdToParitionByExprs.containsKey(probeNodeId) &&
                     !nodeIdToParitionByExprs.get(probeNodeId).isEmpty()) {
                 sb.append(", partition_exprs = (");
-                List<Expr> partitionByExprs = nodeIdToParitionByExprs.get(probeNodeId);
+                List<ExecExpr> partitionByExprs = nodeIdToParitionByExprs.get(probeNodeId);
                 for (int i = 0; i < partitionByExprs.size(); i++) {
-                    Expr partitionByExpr = partitionByExprs.get(i);
+                    ExecExpr partitionByExpr = partitionByExprs.get(i);
                     if (i != partitionByExprs.size() - 1) {
-                        sb.append(ExprToSql.toSql(partitionByExpr) + ",");
+                        sb.append(ExecExprExplain.explain(partitionByExpr) + ",");
                     } else {
-                        sb.append(ExprToSql.toSql(partitionByExpr));
+                        sb.append(ExecExprExplain.explain(partitionByExpr));
                     }
                 }
                 sb.append(")");
             }
         } else {
-            sb.append(", build_expr = (").append(ExprToSql.toSql(buildExpr)).append(")");
+            sb.append(", build_expr = (").append(ExecExprExplain.explain(buildExpr)).append(")");
             sb.append(", remote = ").append(hasRemoteTargets);
         }
         return sb.toString();
@@ -597,11 +598,11 @@ public class RuntimeFilterDescription {
         TRuntimeFilterDescription t = new TRuntimeFilterDescription();
         t.setFilter_id(filterId);
         if (buildExpr != null) {
-            t.setBuild_expr(ExprToThrift.treeToThrift(buildExpr));
+            t.setBuild_expr(ExecExprSerializer.serialize(buildExpr));
         }
         t.setExpr_order(exprOrder);
-        for (Map.Entry<Integer, Expr> entry : nodeIdToProbeExpr.entrySet()) {
-            t.putToPlan_node_id_to_target_expr(entry.getKey(), ExprToThrift.treeToThrift(entry.getValue()));
+        for (Map.Entry<Integer, ExecExpr> entry : nodeIdToProbeExpr.entrySet()) {
+            t.putToPlan_node_id_to_target_expr(entry.getKey(), ExecExprSerializer.serialize(entry.getValue()));
         }
         t.setHas_remote_targets(hasRemoteTargets);
         t.setBuild_plan_node_id(buildPlanNodeId);
@@ -637,10 +638,10 @@ public class RuntimeFilterDescription {
             t.setBuild_join_mode(TRuntimeFilterBuildJoinMode.REPLICATED);
         }
         if (isCanUsePartitionByExprs()) {
-            for (Map.Entry<Integer, List<Expr>> entry : nodeIdToParitionByExprs.entrySet()) {
+            for (Map.Entry<Integer, List<ExecExpr>> entry : nodeIdToParitionByExprs.entrySet()) {
                 if (entry.getValue() != null && !entry.getValue().isEmpty()) {
                     t.putToPlan_node_id_to_partition_by_exprs(entry.getKey(),
-                            ExprToThrift.treesToThrift(entry.getValue()));
+                            ExecExprSerializer.serializeList(entry.getValue()));
                 }
             }
         }

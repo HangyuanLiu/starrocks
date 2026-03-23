@@ -37,9 +37,9 @@ package com.starrocks.planner;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprUtils;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecFunctionCall;
 
 import java.util.ArrayList;
 
@@ -51,12 +51,12 @@ public abstract class AggregateInfoBase {
 
     // For aggregations: All unique grouping expressions from a select block.
     // For analytics: Empty.
-    protected ArrayList<Expr> groupingExprs_;
+    protected ArrayList<ExecExpr> groupingExprs_;
 
     // For aggregations: All unique aggregate expressions from a select block.
     // For analytics: The results of AnalyticExpr.getFnCall() for the unique
     // AnalyticExprs of a select block.
-    protected ArrayList<FunctionCallExpr> aggregateExprs_;
+    protected ArrayList<ExecFunctionCall> aggregateExprs_;
 
     // The tuple into which the intermediate output of an aggregation is materialized.
     // Contains groupingExprs.size() + aggregateExprs.size() slots, the first of which
@@ -80,13 +80,13 @@ public abstract class AggregateInfoBase {
     // Populated in materializeRequiredSlots() which must be implemented by subclasses.
     protected ArrayList<Integer> materializedAggSlots = Lists.newArrayList();
 
-    protected AggregateInfoBase(ArrayList<Expr> groupingExprs,
-                                ArrayList<FunctionCallExpr> aggExprs) {
+    protected AggregateInfoBase(ArrayList<ExecExpr> groupingExprs,
+                                ArrayList<ExecFunctionCall> aggExprs) {
         Preconditions.checkState(groupingExprs != null || aggExprs != null);
         groupingExprs_ =
-                groupingExprs != null ? ExprUtils.cloneList(groupingExprs) : new ArrayList<Expr>();
+                groupingExprs != null ? cloneExecExprList(groupingExprs) : new ArrayList<>();
         aggregateExprs_ =
-                aggExprs != null ? ExprUtils.cloneList(aggExprs) : new ArrayList<FunctionCallExpr>();
+                aggExprs != null ? cloneExecFunctionCallList(aggExprs) : new ArrayList<>();
     }
 
     /**
@@ -94,19 +94,35 @@ public abstract class AggregateInfoBase {
      */
     protected AggregateInfoBase(AggregateInfoBase other) {
         groupingExprs_ =
-                (other.groupingExprs_ != null) ? ExprUtils.cloneList(other.groupingExprs_) : null;
+                (other.groupingExprs_ != null) ? cloneExecExprList(other.groupingExprs_) : null;
         aggregateExprs_ =
-                (other.aggregateExprs_ != null) ? ExprUtils.cloneList(other.aggregateExprs_) : null;
+                (other.aggregateExprs_ != null) ? cloneExecFunctionCallList(other.aggregateExprs_) : null;
         intermediateTupleDesc_ = other.intermediateTupleDesc_;
         outputTupleDesc_ = other.outputTupleDesc_;
         materializedAggSlots = Lists.newArrayList(other.materializedAggSlots);
     }
 
-    public ArrayList<Expr> getGroupingExprs() {
+    private static ArrayList<ExecExpr> cloneExecExprList(ArrayList<ExecExpr> exprs) {
+        ArrayList<ExecExpr> result = new ArrayList<>(exprs.size());
+        for (ExecExpr expr : exprs) {
+            result.add(expr.clone());
+        }
+        return result;
+    }
+
+    private static ArrayList<ExecFunctionCall> cloneExecFunctionCallList(ArrayList<ExecFunctionCall> exprs) {
+        ArrayList<ExecFunctionCall> result = new ArrayList<>(exprs.size());
+        for (ExecFunctionCall expr : exprs) {
+            result.add((ExecFunctionCall) expr.clone());
+        }
+        return result;
+    }
+
+    public ArrayList<ExecExpr> getGroupingExprs() {
         return groupingExprs_;
     }
 
-    public ArrayList<FunctionCallExpr> getAggregateExprs() {
+    public ArrayList<ExecFunctionCall> getAggregateExprs() {
         return aggregateExprs_;
     }
 
@@ -131,8 +147,8 @@ public abstract class AggregateInfoBase {
     public String debugString() {
         StringBuilder out = new StringBuilder();
         out.append(MoreObjects.toStringHelper(this)
-                .add("grouping_exprs", Expr.debugString(groupingExprs_))
-                .add("aggregate_exprs", Expr.debugString(aggregateExprs_))
+                .add("grouping_exprs", ExecExprExplain.explainList(groupingExprs_))
+                .add("aggregate_exprs", ExecExprExplain.explainList(aggregateExprs_))
                 .add("intermediate_tuple", (intermediateTupleDesc_ == null)
                         ? "null" : intermediateTupleDesc_.debugString())
                 .add("output_tuple", (outputTupleDesc_ == null)

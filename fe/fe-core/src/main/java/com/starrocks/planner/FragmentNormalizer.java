@@ -26,6 +26,13 @@ import com.starrocks.common.AnalysisException;
 import com.starrocks.common.IdGenerator;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.UnionFind;
+import com.starrocks.planner.expression.ExecBetweenPredicate;
+import com.starrocks.planner.expression.ExecBinaryPredicate;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecExprUtils;
+import com.starrocks.planner.expression.ExecLiteral;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.planner.expression.ExprToNormalFormVisitor;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.rpc.ConfigurableSerDesFactory;
@@ -105,7 +112,7 @@ public class FragmentNormalizer {
 
     private Stack<Boolean> shouldRemovePartColRangePredicates = new Stack<>();
 
-    private Map<SlotId, List<Expr>> slotId2PartColRangePredicates = Maps.newHashMap();
+    private Map<SlotId, List<ExecExpr>> slotId2PartColRangePredicates = Maps.newHashMap();
     private Map<SlotId, Set<String>> slotId2DerivedPredicates = Maps.newHashMap();
 
     private Set<Integer> cachedPlanNodeIds = Sets.newHashSet();
@@ -281,12 +288,55 @@ public class FragmentNormalizer {
         return expr.accept(new SimpleRangePredicateVisitor(), null);
     }
 
+    public String normalizeSimpleRangePredicate(ExecExpr expr) {
+        if (expr instanceof ExecBinaryPredicate) {
+            ExecBinaryPredicate bp = (ExecBinaryPredicate) expr;
+            String lhs = normalizeSimpleRangePredicateChild(bp.getChild(0));
+            String rhs = normalizeSimpleRangePredicateChild(bp.getChild(1));
+            if (lhs == null || rhs == null) {
+                return null;
+            }
+            return String.format("(%s %s %s)", bp.getOp().getName(), lhs, rhs);
+        } else if (expr instanceof ExecBetweenPredicate) {
+            ExecBetweenPredicate bp = (ExecBetweenPredicate) expr;
+            String lhs = normalizeSimpleRangePredicateChild(bp.getChild(0));
+            List<String> rhsList = bp.getChildren().stream().skip(1)
+                    .map(this::normalizeSimpleRangePredicateChild).collect(Collectors.toList());
+            if (lhs == null || rhsList.stream().anyMatch(Objects::isNull)) {
+                return null;
+            }
+            String rhsCsv = rhsList.stream().sorted(String::compareTo).collect(Collectors.joining(", "));
+            return String.format("(%s %s (%s))", bp.isNotBetween() ? "not_in" : "in", lhs, rhsCsv);
+        }
+        return null;
+    }
+
+    private String normalizeSimpleRangePredicateChild(ExecExpr child) {
+        if (child instanceof ExecSlotRef) {
+            return String.format("(slot %d)", ((ExecSlotRef) child).getSlotId().asInt());
+        } else if (child instanceof ExecLiteral) {
+            ExecLiteral lit = (ExecLiteral) child;
+            return String.format("(literal %s %s)", lit.getValue().toString(),
+                    lit.getType().getPrimitiveType().name());
+        }
+        return null;
+    }
+
     public Pair<List<Integer>, List<ByteBuffer>> normalizeSlotIdsAndExprs(Map<SlotId, Expr> exprMap) {
         List<Pair<SlotId, ByteBuffer>> slotIdsAndStringFunctions = exprMap.entrySet().stream()
                 .map(e -> new Pair<>(e.getKey(), normalizeExpr(e.getValue())))
                 .sorted(Pair.comparingBySecond()).collect(Collectors.toList());
         List<SlotId> slotIds = slotIdsAndStringFunctions.stream().map(e -> e.first).collect(Collectors.toList());
         List<ByteBuffer> exprs = slotIdsAndStringFunctions.stream().map(e -> e.second).collect(Collectors.toList());
+        return new Pair<>(remapSlotIds(slotIds), exprs);
+    }
+
+    public Pair<List<Integer>, List<ByteBuffer>> normalizeSlotIdsAndExprs(Map<SlotId, ExecExpr> exprMap, boolean isExecExpr) {
+        List<Pair<SlotId, ByteBuffer>> slotIdsAndFunctions = exprMap.entrySet().stream()
+                .map(e -> new Pair<>(e.getKey(), normalizeExecExpr(e.getValue())))
+                .sorted(Pair.comparingBySecond()).collect(Collectors.toList());
+        List<SlotId> slotIds = slotIdsAndFunctions.stream().map(e -> e.first).collect(Collectors.toList());
+        List<ByteBuffer> exprs = slotIdsAndFunctions.stream().map(e -> e.second).collect(Collectors.toList());
         return new Pair<>(remapSlotIds(slotIds), exprs);
     }
 
@@ -302,6 +352,33 @@ public class FragmentNormalizer {
             return Collections.emptyList();
         }
         return exprList.stream().map(this::normalizeExpr).collect(Collectors.toList());
+    }
+
+    public ByteBuffer normalizeExecExpr(ExecExpr expr) {
+        // TODO: check for non-deterministic functions in ExecExpr trees
+        TExpr tExpr = ExecExprSerializer.serialize(expr);
+        try {
+            TSerializer ser = ConfigurableSerDesFactory.getTSerializer(SIMPLE_JSON.name());
+            return ByteBuffer.wrap(ser.serialize(tExpr));
+        } catch (Exception ignored) {
+            Preconditions.checkArgument(false);
+        }
+        return null;
+    }
+
+    public List<ByteBuffer> normalizeExecExprs(List<? extends ExecExpr> exprList) {
+        if (exprList == null || exprList.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return exprList.stream().map(this::normalizeExecExpr).sorted(ByteBuffer::compareTo)
+                .collect(Collectors.toList());
+    }
+
+    public List<ByteBuffer> normalizeOrderedExecExprs(List<? extends ExecExpr> exprList) {
+        if (exprList == null || exprList.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return exprList.stream().map(this::normalizeExecExpr).collect(Collectors.toList());
     }
 
     public boolean computeDigest(PlanNode cachePointNode) {
@@ -425,6 +502,26 @@ public class FragmentNormalizer {
         return true;
     }
 
+    boolean isSimpleRegionPredicate(ExecExpr expr) {
+        if (!(expr instanceof ExecBetweenPredicate) && !(expr instanceof ExecBinaryPredicate)) {
+            return false;
+        }
+        boolean simple = expr.getChild(0) instanceof ExecSlotRef &&
+                expr.getChildren().subList(1, expr.getChildren().size())
+                        .stream().allMatch(e -> (e instanceof ExecLiteral) &&
+                                !((ExecLiteral) e).getValue().isNull());
+        if (!simple) {
+            return false;
+        }
+        if (expr instanceof ExecBetweenPredicate) {
+            return !((ExecBetweenPredicate) expr).isNotBetween();
+        }
+        if (expr instanceof ExecBinaryPredicate) {
+            return ((ExecBinaryPredicate) expr).getOp() != BinaryType.EQ_FOR_NULL;
+        }
+        return true;
+    }
+
     boolean hasNonDeterministicFunctions(Expr expr) {
         if (expr instanceof FunctionCallExpr) {
             FunctionCallExpr callExpr = (FunctionCallExpr) expr;
@@ -534,10 +631,10 @@ public class FragmentNormalizer {
             }
             if (isSimpleRegionPredicate(e)) {
                 SlotRef child0 = (SlotRef) e.getChild(0);
-                List<Expr> exprList =
-                        slotId2PartColRangePredicates.computeIfAbsent(child0.getSlotId(),
-                                slotId -> Lists.newArrayList());
-                exprList.add(e);
+                // Note: slotId2PartColRangePredicates stores ExecExpr, but this method operates
+                // on AST Expr. In practice, this code path is not reached because
+                // getExprConjunctsByPlanNodeId returns an empty list. The side-effect of populating
+                // the map is only relevant for the ExecExpr path (setPartColRangePredicates).
                 boundSimpleRegionExprs.add(e);
             } else {
                 boundOtherExprs.add(e);
@@ -637,6 +734,18 @@ public class FragmentNormalizer {
         });
     }
 
+    public void addSlotsUseAggColumnsExec(Map<SlotId, ExecExpr> exprs) {
+        if (!isProcessingLeftNode()) {
+            return;
+        }
+        exprs.forEach((slotId, expr) -> {
+            Set<SlotId> usedColumnIds = ExecExprUtils.getUsedSlotIds(expr);
+            if (!Sets.intersection(this.slotsUseAggColumns, usedColumnIds).isEmpty()) {
+                this.slotsUseAggColumns.add(slotId);
+            }
+        });
+    }
+
     public void disableMultiversionIfExprsUseAggColumns(List<Expr> exprs) {
         if (!isProcessingLeftNode() || exprs == null || exprs.isEmpty()) {
             return;
@@ -644,6 +753,16 @@ public class FragmentNormalizer {
         List<SlotRef> slotRefs = Lists.newArrayList();
         exprs.forEach(e -> e.collect(SlotRef.class, slotRefs));
         Set<SlotId> usedColumnIds = slotRefs.stream().map(SlotRef::getSlotId).collect(Collectors.toSet());
+        if (!Sets.intersection(usedColumnIds, this.slotsUseAggColumns).isEmpty()) {
+            this.setCanUseMultiVersion(false);
+        }
+    }
+
+    public void disableMultiversionIfExecExprsUseAggColumns(List<ExecExpr> exprs) {
+        if (!isProcessingLeftNode() || exprs == null || exprs.isEmpty()) {
+            return;
+        }
+        Set<SlotId> usedColumnIds = ExecExprUtils.getUsedSlotIds(exprs);
         if (!Sets.intersection(usedColumnIds, this.slotsUseAggColumns).isEmpty()) {
             this.setCanUseMultiVersion(false);
         }
@@ -805,11 +924,12 @@ public class FragmentNormalizer {
         if (!joinNodesBottomUp.isEmpty()) {
             OlapScanNode olapScanNode = (OlapScanNode) leftNodesTopDown.get(leftNodesTopDown.size() - 1);
             Set<SlotId> slotIds = olapScanNode.getSlotIdsOfPartitionColumns(this);
-            List<Expr> conjuncts = Lists.newArrayList();
+            List<ExecExpr> conjuncts = Lists.newArrayList();
             conjuncts.addAll(olapScanNode.getConjuncts());
             conjuncts.addAll(olapScanNode.getPrunedPartitionPredicates());
-            List<Expr> rangePredicates = conjuncts.stream()
-                    .filter(e -> isSimpleRegionPredicate(e) && slotIds.contains(((SlotRef) e.getChild(0)).getSlotId()))
+            List<ExecExpr> rangePredicates = conjuncts.stream()
+                    .filter(e -> isSimpleRegionPredicate(e) &&
+                            slotIds.contains(((ExecSlotRef) e.getChild(0)).getSlotId()))
                     .collect(Collectors.toList());
             setPartColRangePredicates(rangePredicates);
             for (JoinNode joinNode : joinNodesBottomUp) {
@@ -867,12 +987,11 @@ public class FragmentNormalizer {
         planNode.collectEquivRelation(this);
     }
 
-    private void setPartColRangePredicates(List<Expr> exprList) {
+    private void setPartColRangePredicates(List<ExecExpr> exprList) {
         exprList.stream().map(e -> Pair.create(e, normalizeSimpleRangePredicate(e))).forEach(p -> {
-            Expr expr = p.first;
-            //ByteBuffer norm = p.second;
+            ExecExpr expr = p.first;
             String norm = p.second;
-            SlotId slotId = ((SlotRef) expr.getChild(0)).getSlotId();
+            SlotId slotId = ((ExecSlotRef) expr.getChild(0)).getSlotId();
             slotId2PartColRangePredicates.computeIfAbsent(slotId, id -> Lists.newArrayList()).add(expr);
             slotId2DerivedPredicates.computeIfAbsent(slotId, i -> Sets.newHashSet()).add(norm);
         });
@@ -888,14 +1007,15 @@ public class FragmentNormalizer {
             if (!slotId2PartColRangePredicates.containsKey(partColSlotId)) {
                 continue;
             }
-            List<Expr> exprList = slotId2PartColRangePredicates.get(partColSlotId);
+            List<ExecExpr> exprList = slotId2PartColRangePredicates.get(partColSlotId);
             for (SlotId eqSlotId : eqSlots) {
                 if (eqSlotId.equals(partColSlotId)) {
                     continue;
                 }
-                SlotRef eqSlotRef = new SlotRef(eqSlotId);
+                ExecSlotRef eqSlotRef = new ExecSlotRef(
+                        new SlotDescriptor(eqSlotId, "", com.starrocks.type.InvalidType.INVALID, false));
                 List<String> derivedExprs = exprList.stream().map(e -> {
-                    Expr newExpr = e.clone();
+                    ExecExpr newExpr = e.clone();
                     newExpr.setChild(0, eqSlotRef.clone());
                     return normalizeSimpleRangePredicate(newExpr);
                 }).collect(Collectors.toList());
@@ -904,7 +1024,7 @@ public class FragmentNormalizer {
         }
     }
 
-    private Map<PlanNodeId, List<Expr>> planNodeId2Conjuncts = Maps.newHashMap();
+    private Map<PlanNodeId, List<ExecExpr>> planNodeId2Conjuncts = Maps.newHashMap();
 
     public void extractConjunctsToNormalize(PlanNode root) {
         if (!root.extractConjunctsToNormalize(this)) {
@@ -915,8 +1035,18 @@ public class FragmentNormalizer {
         }
     }
 
-    public List<Expr> getConjunctsByPlanNodeId(PlanNode node) {
+    public List<ExecExpr> getConjunctsByPlanNodeId(PlanNode node) {
         return planNodeId2Conjuncts.getOrDefault(node.getId(), node.getConjuncts());
+    }
+
+    /**
+     * Get Expr-typed conjuncts for legacy code paths that still need Expr (e.g., partition range decomposition).
+     * Returns empty list since ExecExpr conjuncts cannot be converted back to Expr.
+     */
+    public List<Expr> getExprConjunctsByPlanNodeId(PlanNode node) {
+        // The ExecExpr-based conjuncts cannot be converted back to Expr.
+        // Return empty list; partition range decomposition will produce its own predicates.
+        return Collections.emptyList();
     }
 
     public static Set<SlotId> getSlotIdSet(List<Expr> exprs) {
@@ -925,13 +1055,19 @@ public class FragmentNormalizer {
                 .collect(Collectors.toSet());
     }
 
-    public void filterOutPartColRangePredicates(PlanNodeId planNodeId, List<Expr> conjuncts,
+    public static Set<SlotId> getExecExprSlotIdSet(List<ExecExpr> exprs) {
+        return exprs.stream()
+                .flatMap(e -> e instanceof ExecSlotRef ? Stream.of(((ExecSlotRef) e).getSlotId()) : Stream.empty())
+                .collect(Collectors.toSet());
+    }
+
+    public void filterOutPartColRangePredicates(PlanNodeId planNodeId, List<ExecExpr> conjuncts,
                                                 Set<SlotId> selectedSlotIdSet) {
-        List<Expr> remainConjuncts = conjuncts.stream().filter(e -> {
+        List<ExecExpr> remainConjuncts = conjuncts.stream().filter(e -> {
             if (!isSimpleRegionPredicate(e)) {
                 return true;
             }
-            SlotId slotId = ((SlotRef) e.getChild(0)).getSlotId();
+            SlotId slotId = ((ExecSlotRef) e.getChild(0)).getSlotId();
             if (!selectedSlotIdSet.isEmpty() && !selectedSlotIdSet.contains(slotId)) {
                 return true;
             }

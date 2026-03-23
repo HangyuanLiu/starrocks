@@ -27,6 +27,7 @@ import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.LargeStringLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.StringLiteral;
+import com.starrocks.planner.expression.ExecAstExprWrapper;
 import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.type.VarcharType;
 import org.assertj.core.util.Lists;
@@ -62,7 +63,7 @@ public class MySqlAndJDBCScanNodeTest {
         TupleDescriptor tupleDesc = new TupleDescriptor(new TupleId(1));
         tupleDesc.setTable(mysqlTable);
         MysqlScanNode scanNode = new MysqlScanNode(new PlanNodeId(1), tupleDesc, mysqlTable);
-        scanNode.getConjuncts().addAll(createConjuncts());
+        scanNode.getConjuncts().addAll(ExecAstExprWrapper.wrapList(createConjuncts()));
         scanNode.computeColumnsAndFilters();
         String nodeString = scanNode.getExplainString();
         Assertions.assertTrue(nodeString.contains("SELECT * FROM `test_table` " +
@@ -86,7 +87,7 @@ public class MySqlAndJDBCScanNodeTest {
         TupleDescriptor tupleDesc = new TupleDescriptor(new TupleId(1));
         tupleDesc.setTable(mysqlTable);
         JDBCScanNode scanNode = new JDBCScanNode(new PlanNodeId(1), tupleDesc, mysqlTable);
-        scanNode.getConjuncts().addAll(createConjuncts());
+        scanNode.getConjuncts().addAll(ExecAstExprWrapper.wrapList(createConjuncts()));
         scanNode.computeColumnsAndFilters();
         String nodeString = scanNode.getExplainString();
         Assertions.assertTrue(nodeString.contains("SELECT * FROM `jdbc_table` WHERE " +

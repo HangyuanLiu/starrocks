@@ -17,12 +17,12 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.constraint.ForeignKeyConstraint;
 import com.starrocks.catalog.constraint.UniqueConstraint;
-import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.plan.ExecPlan;
-import com.starrocks.sql.plan.ScalarOperatorToExpr;
+import com.starrocks.sql.plan.ScalarOperatorToExecExpr;
 
 import java.util.List;
 import java.util.Map;
@@ -147,8 +147,8 @@ public class UKFKConstraints {
         public final ColumnRefOperator ukColumnRef;
         public final ColumnRefOperator fkColumnRef;
         public final boolean isLeftUK;
-        public Expr ukColumn;
-        public Expr fkColumn;
+        public ExecExpr ukColumn;
+        public ExecExpr fkColumn;
 
         public JoinProperty(BinaryPredicateOperator predicate,
                             UniqueConstraintWrapper ukConstraint,
@@ -164,10 +164,10 @@ public class UKFKConstraints {
         }
 
         public void buildExpr(ExecPlan context) {
-            ukColumn = ScalarOperatorToExpr.buildExecExpression(ukColumnRef,
-                    new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr()));
-            fkColumn = ScalarOperatorToExpr.buildExecExpression(fkColumnRef,
-                    new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr()));
+            ukColumn = ScalarOperatorToExecExpr.build(ukColumnRef,
+                    new ScalarOperatorToExecExpr.FormatterContext(context.getColRefToExecExpr()));
+            fkColumn = ScalarOperatorToExecExpr.build(fkColumnRef,
+                    new ScalarOperatorToExecExpr.FormatterContext(context.getColRefToExecExpr()));
         }
     }
 }

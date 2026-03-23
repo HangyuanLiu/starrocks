@@ -37,8 +37,8 @@ package com.starrocks.planner;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.starrocks.common.Pair;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TNormalPlanNode;
 import com.starrocks.thrift.TNormalRepeatNode;
@@ -153,13 +153,13 @@ public class RepeatNode extends PlanNode {
     }
 
     @Override
-    public void checkRuntimeFilterOnNullValue(RuntimeFilterDescription description, Expr probeExpr) {
+    public void checkRuntimeFilterOnNullValue(RuntimeFilterDescription description, ExecExpr probeExpr) {
         // note(yan): repeat node may generate null values, and if runtime filter does not accept null value
         // we have opportunity to filter those values out.
         boolean slotRefWithNullValue = false;
         SlotId slotId = null;
-        if (probeExpr instanceof SlotRef) {
-            SlotRef slotRef = (SlotRef) probeExpr;
+        if (probeExpr instanceof ExecSlotRef) {
+            ExecSlotRef slotRef = (ExecSlotRef) probeExpr;
             if (slotRef.isNullable()) {
                 slotRefWithNullValue = true;
                 slotId = slotRef.getSlotId();

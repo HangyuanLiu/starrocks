@@ -20,9 +20,9 @@ import com.starrocks.planner.AggregateInfo;
 import com.starrocks.planner.FragmentNormalizer;
 import com.starrocks.planner.PlanNode;
 import com.starrocks.planner.PlanNodeId;
-import com.starrocks.planner.expression.ExprToThrift;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.sql.optimizer.operator.stream.IMTInfo;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TExpr;
@@ -60,12 +60,12 @@ public class StreamAggNode extends PlanNode {
         if (CollectionUtils.isNotEmpty(aggInfo.getMaterializedAggregateExprs())) {
             output.append(detailPrefix)
                     .append("output: ")
-                    .append(explainExpr(aggInfo.getAggregateExprs()))
+                    .append(ExecExprExplain.explainList(aggInfo.getAggregateExprs()))
                     .append("\n");
         }
         output.append(detailPrefix)
                 .append("group_by: ")
-                .append(explainExpr(aggInfo.getGroupingExprs()))
+                .append(ExecExprExplain.explainList(aggInfo.getGroupingExprs()))
                 .append("\n");
         if (!conjuncts.isEmpty()) {
             output.append(detailPrefix).append("having: ").append(explainExpr(conjuncts)).append("\n");
@@ -88,22 +88,21 @@ public class StreamAggNode extends PlanNode {
 
         List<TExpr> aggregateFunctions =
                 aggInfo.getMaterializedAggregateExprs().stream()
-                        .map(ExprToThrift::treeToThrift)
+                        .map(ExecExprSerializer::serialize)
                         .collect(Collectors.toList());
         msg.stream_agg_node = new TStreamAggregationNode();
         msg.stream_agg_node.setAggregate_functions(aggregateFunctions);
 
         // Aggregate expression
-        String sqlAggFunctions =
-                aggInfo.getMaterializedAggregateExprs().stream().map(ExprToSql::toSql).collect(Collectors.joining(","));
+        String sqlAggFunctions = ExecExprExplain.explainList(aggInfo.getMaterializedAggregateExprs());
         msg.stream_agg_node.setSql_aggregate_functions(sqlAggFunctions);
 
         // Grouping expression
-        List<Expr> groupingExprs = aggInfo.getGroupingExprs();
+        List<ExecExpr> groupingExprs = aggInfo.getGroupingExprs();
         if (CollectionUtils.isNotEmpty(groupingExprs)) {
-            msg.stream_agg_node.setGrouping_exprs(ExprToThrift.treesToThrift(groupingExprs));
+            msg.stream_agg_node.setGrouping_exprs(ExecExprSerializer.serializeList(groupingExprs));
         }
-        String groupingStr = groupingExprs.stream().map(ExprToSql::toSql).collect(Collectors.joining(", "));
+        String groupingStr = ExecExprExplain.explainList(groupingExprs);
         msg.stream_agg_node.setSql_grouping_keys(groupingStr);
 
         msg.stream_agg_node.setAgg_func_set_version(3);
@@ -111,18 +110,18 @@ public class StreamAggNode extends PlanNode {
 
     @Override
     public boolean extractConjunctsToNormalize(FragmentNormalizer normalizer) {
-        List<Expr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
+        List<ExecExpr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
         normalizer.filterOutPartColRangePredicates(getId(), conjuncts,
-                FragmentNormalizer.getSlotIdSet(aggInfo.getGroupingExprs()));
+                FragmentNormalizer.getExecExprSlotIdSet(aggInfo.getGroupingExprs()));
         return true;
     }
 
     @Override
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         TNormalSortAggregationNode sortAggregationNode = new TNormalSortAggregationNode();
-        sortAggregationNode.setGrouping_exprs(normalizer.normalizeExprs(aggInfo.getGroupingExprs()));
+        sortAggregationNode.setGrouping_exprs(normalizer.normalizeExecExprs(aggInfo.getGroupingExprs()));
         sortAggregationNode.setAggregate_functions(
-                normalizer.normalizeExprs(new ArrayList<>(aggInfo.getAggregateExprs())));
+                normalizer.normalizeExecExprs(new ArrayList<>(aggInfo.getAggregateExprs())));
         sortAggregationNode.setAgg_func_set_version(FeConstants.AGG_FUNC_VERSION);
         planNode.setSort_aggregation_node(sortAggregationNode);
         planNode.setNode_type(TPlanNodeType.STREAM_AGG_NODE);

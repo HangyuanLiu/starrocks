@@ -32,7 +32,7 @@ public class ExecFunctionCall extends ExecExpr {
     private final boolean isDistinct;
     private final boolean ignoreNulls;
     private final boolean isAggregateOrAnalytic;
-    private final boolean isMergeAggFn;
+    private boolean isMergeAggFn;
     private boolean nullable;
 
     public ExecFunctionCall(Type type, Function fn, String fnName,
@@ -84,6 +84,22 @@ public class ExecFunctionCall extends ExecExpr {
 
     public boolean isMergeAggFn() {
         return isMergeAggFn;
+    }
+
+    public void setMergeAggFn() {
+        this.isMergeAggFn = true;
+    }
+
+    /**
+     * Creates a new ExecFunctionCall that replaces the function name, function definition,
+     * and distinct flag while keeping the same children and type.
+     */
+    public ExecFunctionCall withReplacedFunction(String newFnName, Function newFn, boolean newIsDistinct) {
+        ExecFunctionCall result = new ExecFunctionCall(
+                this.type, newFn, newFnName, this.cloneChildren(),
+                newIsDistinct, this.ignoreNulls, this.isAggregateOrAnalytic, this.isMergeAggFn);
+        result.nullable = this.nullable;
+        return result;
     }
 
     public void setNullable(boolean nullable) {

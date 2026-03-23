@@ -35,16 +35,17 @@
 package com.starrocks.planner;
 
 import com.starrocks.common.Config;
+import com.starrocks.planner.expression.ExecBinaryPredicate;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.planner.expression.ExprOpcodeRegistry;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.ast.JoinOperator;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
 import com.starrocks.sql.ast.expression.BinaryType;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.thrift.TAsofJoinCondition;
 import com.starrocks.thrift.TEqJoinCondition;
 import com.starrocks.thrift.THashJoinNode;
@@ -72,7 +73,7 @@ public class HashJoinNode extends JoinNode {
     private Map<Integer, Integer> eqJoinConjunctsIndexToRfId;
 
     public HashJoinNode(PlanNodeId id, PlanNode outer, PlanNode inner, JoinOperator joinOp,
-                        List<Expr> eqJoinConjuncts, List<Expr> otherJoinConjuncts) {
+                        List<ExecExpr> eqJoinConjuncts, List<ExecExpr> otherJoinConjuncts) {
         super("HASH JOIN", id, outer, inner, joinOp, eqJoinConjuncts, otherJoinConjuncts);
     }
 
@@ -118,47 +119,47 @@ public class HashJoinNode extends JoinNode {
         msg.hash_join_node.join_op = ExprToThrift.joinOperatorToThrift(joinOp);
         msg.hash_join_node.distribution_mode = distrMode.toThrift();
         StringBuilder sqlJoinPredicatesBuilder = new StringBuilder();
-        for (BinaryPredicate eqJoinPredicate : eqJoinConjuncts) {
+        for (ExecBinaryPredicate eqJoinPredicate : eqJoinConjuncts) {
             TEqJoinCondition eqJoinCondition = new TEqJoinCondition(
-                    ExprToThrift.treeToThrift(eqJoinPredicate.getChild(0)),
-                    ExprToThrift.treeToThrift(eqJoinPredicate.getChild(1)));
+                    ExecExprSerializer.serialize(eqJoinPredicate.getChild(0)),
+                    ExecExprSerializer.serialize(eqJoinPredicate.getChild(1)));
             eqJoinCondition.setOpcode(ExprOpcodeRegistry.getBinaryOpcode(eqJoinPredicate.getOp()));
             msg.hash_join_node.addToEq_join_conjuncts(eqJoinCondition);
             if (sqlJoinPredicatesBuilder.length() > 0) {
                 sqlJoinPredicatesBuilder.append(", ");
             }
-            sqlJoinPredicatesBuilder.append(ExprToSql.toSql(eqJoinPredicate));
+            sqlJoinPredicatesBuilder.append(ExecExprExplain.explain(eqJoinPredicate));
         }
 
         if (joinOp.isAsofJoin() && asofJoinConjunct != null) {
             TAsofJoinCondition asofJoinCondition = new TAsofJoinCondition(
-                    ExprToThrift.treeToThrift(asofJoinConjunct.getChild(0)),
-                    ExprToThrift.treeToThrift(asofJoinConjunct.getChild(1)),
-                    ExprOpcodeRegistry.getExprOpcode(asofJoinConjunct));
+                    ExecExprSerializer.serialize(asofJoinConjunct.getChild(0)),
+                    ExecExprSerializer.serialize(asofJoinConjunct.getChild(1)),
+                    ExprOpcodeRegistry.getBinaryOpcode(asofJoinConjunct.getOp()));
             msg.hash_join_node.setAsof_join_condition(asofJoinCondition);
             if (!sqlJoinPredicatesBuilder.isEmpty()) {
                 sqlJoinPredicatesBuilder.append(", ");
             }
-            sqlJoinPredicatesBuilder.append(ExprToSql.toSql(asofJoinConjunct));
+            sqlJoinPredicatesBuilder.append(ExecExprExplain.explain(asofJoinConjunct));
         }
 
-        for (Expr e : otherJoinConjuncts) {
-            msg.hash_join_node.addToOther_join_conjuncts(ExprToThrift.treeToThrift(e));
+        for (ExecExpr e : otherJoinConjuncts) {
+            msg.hash_join_node.addToOther_join_conjuncts(ExecExprSerializer.serialize(e));
             if (sqlJoinPredicatesBuilder.length() > 0) {
                 sqlJoinPredicatesBuilder.append(", ");
             }
-            sqlJoinPredicatesBuilder.append(ExprToSql.toSql(e));
+            sqlJoinPredicatesBuilder.append(ExecExprExplain.explain(e));
         }
         if (sqlJoinPredicatesBuilder.length() > 0) {
             msg.hash_join_node.setSql_join_predicates(sqlJoinPredicatesBuilder.toString());
         }
         if (!conjuncts.isEmpty()) {
             StringBuilder sqlPredicatesBuilder = new StringBuilder();
-            for (Expr e : conjuncts) {
+            for (ExecExpr e : conjuncts) {
                 if (sqlPredicatesBuilder.length() > 0) {
                     sqlPredicatesBuilder.append(", ");
                 }
-                sqlPredicatesBuilder.append(ExprToSql.toSql(e));
+                sqlPredicatesBuilder.append(ExecExprExplain.explain(e));
             }
             if (sqlPredicatesBuilder.length() > 0) {
                 msg.hash_join_node.setSql_predicates(sqlPredicatesBuilder.toString());
@@ -187,7 +188,7 @@ public class HashJoinNode extends JoinNode {
         msg.hash_join_node.setBuild_runtime_filters_from_planner(sv.getEnableGlobalRuntimeFilter());
 
         if (partitionExprs != null) {
-            msg.hash_join_node.setPartition_exprs(ExprToThrift.treesToThrift(partitionExprs));
+            msg.hash_join_node.setPartition_exprs(ExecExprSerializer.serializeList(partitionExprs));
         }
         msg.setFilter_null_value_columns(filter_null_value_columns);
 
@@ -203,7 +204,7 @@ public class HashJoinNode extends JoinNode {
         }
         if (commonSlotMap != null) {
             commonSlotMap.forEach((key, value) ->
-                    msg.hash_join_node.putToCommon_slot_map(key.asInt(), ExprToThrift.treeToThrift(value)));
+                    msg.hash_join_node.putToCommon_slot_map(key.asInt(), ExecExprSerializer.serialize(value)));
         }
     }
 
@@ -212,14 +213,14 @@ public class HashJoinNode extends JoinNode {
         TNormalHashJoinNode hashJoinNode = new TNormalHashJoinNode();
         hashJoinNode.setJoin_op(ExprToThrift.joinOperatorToThrift(getJoinOp()));
         hashJoinNode.setDistribution_mode(getDistrMode().toThrift());
-        hashJoinNode.setEq_join_conjuncts(normalizer.normalizeExprs(new ArrayList<>(eqJoinConjuncts)));
-        hashJoinNode.setOther_join_conjuncts(normalizer.normalizeExprs(otherJoinConjuncts));
-        hashJoinNode.setPartition_exprs(normalizer.normalizeOrderedExprs(partitionExprs));
+        hashJoinNode.setEq_join_conjuncts(normalizer.normalizeExecExprs(eqJoinConjuncts));
+        hashJoinNode.setOther_join_conjuncts(normalizer.normalizeExecExprs(otherJoinConjuncts));
+        hashJoinNode.setPartition_exprs(normalizer.normalizeOrderedExecExprs(partitionExprs));
         hashJoinNode.setOutput_columns(normalizer.remapIntegerSlotIds(outputSlots));
         hashJoinNode.setLate_materialization(enableLateMaterialization);
         planNode.setHash_join_node(hashJoinNode);
         planNode.setNode_type(TPlanNodeType.HASH_JOIN_NODE);
-        normalizeConjuncts(normalizer, planNode, conjuncts);
+        normalizeExecConjuncts(normalizer, planNode, conjuncts);
     }
 
     @Override
@@ -227,12 +228,12 @@ public class HashJoinNode extends JoinNode {
         if (!joinOp.isSemiJoin() && !joinOp.isInnerJoin()) {
             return;
         }
-        for (BinaryPredicate eq : eqJoinConjuncts) {
+        for (ExecBinaryPredicate eq : eqJoinConjuncts) {
             if (!eq.getOp().equals(BinaryType.EQ)) {
                 continue;
             }
-            SlotId lhsSlotId = ((SlotRef) eq.getChild(0)).getSlotId();
-            SlotId rhsSlotId = ((SlotRef) eq.getChild(1)).getSlotId();
+            SlotId lhsSlotId = ((ExecSlotRef) eq.getChild(0)).getSlotId();
+            SlotId rhsSlotId = ((ExecSlotRef) eq.getChild(1)).getSlotId();
             normalizer.getEquivRelation().union(lhsSlotId, rhsSlotId);
         }
     }

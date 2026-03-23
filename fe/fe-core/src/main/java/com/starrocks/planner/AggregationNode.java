@@ -42,17 +42,18 @@ import com.starrocks.common.AnalysisException;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.IdGenerator;
 import com.starrocks.common.Pair;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecExprUtils;
+import com.starrocks.planner.expression.ExecFunctionCall;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.ast.expression.DecimalLiteral;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprCastFunction;
-import com.starrocks.sql.ast.expression.ExprToSql;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.LiteralExprFactory;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.statistics.ColumnStatistic;
@@ -255,12 +256,12 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
         List<TExpr> aggregateFunctions = Lists.newArrayList();
         StringBuilder sqlAggFuncBuilder = new StringBuilder();
         // only serialize agg exprs that are being materialized
-        for (FunctionCallExpr e : aggInfo.getMaterializedAggregateExprs()) {
-            aggregateFunctions.add(ExprToThrift.treeToThrift(e));
+        for (ExecFunctionCall e : aggInfo.getMaterializedAggregateExprs()) {
+            aggregateFunctions.add(ExecExprSerializer.serialize(e));
             if (sqlAggFuncBuilder.length() > 0) {
                 sqlAggFuncBuilder.append(", ");
             }
-            sqlAggFuncBuilder.append(ExprToSql.toSql(e));
+            sqlAggFuncBuilder.append(ExecExprExplain.explain(e));
         }
 
         msg.agg_node =
@@ -279,24 +280,24 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
             msg.limit = localLimit;
         }
 
-        List<Expr> groupingExprs = aggInfo.getGroupingExprs();
+        List<ExecExpr> groupingExprs = aggInfo.getGroupingExprs();
         if (groupingExprs != null) {
-            msg.agg_node.setGrouping_exprs(ExprToThrift.treesToThrift(groupingExprs));
+            msg.agg_node.setGrouping_exprs(ExecExprSerializer.serializeList(groupingExprs));
             StringBuilder sqlGroupingKeysBuilder = new StringBuilder();
-            for (Expr e : groupingExprs) {
+            for (ExecExpr e : groupingExprs) {
                 if (sqlGroupingKeysBuilder.length() > 0) {
                     sqlGroupingKeysBuilder.append(", ");
                 }
-                sqlGroupingKeysBuilder.append(ExprToSql.toSql(e));
+                sqlGroupingKeysBuilder.append(ExecExprExplain.explain(e));
             }
             if (sqlGroupingKeysBuilder.length() > 0) {
                 msg.agg_node.setSql_grouping_keys(sqlGroupingKeysBuilder.toString());
             }
 
-            List<Expr> minMaxStats = Lists.newArrayList();
+            List<com.starrocks.sql.ast.expression.Expr> minMaxStats = Lists.newArrayList();
             if (groupByMinMaxStats.size() == groupingExprs.size()) {
                 for (int i = 0; i < groupingExprs.size(); i++) {
-                    final Expr expr = groupingExprs.get(i);
+                    final ExecExpr expr = groupingExprs.get(i);
 
                     String min = groupByMinMaxStats.get(i).first.getVarchar();
                     String max = groupByMinMaxStats.get(i).second.getVarchar();
@@ -309,7 +310,7 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
                         if (minExpr instanceof DecimalLiteral) {
                             minExpr = (LiteralExpr) ExprCastFunction.uncheckedCastTo(minExpr, type);
                             maxExpr = (LiteralExpr) ExprCastFunction.uncheckedCastTo(maxExpr, type);
-                        } 
+                        }
                         minMaxStats.add(minExpr);
                         minMaxStats.add(maxExpr);
                     } catch (AnalysisException e) {
@@ -319,13 +320,14 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
             }
 
             if (minMaxStats.size() == 2 * groupingExprs.size()) {
-                msg.agg_node.setGroup_by_min_max(ExprToThrift.treesToThrift(minMaxStats));
+                msg.agg_node.setGroup_by_min_max(
+                        com.starrocks.planner.expression.ExprToThrift.treesToThrift(minMaxStats));
             }
         }
 
-        List<Expr> intermediateAggrExprs = aggInfo.getIntermediateAggrExprs();
+        List<ExecExpr> intermediateAggrExprs = aggInfo.getIntermediateAggrExprs();
         if (intermediateAggrExprs != null && !intermediateAggrExprs.isEmpty()) {
-            msg.agg_node.setIntermediate_aggr_exprs(ExprToThrift.treesToThrift(intermediateAggrExprs));
+            msg.agg_node.setIntermediate_aggr_exprs(ExecExprSerializer.serializeList(intermediateAggrExprs));
         }
 
         if (!buildRuntimeFilters.isEmpty()) {
@@ -372,17 +374,17 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
             } else {
                 output.append(detailPrefix).append("output: ");
             }
-            output.append(explainExpr(detailLevel, aggInfo.getAggregateExprs())).append("\n");
+            output.append(ExecExprExplain.explainList(aggInfo.getAggregateExprs())).append("\n");
         }
         // TODO: unify them
         if (detailLevel == TExplainLevel.VERBOSE) {
             if (CollectionUtils.isNotEmpty(aggInfo.getGroupingExprs())) {
                 output.append(detailPrefix).append("group by: ").append(
-                        explainExpr(detailLevel, aggInfo.getGroupingExprs())).append("\n");
+                        ExecExprExplain.explainList(aggInfo.getGroupingExprs())).append("\n");
             }
         } else {
             output.append(detailPrefix).append("group by: ").append(
-                    explainExpr(detailLevel, aggInfo.getGroupingExprs())).append("\n");
+                    ExecExprExplain.explainList(aggInfo.getGroupingExprs())).append("\n");
         }
 
         if (!conjuncts.isEmpty()) {
@@ -425,19 +427,22 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
     }
 
     @Override
-    public Optional<List<Expr>> candidatesOfSlotExpr(Expr expr, Function<Expr, Boolean> couldBound) {
+    public Optional<List<com.starrocks.planner.expression.ExecExpr>> candidatesOfSlotExpr(
+            com.starrocks.planner.expression.ExecExpr expr,
+            Function<com.starrocks.planner.expression.ExecExpr, Boolean> couldBound) {
         if (!couldBound.apply(expr)) {
             return Optional.empty();
         }
-        if (!(expr instanceof SlotRef)) {
+        if (!(expr instanceof com.starrocks.planner.expression.ExecSlotRef)) {
             return Optional.empty();
         }
-        List<Expr> newSlotExprs = Lists.newArrayList();
-        for (Expr gexpr : aggInfo.getGroupingExprs()) {
-            if (!(gexpr instanceof SlotRef)) {
+        int probeSlotId = ((ExecSlotRef) expr).getSlotId().asInt();
+        List<ExecExpr> newSlotExprs = Lists.newArrayList();
+        for (ExecExpr gexpr : aggInfo.getGroupingExprs()) {
+            if (!(gexpr instanceof ExecSlotRef)) {
                 continue;
             }
-            if (((SlotRef) gexpr).getSlotId().asInt() == ((SlotRef) expr).getSlotId().asInt()) {
+            if (((ExecSlotRef) gexpr).getSlotId().asInt() == probeSlotId) {
                 newSlotExprs.add(gexpr);
             }
         }
@@ -445,8 +450,9 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
     }
 
     @Override
-    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, Expr probeExpr,
-                                          List<Expr> partitionByExprs) {
+    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context,
+                                          com.starrocks.planner.expression.ExecExpr probeExpr,
+                                          List<com.starrocks.planner.expression.ExecExpr> partitionByExprs) {
         RuntimeFilterDescription description = context.getDescription();
         DescriptorTable descTbl = context.getDescTbl();
         if (!canPushDownRuntimeFilter()) {
@@ -457,7 +463,8 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
             return false;
         }
 
-        Function<Expr, Boolean> couldBoundChecker = couldBound(description, descTbl);
+        Function<com.starrocks.planner.expression.ExecExpr, Boolean> couldBoundChecker =
+                couldBound(description, descTbl);
         return pushdownRuntimeFilterForChildOrAccept(context, probeExpr,
                 candidatesOfSlotExpr(probeExpr, couldBoundChecker),
                 partitionByExprs, candidatesOfSlotExprs(partitionByExprs, couldBoundForPartitionExpr()), 0, true);
@@ -482,12 +489,13 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
         if (cardinality < cardinalityLimit || aggInfo.getGroupingExprs().isEmpty()) {
             return;
         }
-        List<Expr> groupByExprs = aggInfo.getGroupingExprs();
+        List<ExecExpr> groupByExprs = aggInfo.getGroupingExprs();
         if (groupByExprs.size() > 3) {
             normalizer.setUncacheable(true);
         }
-        List<SlotRef> slotRefs = groupByExprs.stream().filter(e -> e instanceof SlotRef && e.getType().isStringType())
-                .map(e -> (SlotRef) e).collect(Collectors.toList());
+        List<ExecSlotRef> slotRefs = groupByExprs.stream()
+                .filter(e -> e instanceof ExecSlotRef && e.getType().isStringType())
+                .map(e -> (ExecSlotRef) e).collect(Collectors.toList());
         // we assume that if there exists a very high cardinality of string-typed group-by columns whose average length is
         // greater than 24 bytes(it is equivalent to three bigint-typed group-by columns), then cache populating penalty
         // is unacceptable.
@@ -504,9 +512,9 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
 
     @Override
     public boolean extractConjunctsToNormalize(FragmentNormalizer normalizer) {
-        List<Expr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
+        List<com.starrocks.planner.expression.ExecExpr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
         normalizer.filterOutPartColRangePredicates(getId(), conjuncts,
-                FragmentNormalizer.getSlotIdSet(aggInfo.getGroupingExprs()));
+                FragmentNormalizer.getExecExprSlotIdSet(aggInfo.getGroupingExprs()));
         return false;
     }
 
@@ -518,27 +526,27 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
         List<SlotId> slotIds = normalizer.getExecPlan().getDescTbl().getTupleDesc(tupleId).getSlots()
                 .stream().map(SlotDescriptor::getId).collect(Collectors.toList());
 
-        List<Expr> groupingExprs = aggInfo.getGroupingExprs();
-        Map<SlotId, Expr> slotIdsAndGroupingExprs = Maps.newHashMap();
+        List<ExecExpr> groupingExprs = aggInfo.getGroupingExprs();
+        Map<SlotId, ExecExpr> slotIdsAndGroupingExprs = Maps.newHashMap();
         int numGroupingExprs = (groupingExprs == null || groupingExprs.isEmpty()) ? 0 : groupingExprs.size();
 
         IntStream.range(0, numGroupingExprs).forEach(i ->
                 slotIdsAndGroupingExprs.put(slotIds.get(i), groupingExprs.get(i)));
         Pair<List<Integer>, List<ByteBuffer>> remappedGroupExprs =
-                normalizer.normalizeSlotIdsAndExprs(slotIdsAndGroupingExprs);
+                normalizer.normalizeSlotIdsAndExprs(slotIdsAndGroupingExprs, true);
         aggrNode.setGrouping_exprs(remappedGroupExprs.second);
 
-        Map<SlotId, Expr> slotIdsAndAggExprs = Maps.newHashMap();
-        List<FunctionCallExpr> aggExprs = aggInfo.getMaterializedAggregateExprs();
+        Map<SlotId, ExecExpr> slotIdsAndAggExprs = Maps.newHashMap();
+        List<ExecFunctionCall> aggExprs = aggInfo.getMaterializedAggregateExprs();
         int numAggExprs = (aggExprs == null || aggExprs.isEmpty()) ? 0 : aggExprs.size();
         IntStream.range(0, numAggExprs).forEach(i ->
                 slotIdsAndAggExprs.put(slotIds.get(i + numGroupingExprs), aggExprs.get(i)));
 
-        normalizer.addSlotsUseAggColumns(slotIdsAndAggExprs);
-        normalizer.disableMultiversionIfExprsUseAggColumns(groupingExprs);
+        normalizer.addSlotsUseAggColumnsExec(slotIdsAndAggExprs);
+        normalizer.disableMultiversionIfExecExprsUseAggColumns(groupingExprs);
 
         Pair<List<Integer>, List<ByteBuffer>> remappedAggExprs =
-                normalizer.normalizeSlotIdsAndExprs(slotIdsAndAggExprs);
+                normalizer.normalizeSlotIdsAndExprs(slotIdsAndAggExprs, true);
         aggrNode.setAggregate_functions(remappedAggExprs.second);
 
         aggrNode.setIntermediate_tuple_id(normalizer.remapTupleId(aggInfo.getIntermediateTupleId()).asInt());
@@ -561,8 +569,8 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
 
     @Override
     public List<SlotId> getOutputSlotIds(DescriptorTable descriptorTable) {
-        final List<Expr> groupingExprs = aggInfo.getGroupingExprs();
-        final List<FunctionCallExpr> aggExprs = aggInfo.getMaterializedAggregateExprs();
+        final List<ExecExpr> groupingExprs = aggInfo.getGroupingExprs();
+        final List<ExecFunctionCall> aggExprs = aggInfo.getMaterializedAggregateExprs();
         int numGroupingExprs = groupingExprs != null ? groupingExprs.size() : 0;
         int numAggExprs = aggExprs != null ? aggExprs.size() : 0;
         TupleId tupleId = needsFinalize ? aggInfo.getOutputTupleId() : aggInfo.getIntermediateTupleId();
@@ -587,28 +595,20 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
         // RF push down group by one column
         if (limit > 0 && limit < sv.getAggInFilterLimit() && !aggInfo.getAggregateExprs().isEmpty() &&
                 !aggInfo.getGroupingExprs().isEmpty()) {
-            Expr groupingExpr = aggInfo.getGroupingExprs().get(0);
+            ExecExpr groupingExpr = aggInfo.getGroupingExprs().get(0);
             pushDownUnaryInRuntimeFilter(generator, groupingExpr, descTbl, execGroupSets, 0);
         }
         // generate topn runtime filter
         if (sv.getEnableTopNRuntimeFilter() && topNSortInfo != null
                 && !topNSortInfo.getOrderingExprs().isEmpty()) {
-            Expr topnExpr = topNSortInfo.getOrderingExprs().get(0);
+            com.starrocks.planner.expression.ExecExpr topnExpr = topNSortInfo.getOrderingExprs().get(0);
             pushDownUnaryTopNRuntimeFilter(generator, topnExpr, descTbl, execGroupSets, 0);
         }
         withRuntimeFilters = !buildRuntimeFilters.isEmpty();
     }
 
-    private int getProbeExprOrder(List<Expr> exprs, Expr probeExpr) {
-        for (int i = 0; i < exprs.size(); i++) {
-            if (exprs.get(i).equals(probeExpr)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private void pushDownUnaryAggInRuntimeFilter(IdGenerator<RuntimeFilterId> generator, Expr expr,
+    private void pushDownUnaryAggInRuntimeFilter(IdGenerator<RuntimeFilterId> generator,
+                                                 com.starrocks.planner.expression.ExecExpr expr,
                                                  DescriptorTable descTbl,
                                                  ExecGroupSets execGroupSets,
                                                  RuntimeFilterDescription.RuntimeFilterType type,
@@ -631,7 +631,8 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
         }
     }
 
-    private void pushDownUnaryInRuntimeFilter(IdGenerator<RuntimeFilterId> generator, Expr expr,
+    private void pushDownUnaryInRuntimeFilter(IdGenerator<RuntimeFilterId> generator,
+                                              com.starrocks.planner.expression.ExecExpr expr,
                                               DescriptorTable descTbl,
                                               ExecGroupSets execGroupSets, int exprOrder) {
         pushDownUnaryAggInRuntimeFilter(generator, expr, descTbl, execGroupSets,
@@ -639,7 +640,8 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
                 JoinNode.DistributionMode.PARTITIONED);
     }
 
-    private void pushDownUnaryAggTopNRuntimeFilter(IdGenerator<RuntimeFilterId> generator, Expr expr,
+    private void pushDownUnaryAggTopNRuntimeFilter(IdGenerator<RuntimeFilterId> generator,
+                                                 com.starrocks.planner.expression.ExecExpr expr,
                                                  DescriptorTable descTbl,
                                                  ExecGroupSets execGroupSets,
                                                  RuntimeFilterDescription.RuntimeFilterType type,
@@ -665,7 +667,8 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
         }
     }
 
-    private void pushDownUnaryTopNRuntimeFilter(IdGenerator<RuntimeFilterId> generator, Expr expr,
+    private void pushDownUnaryTopNRuntimeFilter(IdGenerator<RuntimeFilterId> generator,
+                                                com.starrocks.planner.expression.ExecExpr expr,
                                                 DescriptorTable descTbl, ExecGroupSets execGroupSets,
                                                 int exprOrder) {
         pushDownUnaryAggTopNRuntimeFilter(generator, expr, descTbl, execGroupSets,

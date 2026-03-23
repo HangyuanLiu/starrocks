@@ -39,13 +39,13 @@ import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.planner.expression.ExprToThrift;
-import com.starrocks.sql.ast.OrderByElement;
 import com.starrocks.sql.ast.expression.AnalyticWindow;
 import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.thrift.TAnalyticNode;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TNormalAnalyticNode;
@@ -58,14 +58,19 @@ import java.util.Optional;
 import java.util.function.Function;
 
 public class AnalyticEvalNode extends PlanNode {
-    private List<Expr> analyticFnCalls;
+    private List<ExecExpr> analyticFnCalls;
 
     // Partitioning exprs from the AnalyticInfo
-    private final List<Expr> partitionExprs;
+    private final List<ExecExpr> partitionExprs;
 
     // TODO: Remove when the BE uses partitionByLessThan rather than the exprs
-    private List<Expr> substitutedPartitionExprs;
-    private List<OrderByElement> orderByElements;
+    private List<ExecExpr> substitutedPartitionExprs;
+
+    // Order-by expressions and flags (stored separately instead of as OrderByElement
+    // because the expressions are ExecExpr, not AST Expr)
+    private List<ExecExpr> orderByExprs;
+    private List<Boolean> orderByIsAsc;
+    private List<Boolean> orderByNullsFirst;
 
     private final AnalyticWindow analyticWindow;
 
@@ -78,26 +83,29 @@ public class AnalyticEvalNode extends PlanNode {
 
     // predicates constructed from partitionExprs_/orderingExprs_ to
     // compare input to buffered tuples
-    private final Expr partitionByEq;
-    private final Expr orderByEq;
+    private final ExecExpr partitionByEq;
+    private final ExecExpr orderByEq;
     private final TupleDescriptor bufferedTupleDesc;
 
     public AnalyticEvalNode(
-            PlanNodeId id, PlanNode input, List<Expr> analyticFnCalls,
-            List<Expr> partitionExprs, List<OrderByElement> orderByElements,
+            PlanNodeId id, PlanNode input, List<ExecExpr> analyticFnCalls,
+            List<ExecExpr> partitionExprs,
+            List<ExecExpr> orderByExprs, List<Boolean> orderByIsAsc, List<Boolean> orderByNullsFirst,
             AnalyticWindow analyticWindow,
             boolean useHashBasedPartition,
             boolean isSkewed,
             TupleDescriptor intermediateTupleDesc,
             TupleDescriptor outputTupleDesc,
-            Expr partitionByEq, Expr orderByEq, TupleDescriptor bufferedTupleDesc) {
+            ExecExpr partitionByEq, ExecExpr orderByEq, TupleDescriptor bufferedTupleDesc) {
         super(id, input.getTupleIds(), "ANALYTIC");
         Preconditions.checkState(!tupleIds.contains(outputTupleDesc.getId()));
         // we're materializing the input row augmented with the analytic output tuple
         tupleIds.add(outputTupleDesc.getId());
         this.analyticFnCalls = analyticFnCalls;
         this.partitionExprs = partitionExprs;
-        this.orderByElements = orderByElements;
+        this.orderByExprs = orderByExprs;
+        this.orderByIsAsc = orderByIsAsc;
+        this.orderByNullsFirst = orderByNullsFirst;
         this.analyticWindow = analyticWindow;
         this.useHashBasedPartition = useHashBasedPartition;
         this.isSkewed = isSkewed;
@@ -110,16 +118,24 @@ public class AnalyticEvalNode extends PlanNode {
         nullableTupleIds = Sets.newHashSet(input.getNullableTupleIds());
     }
 
-    public List<Expr> getAnalyticFnCalls() {
+    public List<ExecExpr> getAnalyticFnCalls() {
         return analyticFnCalls;
     }
 
-    public List<Expr> getPartitionExprs() {
+    public List<ExecExpr> getPartitionExprs() {
         return partitionExprs;
     }
 
-    public List<OrderByElement> getOrderByElements() {
-        return orderByElements;
+    public List<ExecExpr> getOrderByExprs() {
+        return orderByExprs;
+    }
+
+    public List<Boolean> getOrderByIsAsc() {
+        return orderByIsAsc;
+    }
+
+    public List<Boolean> getOrderByNullsFirst() {
+        return orderByNullsFirst;
     }
 
     @Override
@@ -128,27 +144,21 @@ public class AnalyticEvalNode extends PlanNode {
 
     @Override
     protected String debugString() {
-        List<String> orderByElementStrs = Lists.newArrayList();
-
-        for (OrderByElement element : orderByElements) {
-            orderByElementStrs.add(ExprToSql.toSql(element));
-        }
-
         return MoreObjects.toStringHelper(this)
-                .add("analyticFnCalls", Expr.debugString(analyticFnCalls))
-                .add("partitionExprs", Expr.debugString(partitionExprs))
-                .add("subtitutedPartitionExprs", Expr.debugString(substitutedPartitionExprs))
-                .add("orderByElements", Joiner.on(", ").join(orderByElementStrs))
+                .add("analyticFnCalls", ExecExprExplain.explainList(analyticFnCalls))
+                .add("partitionExprs", ExecExprExplain.explainList(partitionExprs))
+                .add("substitutedPartitionExprs", substitutedPartitionExprs != null ?
+                        ExecExprExplain.explainList(substitutedPartitionExprs) : "null")
+                .add("orderByExprs", ExecExprExplain.explainList(orderByExprs))
                 .add("window", analyticWindow)
                 .add("useHashBasedPartition", useHashBasedPartition)
                 .add("isSkewed", isSkewed)
-                .add("intermediateTid", intermediateTupleDesc.getId())
-                .add("intermediateTid", outputTupleDesc.getId())
+                .add("intermediateTid", intermediateTupleDesc != null ? intermediateTupleDesc.getId() : "null")
                 .add("outputTid", outputTupleDesc.getId())
                 .add("partitionByEq",
-                        partitionByEq != null ? partitionByEq.debugString() : "null")
+                        partitionByEq != null ? ExecExprExplain.explain(partitionByEq) : "null")
                 .add("orderByEq",
-                        orderByEq != null ? orderByEq.debugString() : "null")
+                        orderByEq != null ? ExecExprExplain.explain(orderByEq) : "null")
                 .addValue(super.debugString())
                 .toString();
     }
@@ -161,37 +171,32 @@ public class AnalyticEvalNode extends PlanNode {
             msg.analytic_node.setIntermediate_tuple_id(intermediateTupleDesc.getId().asInt());
         }
         msg.analytic_node.setOutput_tuple_id(outputTupleDesc.getId().asInt());
-        msg.analytic_node.setPartition_exprs(ExprToThrift.treesToThrift(substitutedPartitionExprs));
+        msg.analytic_node.setPartition_exprs(ExecExprSerializer.serializeList(substitutedPartitionExprs));
         StringBuilder sqlPartitionKeysBuilder = new StringBuilder();
-        for (Expr e : substitutedPartitionExprs) {
+        for (ExecExpr e : substitutedPartitionExprs) {
             if (sqlPartitionKeysBuilder.length() > 0) {
                 sqlPartitionKeysBuilder.append(", ");
             }
-            sqlPartitionKeysBuilder.append(ExprToSql.toSql(e));
+            sqlPartitionKeysBuilder.append(ExecExprExplain.explain(e));
         }
         if (sqlPartitionKeysBuilder.length() > 0) {
             msg.analytic_node.setSql_partition_keys(sqlPartitionKeysBuilder.toString());
         }
-        msg.analytic_node.setOrder_by_exprs(
-                ExprToThrift.treesToThrift(OrderByElement.getOrderByExprs(orderByElements)));
-        msg.analytic_node.setAnalytic_functions(ExprToThrift.treesToThrift(analyticFnCalls));
+        msg.analytic_node.setOrder_by_exprs(ExecExprSerializer.serializeList(orderByExprs));
+        msg.analytic_node.setAnalytic_functions(ExecExprSerializer.serializeList(analyticFnCalls));
         StringBuilder sqlAggFuncBuilder = new StringBuilder();
-        // only serialize agg exprs that are being materialized
-        for (Expr e : analyticFnCalls) {
-            if (!(e instanceof FunctionCallExpr)) {
-                continue;
-            }
+        for (ExecExpr e : analyticFnCalls) {
             if (sqlAggFuncBuilder.length() > 0) {
                 sqlAggFuncBuilder.append(", ");
             }
-            sqlAggFuncBuilder.append(ExprToSql.toSql(e));
+            sqlAggFuncBuilder.append(ExecExprExplain.explain(e));
         }
         if (sqlAggFuncBuilder.length() > 0) {
             msg.analytic_node.setSql_aggregate_functions(sqlAggFuncBuilder.toString());
         }
 
         if (analyticWindow == null) {
-            if (!orderByElements.isEmpty()) {
+            if (!orderByExprs.isEmpty()) {
                 msg.analytic_node.setWindow(
                         ExprToThrift.analyticWindowToThrift(AnalyticWindow.DEFAULT_WINDOW));
             }
@@ -201,11 +206,11 @@ public class AnalyticEvalNode extends PlanNode {
         }
 
         if (partitionByEq != null) {
-            msg.analytic_node.setPartition_by_eq(ExprToThrift.treeToThrift(partitionByEq));
+            msg.analytic_node.setPartition_by_eq(ExecExprSerializer.serialize(partitionByEq));
         }
 
         if (orderByEq != null) {
-            msg.analytic_node.setOrder_by_eq(ExprToThrift.treeToThrift(orderByEq));
+            msg.analytic_node.setOrder_by_eq(ExecExprSerializer.serialize(orderByEq));
         }
 
         msg.analytic_node.setUse_hash_based_partition(useHashBasedPartition);
@@ -222,13 +227,9 @@ public class AnalyticEvalNode extends PlanNode {
         output.append(prefix).append("functions: ");
         List<String> strings = Lists.newArrayList();
 
-        for (Expr fnCall : analyticFnCalls) {
+        for (ExecExpr fnCall : analyticFnCalls) {
             strings.add("[");
-            if (detailLevel.equals(TExplainLevel.NORMAL)) {
-                strings.add(explainExpr(fnCall));
-            } else {
-                strings.add(explainExpr(TExplainLevel.VERBOSE, List.of(fnCall)));
-            }
+            strings.add(ExecExprExplain.explain(fnCall));
             strings.add("]");
         }
 
@@ -239,28 +240,28 @@ public class AnalyticEvalNode extends PlanNode {
             output.append(prefix).append("partition by: ");
             strings.clear();
 
-            for (Expr partitionExpr : partitionExprs) {
-                if (detailLevel.equals(TExplainLevel.NORMAL)) {
-                    strings.add(explainExpr(partitionExpr));
-                } else {
-                    strings.add(explainExpr(TExplainLevel.VERBOSE, List.of(partitionExpr)));
-                }
+            for (ExecExpr partitionExpr : partitionExprs) {
+                strings.add(ExecExprExplain.explain(partitionExpr));
             }
 
             output.append(Joiner.on(", ").join(strings));
             output.append("\n");
         }
 
-        if (!orderByElements.isEmpty()) {
+        if (!orderByExprs.isEmpty()) {
             output.append(prefix).append("order by: ");
             strings.clear();
 
-            for (OrderByElement element : orderByElements) {
-                if (detailLevel.equals(TExplainLevel.NORMAL)) {
-                    strings.add(ExprToSql.toSql(element));
+            for (int i = 0; i < orderByExprs.size(); i++) {
+                StringBuilder element = new StringBuilder();
+                element.append(ExecExprExplain.explain(orderByExprs.get(i)));
+                element.append(orderByIsAsc.get(i) ? " ASC" : " DESC");
+                if (orderByNullsFirst.get(i)) {
+                    element.append(" NULLS FIRST");
                 } else {
-                    strings.add(ExprToSql.explain(element));
+                    element.append(" NULLS LAST");
                 }
+                strings.add(element.toString());
             }
 
             output.append(Joiner.on(", ").join(strings));
@@ -269,7 +270,7 @@ public class AnalyticEvalNode extends PlanNode {
 
         if (analyticWindow != null) {
             output.append(prefix).append("window: ");
-            output.append(ExprToSql.toSql(analyticWindow));
+            output.append(com.starrocks.sql.ast.expression.ExprToSql.toSql(analyticWindow));
             output.append("\n");
         }
 
@@ -283,32 +284,25 @@ public class AnalyticEvalNode extends PlanNode {
         return output.toString();
     }
 
-    public void setSubstitutedPartitionExprs(List<Expr> substitutedPartitionExprs) {
+    public void setSubstitutedPartitionExprs(List<ExecExpr> substitutedPartitionExprs) {
         this.substitutedPartitionExprs = substitutedPartitionExprs;
     }
 
     @Override
-    public Optional<List<Expr>> candidatesOfSlotExpr(Expr expr, Function<Expr, Boolean> couldBound) {
+    public Optional<List<ExecExpr>> candidatesOfSlotExpr(ExecExpr expr, Function<ExecExpr, Boolean> couldBound) {
         if (!couldBound.apply(expr)) {
             return Optional.empty();
         }
-        if (!(expr instanceof SlotRef)) {
+        if (!(expr instanceof ExecSlotRef)) {
             return Optional.empty();
         }
-        List<Expr> newSlotExprs = Lists.newArrayList();
-        for (Expr pExpr : partitionExprs) {
-            // push down only when both of them are slot ref and slot id match.
-            if ((pExpr instanceof SlotRef) &&
-                    (((SlotRef) pExpr).getSlotId().asInt() == ((SlotRef) expr).getSlotId().asInt())) {
-                newSlotExprs.add(pExpr);
-            }
-        }
-        return newSlotExprs.size() > 0 ? Optional.of(newSlotExprs) : Optional.empty();
+        // Return the expr itself if it's bound.
+        return Optional.of(Lists.newArrayList(expr));
     }
 
     @Override
-    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, Expr probeExpr,
-                                          List<Expr> partitionByExprs) {
+    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, ExecExpr probeExpr,
+                                          List<ExecExpr> partitionByExprs) {
         RuntimeFilterDescription description = context.getDescription();
         DescriptorTable descTbl = context.getDescTbl();
         if (!canPushDownRuntimeFilter()) {
@@ -336,18 +330,18 @@ public class AnalyticEvalNode extends PlanNode {
 
     @Override
     public boolean extractConjunctsToNormalize(FragmentNormalizer normalizer) {
-        List<Expr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
-        normalizer.filterOutPartColRangePredicates(getId(), conjuncts, FragmentNormalizer.getSlotIdSet(partitionExprs));
+        List<ExecExpr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
+        normalizer.filterOutPartColRangePredicates(getId(), conjuncts,
+                FragmentNormalizer.getExecExprSlotIdSet(partitionExprs));
         return false;
     }
 
     @Override
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         TNormalAnalyticNode analyticNode = new TNormalAnalyticNode();
-        analyticNode.setPartition_exprs(normalizer.normalizeOrderedExprs(substitutedPartitionExprs));
-        analyticNode.setOrder_by_exprs(
-                normalizer.normalizeOrderedExprs(OrderByElement.getOrderByExprs(orderByElements)));
-        analyticNode.setAnalytic_functions(normalizer.normalizeExprs(analyticFnCalls));
+        analyticNode.setPartition_exprs(normalizer.normalizeOrderedExecExprs(substitutedPartitionExprs));
+        analyticNode.setOrder_by_exprs(normalizer.normalizeOrderedExecExprs(orderByExprs));
+        analyticNode.setAnalytic_functions(normalizer.normalizeExecExprs(analyticFnCalls));
         if (analyticWindow != null) {
             analyticNode.setWindow(ExprToThrift.analyticWindowToThrift(analyticWindow));
         }
@@ -361,10 +355,10 @@ public class AnalyticEvalNode extends PlanNode {
             analyticNode.setBuffered_tuple_id(normalizer.remapTupleId(bufferedTupleDesc.getId()).asInt());
         }
         if (partitionByEq != null) {
-            analyticNode.setPartition_by_eq(normalizer.normalizeExpr(partitionByEq));
+            analyticNode.setPartition_by_eq(normalizer.normalizeExecExpr(partitionByEq));
         }
         if (orderByEq != null) {
-            analyticNode.setOrder_by_eq(normalizer.normalizeExpr(orderByEq));
+            analyticNode.setOrder_by_eq(normalizer.normalizeExecExpr(orderByEq));
         }
         analyticNode.setHas_outer_join_child(hasNullableGenerateChild);
         planNode.setAnalytic_node(analyticNode);

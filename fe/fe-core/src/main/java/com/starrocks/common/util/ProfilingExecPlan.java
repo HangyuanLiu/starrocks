@@ -41,11 +41,10 @@ import com.starrocks.planner.SlotId;
 import com.starrocks.planner.SortInfo;
 import com.starrocks.planner.SortNode;
 import com.starrocks.planner.SplitCastDataSink;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.sql.ast.OrderByElement;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.optimizer.ExpressionContext;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.cost.CostEstimate;
@@ -267,7 +266,7 @@ public class ProfilingExecPlan {
         if (outputPartition != null) {
             element.addInfo("PartitionType", outputPartition.getType().toString());
             if (CollectionUtils.isNotEmpty(outputPartition.getPartitionExprs())) {
-                element.addInfo("PartitionExprs", exprsToString(outputPartition.getPartitionExprs()));
+                element.addInfo("PartitionExprs", execExprsToString(outputPartition.getPartitionExprs()));
             }
         }
 
@@ -345,62 +344,61 @@ public class ProfilingExecPlan {
                 return;
             }
             if (CollectionUtils.isNotEmpty(aggInfo.getAggregateExprs())) {
-                element.addInfo("AggExprs", exprsToString(aggInfo.getAggregateExprs()));
+                element.addInfo("AggExprs", execExprsToString(aggInfo.getAggregateExprs()));
             }
             if (CollectionUtils.isNotEmpty(aggInfo.getGroupingExprs())) {
-                element.addInfo("GroupingExprs", exprsToString(aggInfo.getGroupingExprs()));
+                element.addInfo("GroupingExprs", execExprsToString(aggInfo.getGroupingExprs()));
             }
         } else if (node instanceof AnalyticEvalNode) {
             AnalyticEvalNode window = (AnalyticEvalNode) node;
             if (CollectionUtils.isNotEmpty(window.getAnalyticFnCalls())) {
-                element.addInfo("Functions", exprsToString(window.getAnalyticFnCalls()));
+                element.addInfo("Functions", execExprsToString(window.getAnalyticFnCalls()));
             }
             if (CollectionUtils.isNotEmpty(window.getPartitionExprs())) {
-                element.addInfo("PartitionExprs", exprsToString(window.getPartitionExprs()));
+                element.addInfo("PartitionExprs", execExprsToString(window.getPartitionExprs()));
             }
-            if (CollectionUtils.isNotEmpty(window.getOrderByElements())) {
-                element.addInfo("OrderByExprs", exprsToString(window.getOrderByElements().stream()
-                        .map(OrderByElement::getExpr).collect(Collectors.toList())));
+            if (CollectionUtils.isNotEmpty(window.getOrderByExprs())) {
+                element.addInfo("OrderByExprs", execExprsToString(window.getOrderByExprs()));
             }
         } else if (node instanceof ProjectNode) {
             ProjectNode projectNode = (ProjectNode) node;
             if (MapUtils.isNotEmpty(projectNode.getSlotMap())) {
-                List<Pair<SlotId, Expr>> orderedExprs = new ArrayList<>();
-                for (Map.Entry<SlotId, Expr> kv : projectNode.getSlotMap().entrySet()) {
+                List<Pair<SlotId, ExecExpr>> orderedExprs = new ArrayList<>();
+                for (Map.Entry<SlotId, ExecExpr> kv : projectNode.getSlotMap().entrySet()) {
                     orderedExprs.add(new Pair<>(kv.getKey(), kv.getValue()));
                 }
                 orderedExprs.sort(Comparator.comparingInt(o -> o.first.asInt()));
                 element.addInfo("Expression",
-                        exprsToString(orderedExprs.stream().map(kv -> kv.second).collect(Collectors.toList())));
+                        execExprsToString(orderedExprs.stream().map(kv -> kv.second).collect(Collectors.toList())));
             }
 
             if (MapUtils.isNotEmpty(projectNode.getCommonSlotMap())) {
-                List<Pair<SlotId, Expr>> orderedExprs = new ArrayList<>();
-                for (Map.Entry<SlotId, Expr> kv : projectNode.getCommonSlotMap().entrySet()) {
+                List<Pair<SlotId, ExecExpr>> orderedExprs = new ArrayList<>();
+                for (Map.Entry<SlotId, ExecExpr> kv : projectNode.getCommonSlotMap().entrySet()) {
                     orderedExprs.add(new Pair<>(kv.getKey(), kv.getValue()));
                 }
                 orderedExprs.sort(Comparator.comparingInt(o -> o.first.asInt()));
                 element.addInfo("CommonExpression",
-                        exprsToString(orderedExprs.stream().map(kv -> kv.second).collect(Collectors.toList())));
+                        execExprsToString(orderedExprs.stream().map(kv -> kv.second).collect(Collectors.toList())));
             }
         } else if (node instanceof JoinNode) {
             JoinNode joinNode = (JoinNode) node;
             if (CollectionUtils.isNotEmpty(joinNode.getEqJoinConjuncts())) {
-                element.addInfo("EqJoinConjuncts", exprsToString(joinNode.getEqJoinConjuncts()));
+                element.addInfo("EqJoinConjuncts", execExprsToString(joinNode.getEqJoinConjuncts()));
             }
         } else if (node instanceof SelectNode) {
             SelectNode selectNode = (SelectNode) node;
             if (CollectionUtils.isNotEmpty(selectNode.getConjuncts())) {
-                element.addInfo("Predicates", exprsToString(selectNode.getConjuncts()));
+                element.addInfo("Predicates", execExprsToString(selectNode.getConjuncts()));
             }
         } else if (node instanceof SortNode) {
             SortNode sortNode = (SortNode) node;
             SortInfo sortInfo = sortNode.getSortInfo();
             if (CollectionUtils.isNotEmpty(sortInfo.getPartitionExprs())) {
-                element.addInfo("PartitionExprs", exprsToString(sortInfo.getPartitionExprs()));
+                element.addInfo("PartitionExprs", execExprsToString(sortInfo.getPartitionExprs()));
             }
             if (CollectionUtils.isNotEmpty(sortInfo.getOrderingExprs())) {
-                element.addInfo("OrderByExprs", exprsToString(sortInfo.getOrderingExprs()));
+                element.addInfo("OrderByExprs", execExprsToString(sortInfo.getOrderingExprs()));
             }
         } else if (node instanceof ScanNode) {
             ScanNode scanNode = (ScanNode) node;
@@ -457,13 +455,16 @@ public class ProfilingExecPlan {
         return normalizedName.toString();
     }
 
-    private static String exprsToString(List<? extends Expr> exprs) {
+    private static String execExprsToString(List<? extends ExecExpr> exprs) {
         List<String> exprContents = exprs.stream()
-                .map(ExprToSql::toSql)
+                .map(ExecExprExplain::explain)
                 .collect(Collectors.toList());
+        return truncateExprContents(exprContents, exprs.size());
+    }
+
+    private static String truncateExprContents(List<String> exprContents, int originalSize) {
         int lastIndex = -1;
         int length = 0;
-        int originalSize = exprs.size();
         for (int i = 0; i < originalSize; i++) {
             if (length + exprContents.get(i).length() > MAX_EXPR_LENGTH) {
                 break;

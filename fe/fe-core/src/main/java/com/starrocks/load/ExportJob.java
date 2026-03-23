@@ -81,6 +81,8 @@ import com.starrocks.planner.PlanNodeId;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.TupleDescriptor;
+import com.starrocks.planner.expression.ExecAstExprWrapper;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.proto.UnlockTabletMetadataRequest;
 import com.starrocks.qe.DefaultCoordinator;
 import com.starrocks.qe.scheduler.Coordinator;
@@ -487,18 +489,18 @@ public class ExportJob implements Writable, GsonPostProcessable {
         return fragment;
     }
 
-    private List<Expr> createOutputExprs() {
-        List<Expr> outputExprs = Lists.newArrayList();
+    private List<ExecExpr> createOutputExprs() {
+        List<Expr> astExprs = Lists.newArrayList();
         for (int i = 0; i < exportTupleDesc.getSlots().size(); ++i) {
             SlotDescriptor slotDesc = exportTupleDesc.getSlots().get(i);
             SlotRef slotRef = new SlotRef(slotDesc);
             if (slotDesc.getType().getPrimitiveType() == PrimitiveType.CHAR) {
                 slotRef.setType(CharType.CHAR);
             }
-            outputExprs.add(slotRef);
+            astExprs.add(slotRef);
         }
 
-        return outputExprs;
+        return ExecAstExprWrapper.wrapList(astExprs);
     }
 
     private Coordinator.Factory getCoordinatorFactory() {

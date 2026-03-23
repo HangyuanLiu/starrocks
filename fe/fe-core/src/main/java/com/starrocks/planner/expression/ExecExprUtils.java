@@ -120,6 +120,24 @@ public final class ExecExprUtils {
     }
 
     /**
+     * Check whether the given expression tree contains an {@link ExecDictMapping} node.
+     */
+    public static boolean containsDictMappingExpr(ExecExpr expr) {
+        if (expr == null) {
+            return false;
+        }
+        if (expr instanceof ExecDictMapping) {
+            return true;
+        }
+        for (ExecExpr child : expr.getChildren()) {
+            if (containsDictMappingExpr(child)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Unwrap a slot reference from an expression, traversing through CASTs.
      * Returns null if the expression is not a (possibly cast) slot reference.
      */

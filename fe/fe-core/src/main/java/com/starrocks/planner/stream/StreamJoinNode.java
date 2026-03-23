@@ -18,12 +18,13 @@ package com.starrocks.planner.stream;
 import com.starrocks.planner.JoinNode;
 import com.starrocks.planner.PlanNode;
 import com.starrocks.planner.PlanNodeId;
+import com.starrocks.planner.expression.ExecBinaryPredicate;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExprOpcodeRegistry;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.sql.ast.JoinOperator;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.optimizer.operator.stream.IMTInfo;
 import com.starrocks.thrift.TEqJoinCondition;
 import com.starrocks.thrift.TExplainLevel;
@@ -41,7 +42,7 @@ public class StreamJoinNode extends JoinNode {
     private IMTInfo rightIMT;
 
     public StreamJoinNode(PlanNodeId id, PlanNode outer, PlanNode inner, JoinOperator joinOp,
-                          List<Expr> eqJoinConjuncts, List<Expr> otherJoinConjuncts) {
+                          List<ExecExpr> eqJoinConjuncts, List<ExecExpr> otherJoinConjuncts) {
         super("StreamJoin", id, outer, inner, joinOp, eqJoinConjuncts, otherJoinConjuncts);
     }
 
@@ -52,19 +53,20 @@ public class StreamJoinNode extends JoinNode {
         msg.stream_join_node.join_op = ExprToThrift.joinOperatorToThrift(joinOp);
 
         if (CollectionUtils.isNotEmpty(eqJoinConjuncts)) {
-            for (BinaryPredicate eqJoinPredicate : eqJoinConjuncts) {
+            for (ExecBinaryPredicate eqJoinPredicate : eqJoinConjuncts) {
                 TEqJoinCondition eqJoinCondition = new TEqJoinCondition(
-                        ExprToThrift.treeToThrift(eqJoinPredicate.getChild(0)),
-                        ExprToThrift.treeToThrift(eqJoinPredicate.getChild(1)));
+                        ExecExprSerializer.serialize(eqJoinPredicate.getChild(0)),
+                        ExecExprSerializer.serialize(eqJoinPredicate.getChild(1)));
                 eqJoinCondition.setOpcode(ExprOpcodeRegistry.getBinaryOpcode(eqJoinPredicate.getOp()));
                 msg.stream_join_node.addToEq_join_conjuncts(eqJoinCondition);
             }
         }
         if (CollectionUtils.isNotEmpty(otherJoinConjuncts)) {
-            for (Expr e : otherJoinConjuncts) {
-                msg.stream_join_node.addToOther_join_conjuncts(ExprToThrift.treeToThrift(e));
+            for (ExecExpr e : otherJoinConjuncts) {
+                msg.stream_join_node.addToOther_join_conjuncts(ExecExprSerializer.serialize(e));
             }
-            String sqlJoinPredicate = otherJoinConjuncts.stream().map(ExprToSql::toSql).collect(Collectors.joining(","));
+            String sqlJoinPredicate = otherJoinConjuncts.stream().map(ExecExprExplain::explain)
+                    .collect(Collectors.joining(","));
             msg.stream_join_node.setSql_join_predicates(sqlJoinPredicate);
         }
     }

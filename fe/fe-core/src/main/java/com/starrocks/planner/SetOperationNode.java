@@ -39,9 +39,11 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.starrocks.planner.expression.ExprToThrift;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprUtils;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecExprUtils;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.thrift.TExceptNode;
 import com.starrocks.thrift.TExplainLevel;
@@ -76,22 +78,22 @@ public abstract class SetOperationNode extends PlanNode {
 
     // List of set operation result exprs of the originating SetOperationStmt. Used for
     // determining passthrough-compatibility of children.
-    protected List<Expr> setOpResultExprs_;
+    protected List<ExecExpr> setOpResultExprs_;
 
     // Expr lists corresponding to the input query stmts.
     // The ith resultExprList belongs to the ith child.
     // All exprs are resolved to base tables.
-    protected List<List<Expr>> resultExprLists_ = Lists.newArrayList();
+    protected List<List<ExecExpr>> resultExprLists_ = Lists.newArrayList();
 
     // Expr lists that originate from constant select stmts.
     // We keep them separate from the regular expr lists to avoid null children.
-    protected List<List<Expr>> constExprLists_ = Lists.newArrayList();
+    protected List<List<ExecExpr>> constExprLists_ = Lists.newArrayList();
 
     // Materialized result/const exprs corresponding to materialized slots.
     // Set in init() and substituted against the corresponding child's output smap.
-    protected List<List<Expr>> materializedResultExprLists_ = Lists.newArrayList();
-    protected List<List<Expr>> materializedConstExprLists_ = Lists.newArrayList();
-    protected List<Expr> setOperationOutputList = Lists.newArrayList();
+    protected List<List<ExecExpr>> materializedResultExprLists_ = Lists.newArrayList();
+    protected List<List<ExecExpr>> materializedConstExprLists_ = Lists.newArrayList();
+    protected List<ExecExpr> setOperationOutputList = Lists.newArrayList();
 
     // Indicates if this UnionNode is inside a subplan.
     protected boolean isInSubplan_;
@@ -103,7 +105,7 @@ public abstract class SetOperationNode extends PlanNode {
 
     protected List<Map<Integer, Integer>> outputSlotIdToChildSlotIdMaps = Lists.newArrayList();
 
-    protected List<List<Expr>> localPartitionByExprsList = Lists.newArrayList();
+    protected List<List<ExecExpr>> localPartitionByExprsList = Lists.newArrayList();
     protected SetOperationNode(PlanNodeId id, TupleId tupleId, String planNodeName) {
         super(id, tupleId.asList(), planNodeName);
         setOpResultExprs_ = Lists.newArrayList();
@@ -112,7 +114,7 @@ public abstract class SetOperationNode extends PlanNode {
     }
 
     protected SetOperationNode(PlanNodeId id, TupleId tupleId, String planNodeName,
-                               List<Expr> setOpResultExprs,
+                               List<ExecExpr> setOpResultExprs,
                                boolean isInSubplan) {
         super(id, tupleId.asList(), planNodeName);
         setOpResultExprs_ = setOpResultExprs;
@@ -120,23 +122,23 @@ public abstract class SetOperationNode extends PlanNode {
         isInSubplan_ = isInSubplan;
     }
 
-    public void addConstExprList(List<Expr> exprs) {
+    public void addConstExprList(List<ExecExpr> exprs) {
         constExprLists_.add(exprs);
     }
 
     /**
      * Add a child tree plus its corresponding unresolved resultExprs.
      */
-    public void addChild(PlanNode node, List<Expr> resultExprs) {
+    public void addChild(PlanNode node, List<ExecExpr> resultExprs) {
         super.addChild(node);
         resultExprLists_.add(resultExprs);
     }
 
-    public void setMaterializedResultExprLists_(List<List<Expr>> materializedResultExprLists_) {
+    public void setMaterializedResultExprLists_(List<List<ExecExpr>> materializedResultExprLists_) {
         this.materializedResultExprLists_ = materializedResultExprLists_;
     }
 
-    public void setMaterializedConstExprLists_(List<List<Expr>> materializedConstExprLists_) {
+    public void setMaterializedConstExprLists_(List<List<ExecExpr>> materializedConstExprLists_) {
         this.materializedConstExprLists_ = materializedConstExprLists_;
     }
 
@@ -148,11 +150,11 @@ public abstract class SetOperationNode extends PlanNode {
         this.outputSlotIdToChildSlotIdMaps = outputSlotIdToChildSlotIdMaps;
     }
 
-    public void setLocalPartitionByExprsList(List<List<Expr>> localPartitionByExprsList) {
+    public void setLocalPartitionByExprsList(List<List<ExecExpr>> localPartitionByExprsList) {
         this.localPartitionByExprsList = localPartitionByExprsList;
     }
 
-    public void setSetOperationOutputList(List<Expr> setOperationOutputList) {
+    public void setSetOperationOutputList(List<ExecExpr> setOperationOutputList) {
         this.setOperationOutputList = setOperationOutputList;
     }
 
@@ -164,18 +166,18 @@ public abstract class SetOperationNode extends PlanNode {
         Preconditions.checkState(materializedResultExprLists_.size() == children.size());
         List<List<TExpr>> texprLists = Lists.newArrayList();
 
-        for (List<Expr> exprList : materializedResultExprLists_) {
-            texprLists.add(ExprToThrift.treesToThrift(exprList));
+        for (List<ExecExpr> exprList : materializedResultExprLists_) {
+            texprLists.add(ExecExprSerializer.serializeList(exprList));
         }
 
         List<List<TExpr>> constTexprLists = Lists.newArrayList();
-        for (List<Expr> constTexprList : materializedConstExprLists_) {
-            constTexprLists.add(ExprToThrift.treesToThrift(constTexprList));
+        for (List<ExecExpr> constTexprList : materializedConstExprLists_) {
+            constTexprLists.add(ExecExprSerializer.serializeList(constTexprList));
         }
 
         List<List<TExpr>> tlocalPartitionByExprsList = Lists.newArrayList();
-        for (List<Expr> localPartitionByExprs : localPartitionByExprsList) {
-            tlocalPartitionByExprsList.add(ExprToThrift.treesToThrift(localPartitionByExprs));
+        for (List<ExecExpr> localPartitionByExprs : localPartitionByExprsList) {
+            tlocalPartitionByExprsList.add(ExecExprSerializer.serializeList(localPartitionByExprs));
         }
 
         Preconditions.checkState(firstMaterializedChildIdx_ <= children.size());
@@ -221,8 +223,8 @@ public abstract class SetOperationNode extends PlanNode {
         }
         if (CollectionUtils.isNotEmpty(constExprLists_)) {
             output.append(prefix).append("constant exprs: ").append("\n");
-            for (List<Expr> exprs : constExprLists_) {
-                output.append(prefix).append("    ").append(exprs.stream().map(this::explainExpr)
+            for (List<ExecExpr> exprs : constExprLists_) {
+                output.append(prefix).append("    ").append(exprs.stream().map(ExecExprExplain::explain)
                         .collect(Collectors.joining(" | "))).append("\n");
             }
         }
@@ -231,17 +233,17 @@ public abstract class SetOperationNode extends PlanNode {
                 output.append(prefix).append("output exprs:").append("\n");
                 output.append(prefix).append("    ")
                         .append(setOperationOutputList.stream()
-                                .map(c -> explainExpr(detailLevel, List.of(c)))
+                                .map(ExecExprExplain::explain)
                                 .collect(Collectors.joining(" | ")))
                         .append("\n");
             }
 
             if (CollectionUtils.isNotEmpty(materializedResultExprLists_)) {
                 output.append(prefix).append("child exprs:").append("\n");
-                for (List<Expr> exprs : materializedResultExprLists_) {
+                for (List<ExecExpr> exprs : materializedResultExprLists_) {
                     output.append(prefix).append("    ")
                             .append(exprs.stream()
-                                    .map(c -> explainExpr(detailLevel, List.of(c)))
+                                    .map(ExecExprExplain::explain)
                                     .collect(Collectors.joining(" | ")))
                             .append("\n");
                 }
@@ -267,15 +269,15 @@ public abstract class SetOperationNode extends PlanNode {
         return false;
     }
 
-    public Optional<List<Expr>> candidatesOfSlotExprForChild(Expr expr, int childIdx) {
+    public Optional<List<ExecExpr>> candidatesOfSlotExprForChild(ExecExpr expr, int childIdx) {
         Map<Integer, Set<Integer>> slotExprOutputSlotIdsMap = Maps.newHashMap();
-        if (!(expr instanceof SlotRef)) {
+        if (!(expr instanceof ExecSlotRef)) {
             return Optional.empty();
         }
-        if (!ExprUtils.isBoundByTupleIds(expr, getTupleIds())) {
+        if (!ExecExprUtils.isBoundByTupleIds(expr, getTupleIds())) {
             return Optional.empty();
         }
-        int slotExprSlotId = ((SlotRef) expr).getSlotId().asInt();
+        int slotExprSlotId = ((ExecSlotRef) expr).getSlotId().asInt();
         for (Map<Integer, Integer> map : outputSlotIdToChildSlotIdMaps) {
             if (map.containsKey(slotExprSlotId)) {
                 slotExprOutputSlotIdsMap.putIfAbsent(slotExprSlotId, Sets.newHashSet());
@@ -286,40 +288,41 @@ public abstract class SetOperationNode extends PlanNode {
             return Optional.empty();
         }
 
-        List<Expr> newSlotExprs = Lists.newArrayList();
+        List<ExecExpr> newSlotExprs = Lists.newArrayList();
         Set<Integer> mappedSlotIds = slotExprOutputSlotIdsMap.get(slotExprSlotId);
         // try to push all children if any expr of a child can match `probeExpr`
-        for (Expr mexpr : materializedResultExprLists_.get(childIdx)) {
-            if ((mexpr instanceof SlotRef) &&
-                    mappedSlotIds.contains(((SlotRef) mexpr).getSlotId().asInt())) {
+        for (ExecExpr mexpr : materializedResultExprLists_.get(childIdx)) {
+            if ((mexpr instanceof ExecSlotRef) &&
+                    mappedSlotIds.contains(((ExecSlotRef) mexpr).getSlotId().asInt())) {
                 newSlotExprs.add(mexpr);
             }
         }
-        return newSlotExprs.size() > 0 ? Optional.of(newSlotExprs) : Optional.empty();
+        return newSlotExprs.isEmpty() ? Optional.empty() : Optional.of(newSlotExprs);
     }
 
-    public Optional<List<List<Expr>>> candidatesOfSlotExprsForChild(List<Expr> exprs, int childIdx) {
+    public Optional<List<List<ExecExpr>>> candidatesOfSlotExprsForChild(List<ExecExpr> exprs, int childIdx) {
         if (!exprs.stream().allMatch(expr -> candidatesOfSlotExprForChild(expr, childIdx).isPresent())) {
             return Optional.empty();
         }
-        List<List<Expr>> candidatesOfSlotExprs =
+        List<List<ExecExpr>> candidatesOfSlotExprs =
                 exprs.stream().map(expr -> candidatesOfSlotExprForChild(expr, childIdx).get()).collect(Collectors.toList());
         return Optional.of(candidateOfPartitionByExprs(candidatesOfSlotExprs));
     }
 
     @Override
-    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, Expr probeExpr, List<Expr> partitionByExprs) {
+    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, ExecExpr probeExpr,
+                                          List<ExecExpr> partitionByExprs) {
         RuntimeFilterDescription description = context.getDescription();
         if (!canPushDownRuntimeFilter()) {
             return false;
         }
-        boolean isBound = ExprUtils.isBoundByTupleIds(probeExpr, getTupleIds()) &&
-                partitionByExprs.stream().allMatch(expr -> ExprUtils.isBoundByTupleIds(expr, getTupleIds()));
+        boolean isBound = ExecExprUtils.isBoundByTupleIds(probeExpr, getTupleIds()) &&
+                partitionByExprs.stream().allMatch(expr -> ExecExprUtils.isBoundByTupleIds(expr, getTupleIds()));
         if (!isBound) {
             return false;
         }
 
-        if (probeExpr instanceof SlotRef) {
+        if (probeExpr instanceof ExecSlotRef) {
             boolean pushDown = false;
             // try to push all children if any expr of a child can match `probeExpr`
             for (int i = 0; i < materializedResultExprLists_.size(); i++) {
@@ -348,10 +351,10 @@ public abstract class SetOperationNode extends PlanNode {
         TNormalSetOperationNode setOperationNode = new TNormalSetOperationNode();
         setOperationNode.setTuple_id(normalizer.remapTupleId(tupleId_).asInt());
         setOperationNode.setResult_expr_lists(
-                materializedConstExprLists_.stream().map(normalizer::normalizeOrderedExprs)
+                materializedConstExprLists_.stream().map(normalizer::normalizeOrderedExecExprs)
                         .collect(Collectors.toList()));
         setOperationNode.setConst_expr_lists(
-                constExprLists_.stream().map(normalizer::normalizeOrderedExprs).collect(Collectors.toList()));
+                constExprLists_.stream().map(normalizer::normalizeOrderedExecExprs).collect(Collectors.toList()));
         setOperationNode.setFirst_materialized_child_idx(firstMaterializedChildIdx_);
         if (this instanceof UnionNode) {
             planNode.setNode_type(TPlanNodeType.UNION_NODE);

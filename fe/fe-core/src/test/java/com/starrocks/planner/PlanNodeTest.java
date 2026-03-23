@@ -16,8 +16,8 @@
 package com.starrocks.planner;
 
 import com.google.common.collect.Lists;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.type.IntegerType;
 import com.starrocks.utframe.StarRocksTestBase;
 import org.junit.jupiter.api.Assertions;
@@ -33,14 +33,14 @@ public class PlanNodeTest extends StarRocksTestBase {
     public static void beforeClass() throws Exception {
     }
 
-    Expr createSlotRef(int idx) {
+    ExecExpr createSlotRef(int idx) {
         SlotId slotId = new SlotId(idx);
-        SlotDescriptor descriptor = new SlotDescriptor(slotId, Integer.toString(idx), IntegerType.INT,true);
-        return new SlotRef(Integer.toString(idx), descriptor);
+        SlotDescriptor descriptor = new SlotDescriptor(slotId, Integer.toString(idx), IntegerType.INT, true);
+        return new ExecSlotRef(Integer.toString(idx), descriptor);
     }
 
-    List<List<Expr>> createSlotRefArray(int m, int n) {
-        List<List<Expr>> slotRefs = Lists.newArrayList();
+    List<List<ExecExpr>> createSlotRefArray(int m, int n) {
+        List<List<ExecExpr>> slotRefs = Lists.newArrayList();
         int k = 0;
         for (int i = 0; i < m; i++) {
             slotRefs.add(Lists.newArrayList());
@@ -52,18 +52,18 @@ public class PlanNodeTest extends StarRocksTestBase {
         return slotRefs;
     }
 
-    List<Integer> slotRefsToInt(List<Expr> slotRefs) {
+    List<Integer> slotRefsToInt(List<ExecExpr> slotRefs) {
         List<Integer> result = Lists.newArrayList();
-        for (Expr expr: slotRefs) {
-            if (!(expr instanceof SlotRef)) {
+        for (ExecExpr expr: slotRefs) {
+            if (!(expr instanceof ExecSlotRef)) {
                 Assertions.assertTrue(false);
             }
-            result.add(((SlotRef) expr).getSlotId().asInt());
+            result.add(((ExecSlotRef) expr).getSlotId().asInt());
         }
         return result;
     }
 
-    boolean slotRefsEqualTo(List<Expr> slotRefs, List<Integer> expect) {
+    boolean slotRefsEqualTo(List<ExecExpr> slotRefs, List<Integer> expect) {
         List<Integer> slotRefsToInt = slotRefsToInt(slotRefs);
         logSysInfo("slotRefs:" + slotRefsToInt(slotRefs));
         logSysInfo("expect:" + expect);
@@ -80,13 +80,13 @@ public class PlanNodeTest extends StarRocksTestBase {
 
     @Test
     public void testPermutaionsOfPartitionByExprs1() throws Exception {
-        List<List<Expr>> slotRefs = createSlotRefArray(2, 3);
-        for (List<Expr> refs: slotRefs) {
+        List<List<ExecExpr>> slotRefs = createSlotRefArray(2, 3);
+        for (List<ExecExpr> refs: slotRefs) {
             logSysInfo(slotRefsToInt(refs));
         }
-        List<List<Expr>> newSlotRefs = PlanNode.candidateOfPartitionByExprs(slotRefs);
+        List<List<ExecExpr>> newSlotRefs = PlanNode.candidateOfPartitionByExprs(slotRefs);
         Assertions.assertTrue(newSlotRefs.size() == 8);
-        for (List<Expr> candidates: newSlotRefs) {
+        for (List<ExecExpr> candidates: newSlotRefs) {
             logSysInfo(slotRefsToInt(candidates));
         }
         int k = 0;
@@ -100,13 +100,13 @@ public class PlanNodeTest extends StarRocksTestBase {
 
     @Test
     public void testPermutaionsOfPartitionByExprs2() throws Exception {
-        List<List<Expr>> slotRefs = createSlotRefArray(1, 3);
-        for (List<Expr> refs: slotRefs) {
+        List<List<ExecExpr>> slotRefs = createSlotRefArray(1, 3);
+        for (List<ExecExpr> refs: slotRefs) {
             logSysInfo(slotRefsToInt(refs));
         }
-        List<List<Expr>> newSlotRefs = PlanNode.candidateOfPartitionByExprs(slotRefs);
+        List<List<ExecExpr>> newSlotRefs = PlanNode.candidateOfPartitionByExprs(slotRefs);
         Assertions.assertTrue(newSlotRefs.size() == 3);
-        for (List<Expr> candidates: newSlotRefs) {
+        for (List<ExecExpr> candidates: newSlotRefs) {
             logSysInfo(slotRefsToInt(candidates));
         }
 
@@ -117,13 +117,13 @@ public class PlanNodeTest extends StarRocksTestBase {
 
     @Test
     public void testPermutaionsOfPartitionByExprs3() throws Exception {
-        List<List<Expr>> slotRefs = createSlotRefArray(4, 5);
-        for (List<Expr> refs: slotRefs) {
+        List<List<ExecExpr>> slotRefs = createSlotRefArray(4, 5);
+        for (List<ExecExpr> refs: slotRefs) {
             logSysInfo(slotRefsToInt(refs));
         }
-        List<List<Expr>> newSlotRefs = PlanNode.candidateOfPartitionByExprs(slotRefs);
+        List<List<ExecExpr>> newSlotRefs = PlanNode.candidateOfPartitionByExprs(slotRefs);
         Assertions.assertTrue (newSlotRefs.size() == 8);
-        for (List<Expr> candidates: newSlotRefs) {
+        for (List<ExecExpr> candidates: newSlotRefs) {
             logSysInfo(slotRefsToInt(candidates));
         }
         Assertions.assertTrue(slotRefsEqualTo(newSlotRefs.get(0), Arrays.asList(0, 5, 10, 15)));

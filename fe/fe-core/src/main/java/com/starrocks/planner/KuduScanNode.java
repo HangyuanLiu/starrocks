@@ -176,19 +176,19 @@ public class KuduScanNode extends ScanNode {
         }
         if (!scanNodePredicates.getPartitionConjuncts().isEmpty()) {
             output.append(prefix).append("PARTITION PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getPartitionConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getPartitionConjuncts())).append("\n");
         }
         if (!scanNodePredicates.getNonPartitionConjuncts().isEmpty()) {
             output.append(prefix).append("NON-PARTITION PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getNonPartitionConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getNonPartitionConjuncts())).append("\n");
         }
         if (!scanNodePredicates.getNoEvalPartitionConjuncts().isEmpty()) {
             output.append(prefix).append("NO EVAL-PARTITION PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getNoEvalPartitionConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getNoEvalPartitionConjuncts())).append("\n");
         }
         if (!scanNodePredicates.getMinMaxConjuncts().isEmpty()) {
             output.append(prefix).append("MIN/MAX PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getMinMaxConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getMinMaxConjuncts())).append("\n");
         }
 
         // TODO: support it in verbose

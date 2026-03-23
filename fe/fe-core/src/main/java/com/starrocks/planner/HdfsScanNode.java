@@ -23,9 +23,9 @@ import com.starrocks.connector.RemoteFilesSampleStrategy;
 import com.starrocks.connector.hive.HiveConnectorScanRangeSource;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.datacache.DataCacheOptions;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.optimizer.ScanOptimizeOption;
 import com.starrocks.sql.plan.HDFSScanNodePredicates;
 import com.starrocks.thrift.TBucketProperty;
@@ -133,19 +133,19 @@ public class HdfsScanNode extends ScanNode {
         }
         if (!scanNodePredicates.getPartitionConjuncts().isEmpty()) {
             output.append(prefix).append("PARTITION PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getPartitionConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getPartitionConjuncts())).append("\n");
         }
         if (!scanNodePredicates.getNonPartitionConjuncts().isEmpty()) {
             output.append(prefix).append("NON-PARTITION PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getNonPartitionConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getNonPartitionConjuncts())).append("\n");
         }
         if (!scanNodePredicates.getNoEvalPartitionConjuncts().isEmpty()) {
             output.append(prefix).append("NO EVAL-PARTITION PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getNoEvalPartitionConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getNoEvalPartitionConjuncts())).append("\n");
         }
         if (!scanNodePredicates.getMinMaxConjuncts().isEmpty()) {
             output.append(prefix).append("MIN/MAX PREDICATES: ").append(
-                    explainExpr(scanNodePredicates.getMinMaxConjuncts())).append("\n");
+                    getExplainString(scanNodePredicates.getMinMaxConjuncts())).append("\n");
         }
 
         output.append(prefix).append(
@@ -245,11 +245,11 @@ public class HdfsScanNode extends ScanNode {
 
     public static void setMinMaxConjunctsToThrift(THdfsScanNode tHdfsScanNode, ScanNode scanNode,
                                                   HDFSScanNodePredicates scanNodePredicates) {
-        List<Expr> minMaxConjuncts = scanNodePredicates.getMinMaxConjuncts();
+        List<ExecExpr> minMaxConjuncts = scanNodePredicates.getMinMaxConjuncts();
         if (!minMaxConjuncts.isEmpty()) {
             String minMaxSqlPredicate = scanNode.getExplainString(minMaxConjuncts);
-            for (Expr expr : minMaxConjuncts) {
-                tHdfsScanNode.addToMin_max_conjuncts(ExprToThrift.treeToThrift(expr));
+            for (ExecExpr expr : minMaxConjuncts) {
+                tHdfsScanNode.addToMin_max_conjuncts(ExecExprSerializer.serialize(expr));
             }
             tHdfsScanNode.setMin_max_tuple_id(scanNodePredicates.getMinMaxTuple().getId().asInt());
             tHdfsScanNode.setMin_max_sql_predicates(minMaxSqlPredicate);
@@ -258,20 +258,20 @@ public class HdfsScanNode extends ScanNode {
 
     public static void setNonEvalPartitionConjunctsToThrift(THdfsScanNode tHdfsScanNode, ScanNode scanNode,
                                                             HDFSScanNodePredicates scanNodePredicates) {
-        List<Expr> noEvalPartitionConjuncts = scanNodePredicates.getNoEvalPartitionConjuncts();
+        List<ExecExpr> noEvalPartitionConjuncts = scanNodePredicates.getNoEvalPartitionConjuncts();
         String partitionSqlPredicate = scanNode.getExplainString(noEvalPartitionConjuncts);
-        for (Expr expr : noEvalPartitionConjuncts) {
-            tHdfsScanNode.addToPartition_conjuncts(ExprToThrift.treeToThrift(expr));
+        for (ExecExpr expr : noEvalPartitionConjuncts) {
+            tHdfsScanNode.addToPartition_conjuncts(ExecExprSerializer.serialize(expr));
         }
         tHdfsScanNode.setPartition_sql_predicates(partitionSqlPredicate);
     }
 
     public static void setPartitionConjunctsToThrift(THdfsScanNode tHdfsScanNode, ScanNode scanNode,
                                                      HDFSScanNodePredicates scanNodePredicates) {
-        List<Expr> partitionConjuncts = scanNodePredicates.getPartitionConjuncts();
+        List<ExecExpr> partitionConjuncts = scanNodePredicates.getPartitionConjuncts();
         String partitionSqlPredicate = scanNode.getExplainString(partitionConjuncts);
-        for (Expr expr : partitionConjuncts) {
-            tHdfsScanNode.addToPartition_conjuncts(ExprToThrift.treeToThrift(expr));
+        for (ExecExpr expr : partitionConjuncts) {
+            tHdfsScanNode.addToPartition_conjuncts(ExecExprSerializer.serialize(expr));
         }
         tHdfsScanNode.setPartition_sql_predicates(partitionSqlPredicate);
     }
@@ -283,9 +283,9 @@ public class HdfsScanNode extends ScanNode {
             msg.conjuncts.clear();
         }
 
-        List<Expr> nonPartitionConjuncts = scanNodePredicates.getNonPartitionConjuncts();
-        for (Expr expr : nonPartitionConjuncts) {
-            msg.addToConjuncts(ExprToThrift.treeToThrift(expr));
+        List<ExecExpr> nonPartitionConjuncts = scanNodePredicates.getNonPartitionConjuncts();
+        for (ExecExpr expr : nonPartitionConjuncts) {
+            msg.addToConjuncts(ExecExprSerializer.serialize(expr));
         }
         String sqlPredicate = scanNode.getExplainString(nonPartitionConjuncts);
         msg.hdfs_scan_node.setSql_predicates(sqlPredicate);

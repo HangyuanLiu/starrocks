@@ -29,6 +29,7 @@ import com.starrocks.planner.OlapScanNode;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.PlanNode;
 import com.starrocks.planner.ProjectNode;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.proto.PExecShortCircuitResult;
 import com.starrocks.qe.scheduler.LazyWorkerProvider;
@@ -249,8 +250,7 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
         be2Tablets.forEach((be, tableVersion) -> {
             TExecShortCircuitParams commonRequest = new TExecShortCircuitParams();
             commonRequest.setDesc_tbl(tDescriptorTable);
-            commonRequest.setOutput_exprs(planFragment.getOutputExprs().stream()
-                    .map(ExprToThrift::treeToThrift).collect(Collectors.toList()));
+            commonRequest.setOutput_exprs(ExecExprSerializer.serializeList(planFragment.getOutputExprs()));
             commonRequest.setIs_binary_row(isBinaryRow);
             commonRequest.setEnable_profile(enableProfile);
             if (planFragment.getSink() != null) {

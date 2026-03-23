@@ -22,7 +22,7 @@ import com.starrocks.common.FeConstants;
 import com.starrocks.common.Pair;
 import com.starrocks.planner.AggregationNode;
 import com.starrocks.planner.AnalyticEvalNode;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.planner.expression.ExecFunctionCall;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.StructType;
 import com.starrocks.type.Type;
@@ -445,7 +445,7 @@ public class DistinctAggregationOverWindowTest extends PlanTestBase {
         execPlan.getTopFragment().getPlanRoot().collect(AggregationNode.class, aggNodes);
         Optional<Type> optReturnType = aggNodes.stream()
                 .flatMap(agg -> agg.getAggInfo().getAggregateExprs().stream())
-                .filter(fcall -> names.contains(fcall.getFunctionName()))
+                .filter(fcall -> names.contains(fcall.getFnName()))
                 .findFirst()
                 .map(fcall -> ((AggregateFunction) fcall.getFn()).getReturnType());
 
@@ -456,8 +456,8 @@ public class DistinctAggregationOverWindowTest extends PlanTestBase {
         List<AnalyticEvalNode> windowNodes = Lists.newArrayList();
         execPlan.getTopFragment().getPlanRoot().collect(AnalyticEvalNode.class, windowNodes);
         optReturnType = windowNodes.stream()
-                .flatMap(win -> win.getAnalyticFnCalls().stream().map(e -> (FunctionCallExpr) e))
-                .filter(fcall -> names.contains(fcall.getFunctionName()))
+                .flatMap(win -> win.getAnalyticFnCalls().stream().map(e -> (ExecFunctionCall) e))
+                .filter(fcall -> names.contains(fcall.getFnName()))
                 .findFirst()
                 .map(fcall -> ((AggregateFunction) fcall.getFn()).getReturnType());
 

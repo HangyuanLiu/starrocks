@@ -17,11 +17,11 @@ package com.starrocks.http;
 import com.google.gson.JsonObject;
 import com.google.gson.stream.JsonWriter;
 import com.starrocks.catalog.Column;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.proto.PQueryStatistics;
 import com.starrocks.proto.QueryStatisticsItemPB;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.qe.ShowResultSetMetaData;
-import com.starrocks.sql.ast.expression.Expr;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.logging.log4j.LogManager;
@@ -95,7 +95,7 @@ public class JsonSerializer {
         return Unpooled.wrappedBuffer(str.getBytes(StandardCharsets.UTF_8));
     }
 
-    public static ByteBuf getMetaData(List<String> colNames, List<Expr> exprs) throws IOException {
+    public static ByteBuf getMetaData(List<String> colNames, List<ExecExpr> exprs) throws IOException {
         ByteArrayOutputStream resultStream = new ByteArrayOutputStream();
         OutputStreamWriter outputStreamWriter = new OutputStreamWriter(resultStream);
         JsonWriter jsonWriter = new JsonWriter(outputStreamWriter);

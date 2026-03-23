@@ -91,7 +91,8 @@ public abstract class LoadScanNode extends ScanNode {
         if (!whereExpr.getType().isBoolean()) {
             throw new StarRocksException("where statement is not a valid statement return bool");
         }
-        addConjuncts(AnalyzerUtils.extractConjuncts(whereExpr));
+        addConjuncts(com.starrocks.planner.expression.ExecAstExprWrapper.wrapList(
+                AnalyzerUtils.extractConjuncts(whereExpr)));
     }
 
     protected void checkBitmapCompatibility(SlotDescriptor slotDesc, Expr expr)

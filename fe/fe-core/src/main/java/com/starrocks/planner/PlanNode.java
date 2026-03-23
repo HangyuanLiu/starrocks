@@ -39,25 +39,19 @@ import com.google.common.base.Predicates;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.starrocks.common.StarRocksException;
-import com.starrocks.planner.expression.ExprToThrift;
-import com.starrocks.qe.ConnectContext;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecExprUtils;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.sql.ast.TreeNode;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
-import com.starrocks.sql.ast.expression.ExprToSql;
-import com.starrocks.sql.ast.expression.ExprUtils;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.common.PermutationGenerator;
-import com.starrocks.sql.formatter.ExprExplainVisitor;
-import com.starrocks.sql.formatter.ExprVerboseVisitor;
-import com.starrocks.sql.formatter.FormatOptions;
-import com.starrocks.sql.optimizer.Utils;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
-import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.statistics.ColumnStatistic;
 import com.starrocks.sql.optimizer.statistics.MultiColumnCombinedStats;
 import com.starrocks.sql.optimizer.statistics.Statistics;
-import com.starrocks.sql.optimizer.transformer.SqlToScalarOperatorTranslator;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TNormalPlanNode;
 import com.starrocks.thrift.TPlan;
@@ -108,7 +102,7 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
     // an outer join, which has nothing to do with the schema.
     protected Set<TupleId> nullableTupleIds = Sets.newHashSet();
 
-    protected List<Expr> conjuncts = Lists.newArrayList();
+    protected List<ExecExpr> conjuncts = Lists.newArrayList();
 
     // Fragment that this PlanNode is executed in. Valid only after this PlanNode has been
     // assigned to a fragment. Set and maintained by enclosing PlanFragment.
@@ -171,7 +165,7 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         this.limit = node.limit;
         this.tupleIds = Lists.newArrayList(node.tupleIds);
         this.nullableTupleIds = Sets.newHashSet(node.nullableTupleIds);
-        this.conjuncts = ExprUtils.cloneList(node.conjuncts, null);
+        this.conjuncts = ExecExprUtils.cloneList(node.conjuncts);
         this.cardinality = -1;
         this.planNodeName = planNodeName;
     }
@@ -286,11 +280,11 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         return nullableTupleIds;
     }
 
-    public List<Expr> getConjuncts() {
+    public List<ExecExpr> getConjuncts() {
         return conjuncts;
     }
 
-    public void addConjuncts(List<Expr> conjuncts) {
+    public void addConjuncts(List<ExecExpr> conjuncts) {
         if (conjuncts == null) {
             return;
         }
@@ -527,8 +521,8 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
             msg.addToRow_tuples(tid.asInt());
             msg.addToNullable_tuples(nullableTupleIds.contains(tid));
         }
-        for (Expr e : conjuncts) {
-            msg.addToConjuncts(ExprToThrift.treeToThrift(e));
+        for (ExecExpr e : conjuncts) {
+            msg.addToConjuncts(ExecExprSerializer.serialize(e));
         }
         toThrift(msg);
         container.addToNodes(msg);
@@ -617,39 +611,42 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
 
     protected String debugString() {
         // not using Objects.toStrHelper because
-        String output = "preds=" + Expr.debugString(conjuncts) +
+        String output = "preds=" + conjuncts.toString() +
                 " limit=" + limit;
         return output;
     }
 
-    protected String getExplainString(List<? extends Expr> exprs) {
+    protected String getExplainString(List<? extends ExecExpr> exprs) {
         if (exprs == null) {
             return "";
         }
-        return exprs.stream().map(ExprToSql::toSql).collect(Collectors.joining(", "));
+        return exprs.stream().map(ExecExprExplain::explain).collect(Collectors.joining(", "));
     }
 
-    protected String explainExpr(Expr... exprs) {
+    /**
+     * Explain a list of AST Expr objects (for use by scan nodes that still have Expr-typed predicates).
+     */
+    protected String explainAstExprs(List<? extends com.starrocks.sql.ast.expression.Expr> exprs) {
+        if (exprs == null) {
+            return "";
+        }
+        return exprs.stream().map(com.starrocks.sql.ast.expression.ExprToSql::explain)
+                .collect(Collectors.joining(", "));
+    }
+
+    protected String explainExpr(ExecExpr... exprs) {
         return explainExpr(TExplainLevel.NORMAL, Arrays.stream(exprs).toList());
     }
 
-    protected String explainExpr(List<? extends Expr> exprs) {
+    protected String explainExpr(List<? extends ExecExpr> exprs) {
         return explainExpr(TExplainLevel.NORMAL, exprs);
     }
 
-    protected String explainExpr(TExplainLevel level, List<? extends Expr> exprs) {
-        ConnectContext context = ConnectContext.get();
-        FormatOptions options = FormatOptions.allEnable();
-        if (context == null || !context.getSessionVariable().isEnableDesensitizeExplain()) {
-            options.setEnableDigest(false);
+    protected String explainExpr(TExplainLevel level, List<? extends ExecExpr> exprs) {
+        if (TExplainLevel.VERBOSE.equals(level) || TExplainLevel.COSTS.equals(level)) {
+            return ExecExprExplain.verboseExplainList(exprs);
         }
-        if (TExplainLevel.VERBOSE.equals(level)) {
-            ExprVerboseVisitor v = new ExprVerboseVisitor(options);
-            return exprs.stream().map(v::visit).collect(Collectors.joining(", "));
-        } else {
-            ExprExplainVisitor v = new ExprExplainVisitor(options);
-            return exprs.stream().map(v::visit).collect(Collectors.joining(", "));
-        }
+        return ExecExprExplain.explainList(exprs);
     }
 
     public void appendTrace(StringBuilder sb) {
@@ -690,7 +687,7 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         return !(fragment_ instanceof MultiCastPlanFragment);
     }
 
-    public void checkRuntimeFilterOnNullValue(RuntimeFilterDescription description, Expr probeExpr) {
+    public void checkRuntimeFilterOnNullValue(RuntimeFilterDescription description, ExecExpr probeExpr) {
     }
 
     /**
@@ -698,9 +695,9 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
      * tb2.b is the candidate slot expr for tb1.a which has the same syntax for the query.
      *
      * @param expr: the slot expr that need to find its candidate slot exprs.
-     * @return List<Expr>: all the slot expr's candidate slot exprs.
+     * @return List<ExecExpr>: all the slot expr's candidate slot exprs.
      */
-    public Optional<List<Expr>> candidatesOfSlotExpr(Expr expr, Function<Expr, Boolean> couldBound) {
+    public Optional<List<ExecExpr>> candidatesOfSlotExpr(ExecExpr expr, Function<ExecExpr, Boolean> couldBound) {
         // NOTE: No need to check expr is slot or not here, each node should implement its `candidatesOfSlotExpr` itself.
         if (!couldBound.apply(expr)) {
             return Optional.empty();
@@ -708,22 +705,23 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         return Optional.of(Lists.newArrayList(expr));
     }
 
-    public Optional<List<List<Expr>>> candidatesOfSlotExprs(List<Expr> exprs, Function<Expr, Boolean> couldBound) {
+    public Optional<List<List<ExecExpr>>> candidatesOfSlotExprs(List<ExecExpr> exprs,
+                                                                 Function<ExecExpr, Boolean> couldBound) {
         if (!exprs.stream().allMatch(expr -> candidatesOfSlotExpr(expr, couldBound).isPresent())) {
             return Optional.empty();
         }
-        List<List<Expr>> candidatesOfSlotExprs =
+        List<List<ExecExpr>> candidatesOfSlotExprs =
                 exprs.stream().map(expr -> candidatesOfSlotExpr(expr, couldBound).get()).collect(Collectors.toList());
         return Optional.of(candidateOfPartitionByExprs(candidatesOfSlotExprs));
     }
 
-    public static List<List<Expr>> candidateOfPartitionByExprs(List<List<Expr>> partitionByExprs) {
+    public static List<List<ExecExpr>> candidateOfPartitionByExprs(List<List<ExecExpr>> partitionByExprs) {
         if (partitionByExprs.isEmpty()) {
             return Lists.newArrayList();
         }
-        PermutationGenerator generator = new PermutationGenerator<Expr>(partitionByExprs);
+        PermutationGenerator<ExecExpr> generator = new PermutationGenerator<ExecExpr>(partitionByExprs);
         int totalCount = 0;
-        List<List<Expr>> candidates = Lists.newArrayList();
+        List<List<ExecExpr>> candidates = Lists.newArrayList();
         while (generator.hasNext() && totalCount < 8) {
             candidates.add(generator.next());
             totalCount++;
@@ -731,7 +729,7 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         return candidates;
     }
 
-    public Optional<List<List<Expr>>> canPushDownRuntimeFilterCrossExchange(List<Expr> partitionByExprs) {
+    public Optional<List<List<ExecExpr>>> canPushDownRuntimeFilterCrossExchange(List<ExecExpr> partitionByExprs) {
         if (CollectionUtils.isEmpty(partitionByExprs)) {
             return Optional.of(Lists.newArrayList());
         }
@@ -743,20 +741,20 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
     /**
      * When push down runtime filter cross exchange, need take care partitionByExprs of exchange.
      */
-    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, Expr probeExpr,
-                                          List<Expr> partitionByExprs) {
+    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, ExecExpr probeExpr,
+                                          List<ExecExpr> partitionByExprs) {
         RuntimeFilterDescription description = context.getDescription();
         DescriptorTable descTbl = context.getDescTbl();
         if (!canPushDownRuntimeFilter()) {
             return false;
         }
 
-        Optional<List<List<Expr>>> optCandidatePartitionByExprs =
+        Optional<List<List<ExecExpr>>> optCandidatePartitionByExprs =
                 canPushDownRuntimeFilterCrossExchange(partitionByExprs);
         if (!optCandidatePartitionByExprs.isPresent()) {
             return false;
         }
-        List<List<Expr>> candidatePartitionByExprs = optCandidatePartitionByExprs.get();
+        List<List<ExecExpr>> candidatePartitionByExprs = optCandidatePartitionByExprs.get();
 
         // theoretically runtime filter can be applied on multiple child nodes.
         boolean accept = false;
@@ -767,7 +765,7 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
                     break;
                 }
             } else {
-                for (List<Expr> candidateOfPartitionByExprs : candidatePartitionByExprs) {
+                for (List<ExecExpr> candidateOfPartitionByExprs : candidatePartitionByExprs) {
                     if (node.pushDownRuntimeFilters(context, probeExpr, candidateOfPartitionByExprs)) {
                         accept = true;
                         break;
@@ -792,12 +790,12 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         return false;
     }
 
-    protected Function<Expr, Boolean> couldBound(RuntimeFilterDescription rfDesc, DescriptorTable descTbl) {
-        return (Expr expr) -> couldBound(expr, rfDesc, descTbl);
+    protected Function<ExecExpr, Boolean> couldBound(RuntimeFilterDescription rfDesc, DescriptorTable descTbl) {
+        return (ExecExpr expr) -> couldBound(expr, rfDesc, descTbl);
     }
 
-    protected Function<Expr, Boolean> couldBoundForPartitionExpr() {
-        return (Expr expr) -> ExprUtils.isBoundByTupleIds(expr, getTupleIds());
+    protected Function<ExecExpr, Boolean> couldBoundForPartitionExpr() {
+        return (ExecExpr expr) -> ExecExprUtils.isBoundByTupleIds(expr, getTupleIds());
     }
 
     private RoaringBitmap cachedSlotIds = null;
@@ -812,10 +810,10 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         return cachedSlotIds;
     }
 
-    protected boolean couldBound(Expr probeExpr, RuntimeFilterDescription rfDesc, DescriptorTable descTbl) {
-        if (probeExpr instanceof SlotRef &&
+    protected boolean couldBound(ExecExpr probeExpr, RuntimeFilterDescription rfDesc, DescriptorTable descTbl) {
+        if (probeExpr instanceof ExecSlotRef &&
                 rfDesc.runtimeFilterType().equals(RuntimeFilterDescription.RuntimeFilterType.TOPN_FILTER)) {
-            SlotRef slotRef = (SlotRef) probeExpr;
+            ExecSlotRef slotRef = (ExecSlotRef) probeExpr;
             for (TupleId tupleId : getTupleIds()) {
                 for (SlotDescriptor slot : descTbl.getTupleDesc(tupleId).getSlots()) {
                     if (!slot.getId().equals(slotRef.getSlotId())) {
@@ -826,16 +824,19 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
             }
             return false;
         } else {
-            return getSlotIds(descTbl).contains(ExprUtils.getUsedSlotIds(probeExpr));
+            RoaringBitmap slotIds = getSlotIds(descTbl);
+            Set<SlotId> usedSlotIds = ExecExprUtils.getUsedSlotIds(probeExpr);
+            return usedSlotIds.stream().allMatch(sid -> slotIds.contains(sid.asInt()));
         }
     }
 
-    protected boolean canEliminateNull(Expr expr, SlotDescriptor slot) {
-        if (ExprUtils.isBound(expr, slot.getId())) {
-            ScalarOperator operator = SqlToScalarOperatorTranslator.translate(expr);
-            ColumnRefOperator column = new ColumnRefOperator(slot.getId().asInt(), slot.getType(),
-                    "any", true);
-            return Utils.canEliminateNull(Sets.newHashSet(column), operator);
+    protected boolean canEliminateNull(ExecExpr expr, SlotDescriptor slot) {
+        // TODO: Implement ExecExpr-based null elimination analysis.
+        // The original implementation translated Expr to ScalarOperator via SqlToScalarOperatorTranslator,
+        // which is not available for ExecExpr. For now, return false conservatively.
+        Set<SlotId> usedSlotIds = ExecExprUtils.getUsedSlotIds(expr);
+        if (usedSlotIds.contains(slot.getId())) {
+            return false;
         }
         return false;
     }
@@ -845,23 +846,23 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
     }
 
     private boolean tryPushdownRuntimeFilterToChild(RuntimeFilterPushDownContext context,
-                                                    Optional<List<Expr>> optProbeExprCandidates,
-                                                    Optional<List<List<Expr>>> optPartitionByExprsCandidates,
+                                                    Optional<List<ExecExpr>> optProbeExprCandidates,
+                                                    Optional<List<List<ExecExpr>>> optPartitionByExprsCandidates,
                                                     int childIdx) {
         if (!optProbeExprCandidates.isPresent() || !optPartitionByExprsCandidates.isPresent()) {
             return false;
         }
-        List<Expr> probeExprCandidates = optProbeExprCandidates.get();
-        List<List<Expr>> partitionByExprsCandidates = optPartitionByExprsCandidates.get();
+        List<ExecExpr> probeExprCandidates = optProbeExprCandidates.get();
+        List<List<ExecExpr>> partitionByExprsCandidates = optPartitionByExprsCandidates.get();
 
-        for (Expr candidateOfProbeExpr : probeExprCandidates) {
+        for (ExecExpr candidateOfProbeExpr : probeExprCandidates) {
             if (partitionByExprsCandidates.isEmpty()) {
                 if (children.get(childIdx).pushDownRuntimeFilters(context, candidateOfProbeExpr,
                         Lists.newArrayList())) {
                     return true;
                 }
             } else {
-                for (List<Expr> candidateOfPartitionByExprs : partitionByExprsCandidates) {
+                for (List<ExecExpr> candidateOfPartitionByExprs : partitionByExprsCandidates) {
                     if (children.get(childIdx)
                             .pushDownRuntimeFilters(context, candidateOfProbeExpr,
                                     candidateOfPartitionByExprs)) {
@@ -878,10 +879,10 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
      * add runtime filter info into this PlanNode.
      */
     protected boolean pushdownRuntimeFilterForChildOrAccept(RuntimeFilterPushDownContext context,
-                                                            Expr probeExpr,
-                                                            Optional<List<Expr>> optProbeExprCandidates,
-                                                            List<Expr> partitionByExprs,
-                                                            Optional<List<List<Expr>>> optPartitionByExprsCandidates,
+                                                            ExecExpr probeExpr,
+                                                            Optional<List<ExecExpr>> optProbeExprCandidates,
+                                                            List<ExecExpr> partitionByExprs,
+                                                            Optional<List<List<ExecExpr>>> optPartitionByExprsCandidates,
                                                             int childIdx,
                                                             boolean addProbeInfo) {
         RuntimeFilterDescription description = context.getDescription();
@@ -889,8 +890,10 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         boolean accept = tryPushdownRuntimeFilterToChild(context, optProbeExprCandidates,
                 optPartitionByExprsCandidates, childIdx);
         RoaringBitmap slotIds = getSlotIds(descTbl);
-        boolean isBound = slotIds.contains(ExprUtils.getUsedSlotIds(probeExpr)) &&
-                partitionByExprs.stream().allMatch(expr -> slotIds.contains(ExprUtils.getUsedSlotIds(expr)));
+        boolean isBound = ExecExprUtils.getUsedSlotIds(probeExpr).stream()
+                .allMatch(sid -> slotIds.contains(sid.asInt())) &&
+                partitionByExprs.stream().allMatch(expr ->
+                        ExecExprUtils.getUsedSlotIds(expr).stream().allMatch(sid -> slotIds.contains(sid.asInt())));
         if (isBound) {
             checkRuntimeFilterOnNullValue(description, probeExpr);
         }
@@ -917,18 +920,28 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
     }
 
     public boolean extractConjunctsToNormalize(FragmentNormalizer normalizer) {
-        List<Expr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
+        List<ExecExpr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
         normalizer.filterOutPartColRangePredicates(getId(), conjuncts, Collections.emptySet());
         return true;
     }
 
-    public void normalizeConjuncts(FragmentNormalizer normalizer, TNormalPlanNode planNode, List<Expr> conjuncts) {
+    public void normalizeConjuncts(FragmentNormalizer normalizer, TNormalPlanNode planNode, List<ExecExpr> conjuncts) {
         final DescriptorTable descriptorTable = normalizer.getExecPlan().getDescTbl();
         List<SlotId> slotIds = tupleIds.stream().map(descriptorTable::getTupleDesc)
                 .flatMap(tupleDesc -> tupleDesc.getSlots().stream().map(SlotDescriptor::getId))
                 .collect(Collectors.toList());
         normalizer.remapSlotIds(slotIds);
-        planNode.setConjuncts(normalizer.normalizeExprs(normalizer.getConjunctsByPlanNodeId(this)));
+        planNode.setConjuncts(normalizer.normalizeExecExprs(normalizer.getConjunctsByPlanNodeId(this)));
+    }
+
+    public void normalizeExecConjuncts(FragmentNormalizer normalizer, TNormalPlanNode planNode,
+                                        List<ExecExpr> execConjuncts) {
+        final DescriptorTable descriptorTable = normalizer.getExecPlan().getDescTbl();
+        List<SlotId> slotIds = tupleIds.stream().map(descriptorTable::getTupleDesc)
+                .flatMap(tupleDesc -> tupleDesc.getSlots().stream().map(SlotDescriptor::getId))
+                .collect(Collectors.toList());
+        normalizer.remapSlotIds(slotIds);
+        planNode.setConjuncts(normalizer.normalizeExecExprs(normalizer.getConjunctsByPlanNodeId(this)));
     }
 
     public TNormalPlanNode normalize(FragmentNormalizer normalizer) {
@@ -942,7 +955,7 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
                 .collect(Collectors.toList());
         planNode.setNullable_tuples(nullable_tuples);
         toNormalForm(planNode, normalizer);
-        normalizer.disableMultiversionIfExprsUseAggColumns(conjuncts);
+        normalizer.disableMultiversionIfExecExprsUseAggColumns(conjuncts);
 
         return planNode;
     }

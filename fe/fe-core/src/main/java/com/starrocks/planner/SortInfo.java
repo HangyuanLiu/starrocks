@@ -36,51 +36,38 @@ package com.starrocks.planner;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.sql.ast.OrderByElement;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.thrift.TSortInfo;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Encapsulates all the information needed to compute ORDER BY
  * This doesn't contain aliases or positional exprs.
- * TODO: reorganize this completely, this doesn't really encapsulate anything; this
- * should move into planner/ and encapsulate the implementation of the sort of a
- * particular input row (materialize all row slots)
  */
 public class SortInfo {
-    // All ordering exprs with cost greater than this will be materialized. Since we don't
-    // currently have any information about actual function costs, this value is intended to
-    // ensure that all expensive functions will be materialized while still leaving simple
-    // operations unmaterialized, for example 'SlotRef + SlotRef' should have a cost below
-    // this threshold.
-    // TODO: rethink this when we have a better cost model.
-    private static final float SORT_MATERIALIZATION_COST_THRESHOLD = ExprUtils.FUNCTION_CALL_COST;
 
     // Only used in local partition topn
-    private List<Expr> partitionExprs_;
+    private List<ExecExpr> partitionExprs_;
     private long partitionLimit_;
-    private List<Expr> orderingExprs_;
+    private List<ExecExpr> orderingExprs_;
     private final List<Boolean> isAscOrder_;
     // True if "NULLS FIRST", false if "NULLS LAST", null if not specified.
     private final List<Boolean> nullsFirstParams_;
-    // Subset of ordering exprs that are materialized. Populated in
-    // createMaterializedOrderExprs(), used for EXPLAIN output.
-    private List<Expr> materializedOrderingExprs_;
     // The single tuple that is materialized, sorted, and output by a sort operator
     // (i.e. SortNode or TopNNode)
     private TupleDescriptor sortTupleDesc_;
     // Input expressions materialized into sortTupleDesc_. One expr per slot in
     // sortTupleDesc_.
-    private List<Expr> sortTupleSlotExprs_;
+    private List<ExecExpr> sortTupleSlotExprs_;
 
     private TupleDescriptor preAggTupleDesc_;
 
-    public SortInfo(List<Expr> partitionExprs, long partitionLimit, List<Expr> orderingExprs, List<Boolean> isAscOrder,
-                    List<Boolean> nullsFirstParams) {
+    public SortInfo(List<ExecExpr> partitionExprs, long partitionLimit, List<ExecExpr> orderingExprs,
+                    List<Boolean> isAscOrder, List<Boolean> nullsFirstParams) {
         Preconditions.checkArgument(orderingExprs.size() == isAscOrder.size());
         Preconditions.checkArgument(orderingExprs.size() == nullsFirstParams.size());
         partitionExprs_ = partitionExprs;
@@ -88,23 +75,32 @@ public class SortInfo {
         orderingExprs_ = orderingExprs;
         isAscOrder_ = isAscOrder;
         nullsFirstParams_ = nullsFirstParams;
-        materializedOrderingExprs_ = Lists.newArrayList();
     }
 
     /**
      * C'tor for cloning.
      */
     private SortInfo(SortInfo other) {
-        partitionExprs_ = ExprUtils.cloneList(other.partitionExprs_);
+        partitionExprs_ = cloneExecExprList(other.partitionExprs_);
         partitionLimit_ = other.partitionLimit_;
-        orderingExprs_ = ExprUtils.cloneList(other.orderingExprs_);
+        orderingExprs_ = cloneExecExprList(other.orderingExprs_);
         isAscOrder_ = Lists.newArrayList(other.isAscOrder_);
         nullsFirstParams_ = Lists.newArrayList(other.nullsFirstParams_);
-        materializedOrderingExprs_ = ExprUtils.cloneList(other.materializedOrderingExprs_);
         sortTupleDesc_ = other.sortTupleDesc_;
         if (other.sortTupleSlotExprs_ != null) {
-            sortTupleSlotExprs_ = ExprUtils.cloneList(other.sortTupleSlotExprs_);
+            sortTupleSlotExprs_ = cloneExecExprList(other.sortTupleSlotExprs_);
         }
+    }
+
+    private static List<ExecExpr> cloneExecExprList(List<ExecExpr> exprs) {
+        if (exprs == null) {
+            return null;
+        }
+        List<ExecExpr> result = new ArrayList<>(exprs.size());
+        for (ExecExpr expr : exprs) {
+            result.add(expr.clone());
+        }
+        return result;
     }
 
     /**
@@ -113,17 +109,17 @@ public class SortInfo {
      * tupleSlotExprs.
      */
     public void setMaterializedTupleInfo(
-            TupleDescriptor tupleDesc, List<Expr> tupleSlotExprs) {
+            TupleDescriptor tupleDesc, List<ExecExpr> tupleSlotExprs) {
         Preconditions.checkState(tupleDesc.getSlots().size() == tupleSlotExprs.size());
         sortTupleDesc_ = tupleDesc;
         sortTupleSlotExprs_ = tupleSlotExprs;
         for (int i = 0; i < sortTupleDesc_.getSlots().size(); ++i) {
             SlotDescriptor slotDesc = sortTupleDesc_.getSlots().get(i);
-            slotDesc.setSourceExpr(sortTupleSlotExprs_.get(i));
+            slotDesc.setSourceExecExpr(sortTupleSlotExprs_.get(i));
         }
     }
 
-    public List<Expr> getPartitionExprs() {
+    public List<ExecExpr> getPartitionExprs() {
         return partitionExprs_;
     }
 
@@ -131,7 +127,7 @@ public class SortInfo {
         return partitionLimit_;
     }
 
-    public List<Expr> getOrderingExprs() {
+    public List<ExecExpr> getOrderingExprs() {
         return orderingExprs_;
     }
 
@@ -139,7 +135,7 @@ public class SortInfo {
         return isAscOrder_;
     }
 
-    public List<Expr> getSortTupleSlotExprs() {
+    public List<ExecExpr> getSortTupleSlotExprs() {
         return sortTupleSlotExprs_;
     }
 
@@ -175,7 +171,6 @@ public class SortInfo {
     }
 
     public TSortInfo toTSortInfo() {
-        return new TSortInfo(ExprToThrift.treesToThrift(getOrderingExprs()), getIsAscOrder(), getNullsFirst());
+        return new TSortInfo(ExecExprSerializer.serializeList(getOrderingExprs()), getIsAscOrder(), getNullsFirst());
     }
 }
-

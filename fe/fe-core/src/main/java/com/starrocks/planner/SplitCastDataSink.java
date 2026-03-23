@@ -15,9 +15,9 @@ package com.starrocks.planner;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import com.starrocks.planner.expression.ExprToThrift;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.thrift.TDataSink;
 import com.starrocks.thrift.TDataSinkType;
 import com.starrocks.thrift.TDataStreamSink;
@@ -35,7 +35,7 @@ public class SplitCastDataSink extends DataSink {
     // every DataStreamSink can have multiple destinations
     private final List<List<TPlanFragmentDestination>> destinations = Lists.newArrayList();
     // if splitExprs[i] is true for [0,i], then data will be sent to dest fragment i
-    private final List<Expr> splitExprs = Lists.newArrayList();
+    private final List<ExecExpr> splitExprs = Lists.newArrayList();
 
     @Override
     public String getExplainString(String prefix, TExplainLevel explainLevel) {
@@ -44,7 +44,7 @@ public class SplitCastDataSink extends DataSink {
         sb.append(prefix).append("SplitCastDataSink\n");
         for (int i = 0; i < dataStreamSinks.size(); i++) {
             sb.append(dataStreamSinks.get(i).getExplainString(prefix, explainLevel));
-            sb.append(prefix + ExprToSql.explain(splitExprs.get(i)) + "\n");
+            sb.append(prefix + ExecExprExplain.explain(splitExprs.get(i)) + "\n");
         }
         return sb.toString();
     }
@@ -56,7 +56,7 @@ public class SplitCastDataSink extends DataSink {
         sb.append(prefix).append("SplitCastDataSink:\n");
         for (int i = 0; i < dataStreamSinks.size(); i++) {
             sb.append(dataStreamSinks.get(i).getVerboseExplain(prefix));
-            sb.append(prefix + "Split expr: " + ExprToSql.explain(splitExprs.get(i)) + "\n");
+            sb.append(prefix + "Split expr: " + ExecExprExplain.explain(splitExprs.get(i)) + "\n");
         }
 
         return sb.toString();
@@ -67,7 +67,7 @@ public class SplitCastDataSink extends DataSink {
         List<TDataStreamSink> streamSinkList = dataStreamSinks.stream().map(d -> d.toThrift().getStream_sink())
                 .collect(Collectors.toList());
         List<TExpr> tSplitExprs = this.splitExprs.stream()
-                .map(ExprToThrift::treeToThrift)
+                .map(ExecExprSerializer::serialize)
                 .collect(Collectors.toList());
         TSplitDataStreamSink sink = new TSplitDataStreamSink();
         sink.setSinks(streamSinkList);
@@ -99,7 +99,7 @@ public class SplitCastDataSink extends DataSink {
         return destinations;
     }
 
-    public List<Expr> getSplitExprs() {
+    public List<ExecExpr> getSplitExprs() {
         return splitExprs;
     }
 

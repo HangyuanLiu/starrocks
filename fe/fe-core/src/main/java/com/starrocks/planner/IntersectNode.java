@@ -34,7 +34,7 @@
 
 package com.starrocks.planner;
 
-import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.thrift.TPlanNode;
 import com.starrocks.thrift.TPlanNodeType;
 
@@ -46,7 +46,7 @@ public class IntersectNode extends SetOperationNode {
     }
 
     protected IntersectNode(PlanNodeId id, TupleId tupleId,
-                            List<Expr> setOpResultExprs, boolean isInSubplan) {
+                            List<ExecExpr> setOpResultExprs, boolean isInSubplan) {
         super(id, tupleId, "INTERSECT", setOpResultExprs, isInSubplan);
     }
 

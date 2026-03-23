@@ -39,7 +39,6 @@ import com.starrocks.server.WarehouseManager;
 import com.starrocks.sql.ast.AlterTableStmt;
 import com.starrocks.sql.ast.CreateDbStmt;
 import com.starrocks.sql.ast.CreateTableStmt;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.task.AgentBatchTask;
 import com.starrocks.task.AlterReplicaTask;
@@ -754,7 +753,7 @@ public class LakeTableSchemaChangeJobTest {
         Assertions.assertEquals(2, fullSchema.size());
         Assertions.assertEquals("c0", fullSchema.get(0).getName());
         Assertions.assertEquals("c1", fullSchema.get(1).getName());
-        List<Expr> outputExprs = execPlan.getOutputExprs();
+        var outputExprs = execPlan.getOutputExprs();
         Assertions.assertEquals(fullSchema.size(), outputExprs.size());
         for (int i = 0; i < fullSchema.size(); i++) {
             Assertions.assertEquals(fullSchema.get(i).getType(), outputExprs.get(i).getType());

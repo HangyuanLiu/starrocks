@@ -19,7 +19,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.PartitionKey;
 import com.starrocks.planner.TupleDescriptor;
-import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.planner.expression.ExecExpr;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -32,14 +32,14 @@ public class HDFSScanNodePredicates {
     private Collection<Long> selectedPartitionIds = Lists.newArrayList();
 
     // partitionConjuncts contains partition filters.
-    private final List<Expr> partitionConjuncts = Lists.newArrayList();
+    private final List<ExecExpr> partitionConjuncts = Lists.newArrayList();
     // After partition pruner prune, conjuncts that are not evaled will be send to backend.
-    private final List<Expr> noEvalPartitionConjuncts = Lists.newArrayList();
+    private final List<ExecExpr> noEvalPartitionConjuncts = Lists.newArrayList();
     // nonPartitionConjuncts contains non-partition filters, and will be sent to backend.
-    private final List<Expr> nonPartitionConjuncts = Lists.newArrayList();
+    private final List<ExecExpr> nonPartitionConjuncts = Lists.newArrayList();
 
     // List of conjuncts for min/max values that are used to skip data when scanning Parquet files.
-    private final List<Expr> minMaxConjuncts = new ArrayList<>();
+    private final List<ExecExpr> minMaxConjuncts = new ArrayList<>();
     private TupleDescriptor minMaxTuple;
 
     public TupleDescriptor getMinMaxTuple() {
@@ -66,19 +66,19 @@ public class HDFSScanNodePredicates {
         this.selectedPartitionIds = selectedPartitionIds;
     }
 
-    public List<Expr> getPartitionConjuncts() {
+    public List<ExecExpr> getPartitionConjuncts() {
         return partitionConjuncts;
     }
 
-    public List<Expr> getNoEvalPartitionConjuncts() {
+    public List<ExecExpr> getNoEvalPartitionConjuncts() {
         return noEvalPartitionConjuncts;
     }
 
-    public List<Expr> getNonPartitionConjuncts() {
+    public List<ExecExpr> getNonPartitionConjuncts() {
         return nonPartitionConjuncts;
     }
 
-    public List<Expr> getMinMaxConjuncts() {
+    public List<ExecExpr> getMinMaxConjuncts() {
         return minMaxConjuncts;
     }
 }

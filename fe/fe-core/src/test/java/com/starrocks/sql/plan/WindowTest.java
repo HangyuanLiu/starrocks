@@ -16,6 +16,7 @@ package com.starrocks.sql.plan;
 
 import com.starrocks.common.FeConstants;
 import com.starrocks.planner.AnalyticEvalNode;
+import com.starrocks.planner.expression.ExecFunctionCall;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.utframe.StarRocksAssert;
 import org.junit.jupiter.api.Assertions;
@@ -1886,8 +1887,8 @@ public class WindowTest extends PlanTestBase {
         execPlan.getTopFragment().getPlanRoot().collect(AnalyticEvalNode.class, analyticNodes);
         Assertions.assertFalse(analyticNodes.isEmpty());
         Assertions.assertEquals(analyticNodes.get(0).getAnalyticFnCalls().size(), 2);
-        Assertions.assertTrue(analyticNodes.get(0).getAnalyticFnCalls().get(0).getIgnoreNulls());
-        Assertions.assertFalse(analyticNodes.get(0).getAnalyticFnCalls().get(1).getIgnoreNulls());
+        Assertions.assertTrue(((ExecFunctionCall) analyticNodes.get(0).getAnalyticFnCalls().get(0)).isIgnoreNulls());
+        Assertions.assertFalse(((ExecFunctionCall) analyticNodes.get(0).getAnalyticFnCalls().get(1)).isIgnoreNulls());
     }
 
     @Test

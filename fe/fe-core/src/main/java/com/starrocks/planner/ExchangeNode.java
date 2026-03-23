@@ -37,12 +37,13 @@ package com.starrocks.planner;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.collect.Lists;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecExprUtils;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprUtils;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.optimizer.base.DistributionSpec;
 import com.starrocks.sql.optimizer.operator.TopNType;
 import com.starrocks.thrift.TExchangeNode;
@@ -59,6 +60,7 @@ import org.apache.commons.collections.CollectionUtils;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Receiver side of a 1:n data stream. Logically, an ExchangeNode consumes the data
@@ -203,7 +205,7 @@ public class ExchangeNode extends PlanNode {
         }
         if (mergeInfo != null) {
             TSortInfo sortInfo = new TSortInfo(
-                    ExprToThrift.treesToThrift(mergeInfo.getOrderingExprs()), mergeInfo.getIsAscOrder(),
+                    ExecExprSerializer.serializeList(mergeInfo.getOrderingExprs()), mergeInfo.getIsAscOrder(),
                     mergeInfo.getNullsFirst());
             msg.exchange_node.setSort_info(sortInfo);
             msg.exchange_node.setOffset(offset);
@@ -229,7 +231,6 @@ public class ExchangeNode extends PlanNode {
     @Override
     protected String getNodeExplainString(String detailPrefix, TExplainLevel detailLevel) {
         StringBuilder output = new StringBuilder();
-        List<Expr> partitionExprs = dataPartition.getPartitionExprs();
         if (detailLevel == TExplainLevel.VERBOSE) {
             if (distributionType != null) {
                 output.append(detailPrefix).append("distribution type: ")
@@ -239,10 +240,12 @@ public class ExchangeNode extends PlanNode {
                 output.append(detailPrefix).append("partition type: ")
                         .append(partitionType).append('\n');
             }
-            if (CollectionUtils.isNotEmpty(partitionExprs)) {
+            if (dataPartition != null && CollectionUtils.isNotEmpty(dataPartition.getPartitionExprs())) {
                 output.append(detailPrefix)
                         .append("partition exprs: ")
-                        .append(explainExpr(detailLevel, partitionExprs))
+                        .append(dataPartition.getPartitionExprs().stream()
+                                .map(ExecExprExplain::explain)
+                                .collect(Collectors.joining(", ")))
                         .append('\n');
             }
         }
@@ -261,8 +264,8 @@ public class ExchangeNode extends PlanNode {
     }
 
     @Override
-    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, Expr probeExpr,
-                                          List<Expr> partitionByExprs) {
+    public boolean pushDownRuntimeFilters(RuntimeFilterPushDownContext context, ExecExpr probeExpr,
+                                          List<ExecExpr> partitionByExprs) {
         RuntimeFilterDescription description = context.getDescription();
         if (!canPushDownRuntimeFilter()) {
             return false;
@@ -281,11 +284,11 @@ public class ExchangeNode extends PlanNode {
         // we enable this only when:
         // - session variable enabled &
         // - this rf has been accepted by children nodes(global rf).
-        boolean isBound = ExprUtils.isBoundByTupleIds(probeExpr, getTupleIds());
+        boolean isBound = ExecExprUtils.isBoundByTupleIds(probeExpr, getTupleIds());
         // local runtime filter won't use partition by expr to evaluate runtime filters
         if (!description.inLocalFragmentInstance()) {
             isBound = isBound && partitionByExprs.stream()
-                    .allMatch(expr -> ExprUtils.isBoundByTupleIds(expr, getTupleIds()));
+                    .allMatch(expr -> ExecExprUtils.isBoundByTupleIds(expr, getTupleIds()));
         }
         if (isBound && description.canAcceptFilter(this, context)) {
             if (onExchangeNode || (description.isLocalApplicable() && description.inLocalFragmentInstance())) {
@@ -299,8 +302,8 @@ public class ExchangeNode extends PlanNode {
         return accept;
     }
 
-    private boolean pushCrossExchange(RuntimeFilterPushDownContext context, Expr probeExpr,
-                                      List<Expr> partitionByExprs) {
+    private boolean pushCrossExchange(RuntimeFilterPushDownContext context, ExecExpr probeExpr,
+                                      List<ExecExpr> partitionByExprs) {
         RuntimeFilterDescription description = context.getDescription();
         if (!description.canPushAcrossExchangeNode() ||
                 !canCrossExchangeNode(description, probeExpr, partitionByExprs)) {
@@ -320,8 +323,8 @@ public class ExchangeNode extends PlanNode {
     }
 
     private boolean canCrossExchangeNode(RuntimeFilterDescription description,
-                                         Expr probeExpr,
-                                         List<Expr> partitionByExprs) {
+                                         ExecExpr probeExpr,
+                                         List<ExecExpr> partitionByExprs) {
         // broadcast or only one RF, always can be cross exchange
         if (description.isBroadcastJoin() || description.getEqualCount() == 1) {
             return true;
@@ -333,7 +336,7 @@ public class ExchangeNode extends PlanNode {
             return isPartitionByExprSlotRef(probeExpr, partitionByExprs.get(0));
         } else {
             // TODO(lism): support non-slot-ref partition by exprs later
-            if (partitionByExprs.stream().anyMatch(expr -> !(expr instanceof SlotRef)) ||
+            if (partitionByExprs.stream().anyMatch(expr -> !(expr instanceof ExecSlotRef)) ||
                     partitionByExprs.stream().noneMatch(expr -> isPartitionByExprSlotRef(probeExpr, expr))) {
                 return false;
             }
@@ -341,9 +344,9 @@ public class ExchangeNode extends PlanNode {
         }
     }
 
-    private boolean isPartitionByExprSlotRef(Expr probeExpr, Expr partitionByExpr) {
-        if (probeExpr instanceof SlotRef && partitionByExpr instanceof SlotRef) {
-            return ((SlotRef) probeExpr).getSlotId().asInt() == ((SlotRef) partitionByExpr).getSlotId().asInt();
+    private boolean isPartitionByExprSlotRef(ExecExpr probeExpr, ExecExpr partitionByExpr) {
+        if (probeExpr instanceof ExecSlotRef && partitionByExpr instanceof ExecSlotRef) {
+            return ((ExecSlotRef) probeExpr).getSlotId().asInt() == ((ExecSlotRef) partitionByExpr).getSlotId().asInt();
         } else {
             return false;
         }
@@ -360,7 +363,7 @@ public class ExchangeNode extends PlanNode {
         exchangeNode.setInput_row_tuples(normalizer.remapTupleIds(tupleIds));
         if (mergeInfo != null) {
             TNormalSortInfo sortInfo = new TNormalSortInfo();
-            sortInfo.setOrdering_exprs(normalizer.normalizeOrderedExprs(mergeInfo.getOrderingExprs()));
+            sortInfo.setOrdering_exprs(normalizer.normalizeOrderedExecExprs(mergeInfo.getOrderingExprs()));
             sortInfo.setIs_asc_order(mergeInfo.getIsAscOrder());
             sortInfo.setNulls_first(mergeInfo.getNullsFirst());
             exchangeNode.setSort_info(sortInfo);
@@ -369,7 +372,7 @@ public class ExchangeNode extends PlanNode {
         exchangeNode.setPartition_type(partitionType);
         planNode.setExchange_node(exchangeNode);
         planNode.setNode_type(TPlanNodeType.EXCHANGE_NODE);
-        normalizeConjuncts(normalizer, planNode, conjuncts);
+        normalizeConjuncts(normalizer, planNode, normalizer.getConjunctsByPlanNodeId(this));
         super.toNormalForm(planNode, normalizer);
     }
 }

@@ -42,13 +42,13 @@ import com.starrocks.common.Config;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.Pair;
 import com.starrocks.connector.BucketProperty;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ExecExprUtils;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.ast.TreeNode;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
-import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.optimizer.Utils;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
 import com.starrocks.sql.plan.ExecPlan;
@@ -125,7 +125,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
     private ExchangeNode destNode;
 
     // if null, outputs the entire row produced by planRoot
-    protected ArrayList<Expr> outputExprs;
+    protected ArrayList<ExecExpr> outputExprs;
 
     // created in finalize() or set in setSink()
     protected DataSink sink;
@@ -166,7 +166,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
     protected Map<Integer, RuntimeFilterDescription> probeRuntimeFilters = Maps.newHashMap();
 
     protected List<Pair<Integer, ColumnDict>> queryGlobalDicts = Lists.newArrayList();
-    protected Map<Integer, Expr> queryGlobalDictExprs;
+    protected Map<Integer, ExecExpr> queryGlobalDictExprs;
     protected List<Pair<Integer, ColumnDict>> loadGlobalDicts = Lists.newArrayList();
 
     private final Set<Integer> runtimeFilterBuildNodeIds = Sets.newHashSet();
@@ -433,8 +433,8 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         return dopEstimated;
     }
 
-    public void setOutputExprs(List<Expr> outputExprs) {
-        this.outputExprs = ExprUtils.cloneList(outputExprs, null);
+    public void setOutputExprs(List<ExecExpr> outputExprs) {
+        this.outputExprs = new ArrayList<>(ExecExprUtils.cloneList(outputExprs));
     }
 
     /**
@@ -490,7 +490,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
             result.setPlan(planRoot.treeToThrift());
         }
         if (outputExprs != null) {
-            result.setOutput_exprs(ExprToThrift.treesToThrift(outputExprs));
+            result.setOutput_exprs(ExecExprSerializer.serializeList(outputExprs));
         }
         if (sink != null) {
             result.setOutput_sink(sink.toThrift());
@@ -503,7 +503,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         if (MapUtils.isNotEmpty(queryGlobalDictExprs)) {
             Preconditions.checkState(!queryGlobalDicts.isEmpty(), "Global dict expression error!");
             Map<Integer, TExpr> exprs = Maps.newHashMap();
-            queryGlobalDictExprs.forEach((k, v) -> exprs.put(k, ExprToThrift.treeToThrift(v)));
+            queryGlobalDictExprs.forEach((k, v) -> exprs.put(k, ExecExprSerializer.serialize(v)));
             result.setQuery_global_dict_exprs(exprs);
         }
         if (!loadGlobalDicts.isEmpty()) {
@@ -593,7 +593,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
         StringBuilder outputBuilder = new StringBuilder();
         if (CollectionUtils.isNotEmpty(outputExprs)) {
-            outputBuilder.append(outputExprs.stream().map(ExprToSql::toSql)
+            outputBuilder.append(outputExprs.stream().map(ExecExprExplain::explain)
                     .collect(Collectors.joining(" | ")));
 
         }
@@ -631,7 +631,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         }
         if (CollectionUtils.isNotEmpty(outputExprs)) {
             str.append("  Output Exprs:");
-            str.append(outputExprs.stream().map(ExprToSql::toSql)
+            str.append(outputExprs.stream().map(ExecExprExplain::explain)
                     .collect(Collectors.joining(" | ")));
         }
         str.append("\n");
@@ -642,7 +642,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         if (MapUtils.isNotEmpty(queryGlobalDictExprs)) {
             str.append("  Global Dict Exprs:\n");
             queryGlobalDictExprs.entrySet().stream()
-                    .map(p -> "    " + p.getKey() + ": " + ExprToSql.toMySql(p.getValue()) + "\n").forEach(str::append);
+                    .map(p -> "    " + p.getKey() + ": " + ExecExprExplain.explain(p.getValue()) + "\n").forEach(str::append);
             str.append("\n");
         }
         if (planRoot != null) {
@@ -657,7 +657,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         StringBuilder outputBuilder = new StringBuilder();
         if (CollectionUtils.isNotEmpty(outputExprs)) {
             str.append("  Output Exprs:");
-            outputBuilder.append(outputExprs.stream().map(ExprToSql::toSql)
+            outputBuilder.append(outputExprs.stream().map(ExecExprExplain::explain)
                     .collect(Collectors.joining(" | ")));
         }
         str.append(outputBuilder.toString());
@@ -832,7 +832,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         return this.queryGlobalDicts;
     }
 
-    public Map<Integer, Expr> getQueryGlobalDictExprs() {
+    public Map<Integer, ExecExpr> getQueryGlobalDictExprs() {
         return queryGlobalDictExprs;
     }
 
@@ -852,15 +852,15 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         }
     }
 
-    public void mergeQueryDictExprs(Map<Integer, Expr> queryGlobalDictExprs) {
+    public void mergeQueryDictExprs(Map<Integer, ExecExpr> queryGlobalDictExprs) {
         if (this.queryGlobalDictExprs != queryGlobalDictExprs) {
-            Map<Integer, Expr> n = Maps.newHashMap(MapUtils.emptyIfNull(this.queryGlobalDictExprs));
+            Map<Integer, ExecExpr> n = Maps.newHashMap(MapUtils.emptyIfNull(this.queryGlobalDictExprs));
             n.putAll(MapUtils.emptyIfNull(queryGlobalDictExprs));
             this.queryGlobalDictExprs = n;
         }
     }
 
-    public void setQueryGlobalDictExprs(Map<Integer, Expr> queryGlobalDictExprs) {
+    public void setQueryGlobalDictExprs(Map<Integer, ExecExpr> queryGlobalDictExprs) {
         this.queryGlobalDictExprs = queryGlobalDictExprs;
     }
 
@@ -939,7 +939,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         return false;
     }
 
-    public ArrayList<Expr> getOutputExprs() {
+    public ArrayList<ExecExpr> getOutputExprs() {
         return outputExprs;
     }
 
@@ -1056,8 +1056,8 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
     private void removeDictMappingProbeRuntimeFilters(PlanNode root) {
         root.getProbeRuntimeFilters().removeIf(filter -> {
-            Expr probExpr = filter.getNodeIdToProbeExpr().get(root.getId().asInt());
-            return ExprUtils.containsDictMappingExpr(probExpr);
+            ExecExpr probExpr = filter.getNodeIdToProbeExpr().get(root.getId().asInt());
+            return ExecExprUtils.containsDictMappingExpr(probExpr);
         });
 
         for (PlanNode child : root.getChildren()) {

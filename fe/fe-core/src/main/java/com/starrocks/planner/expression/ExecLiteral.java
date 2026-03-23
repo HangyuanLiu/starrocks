@@ -98,7 +98,13 @@ public class ExecLiteral extends ExecExpr {
         Type t = type;
         if (t.isBoolean()) {
             node.bool_literal = new TBoolLiteral(value.getBoolean());
-        } else if (t.isIntegerType() || t.isTinyint() || t.isSmallint()) {
+        } else if (t.isTinyint()) {
+            node.int_literal = new TIntLiteral(value.getTinyInt());
+        } else if (t.isSmallint()) {
+            node.int_literal = new TIntLiteral(value.getSmallint());
+        } else if (t.isInt()) {
+            node.int_literal = new TIntLiteral(value.getInt());
+        } else if (t.isBigint()) {
             node.int_literal = new TIntLiteral(value.getBigint());
         } else if (t.isLargeint()) {
             node.large_int_literal = new TLargeIntLiteral(value.getLargeInt().toString());

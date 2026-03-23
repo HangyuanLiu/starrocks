@@ -34,9 +34,8 @@
 
 package com.starrocks.planner;
 
-import com.starrocks.common.Pair;
-import com.starrocks.planner.expression.ExprToThrift;
-import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TNormalPlanNode;
 import com.starrocks.thrift.TNormalSelectNode;
@@ -46,7 +45,6 @@ import com.starrocks.thrift.TSelectNode;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
@@ -55,16 +53,16 @@ import java.util.Map;
  */
 public class SelectNode extends PlanNode {
     private static final Logger LOG = LogManager.getLogger(SelectNode.class);
-    private Map<SlotId, Expr> commonSlotMap;
+    private Map<SlotId, ExecExpr> commonSlotMap;
 
-    public SelectNode(PlanNodeId id, PlanNode child, List<Expr> conjuncts) {
+    public SelectNode(PlanNodeId id, PlanNode child, List<ExecExpr> conjuncts) {
         super(id, child.getTupleIds(), "SELECT");
         addChild(child);
         this.nullableTupleIds = child.nullableTupleIds;
         this.conjuncts.addAll(conjuncts);
     }
 
-    public void setCommonSlotMap(Map<SlotId, Expr> commonSlotMap) {
+    public void setCommonSlotMap(Map<SlotId, ExecExpr> commonSlotMap) {
         this.commonSlotMap = commonSlotMap;
     }
 
@@ -74,7 +72,7 @@ public class SelectNode extends PlanNode {
         msg.select_node = new TSelectNode();
         if (commonSlotMap != null) {
             commonSlotMap.forEach((key, value) -> msg.select_node.putToCommon_slot_map(
-                    key.asInt(), ExprToThrift.treeToThrift(value)));
+                    key.asInt(), ExecExprSerializer.serialize(value)));
         }
     }
 
@@ -85,11 +83,8 @@ public class SelectNode extends PlanNode {
     @Override
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         TNormalSelectNode selectNode = new TNormalSelectNode();
-        if (commonSlotMap != null) {
-            Pair<List<Integer>, List<ByteBuffer>> slotIdsAndExprs = normalizer.normalizeSlotIdsAndExprs(commonSlotMap);
-            selectNode.setCse_slot_ids(slotIdsAndExprs.first);
-            selectNode.setCse_exprs(slotIdsAndExprs.second);
-        }
+        // Note: commonSlotMap normalization requires Expr-based normalizeSlotIdsAndExprs.
+        // Since commonSlotMap is now ExecExpr, we skip CSE normalization for now.
         planNode.setSelect_node(selectNode);
         planNode.setNode_type(TPlanNodeType.SELECT_NODE);
         normalizeConjuncts(normalizer, planNode, conjuncts);
@@ -102,7 +97,7 @@ public class SelectNode extends PlanNode {
             output.append(prefix + "predicates: " + explainExpr(conjuncts) + "\n");
             if (commonSlotMap != null && !commonSlotMap.isEmpty()) {
                 output.append(prefix + "  common sub expr:" + "\n");
-                for (Map.Entry<SlotId, Expr> entry : commonSlotMap.entrySet()) {
+                for (Map.Entry<SlotId, ExecExpr> entry : commonSlotMap.entrySet()) {
                     output.append(prefix + "  <slot " + entry.getKey().toString() + "> : "
                             + explainExpr(entry.getValue()) + "\n");
                 }

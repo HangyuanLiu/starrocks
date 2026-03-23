@@ -124,6 +124,7 @@ import com.starrocks.planner.OlapScanNode;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.PlanNodeId;
 import com.starrocks.planner.ScanNode;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.plugin.AuditEvent;
 import com.starrocks.proto.PPlanFragmentCancelReason;
 import com.starrocks.proto.PQueryStatistics;
@@ -1772,7 +1773,7 @@ public class StmtExecutor {
         List<ScanNode> scanNodes = execPlan.getScanNodes();
         TDescriptorTable descTable = execPlan.getDescTbl().toThrift();
         List<String> colNames = execPlan.getColNames();
-        List<Expr> outputExprs = execPlan.getOutputExprs();
+        List<ExecExpr> outputExprs = execPlan.getOutputExprs();
 
         if (executeInFe) {
             coord = new FeExecuteCoordinator(context, execPlan);
@@ -1885,7 +1886,7 @@ public class StmtExecutor {
         }
     }
 
-    private void responseFields(RawScopedTimer timer, List<String> colNames, List<Expr> exprs) throws IOException {
+    private void responseFields(RawScopedTimer timer, List<String> colNames, List<ExecExpr> exprs) throws IOException {
         try (final RawScopedTimer.Guard ignore = timer.start()) {
             sendFields(colNames, exprs);
         }
@@ -2477,7 +2478,7 @@ public class StmtExecutor {
         context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
     }
 
-    private void sendFields(List<String> colNames, List<Expr> exprs) throws IOException {
+    private void sendFields(List<String> colNames, List<ExecExpr> exprs) throws IOException {
         // sends how many columns
         serializer.reset();
         serializer.writeVInt(colNames.size());

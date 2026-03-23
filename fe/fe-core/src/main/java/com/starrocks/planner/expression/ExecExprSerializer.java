@@ -48,6 +48,17 @@ public final class ExecExprSerializer {
     }
 
     private static void serializeHelper(ExecExpr expr, TExpr container) {
+        // For AST Expr wrappers, delegate to the original AST serialization path
+        if (expr instanceof ExecAstExprWrapper) {
+            TExpr astResult = ExprToThrift.treeToThrift(((ExecAstExprWrapper) expr).getAstExpr());
+            if (astResult.getNodes() != null) {
+                for (com.starrocks.thrift.TExprNode n : astResult.getNodes()) {
+                    container.addToNodes(n);
+                }
+            }
+            return;
+        }
+
         Type exprType = expr.getType();
 
         // Replace NULL_TYPE with BOOLEAN, matching ExprToThrift behavior.

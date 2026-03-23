@@ -113,8 +113,10 @@ public class DeletePlanTest extends PlanTestBase {
         assertNotNull(execPlan);
         assertNotNull(execPlan.getOutputExprs());
         assertTrue(execPlan.getOutputExprs().size() >= 2, "Should output _file and _pos");
-        assertTrue(execPlan.getOutputExprs().get(0).debugString().contains("_file"));
-        assertTrue(execPlan.getOutputExprs().get(1).debugString().contains("_pos"));
+        assertTrue(com.starrocks.planner.expression.ExecExprExplain.explain(
+                execPlan.getOutputExprs().get(0)).contains("_file"));
+        assertTrue(com.starrocks.planner.expression.ExecExprExplain.explain(
+                execPlan.getOutputExprs().get(1)).contains("_pos"));
     }
 
     @Test

@@ -39,12 +39,13 @@ import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.starrocks.common.IdGenerator;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprExplain;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.optimizer.operator.TopNType;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TLateMaterializeMode;
@@ -77,22 +78,22 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
     // if SortNode(TopNNode in BE) is followed by AnalyticNode with partition_exprs, this partition_exprs is
     // also added to TopNNode to hint that local shuffle operator is prepended to TopNNode in
     // order to eliminate merging operation in pipeline execution engine.
-    private List<Expr> analyticPartitionExprs = Collections.emptyList();
+    private List<ExecExpr> analyticPartitionExprs = Collections.emptyList();
     private boolean analyticPartitionSkewed = false;
 
     // info_.sortTupleSlotExprs_ substituted with the outputSmap_ for materialized slots in init().
-    public List<Expr> resolvedTupleExprs;
+    public List<ExecExpr> resolvedTupleExprs;
 
     private final List<RuntimeFilterDescription> buildRuntimeFilters = Lists.newArrayList();
     private boolean withRuntimeFilters = false;
 
-    private List<Expr> preAggFnCalls;
+    private List<ExecExpr> preAggFnCalls;
 
     private List<SlotId> preAggOutputColumnId;
 
     private boolean perPipeline;
 
-    public void setAnalyticPartitionExprs(List<Expr> exprs) {
+    public void setAnalyticPartitionExprs(List<ExecExpr> exprs) {
         this.analyticPartitionExprs = exprs;
     }
 
@@ -144,7 +145,7 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
         return info;
     }
 
-    public void setPreAggFnCalls(List<Expr> preAggFnCalls) {
+    public void setPreAggFnCalls(List<ExecExpr> preAggFnCalls) {
         this.preAggFnCalls = preAggFnCalls;
     }
 
@@ -184,22 +185,22 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
             return;
         }
 
-        // RuntimeFilter only works for the first column
-        Expr orderBy = getSortInfo().getOrderingExprs().get(0);
-
+        // RuntimeFilter only works for the first column.
+        ExecExpr firstOrderExpr = getSortInfo().getOrderingExprs().get(0);
         RuntimeFilterDescription rf = new RuntimeFilterDescription(sessionVariable);
         rf.setFilterId(generator.getNextId().asInt());
         rf.setBuildPlanNodeId(getId().asInt());
         rf.setExprOrder(0);
         rf.setJoinMode(JoinNode.DistributionMode.BROADCAST);
-        rf.setOnlyLocal(true);
-        rf.setSortInfo(getSortInfo());
-        rf.setBuildExpr(orderBy);
+        rf.setBuildExpr(firstOrderExpr);
         rf.setRuntimeFilterType(RuntimeFilterDescription.RuntimeFilterType.TOPN_FILTER);
-        rf.setTopN(offset < 0 ? limit : offset + limit);
+        rf.setOnlyLocal(true);
+        rf.setSortInfo(info);
+        rf.setTopN(limit);
+        rf.setEqualCount(1);
         RuntimeFilterPushDownContext rfPushDownCtx = new RuntimeFilterPushDownContext(rf, descTbl, execGroupSets);
         for (PlanNode child : children) {
-            if (child.pushDownRuntimeFilters(rfPushDownCtx, orderBy, Lists.newArrayList())) {
+            if (child.pushDownRuntimeFilters(rfPushDownCtx, firstOrderExpr, Lists.newArrayList())) {
                 this.buildRuntimeFilters.add(rf);
             }
         }
@@ -222,7 +223,7 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
             strings.add(isAsc ? "a" : "d");
         }
         return MoreObjects.toStringHelper(this).add("ordering_exprs",
-                Expr.debugString(info.getOrderingExprs())).add("is_asc",
+                ExecExprExplain.explainList(info.getOrderingExprs())).add("is_asc",
                 "[" + Joiner.on(" ").join(strings) + "]").addValue(super.debugString()).toString();
     }
 
@@ -230,7 +231,7 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
     protected void toThrift(TPlanNode msg) {
         msg.node_type = TPlanNodeType.SORT_NODE;
         TSortInfo sortInfo = info.toTSortInfo();
-        sortInfo.setSort_tuple_slot_exprs(ExprToThrift.treesToThrift(resolvedTupleExprs));
+        sortInfo.setSort_tuple_slot_exprs(ExecExprSerializer.serializeList(resolvedTupleExprs));
 
         msg.sort_node = new TSortNode(sortInfo, useTopN);
         msg.sort_node.setOffset(offset);
@@ -249,29 +250,29 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
         msg.sort_node.setParallel_merge_late_materialize_mode(mode);
 
         if (info.getPartitionExprs() != null) {
-            msg.sort_node.setPartition_exprs(ExprToThrift.treesToThrift(info.getPartitionExprs()));
+            msg.sort_node.setPartition_exprs(ExecExprSerializer.serializeList(info.getPartitionExprs()));
             msg.sort_node.setPartition_limit(info.getPartitionLimit());
         }
         msg.sort_node.setTopn_type(topNType.toThrift());
         // TODO(lingbin): remove blew codes, because it is duplicate with TSortInfo
-        msg.sort_node.setOrdering_exprs(ExprToThrift.treesToThrift(info.getOrderingExprs()));
+        msg.sort_node.setOrdering_exprs(ExecExprSerializer.serializeList(info.getOrderingExprs()));
         msg.sort_node.setIs_asc_order(info.getIsAscOrder());
         msg.sort_node.setNulls_first(info.getNullsFirst());
-        msg.sort_node.setAnalytic_partition_exprs(ExprToThrift.treesToThrift(analyticPartitionExprs));
+        msg.sort_node.setAnalytic_partition_exprs(ExecExprSerializer.serializeList(analyticPartitionExprs));
         msg.sort_node.setAnalytic_partition_skewed(analyticPartitionSkewed);
         if (info.getSortTupleSlotExprs() != null) {
-            msg.sort_node.setSort_tuple_slot_exprs(ExprToThrift.treesToThrift(info.getSortTupleSlotExprs()));
+            msg.sort_node.setSort_tuple_slot_exprs(ExecExprSerializer.serializeList(info.getSortTupleSlotExprs()));
         }
         msg.sort_node.setHas_outer_join_child(hasNullableGenerateChild);
         // For profile printing `SortKeys`
-        Iterator<Expr> expr = info.getOrderingExprs().iterator();
+        Iterator<ExecExpr> expr = info.getOrderingExprs().iterator();
         Iterator<Boolean> direction = info.getIsAscOrder().iterator();
         StringBuilder sqlSortKeysBuilder = new StringBuilder();
         while (expr.hasNext()) {
             if (sqlSortKeysBuilder.length() > 0) {
                 sqlSortKeysBuilder.append(", ");
             }
-            sqlSortKeysBuilder.append(ExprToSql.toSql(expr.next()).replaceAll("<slot\\s[0-9]+>\\s+", "")).append(" ");
+            sqlSortKeysBuilder.append(ExecExprExplain.explain(expr.next()).replaceAll("<slot\\s[0-9]+>\\s+", "")).append(" ");
             sqlSortKeysBuilder.append(direction.next() ? "ASC" : "DESC");
         }
         if (sqlSortKeysBuilder.length() > 0) {
@@ -285,7 +286,7 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
         }
 
         if (preAggFnCalls != null && !preAggFnCalls.isEmpty()) {
-            msg.sort_node.setPre_agg_exprs(ExprToThrift.treesToThrift(preAggFnCalls));
+            msg.sort_node.setPre_agg_exprs(ExecExprSerializer.serializeList(preAggFnCalls));
             msg.sort_node.setPre_agg_insert_local_shuffle(
                     ConnectContext.get().getSessionVariable().isInsertLocalShuffleForWindowPreAgg());
         }
@@ -304,7 +305,7 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
         if (!TopNType.ROW_NUMBER.equals(topNType)) {
             output.append(detailPrefix).append("type: ").append(topNType.toString()).append("\n");
         }
-        Iterator<Expr> partitionExpr = info.getPartitionExprs().iterator();
+        Iterator<ExecExpr> partitionExpr = info.getPartitionExprs().iterator();
         boolean start = true;
         while (partitionExpr.hasNext()) {
             if (start) {
@@ -313,19 +314,18 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
             } else {
                 output.append(", ");
             }
-            if (detailLevel.equals(TExplainLevel.NORMAL)) {
-                output.append(explainExpr(partitionExpr.next())).append(" ");
-            } else {
-                output.append(explainExpr(TExplainLevel.VERBOSE, List.of(partitionExpr.next()))).append(" ");
-            }
+            ExecExpr next = partitionExpr.next();
+            boolean verbose = TExplainLevel.VERBOSE.equals(detailLevel) || TExplainLevel.COSTS.equals(detailLevel);
+            output.append(verbose ? ExecExprExplain.verboseExplain(next) : ExecExprExplain.explain(next)).append(" ");
         }
         if (!start) {
             output.append("\n");
             output.append(detailPrefix).append("partition limit: ").append(info.getPartitionLimit()).append("\n");
         }
         output.append(detailPrefix).append("order by: ");
-        Iterator<Expr> orderExpr = info.getOrderingExprs().iterator();
+        Iterator<ExecExpr> orderExpr = info.getOrderingExprs().iterator();
         Iterator<Boolean> isAsc = info.getIsAscOrder().iterator();
+        boolean verbose = TExplainLevel.VERBOSE.equals(detailLevel) || TExplainLevel.COSTS.equals(detailLevel);
         start = true;
         while (orderExpr.hasNext()) {
             if (start) {
@@ -333,11 +333,8 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
             } else {
                 output.append(", ");
             }
-            if (detailLevel.equals(TExplainLevel.NORMAL)) {
-                output.append(explainExpr(orderExpr.next())).append(" ");
-            } else {
-                output.append(explainExpr(TExplainLevel.VERBOSE, List.of(orderExpr.next()))).append(" ");
-            }
+            ExecExpr next = orderExpr.next();
+            output.append(verbose ? ExecExprExplain.verboseExplain(next) : ExecExprExplain.explain(next)).append(" ");
             output.append(isAsc.next() ? "ASC" : "DESC");
         }
         output.append("\n");
@@ -346,13 +343,9 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
             output.append(detailPrefix).append("pre agg functions: ");
             List<String> strings = Lists.newArrayList();
 
-            for (Expr fnCall : preAggFnCalls) {
+            for (ExecExpr fnCall : preAggFnCalls) {
                 strings.add("[");
-                if (detailLevel.equals(TExplainLevel.NORMAL)) {
-                    strings.add(ExprToSql.toSql(fnCall));
-                } else {
-                    strings.add(ExprToSql.explain(fnCall));
-                }
+                strings.add(ExecExprExplain.explain(fnCall));
                 strings.add("]");
             }
             output.append(Joiner.on(", ").join(strings));
@@ -362,17 +355,13 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
         if (!analyticPartitionExprs.isEmpty()) {
             output.append(detailPrefix).append("analytic partition by: ");
             start = true;
-            for (Expr expr : analyticPartitionExprs) {
+            for (ExecExpr expr : analyticPartitionExprs) {
                 if (start) {
                     start = false;
                 } else {
                     output.append(", ");
                 }
-                if (detailLevel.equals(TExplainLevel.NORMAL)) {
-                    output.append(ExprToSql.toSql(expr));
-                } else {
-                    output.append(ExprToSql.explain(expr));
-                }
+                output.append(ExecExprExplain.explain(expr));
             }
             output.append("\n");
         }
@@ -411,22 +400,22 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         TNormalSortNode sortNode = new TNormalSortNode();
         TNormalSortInfo sortInfo = new TNormalSortInfo();
-        sortInfo.setOrdering_exprs(normalizer.normalizeOrderedExprs(info.getOrderingExprs()));
+        sortInfo.setOrdering_exprs(normalizer.normalizeOrderedExecExprs(info.getOrderingExprs()));
         sortInfo.setIs_asc_order(info.getIsAscOrder());
         sortInfo.setNulls_first(info.getNullsFirst());
         if (info.getSortTupleSlotExprs() != null) {
-            sortInfo.setSort_tuple_slot_exprs(normalizer.normalizeOrderedExprs(info.getSortTupleSlotExprs()));
+            sortInfo.setSort_tuple_slot_exprs(normalizer.normalizeOrderedExecExprs(info.getSortTupleSlotExprs()));
         }
         sortNode.setSort_info(sortInfo);
         sortNode.setUse_top_n(useTopN);
         sortNode.setOffset(offset);
         if (info.getPartitionExprs() != null) {
-            sortNode.setPartition_exprs(normalizer.normalizeOrderedExprs(info.getPartitionExprs()));
+            sortNode.setPartition_exprs(normalizer.normalizeOrderedExecExprs(info.getPartitionExprs()));
             sortNode.setPartition_limit(info.getPartitionLimit());
         }
         sortNode.setTopn_type(topNType.toThrift());
         if (analyticPartitionExprs != null) {
-            sortNode.setAnalytic_partition_exprs(normalizer.normalizeOrderedExprs(analyticPartitionExprs));
+            sortNode.setAnalytic_partition_exprs(normalizer.normalizeOrderedExecExprs(analyticPartitionExprs));
         }
         sortNode.setHas_outer_join_child(hasNullableGenerateChild);
         planNode.setSort_node(sortNode);

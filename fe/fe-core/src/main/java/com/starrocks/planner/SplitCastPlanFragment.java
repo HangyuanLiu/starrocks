@@ -16,7 +16,7 @@ package com.starrocks.planner;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.thrift.TResultSinkType;
 
@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 
 public class SplitCastPlanFragment extends PlanFragment {
     private final List<ExchangeNode> destNodeList = Lists.newArrayList();
-    private final List<Expr> splitExprs = Lists.newArrayList();
+    private final List<ExecExpr> splitExprs = Lists.newArrayList();
 
     private final List<DataPartition> outputPartitions = Lists.newArrayList();
 
@@ -33,7 +33,7 @@ public class SplitCastPlanFragment extends PlanFragment {
         return destNodeList;
     }
 
-    public List<Expr> getSplitExprs() {
+    public List<ExecExpr> getSplitExprs() {
         return splitExprs;
     }
 
