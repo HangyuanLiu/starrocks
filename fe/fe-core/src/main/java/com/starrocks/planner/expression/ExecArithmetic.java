@@ -45,7 +45,16 @@ public class ExecArithmetic extends ExecExpr {
 
     @Override
     public boolean isNullable() {
-        return hasNullableChild();
+        if (op == ArithmeticExpr.Operator.DIVIDE || op == ArithmeticExpr.Operator.INT_DIVIDE
+                || op == ArithmeticExpr.Operator.MOD) {
+            return true;
+        }
+        for (ExecExpr child : children) {
+            if (child.isNullable() || child.getType().isDecimalV3()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

@@ -64,6 +64,11 @@ public class ExecLiteral extends ExecExpr {
     }
 
     @Override
+    public boolean isSelfMonotonic() {
+        return true;
+    }
+
+    @Override
     public TExprNodeType getNodeType() {
         if (value.isNull()) {
             return TExprNodeType.NULL_LITERAL;
@@ -136,9 +141,31 @@ public class ExecLiteral extends ExecExpr {
         }
     }
 
-    private static byte[] packDecimal(ConstantOperator value) {
-        java.math.BigInteger unscaled = value.getDecimal().unscaledValue();
-        return unscaled.toByteArray();
+    private byte[] packDecimal(ConstantOperator value) {
+        // Match DecimalLiteral.packDecimal() behavior: allocate type-sized buffer,
+        // scale the value, and pack in little-endian order.
+        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(type.getTypeSize());
+        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        int scale = ((com.starrocks.type.ScalarType) type).getScalarScale();
+        java.math.BigDecimal scaledValue = value.getDecimal()
+                .multiply(java.math.BigDecimal.TEN.pow(scale));
+        switch (type.getPrimitiveType()) {
+            case DECIMAL32:
+                buffer.putInt(scaledValue.intValue());
+                break;
+            case DECIMAL64:
+                buffer.putLong(scaledValue.longValue());
+                break;
+            default: // DECIMAL128, DECIMAL256, DECIMALV2
+                byte[] bytes = scaledValue.toBigInteger().toByteArray();
+                // BigInteger is big-endian, copy in reverse for little-endian
+                for (int i = 0; i < buffer.capacity(); i++) {
+                    int srcIdx = bytes.length - 1 - i;
+                    buffer.put(i, srcIdx >= 0 ? bytes[srcIdx] : (bytes[0] < 0 ? (byte) -1 : 0));
+                }
+                break;
+        }
+        return buffer.array();
     }
 
     @Override

@@ -56,16 +56,19 @@ public class StreamAggNode extends PlanNode {
     @Override
     protected String getNodeExplainString(String detailPrefix, TExplainLevel detailLevel) {
         StringBuilder output = new StringBuilder();
+        boolean verbose = TExplainLevel.VERBOSE.equals(detailLevel) || TExplainLevel.COSTS.equals(detailLevel);
 
         if (CollectionUtils.isNotEmpty(aggInfo.getMaterializedAggregateExprs())) {
             output.append(detailPrefix)
                     .append("output: ")
-                    .append(ExecExprExplain.explainList(aggInfo.getAggregateExprs()))
+                    .append(verbose ? ExecExprExplain.verboseExplainList(aggInfo.getAggregateExprs())
+                            : ExecExprExplain.explainList(aggInfo.getAggregateExprs()))
                     .append("\n");
         }
         output.append(detailPrefix)
                 .append("group_by: ")
-                .append(ExecExprExplain.explainList(aggInfo.getGroupingExprs()))
+                .append(verbose ? ExecExprExplain.verboseExplainList(aggInfo.getGroupingExprs())
+                        : ExecExprExplain.explainList(aggInfo.getGroupingExprs()))
                 .append("\n");
         if (!conjuncts.isEmpty()) {
             output.append(detailPrefix).append("having: ").append(explainExpr(conjuncts)).append("\n");

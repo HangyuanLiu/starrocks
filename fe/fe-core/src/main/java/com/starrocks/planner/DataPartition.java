@@ -142,6 +142,8 @@ public class DataPartition {
         StringBuilder str = new StringBuilder();
         str.append(type.toString());
         if (!partitionExprs.isEmpty()) {
+            // Always use normal (non-verbose) explain format for partition expressions,
+            // matching the original AST-based behavior that used ExprToSql.toSql().
             List<String> strings = Lists.newArrayList();
             for (ExecExpr expr : partitionExprs) {
                 strings.add(ExecExprExplain.explain(expr));

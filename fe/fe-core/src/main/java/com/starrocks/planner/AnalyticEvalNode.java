@@ -224,12 +224,13 @@ public class AnalyticEvalNode extends PlanNode {
 
     protected String getNodeExplainString(String prefix, TExplainLevel detailLevel) {
         StringBuilder output = new StringBuilder();
+        boolean verbose = TExplainLevel.VERBOSE.equals(detailLevel) || TExplainLevel.COSTS.equals(detailLevel);
         output.append(prefix).append("functions: ");
         List<String> strings = Lists.newArrayList();
 
         for (ExecExpr fnCall : analyticFnCalls) {
             strings.add("[");
-            strings.add(ExecExprExplain.explain(fnCall));
+            strings.add(verbose ? ExecExprExplain.verboseExplain(fnCall) : ExecExprExplain.explain(fnCall));
             strings.add("]");
         }
 
@@ -241,7 +242,7 @@ public class AnalyticEvalNode extends PlanNode {
             strings.clear();
 
             for (ExecExpr partitionExpr : partitionExprs) {
-                strings.add(ExecExprExplain.explain(partitionExpr));
+                strings.add(verbose ? ExecExprExplain.verboseExplain(partitionExpr) : ExecExprExplain.explain(partitionExpr));
             }
 
             output.append(Joiner.on(", ").join(strings));
@@ -254,12 +255,16 @@ public class AnalyticEvalNode extends PlanNode {
 
             for (int i = 0; i < orderByExprs.size(); i++) {
                 StringBuilder element = new StringBuilder();
-                element.append(ExecExprExplain.explain(orderByExprs.get(i)));
-                element.append(orderByIsAsc.get(i) ? " ASC" : " DESC");
-                if (orderByNullsFirst.get(i)) {
-                    element.append(" NULLS FIRST");
-                } else {
+                element.append(verbose ? ExecExprExplain.verboseExplain(orderByExprs.get(i)) : ExecExprExplain.explain(orderByExprs.get(i)));
+                boolean isAsc = orderByIsAsc.get(i);
+                boolean nullsFirst = orderByNullsFirst.get(i);
+                element.append(isAsc ? " ASC" : " DESC");
+                // Only show NULLS FIRST/LAST when non-default
+                // StarRocks default: ASC → NULLS FIRST, DESC → NULLS LAST
+                if (isAsc && !nullsFirst) {
                     element.append(" NULLS LAST");
+                } else if (!isAsc && nullsFirst) {
+                    element.append(" NULLS FIRST");
                 }
                 strings.add(element.toString());
             }
@@ -296,8 +301,15 @@ public class AnalyticEvalNode extends PlanNode {
         if (!(expr instanceof ExecSlotRef)) {
             return Optional.empty();
         }
-        // Return the expr itself if it's bound.
-        return Optional.of(Lists.newArrayList(expr));
+        List<ExecExpr> newSlotExprs = Lists.newArrayList();
+        for (ExecExpr pExpr : partitionExprs) {
+            // push down only when both of them are slot ref and slot id match.
+            if ((pExpr instanceof ExecSlotRef) &&
+                    (((ExecSlotRef) pExpr).getSlotId().asInt() == ((ExecSlotRef) expr).getSlotId().asInt())) {
+                newSlotExprs.add(pExpr);
+            }
+        }
+        return newSlotExprs.size() > 0 ? Optional.of(newSlotExprs) : Optional.empty();
     }
 
     @Override

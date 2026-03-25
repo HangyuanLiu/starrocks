@@ -593,7 +593,9 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
         StringBuilder outputBuilder = new StringBuilder();
         if (CollectionUtils.isNotEmpty(outputExprs)) {
-            outputBuilder.append(outputExprs.stream().map(ExecExprExplain::explain)
+            boolean verbose = TExplainLevel.VERBOSE.equals(explainLevel) || TExplainLevel.COSTS.equals(explainLevel);
+            outputBuilder.append(outputExprs.stream()
+                    .map(e -> verbose ? ExecExprExplain.verboseExplain(e) : ExecExprExplain.explain(e))
                     .collect(Collectors.joining(" | ")));
 
         }

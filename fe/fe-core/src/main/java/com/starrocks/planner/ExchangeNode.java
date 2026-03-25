@@ -243,9 +243,7 @@ public class ExchangeNode extends PlanNode {
             if (dataPartition != null && CollectionUtils.isNotEmpty(dataPartition.getPartitionExprs())) {
                 output.append(detailPrefix)
                         .append("partition exprs: ")
-                        .append(dataPartition.getPartitionExprs().stream()
-                                .map(ExecExprExplain::explain)
-                                .collect(Collectors.joining(", ")))
+                        .append(explainExpr(detailLevel, dataPartition.getPartitionExprs()))
                         .append('\n');
             }
         }

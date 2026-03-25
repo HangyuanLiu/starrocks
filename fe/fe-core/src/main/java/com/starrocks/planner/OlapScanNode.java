@@ -875,7 +875,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
                 output.append(prefix).append(prefix);
                 if (detailLevel == TExplainLevel.VERBOSE) {
                     output.append(kv.first).append(" <-> ")
-                            .append(ExecExprExplain.explain(kv.second)).append("\n");
+                            .append(ExecExprExplain.verboseExplain(kv.second)).append("\n");
                 } else {
                     output.append("<slot ").
                             append(kv.first).

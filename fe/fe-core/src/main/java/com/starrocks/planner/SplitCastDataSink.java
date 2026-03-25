@@ -40,11 +40,13 @@ public class SplitCastDataSink extends DataSink {
     @Override
     public String getExplainString(String prefix, TExplainLevel explainLevel) {
         StringBuilder sb = new StringBuilder();
+        boolean verbose = TExplainLevel.VERBOSE.equals(explainLevel) || TExplainLevel.COSTS.equals(explainLevel);
 
         sb.append(prefix).append("SplitCastDataSink\n");
         for (int i = 0; i < dataStreamSinks.size(); i++) {
             sb.append(dataStreamSinks.get(i).getExplainString(prefix, explainLevel));
-            sb.append(prefix + ExecExprExplain.explain(splitExprs.get(i)) + "\n");
+            sb.append(prefix + (verbose ? ExecExprExplain.verboseExplain(splitExprs.get(i))
+                    : ExecExprExplain.explain(splitExprs.get(i))) + "\n");
         }
         return sb.toString();
     }
@@ -56,7 +58,7 @@ public class SplitCastDataSink extends DataSink {
         sb.append(prefix).append("SplitCastDataSink:\n");
         for (int i = 0; i < dataStreamSinks.size(); i++) {
             sb.append(dataStreamSinks.get(i).getVerboseExplain(prefix));
-            sb.append(prefix + "Split expr: " + ExecExprExplain.explain(splitExprs.get(i)) + "\n");
+            sb.append(prefix + "Split expr: " + ExecExprExplain.verboseExplain(splitExprs.get(i)) + "\n");
         }
 
         return sb.toString();

@@ -32,6 +32,7 @@ public class ExecFunctionCall extends ExecExpr {
     private final boolean isDistinct;
     private final boolean ignoreNulls;
     private final boolean isAggregateOrAnalytic;
+    private final boolean isCountStar;
     private boolean isMergeAggFn;
     private boolean nullable;
 
@@ -39,6 +40,14 @@ public class ExecFunctionCall extends ExecExpr {
                             List<ExecExpr> children,
                             boolean isDistinct, boolean ignoreNulls,
                             boolean isAggregateOrAnalytic, boolean isMergeAggFn) {
+        this(type, fn, fnName, children, isDistinct, ignoreNulls, isAggregateOrAnalytic, isMergeAggFn, false);
+    }
+
+    public ExecFunctionCall(Type type, Function fn, String fnName,
+                            List<ExecExpr> children,
+                            boolean isDistinct, boolean ignoreNulls,
+                            boolean isAggregateOrAnalytic, boolean isMergeAggFn,
+                            boolean isCountStar) {
         super(type, children);
         this.fn = fn;
         this.fnName = fnName;
@@ -46,6 +55,7 @@ public class ExecFunctionCall extends ExecExpr {
         this.ignoreNulls = ignoreNulls;
         this.isAggregateOrAnalytic = isAggregateOrAnalytic;
         this.isMergeAggFn = isMergeAggFn;
+        this.isCountStar = isCountStar;
         this.nullable = true;
     }
 
@@ -53,6 +63,7 @@ public class ExecFunctionCall extends ExecExpr {
         super(other.type, other.cloneChildren());
         this.fn = other.fn;
         this.fnName = other.fnName;
+        this.isCountStar = other.isCountStar;
         this.isDistinct = other.isDistinct;
         this.ignoreNulls = other.ignoreNulls;
         this.isAggregateOrAnalytic = other.isAggregateOrAnalytic;
@@ -82,6 +93,10 @@ public class ExecFunctionCall extends ExecExpr {
         return isAggregateOrAnalytic;
     }
 
+    public boolean isCountStar() {
+        return isCountStar;
+    }
+
     public boolean isMergeAggFn() {
         return isMergeAggFn;
     }
@@ -109,6 +124,14 @@ public class ExecFunctionCall extends ExecExpr {
     @Override
     public boolean isNullable() {
         return nullable;
+    }
+
+    @Override
+    public boolean hasNullableChild() {
+        if (isMergeAggFn) {
+            return true;
+        }
+        return super.hasNullableChild();
     }
 
     @Override

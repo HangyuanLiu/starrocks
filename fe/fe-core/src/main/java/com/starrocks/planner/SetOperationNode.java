@@ -219,12 +219,14 @@ public abstract class SetOperationNode extends PlanNode {
         // A SetOperationNode may have predicates if a union is set operation inside an inline view,
         // and the enclosing select stmt has predicates referring to the inline view.
         if (CollectionUtils.isNotEmpty(conjuncts)) {
-            output.append(prefix).append("predicates: ").append(explainExpr(conjuncts)).append("\n");
+            output.append(prefix).append("predicates: ").append(explainExpr(detailLevel, conjuncts)).append("\n");
         }
         if (CollectionUtils.isNotEmpty(constExprLists_)) {
+            boolean verbose = TExplainLevel.VERBOSE.equals(detailLevel) || TExplainLevel.COSTS.equals(detailLevel);
             output.append(prefix).append("constant exprs: ").append("\n");
             for (List<ExecExpr> exprs : constExprLists_) {
-                output.append(prefix).append("    ").append(exprs.stream().map(ExecExprExplain::explain)
+                output.append(prefix).append("    ").append(exprs.stream()
+                        .map(e -> verbose ? ExecExprExplain.verboseExplain(e) : ExecExprExplain.explain(e))
                         .collect(Collectors.joining(" | "))).append("\n");
             }
         }
@@ -233,7 +235,7 @@ public abstract class SetOperationNode extends PlanNode {
                 output.append(prefix).append("output exprs:").append("\n");
                 output.append(prefix).append("    ")
                         .append(setOperationOutputList.stream()
-                                .map(ExecExprExplain::explain)
+                                .map(ExecExprExplain::verboseExplain)
                                 .collect(Collectors.joining(" | ")))
                         .append("\n");
             }
@@ -243,7 +245,7 @@ public abstract class SetOperationNode extends PlanNode {
                 for (List<ExecExpr> exprs : materializedResultExprLists_) {
                     output.append(prefix).append("    ")
                             .append(exprs.stream()
-                                    .map(ExecExprExplain::explain)
+                                    .map(ExecExprExplain::verboseExplain)
                                     .collect(Collectors.joining(" | ")))
                             .append("\n");
                 }

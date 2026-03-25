@@ -251,9 +251,16 @@ public class SlotDescriptor {
      * Note: ExecExpr source expressions are not stored in sourceExprs_ (which holds AST Expr).
      * This method is used during sort materialization where the source tracking is informational.
      */
+    private boolean hasExecExprSource = false;
+
     public void setSourceExecExpr(ExecExpr expr) {
         // ExecExpr source tracking - label is set for explain purposes
         setLabel(ExecExprExplain.explain(expr));
+        this.hasExecExprSource = true;
+    }
+
+    public boolean hasExecExprSource() {
+        return hasExecExprSource;
     }
 
     // TODO

@@ -364,6 +364,7 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
     @Override
     protected String getNodeExplainString(String detailPrefix, TExplainLevel detailLevel) {
         StringBuilder output = new StringBuilder();
+        boolean verbose = TExplainLevel.VERBOSE.equals(detailLevel) || TExplainLevel.COSTS.equals(detailLevel);
         String nameDetail = getDisplayLabelDetail();
         if (nameDetail != null) {
             output.append(detailPrefix).append(nameDetail).append("\n");
@@ -374,13 +375,14 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
             } else {
                 output.append(detailPrefix).append("output: ");
             }
-            output.append(ExecExprExplain.explainList(aggInfo.getAggregateExprs())).append("\n");
+            output.append(verbose ? ExecExprExplain.verboseExplainList(aggInfo.getAggregateExprs())
+                    : ExecExprExplain.explainList(aggInfo.getAggregateExprs())).append("\n");
         }
         // TODO: unify them
         if (detailLevel == TExplainLevel.VERBOSE) {
             if (CollectionUtils.isNotEmpty(aggInfo.getGroupingExprs())) {
                 output.append(detailPrefix).append("group by: ").append(
-                        ExecExprExplain.explainList(aggInfo.getGroupingExprs())).append("\n");
+                        ExecExprExplain.verboseExplainList(aggInfo.getGroupingExprs())).append("\n");
             }
         } else {
             output.append(detailPrefix).append("group by: ").append(

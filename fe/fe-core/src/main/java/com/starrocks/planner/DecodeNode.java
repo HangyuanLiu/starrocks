@@ -76,6 +76,7 @@ public class DecodeNode extends PlanNode {
     @Override
     protected String getNodeExplainString(String prefix, TExplainLevel detailLevel) {
         StringBuilder output = new StringBuilder();
+        boolean verbose = TExplainLevel.VERBOSE.equals(detailLevel) || TExplainLevel.COSTS.equals(detailLevel);
         for (Map.Entry<Integer, Integer> kv : dictIdToStringIds.entrySet()) {
             output.append(prefix);
             output.append("<dict id ").

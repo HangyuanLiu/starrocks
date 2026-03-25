@@ -87,7 +87,7 @@ public class ProjectNode extends PlanNode {
             output.append(prefix);
             if (detailLevel == TExplainLevel.VERBOSE) {
                 output.append(kv.first).append(" <-> ")
-                        .append(ExecExprExplain.explain(kv.second)).append("\n");
+                        .append(ExecExprExplain.verboseExplain(kv.second)).append("\n");
             } else {
                 output.append("<slot ").
                         append(kv.first).
@@ -102,7 +102,7 @@ public class ProjectNode extends PlanNode {
             for (Map.Entry<SlotId, ExecExpr> kv : commonSlotMap.entrySet()) {
                 output.append(prefix);
                 if (detailLevel == TExplainLevel.VERBOSE) {
-                    output.append(kv.getKey()).append(" <-> ").append(ExecExprExplain.explain(kv.getValue())).append("\n");
+                    output.append(kv.getKey()).append(" <-> ").append(ExecExprExplain.verboseExplain(kv.getValue())).append("\n");
                 } else {
                     output.append("<slot ").
                             append(kv.getKey()).

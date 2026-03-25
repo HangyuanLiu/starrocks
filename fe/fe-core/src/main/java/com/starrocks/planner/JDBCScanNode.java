@@ -17,16 +17,10 @@ package com.starrocks.planner;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Lists;
 import com.starrocks.catalog.JDBCResource;
 import com.starrocks.catalog.JDBCTable;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.server.GlobalStateMgr;
-import com.starrocks.sql.analyzer.AstToStringBuilder;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
-import com.starrocks.sql.ast.expression.ExprUtils;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TJDBCScanNode;
 import com.starrocks.thrift.TPlanNode;
@@ -168,36 +162,63 @@ public class JDBCScanNode extends ScanNode {
         if (conjuncts.isEmpty()) {
             return;
         }
-        // Unwrap ExecAstExprWrapper conjuncts back to AST Expr for proper JDBC SQL generation
-        List<Expr> astConjuncts = new ArrayList<>();
-        for (com.starrocks.planner.expression.ExecExpr e : conjuncts) {
-            if (e instanceof com.starrocks.planner.expression.ExecAstExprWrapper) {
-                astConjuncts.add(((com.starrocks.planner.expression.ExecAstExprWrapper) e).getAstExpr());
-            }
-        }
-        if (!astConjuncts.isEmpty()) {
-            List<SlotRef> slotRefs = Lists.newArrayList();
-            ExprUtils.collectList(astConjuncts, SlotRef.class, slotRefs);
-            ExprSubstitutionMap sMap = new ExprSubstitutionMap();
-            String identifier = getIdentifierSymbol();
-            for (SlotRef slotRef : slotRefs) {
-                SlotRef tmpRef = (SlotRef) slotRef.clone();
-                tmpRef.setTblName(null);
-                tmpRef.setLabel(identifier + tmpRef.getLabel() + identifier);
-                sMap.put(slotRef, tmpRef);
-            }
-            ArrayList<Expr> jdbcConjuncts = ExprUtils.cloneList(astConjuncts, sMap);
-            conjuncts.clear();
-            for (Expr p : jdbcConjuncts) {
-                p = ExprUtils.replaceLargeStringLiteral(p);
-                filters.add(AstToStringBuilder.toString(p));
-            }
-        } else {
-            // Fallback for native ExecExpr conjuncts
-            for (com.starrocks.planner.expression.ExecExpr p : conjuncts) {
-                filters.add(com.starrocks.planner.expression.ExecExprExplain.explain(p));
-            }
-            conjuncts.clear();
+        // Convert ExecExpr conjuncts to SQL filter strings with identifier quoting.
+        String identifier = getIdentifierSymbol();
+        com.starrocks.planner.expression.ExecExprExplain quotedSqlExplain =
+                new com.starrocks.planner.expression.ExecExprExplain() {
+                    @Override
+                    public String visitExecSlotRef(
+                            com.starrocks.planner.expression.ExecSlotRef expr, Void context) {
+                        String label = expr.getLabel();
+                        if (label != null) {
+                            return identifier + label + identifier;
+                        }
+                        return super.visitExecSlotRef(expr, context);
+                    }
+
+                    @Override
+                    public String visitExecLiteral(
+                            com.starrocks.planner.expression.ExecLiteral expr, Void context) {
+                        com.starrocks.sql.optimizer.operator.scalar.ConstantOperator value = expr.getValue();
+                        if (!value.isNull() && (expr.getType().isStringType()
+                                || expr.getType().isChar() || expr.getType().isVarchar())) {
+                            String s = value.getVarchar();
+                            s = s.replace("\\", "\\\\");
+                            s = s.replace("'", "\\'");
+                            return "'" + s + "'";
+                        }
+                        return super.visitExecLiteral(expr, context);
+                    }
+
+                    @Override
+                    public String visitExecAstExprWrapper(
+                            com.starrocks.planner.expression.ExecAstExprWrapper expr, Void context) {
+                        com.starrocks.sql.ast.expression.Expr astExpr = expr.getAstExpr();
+                        java.util.List<com.starrocks.sql.ast.expression.SlotRef> slotRefs =
+                                com.google.common.collect.Lists.newArrayList();
+                        com.starrocks.sql.ast.expression.ExprUtils.collectList(
+                                java.util.Collections.singletonList(astExpr),
+                                com.starrocks.sql.ast.expression.SlotRef.class, slotRefs);
+                        com.starrocks.sql.ast.expression.ExprSubstitutionMap sMap =
+                                new com.starrocks.sql.ast.expression.ExprSubstitutionMap();
+                        for (com.starrocks.sql.ast.expression.SlotRef slotRef : slotRefs) {
+                            com.starrocks.sql.ast.expression.SlotRef tmpRef =
+                                    (com.starrocks.sql.ast.expression.SlotRef) slotRef.clone();
+                            tmpRef.setTblName(null);
+                            tmpRef.setLabel(identifier + tmpRef.getLabel() + identifier);
+                            sMap.put(slotRef, tmpRef);
+                        }
+                        java.util.ArrayList<com.starrocks.sql.ast.expression.Expr> cloned =
+                                com.starrocks.sql.ast.expression.ExprUtils.cloneList(
+                                        java.util.Collections.singletonList(astExpr), sMap);
+                        com.starrocks.sql.ast.expression.Expr result =
+                                com.starrocks.sql.ast.expression.ExprUtils.replaceLargeStringLiteral(
+                                        cloned.get(0));
+                        return com.starrocks.sql.analyzer.AstToStringBuilder.toString(result);
+                    }
+                };
+        for (com.starrocks.planner.expression.ExecExpr p : conjuncts) {
+            filters.add(p.accept(quotedSqlExplain, null));
         }
     }
 

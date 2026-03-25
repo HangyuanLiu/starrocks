@@ -474,8 +474,7 @@ class DecodeContext {
             // e.g. DictExpr(useDictColumn, array_distinct(array_column)[0])
             // we need compute array_distinct(x)[0] first, then decode to string on the result
             anchorOp = expr;
-            // mock use column ref, only type is used, ScalarOperatorToExpr will rewrite it
-            // @todo: rewrite ScalarOperatorToExpr process when v1 is deprecated
+            // mock use column ref, only type is used, ScalarOperatorToExecExpr will rewrite it
             if (anchorUseDictRef == null) {
                 List<ColumnRefOperator> usedColumns = expr.getColumnRefs();
                 Preconditions.checkState(!usedColumns.isEmpty());

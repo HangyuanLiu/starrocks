@@ -428,12 +428,16 @@ public class ScalarOperatorToExecExpr {
                     Preconditions.checkNotNull(call.getFunction());
                     boolean isAgg = call.isAggregate();
                     result = new ExecFunctionCall(call.getType(), call.getFunction(), fnName,
-                            args, call.isDistinct(), call.getIgnoreNulls(), isAgg, false);
+                            args, call.isDistinct(), call.getIgnoreNulls(), isAgg, false,
+                            call.isCountStar());
                     break;
                 }
             }
 
             result.setType(replaceNullType(call.getType()));
+            if (result instanceof ExecFunctionCall) {
+                ((ExecFunctionCall) result).setNullable(call.isNullable());
+            }
             return result;
         }
 

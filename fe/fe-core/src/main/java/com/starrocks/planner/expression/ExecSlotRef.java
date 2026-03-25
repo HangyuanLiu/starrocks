@@ -20,6 +20,7 @@ import com.starrocks.planner.TupleId;
 import com.starrocks.thrift.TExprNode;
 import com.starrocks.thrift.TExprNodeType;
 import com.starrocks.thrift.TSlotRef;
+import com.starrocks.type.VarcharType;
 
 /**
  * Execution-plan slot reference. Holds a resolved {@link SlotDescriptor}
@@ -35,6 +36,12 @@ public class ExecSlotRef extends ExecExpr {
         this.desc = desc;
         this.label = null;
         this.nullable = desc.getIsNullable();
+        // Match AST SlotRef behavior: CHAR types are converted to VARCHAR.
+        // This ensures that getType() returns VARCHAR for CHAR columns, which
+        // propagates correctly when used in slotDesc.setType(sortExpr.getType()).
+        if (this.type.isChar()) {
+            this.type = VarcharType.VARCHAR;
+        }
     }
 
     public ExecSlotRef(String label, SlotDescriptor desc) {
@@ -42,6 +49,10 @@ public class ExecSlotRef extends ExecExpr {
         this.desc = desc;
         this.label = label;
         this.nullable = desc.getIsNullable();
+        // Match AST SlotRef behavior: CHAR types are converted to VARCHAR.
+        if (this.type.isChar()) {
+            this.type = VarcharType.VARCHAR;
+        }
     }
 
     private ExecSlotRef(ExecSlotRef other) {
@@ -71,11 +82,17 @@ public class ExecSlotRef extends ExecExpr {
 
     @Override
     public boolean isNullable() {
+        if (desc != null) {
+            return desc.getIsNullable();
+        }
         return nullable;
     }
 
     public void setNullable(boolean nullable) {
         this.nullable = nullable;
+        if (desc != null) {
+            desc.setIsNullable(nullable);
+        }
     }
 
     @Override

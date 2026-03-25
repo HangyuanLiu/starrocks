@@ -37,7 +37,7 @@ public class ExecArrayExpr extends ExecExpr {
 
     @Override
     public boolean isNullable() {
-        return false;
+        return true;
     }
 
     @Override

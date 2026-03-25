@@ -121,9 +121,8 @@ public abstract class ExecExpr implements Cloneable {
     }
 
     public boolean isConstant() {
-        if (children.isEmpty()) {
-            return false;
-        }
+        // Match Expr.isConstantImpl() behavior: vacuously true for leaf nodes.
+        // Subclasses like ExecSlotRef/ExecPlaceHolder override to return false.
         for (ExecExpr child : children) {
             if (!child.isConstant()) {
                 return false;

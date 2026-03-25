@@ -345,7 +345,7 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
 
             for (ExecExpr fnCall : preAggFnCalls) {
                 strings.add("[");
-                strings.add(ExecExprExplain.explain(fnCall));
+                strings.add(verbose ? ExecExprExplain.verboseExplain(fnCall) : ExecExprExplain.explain(fnCall));
                 strings.add("]");
             }
             output.append(Joiner.on(", ").join(strings));
@@ -361,7 +361,7 @@ public class SortNode extends PlanNode implements RuntimeFilterBuildNode {
                 } else {
                     output.append(", ");
                 }
-                output.append(ExecExprExplain.explain(expr));
+                output.append(verbose ? ExecExprExplain.verboseExplain(expr) : ExecExprExplain.explain(expr));
             }
             output.append("\n");
         }
