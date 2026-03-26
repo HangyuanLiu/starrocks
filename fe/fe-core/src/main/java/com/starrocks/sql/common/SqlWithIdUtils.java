@@ -226,7 +226,8 @@ public class SqlWithIdUtils {
 
         @Override
         public String visitSlot(SlotRef expr, Void context) {
-            return getTableId(expr.getTblNameWithoutAnalyzed()) + "." + "`" + expr.getColumnName() + "`";
+            return getTableId(TableName.fromQualifiedName(expr.getTblNameWithoutAnalyzed()))
+                    + "." + "`" + expr.getColumnName() + "`";
         }
 
         private String getTableId(TableName tableName) {

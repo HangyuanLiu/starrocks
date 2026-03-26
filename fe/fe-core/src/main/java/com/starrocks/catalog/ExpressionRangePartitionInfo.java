@@ -28,6 +28,7 @@ import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.PartitionExprAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.expression.CastExpr;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
@@ -103,7 +104,7 @@ public class ExpressionRangePartitionInfo extends RangePartitionInfo implements 
             }
             // column name is the original column name before rename.
             ColumnId columnId = slotRef.getColumnId() != null
-                    ? slotRef.getColumnId() : ColumnId.create(slotRef.getColumnName());
+                    ? ColumnId.create(slotRef.getColumnId()) : ColumnId.create(slotRef.getColumnName());
             if (!idToColumn.containsKey(columnId)) {
                 continue;
             }
@@ -276,12 +277,14 @@ public class ExpressionRangePartitionInfo extends RangePartitionInfo implements 
 
             @Override
             public Void visitSlot(SlotRef node, Void context) {
-                TableName tableName = node.getTblNameWithoutAnalyzed();
-                if (tableName != null) {
+                QualifiedName qualifiedTblName = node.getTblNameWithoutAnalyzed();
+                if (qualifiedTblName != null) {
+                    TableName tn = TableName.fromQualifiedName(qualifiedTblName);
                     if (!Strings.isNullOrEmpty(dbName)) {
-                        tableName.setDb(dbName);
+                        tn.setDb(dbName);
                     }
-                    tableName.setTbl(newTableName);
+                    tn.setTbl(newTableName);
+                    node.setTblName(tn.toQualifiedName());
                 }
                 return null;
             }

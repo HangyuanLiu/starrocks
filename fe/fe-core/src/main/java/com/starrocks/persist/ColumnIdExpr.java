@@ -78,7 +78,7 @@ public class ColumnIdExpr {
     private void setColumnName(Map<ColumnId, Column> idToColumn, Expr expr) {
         if (expr instanceof SlotRef) {
             SlotRef slotRef = (SlotRef) expr;
-            Column column = idToColumn.get(slotRef.getColumnId());
+            Column column = idToColumn.get(ColumnId.create(slotRef.getColumnId()));
             if (column == null) {
                 throw new SemanticException(String.format("can not get column by column id: %s", slotRef.getColumnId()));
             }
@@ -100,7 +100,7 @@ public class ColumnIdExpr {
             if (column == null) {
                 throw new SemanticException(String.format("can not get column by name : %s", slotRef.getColumnName()));
             }
-            slotRef.setColumnId(column.getColumnId());
+            slotRef.setColumnId(column.getColumnId().getId());
         }
 
         for (Expr child : expr.getChildren()) {
@@ -111,7 +111,7 @@ public class ColumnIdExpr {
     private static void setColumnIdByColumnName(Expr expr) {
         if (expr instanceof SlotRef) {
             SlotRef slotRef = (SlotRef) expr;
-            slotRef.setColumnId(ColumnId.create(slotRef.getColumnName()));
+            slotRef.setColumnId(slotRef.getColumnName());
         }
 
         for (Expr child : expr.getChildren()) {
@@ -140,9 +140,9 @@ public class ColumnIdExpr {
         @Override
         public String visitSlot(SlotRef node, Void context) {
             if (node.getTblNameWithoutAnalyzed() != null) {
-                return node.getTblNameWithoutAnalyzed().toSql() + "." + ParseUtil.backquote(node.getColumnId().getId());
+                return node.getTblNameWithoutAnalyzed().toSql() + "." + ParseUtil.backquote(node.getColumnId());
             } else {
-                return node.getColumnId().toSql(node.isBackQuoted());
+                return node.isBackQuoted() ? ParseUtil.backquote(node.getColumnId()) : node.getColumnId();
             }
         }
     }

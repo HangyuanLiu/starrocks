@@ -657,6 +657,7 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitExpression(node, context);
     }
 
+    @Override
     default R visitSlot(SlotRef node, C context) {
         return visitExpression(node, context);
     }

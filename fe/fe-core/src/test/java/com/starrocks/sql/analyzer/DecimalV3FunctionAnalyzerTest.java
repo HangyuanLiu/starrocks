@@ -89,7 +89,7 @@ public class DecimalV3FunctionAnalyzerTest {
         List<Expr> params = Lists.newArrayList();
         params.add(new DecimalLiteral(new BigDecimal(new BigInteger("1845076"), 2)));
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef = new SlotRef(tableName, "v1");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(), "v1");
         params.add(slotRef);
         FunctionCallExpr node = new FunctionCallExpr(FunctionSet.TRUNCATE, params);
 

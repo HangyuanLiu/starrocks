@@ -115,12 +115,12 @@ public class Field {
             return tryToParseAsStructType(expr);
         }
 
-        TableName tableName = expr.getTblNameWithoutAnalyzed();
-        if (tableName != null) {
+        QualifiedName qualifiedTblName = expr.getTblNameWithoutAnalyzed();
+        if (qualifiedTblName != null) {
             if (relationAlias == null) {
                 return false;
             }
-            return matchesPrefix(expr.getTblNameWithoutAnalyzed()) && expr.getColumnName().equalsIgnoreCase(this.name);
+            return matchesPrefix(qualifiedTblName) && expr.getColumnName().equalsIgnoreCase(this.name);
         } else {
             return expr.getColumnName().equalsIgnoreCase(this.name);
         }
@@ -229,6 +229,34 @@ public class Field {
             return tableName.getTbl().equalsIgnoreCase(relationAlias.getTbl());
         } else {
             return tableName.getTbl().equals(relationAlias.getTbl());
+        }
+    }
+
+    /**
+     * Matches a QualifiedName prefix against this field's relation alias.
+     * QualifiedName parts map to [catalog, db, tbl] from left to right,
+     * with shorter names omitting the leading parts.
+     */
+    public boolean matchesPrefix(QualifiedName qualifiedName) {
+        List<String> parts = qualifiedName.getParts();
+        // parts.size() == 1 -> [tbl], 2 -> [db, tbl], 3 -> [catalog, db, tbl]
+        String tbl = parts.get(parts.size() - 1);
+        String db = parts.size() >= 2 ? parts.get(parts.size() - 2) : null;
+        String catalog = parts.size() >= 3 ? parts.get(parts.size() - 3) : null;
+
+        if (catalog != null && relationAlias.getCatalog() != null &&
+                !catalog.equals(relationAlias.getCatalog())) {
+            return false;
+        }
+
+        if (db != null && !db.equals(relationAlias.getDb())) {
+            return false;
+        }
+
+        if (ConnectContext.get() != null && ConnectContext.get().isRelationAliasCaseInsensitive()) {
+            return tbl.equalsIgnoreCase(relationAlias.getTbl());
+        } else {
+            return tbl.equals(relationAlias.getTbl());
         }
     }
 

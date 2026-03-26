@@ -6173,7 +6173,7 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
                 if (item.getExpr() instanceof SlotRef) {
                     SlotRef exprRef = (SlotRef) item.getExpr();
                     String columnName = item.getAlias() == null ? exprRef.getColumnName() : item.getAlias();
-                    SlotRef resultSlotRef = new SlotRef(qualifyTableName, columnName);
+                    SlotRef resultSlotRef = new SlotRef(qualifyTableName.toQualifiedName(), columnName);
                     selectItemsOuter.add(new SelectListItem(resultSlotRef, null));
                 } else {
                     throw new ParsingException("Can't support result other than column.");
@@ -6185,7 +6185,7 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
 
             // used to construct BinaryPredicate for QUALIFY.
             IntLiteral rightValue = new IntLiteral(selectValue);
-            SlotRef leftSlotRef = new SlotRef(qualifyTableName, "__QUALIFY__VALUE");
+            SlotRef leftSlotRef = new SlotRef(qualifyTableName.toQualifiedName(), "__QUALIFY__VALUE");
 
             BinaryType op = getComparisonOperator(((TerminalNode) context.comparisonOperator()
                     .getChild(0)).getSymbol());

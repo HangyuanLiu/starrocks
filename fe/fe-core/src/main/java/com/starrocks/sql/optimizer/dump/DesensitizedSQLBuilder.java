@@ -52,6 +52,7 @@ import com.starrocks.sql.analyzer.QueryAnalyzer;
 import com.starrocks.sql.ast.CTERelation;
 import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.NormalizedTableFunctionRelation;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectList;
 import com.starrocks.sql.ast.SelectListItem;
@@ -182,7 +183,9 @@ public class DesensitizedSQLBuilder {
                 } else if (expr instanceof FieldReference) {
                     Field field = stmt.getScope().getRelationFields().getFieldByIndex(i);
                     selectListString.add(
-                            desensitizeColumnName(field.getRelationAlias(), field.getName(), aliasName));
+                            desensitizeColumnName(
+                                    field.getRelationAlias() != null ? field.getRelationAlias().toQualifiedName() : null,
+                                    field.getName(), aliasName));
                 } else if (expr instanceof SlotRef) {
                     SlotRef slot = (SlotRef) expr;
                     if (slot.getOriginType().isStructType()) {
@@ -824,13 +827,13 @@ public class DesensitizedSQLBuilder {
             }
         }
 
-        private String desensitizeColumnName(TableName tableName, String fieldName, String aliasName) {
+        private String desensitizeColumnName(QualifiedName tableName, String fieldName, String aliasName) {
             String res = "";
             if (tableName != null && options.isColumnWithTableName()) {
                 if (!options.isColumnSimplifyTableName()) {
-                    res = desensitizeTableName(tableName);
+                    res = desensitizeQualifiedTableName(tableName);
                 } else {
-                    res = "tbl_" + desensitizeValue(tableName.getTbl(), "table");
+                    res = "tbl_" + desensitizeValue(tableName.getLastPart(), "table");
                 }
                 res += ".";
             }
@@ -857,10 +860,27 @@ public class DesensitizedSQLBuilder {
             return stringBuilder.toString();
         }
 
-        private String desensitizeStructColumnName(TableName tableName, String fieldName, String aliasName) {
+        private String desensitizeQualifiedTableName(@NotNull QualifiedName qualifiedName) {
+            List<String> parts = qualifiedName.getParts();
+            StringBuilder stringBuilder = new StringBuilder();
+            // parts: [catalog, db, tbl] or [db, tbl] or [tbl]
+            if (parts.size() >= 3) {
+                String catalog = parts.get(parts.size() - 3);
+                if (!CatalogMgr.isInternalCatalog(catalog)) {
+                    stringBuilder.append("catalog_").append(desensitizeValue(catalog)).append(".");
+                }
+            }
+            if (parts.size() >= 2) {
+                stringBuilder.append("db_").append(desensitizeValue(parts.get(parts.size() - 2))).append(".");
+            }
+            stringBuilder.append("tbl_").append(desensitizeValue(parts.get(parts.size() - 1)));
+            return stringBuilder.toString();
+        }
+
+        private String desensitizeStructColumnName(QualifiedName tableName, String fieldName, String aliasName) {
             StringBuilder stringBuilder = new StringBuilder();
             if (tableName != null) {
-                stringBuilder.append(desensitizeTableName(tableName)).append(".");
+                stringBuilder.append(desensitizeQualifiedTableName(tableName)).append(".");
             }
 
             fieldName = desensitizeStructField(fieldName);

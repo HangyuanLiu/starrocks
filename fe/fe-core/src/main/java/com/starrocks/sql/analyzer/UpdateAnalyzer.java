@@ -175,7 +175,7 @@ public class UpdateAnalyzer {
                 selectList.addItem(item);
                 assignColumnList.add(col);
             } else if (!updateStmt.usePartialUpdate() || col.isKey()) {
-                item = new SelectListItem(new SlotRef(tableName, col.getName()), col.getName());
+                item = new SelectListItem(new SlotRef(tableName.toQualifiedName(), col.getName()), col.getName());
                 selectList.addItem(item);
                 assignColumnList.add(col);
             }

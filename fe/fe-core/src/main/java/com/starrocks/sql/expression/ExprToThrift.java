@@ -19,7 +19,6 @@ import com.google.common.collect.Lists;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionName;
 import com.starrocks.catalog.FunctionSet;
-import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SqlModeHelper;
@@ -329,13 +328,9 @@ public final class ExprToThrift {
         @Override
         public Void visitSlot(SlotRef node, TExprNode msg) {
             msg.node_type = TExprNodeType.SLOT_REF;
-            SlotDescriptor desc = node.getDesc();
-            if (desc != null) {
-                if (desc.getParent() != null) {
-                    msg.slot_ref = new TSlotRef(desc.getId().asInt(), desc.getParent().getId().asInt());
-                } else {
-                    msg.slot_ref = new TSlotRef(desc.getId().asInt(), 0);
-                }
+            if (node.hasSlotId()) {
+                int tupleId = node.hasTupleId() ? node.getTupleId() : 0;
+                msg.slot_ref = new TSlotRef(node.getSlotId(), tupleId);
             } else {
                 msg.slot_ref = new TSlotRef(0, 0);
             }

@@ -804,13 +804,14 @@ public class QueryAnalyzer {
                 List<Column> mvSchema = olapTable.getSchemaByIndexMetaId(olapTable.getBaseIndexMetaId());
                 for (Column column : mvSchema) {
                     Field field = new Field(column.getName(), column.getType(), tableName,
-                            new SlotRef(tableName, column.getName(), column.getName()), true, column.isAllowNull());
+                            new SlotRef(tableName.toQualifiedName(), column.getName(),
+                                    column.getName()), true, column.isAllowNull());
                     columns.put(field, column);
                     fields.add(field);
                 }
                 // Add virtual columns for sync MV queries as well
                 for (Column column : getVirtualColumns(table)) {
-                    SlotRef slot = new SlotRef(tableName, column.getName(), column.getName());
+                    SlotRef slot = new SlotRef(tableName.toQualifiedName(), column.getName(), column.getName());
                     Field field = new Field(column.getName(), column.getType(), tableName, slot, false,
                             column.isAllowNull());
                     columns.put(field, column);
@@ -822,7 +823,7 @@ public class QueryAnalyzer {
                 }
 
                 for (Column column : getCacheStatsColumns()) {
-                    SlotRef slot = new SlotRef(tableName, column.getName(), column.getName());
+                    SlotRef slot = new SlotRef(tableName.toQualifiedName(), column.getName(), column.getName());
                     Field field = new Field(column.getName(), column.getType(), tableName, slot, true,
                             column.isAllowNull());
                     columns.put(field, column);
@@ -859,7 +860,7 @@ public class QueryAnalyzer {
                     }
                     // only output visible columns
                     boolean visible = column.isVisible() && baseSchema.contains(column);
-                    SlotRef slot = new SlotRef(tableName, column.getName(), column.getName());
+                    SlotRef slot = new SlotRef(tableName.toQualifiedName(), column.getName(), column.getName());
                     Field field = new Field(column.getName(), column.getType(), tableName, slot, visible,
                             column.isAllowNull());
                     columns.put(field, column);
@@ -868,7 +869,7 @@ public class QueryAnalyzer {
 
                 if (node.isBinlogQuery()) {
                     for (Column column : getBinlogMetaColumns()) {
-                        SlotRef slot = new SlotRef(tableName, column.getName(), column.getName());
+                        SlotRef slot = new SlotRef(tableName.toQualifiedName(), column.getName(), column.getName());
                         Field field = new Field(column.getName(), column.getType(), tableName, slot, true,
                                 column.isAllowNull());
                         columns.put(field, column);
@@ -878,7 +879,7 @@ public class QueryAnalyzer {
 
                 // Add virtual columns for OLAP tables
                 for (Column column : getVirtualColumns(table)) {
-                    SlotRef slot = new SlotRef(tableName, column.getName(), column.getName());
+                    SlotRef slot = new SlotRef(tableName.toQualifiedName(), column.getName(), column.getName());
                     // Virtual columns are not visible in SELECT * but can be explicitly referenced
                     Field field = new Field(column.getName(), column.getType(), tableName, slot, false,
                             column.isAllowNull());
@@ -955,7 +956,7 @@ public class QueryAnalyzer {
             List<Column> fullSchema = table.getFullSchema();
             for (Column column : fullSchema) {
                 Field field = new Field(column.getName(), column.getType(), tableName,
-                        new SlotRef(tableName, column.getName(), column.getName()), true);
+                        new SlotRef(tableName.toQualifiedName(), column.getName(), column.getName()), true);
                 columns.put(field, column);
                 fields.add(field);
             }
@@ -1179,7 +1180,8 @@ public class QueryAnalyzer {
 
                 // create predicate "<left>.colName = <right>.colName"
                 BinaryPredicate resolvedUsing = new BinaryPredicate(BinaryType.EQ,
-                        new SlotRef(leftTableName, colName), new SlotRef(rightTableName, colName));
+                        new SlotRef(leftTableName.toQualifiedName(), colName),
+                        new SlotRef(rightTableName.toQualifiedName(), colName));
 
                 if (joinEqual == null) {
                     joinEqual = resolvedUsing;
@@ -1275,12 +1277,14 @@ public class QueryAnalyzer {
                     Type commonType = leftType.matchesType(rightType) ? leftType :
                             TypeManager.getCompatibleTypeForBinary(false, leftType, rightType);
 
-                    Expr leftExpr = leftFields.get(0).getOriginExpression() != null 
-                            ? leftFields.get(0).getOriginExpression() 
-                            : new SlotRef(leftFields.get(0).getRelationAlias(), colName);
-                    Expr rightExpr = rightFields.get(0).getOriginExpression() != null 
-                            ? rightFields.get(0).getOriginExpression() 
-                            : new SlotRef(rightFields.get(0).getRelationAlias(), colName);
+                    Expr leftExpr = leftFields.get(0).getOriginExpression() != null
+                            ? leftFields.get(0).getOriginExpression()
+                            : new SlotRef(leftFields.get(0).getRelationAlias() != null
+                                    ? leftFields.get(0).getRelationAlias().toQualifiedName() : null, colName);
+                    Expr rightExpr = rightFields.get(0).getOriginExpression() != null
+                            ? rightFields.get(0).getOriginExpression()
+                            : new SlotRef(rightFields.get(0).getRelationAlias() != null
+                                    ? rightFields.get(0).getRelationAlias().toQualifiedName() : null, colName);
                     
                     FunctionCallExpr coalesceExpr = new FunctionCallExpr(FunctionSet.COALESCE,
                             Lists.newArrayList(leftExpr, rightExpr));
@@ -1698,7 +1702,9 @@ public class QueryAnalyzer {
             for (Field field : queryFields) {
                 if (!usedColumns.contains(field.getName())) {
                     outputFields.add(field);
-                    Expr expr = new SlotRef(field.getRelationAlias(), field.getName());
+                    Expr expr = new SlotRef(
+                            field.getRelationAlias() != null ? field.getRelationAlias().toQualifiedName() : null,
+                            field.getName());
                     analyzeExpression(expr, analyzeState, queryScope);
                     node.addGroupByKey(expr);
                 }
@@ -1804,7 +1810,7 @@ public class QueryAnalyzer {
                 Field field = new Field(colName,
                         tableFunction.getTableFnReturnTypes().get(i),
                         node.getResolveTableName(),
-                        new SlotRef(node.getResolveTableName(), colName, colName));
+                        new SlotRef(node.getResolveTableName().toQualifiedName(), colName, colName));
                 fields.add(field);
             }
 

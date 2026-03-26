@@ -1610,7 +1610,7 @@ public class MvUtils {
         }
         return partitionExprMaps.entrySet().stream()
                 .filter(entry -> SRStringUtils.areTableNamesEqual(table,
-                        entry.getValue().getTblNameWithoutAnalyzed().getTbl()))
+                        entry.getValue().getTblNameWithoutAnalyzed().getLastPart()))
                 .map(entry -> new MVPartitionExpr(entry.getKey(), entry.getValue()))
                 .collect(Collectors.toList());
     }

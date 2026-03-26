@@ -55,7 +55,7 @@ public class CompoundPredicateExprRewriterTest extends StarRocksTestBase {
 
     // Helper methods to create test expressions
     private SlotRef createSlotRef(String columnName) {
-        return new SlotRef(new TableName("test_db", "test_table"), columnName);
+        return new SlotRef(new TableName("test_db", "test_table").toQualifiedName(), columnName);
     }
 
     private IntLiteral createIntLiteral(long value) {

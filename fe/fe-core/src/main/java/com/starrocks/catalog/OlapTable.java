@@ -105,6 +105,7 @@ import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.common.PCellNone;
 import com.starrocks.sql.common.PCellSortedSet;
@@ -2791,7 +2792,7 @@ public class OlapTable extends Table {
             if (column.getName().equalsIgnoreCase(slotRefs.get(0).getColumnName())) {
                 SlotDescriptor slotDescriptor = new SlotDescriptor(new SlotId(i), column.getName(),
                         column.getType(), column.isAllowNull());
-                slotRefs.get(0).setDesc(slotDescriptor);
+                SlotRefFactory.populateFromDescriptor(slotRefs.get(0), slotDescriptor);
             }
         }
     }

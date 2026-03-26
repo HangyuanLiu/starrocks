@@ -31,6 +31,7 @@ import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.IsNullPredicate;
 import com.starrocks.sql.ast.expression.LikePredicate;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.IntegerType;
@@ -162,9 +163,10 @@ public class QueryConverterTest {
     }
 
     SlotRef mockSlotRef(String colName, Type type) {
-        SlotDescriptor slotDesc = new SlotDescriptor(idGenerator.getNextId(), "", type, true);
+        SlotDescriptor slotDesc = new SlotDescriptor(idGenerator.getNextId(), colName, type, true);
         slotDesc.setColumn(new Column(colName, type));
-        SlotRef slotRef = new SlotRef(randomLabel(), slotDesc);
+        SlotRef slotRef = SlotRefFactory.fromDescriptor(randomLabel(), slotDesc);
+        slotRef.setColumnName(colName);
         return slotRef;
     }
 

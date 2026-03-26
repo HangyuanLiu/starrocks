@@ -16,10 +16,10 @@ package com.starrocks.sql.formatter;
 
 import com.google.common.base.Joiner;
 import com.starrocks.catalog.FunctionSet;
-import com.starrocks.catalog.TableName;
 import com.starrocks.sql.analyzer.AstToStringBuilder;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.OrderByElement;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.expression.AnalyticExpr;
 import com.starrocks.sql.ast.expression.ArithmeticExpr;
 import com.starrocks.sql.ast.expression.ArrayExpr;
@@ -192,7 +192,7 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
     @Override
     public String visitSlot(SlotRef node, Void context) {
         StringBuilder sb = new StringBuilder();
-        TableName tblName = node.getTblName();
+        QualifiedName tblName = node.getTblName();
 
         if (tblName != null && !node.isFromLambda()) {
             return tblName.toSql() + "." + "`" + node.getColName() + "`";
@@ -204,7 +204,7 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
                 return node.getLabel();
             }
         } else {
-            return "<slot " + node.getDesc().getId().asInt() + ">";
+            return "<slot " + node.getSlotId() + ">";
         }
     }
 

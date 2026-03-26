@@ -20,7 +20,6 @@ import com.google.common.collect.Maps;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.SqlFunction;
-import com.starrocks.catalog.TableName;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
@@ -31,6 +30,7 @@ import com.starrocks.sql.analyzer.Scope;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.ParseNode;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectRelation;
@@ -976,7 +976,7 @@ public final class SqlToScalarOperatorTranslator {
                 throw unsupportedException("Can't use IgnoreSlotVisitor with not analyzed slot ref");
             }
             String columnName = node.getColumnName() == null ? node.getLabel() : node.getColumnName();
-            return new ColumnRefOperator(node.getSlotId().asInt(),
+            return new ColumnRefOperator(node.getSlotId(),
                     node.getType(), columnName, node.isNullable());
         }
     }
@@ -1002,7 +1002,7 @@ public final class SqlToScalarOperatorTranslator {
             // To avoid the ids of lambda arguments are different after each visit()
             if (node.getTransformed() == null) {
                 SlotRef slotRef = new SlotRef(
-                        new TableName(TableName.LAMBDA_FUNC_TABLE, TableName.LAMBDA_FUNC_TABLE), node.getName());
+                        QualifiedName.of(SlotRef.LAMBDA_FUNC_TABLE, SlotRef.LAMBDA_FUNC_TABLE), node.getName());
                 slotRef.setType(node.getType());
                 slotRef.setNullable(node.isNullable());
                 node.setTransformed(slotResolver.apply(slotRef));

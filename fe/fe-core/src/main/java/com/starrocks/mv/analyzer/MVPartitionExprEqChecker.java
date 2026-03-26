@@ -14,7 +14,7 @@
 package com.starrocks.mv.analyzer;
 
 import com.starrocks.catalog.FunctionSet;
-import com.starrocks.catalog.TableName;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.SlotRef;
@@ -33,7 +33,7 @@ public class MVPartitionExprEqChecker {
         return true;
     }
 
-    private static boolean areEqualTableNames(TableName t1, TableName t2) {
+    private static boolean areEqualTableNames(QualifiedName t1, QualifiedName t2) {
         if (t1 == null || t2 == null) {
             return false;
         }

@@ -85,6 +85,7 @@ import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
 import com.starrocks.sql.ast.expression.ExprSubstitutionVisitor;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.optimizer.rule.mv.MVUtils;
 import com.starrocks.task.AgentBatchTask;
@@ -481,14 +482,14 @@ public class RollupJobV2 extends AlterJobV2 implements GsonPostProcessable {
                 throw new AlterCancelException("slotDesc is null, slot = " + slot.getColumnName()
                         + ", column = " + name);
             }
-            slot.setDesc(slotDesc);
+            SlotRefFactory.populateFromDescriptor(slot, slotDesc);
         }
 
         ExprSubstitutionMap smap = new ExprSubstitutionMap();
         for (SlotRef slot : slots) {
             SlotDescriptor slotDesc = slotDescByName.get(slot.getColumnName());
             Preconditions.checkNotNull(slotDesc);
-            SlotRef slotRef = new SlotRef(slotDesc);
+            SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
             slotRef.setColumnName(slot.getColumnName());
             smap.put(slot, slotRef);
         }
@@ -550,7 +551,7 @@ public class RollupJobV2 extends AlterJobV2 implements GsonPostProcessable {
                 throw new AlterCancelException("Expression for materialized view column can not find " +
                         "the ref column");
             }
-            SlotRef slotRef = new SlotRef(slotDesc);
+            SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
             slotRef.setColumnName(col.getName());
             outputExprs.add(slotRef);
         }

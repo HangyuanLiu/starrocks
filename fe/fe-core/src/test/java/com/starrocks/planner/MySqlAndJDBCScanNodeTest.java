@@ -26,6 +26,7 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.LargeStringLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.planner.expression.ExecAstExprWrapper;
 import com.starrocks.sql.parser.NodePosition;
@@ -41,7 +42,7 @@ import java.util.Map;
 public class MySqlAndJDBCScanNodeTest {
 
     private List<Expr> createConjuncts() {
-        Expr slotRef = new SlotRef("col", new SlotDescriptor(new SlotId(1), "col", VarcharType.VARCHAR, true));
+        Expr slotRef = SlotRefFactory.fromDescriptor("col", new SlotDescriptor(new SlotId(1), "col", VarcharType.VARCHAR, true));
         Expr expr0 = new InPredicate(slotRef,
                 Lists.newArrayList(new LargeStringLiteral(Strings.repeat("ABCDE", 11), NodePosition.ZERO)), true);
         Expr expr1 = new BinaryPredicate(BinaryType.EQ, slotRef, StringLiteral.create("ABC"));

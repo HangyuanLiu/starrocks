@@ -228,7 +228,7 @@ public class PartitionSelector {
             if (!partitionColNames.contains(column.getName())) {
                 continue;
             }
-            SlotRef slotRef = new SlotRef(tableName, column.getName());
+            SlotRef slotRef = new SlotRef(tableName.toQualifiedName(), column.getName());
             slotRef.setType(column.getType());
             Expr gcExpr = column.getGeneratedColumnExpr(olapTable.getIdToColumn());
             if (gcExpr == null) {

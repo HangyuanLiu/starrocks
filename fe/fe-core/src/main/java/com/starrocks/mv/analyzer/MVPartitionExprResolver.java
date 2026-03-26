@@ -31,6 +31,7 @@ import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.CTERelation;
 import com.starrocks.sql.ast.JoinRelation;
 import com.starrocks.sql.ast.ParseNode;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
 import com.starrocks.sql.ast.SelectListItem;
@@ -263,7 +264,7 @@ public class MVPartitionExprResolver {
                 return visitRelation(context.withSlotRef(slotRef));
             }
 
-            String tableName = slotRef.getTblNameWithoutAnalyzed().getTbl();
+            String tableName = slotRef.getTblNameWithoutAnalyzed().getLastPart();
             if (relation.getAlias() != null && !relation.getAlias().getTbl().equalsIgnoreCase(tableName)) {
                 return null;
             }
@@ -275,7 +276,9 @@ public class MVPartitionExprResolver {
             Relation relation = context.getRelation();
             Field field = relation.getScope().getRelationFields()
                     .getFieldByIndex(fieldReference.getFieldIndex());
-            SlotRef slotRef = new SlotRef(field.getRelationAlias(), field.getName(), field.getName());
+            SlotRef slotRef = new SlotRef(
+                    field.getRelationAlias() != null ? field.getRelationAlias().toQualifiedName() : null,
+                    field.getName(), field.getName());
             slotRef.setType(field.getType());
             return visitRelation(context.withSlotRef(slotRef));
         }
@@ -311,12 +314,12 @@ public class MVPartitionExprResolver {
                     Relation relation = node.getRelation();
 
                     for (SelectListItem selectListItem : node.getSelectList().getItems()) {
-                        TableName expTableName = slot.getTblNameWithoutAnalyzed();
+                        QualifiedName expTableName = slot.getTblNameWithoutAnalyzed();
                         if (selectListItem.getAlias() == null) {
                             Expr item = selectListItem.getExpr();
                             if (item instanceof SlotRef) {
                                 SlotRef result = (SlotRef) item;
-                                TableName actTableName = result.getTblNameWithoutAnalyzed();
+                                QualifiedName actTableName = result.getTblNameWithoutAnalyzed();
                                 if (result.getColumnName() != null
                                         && result.getColumnName().equalsIgnoreCase(slot.getColumnName())
                                         && (expTableName == null || expTableName.equals(actTableName))) {
@@ -324,7 +327,8 @@ public class MVPartitionExprResolver {
                                 }
                             }
                         } else {
-                            if (expTableName != null && expTableName.isFullyQualified()) {
+                            // QualifiedName with >= 2 parts means it has at least db.tbl qualification
+                            if (expTableName != null && expTableName.getParts().size() >= 2) {
                                 continue;
                             }
                             if (selectListItem.getAlias().equalsIgnoreCase(slot.getColumnName())) {
@@ -351,7 +355,7 @@ public class MVPartitionExprResolver {
                 public Exprs visitSubqueryRelation(SubqueryRelation node, MVExprContext context) {
                     SlotRef slot = context.getSlotRef();
                     if (slot.getTblNameWithoutAnalyzed() != null) {
-                        String tableName = slot.getTblNameWithoutAnalyzed().getTbl();
+                        String tableName = slot.getTblNameWithoutAnalyzed().getLastPart();
                         if (node.getAlias() != null && !node.getAlias().getTbl().equalsIgnoreCase(tableName)) {
                             return null;
                         }
@@ -364,11 +368,12 @@ public class MVPartitionExprResolver {
                 @Override
                 public Exprs visitTable(TableRelation node, MVExprContext context) {
                     SlotRef slot = context.getSlotRef();
-                    TableName tableName = slot.getTblNameWithoutAnalyzed();
-                    if (node.getName().equals(tableName)) {
+                    QualifiedName qualifiedTblName = slot.getTblNameWithoutAnalyzed();
+                    TableName tblNameFromSlot = TableName.fromQualifiedName(qualifiedTblName);
+                    if (node.getName().equals(tblNameFromSlot)) {
                         return Exprs.of(slot);
                     }
-                    if (tableName != null && !node.getResolveTableName().equals(tableName)) {
+                    if (tblNameFromSlot != null && !node.getResolveTableName().equals(tblNameFromSlot)) {
                         return null;
                     }
                     // ensure column name matches
@@ -377,7 +382,7 @@ public class MVPartitionExprResolver {
                         return null;
                     }
                     slot = (SlotRef) slot.clone();
-                    slot.setTblName(node.getName());
+                    slot.setTblName(node.getName().toQualifiedName());
                     // add into equivalent exprs
                     context.equivalentExprs.add(slot);
                     return Exprs.of(slot);
@@ -386,7 +391,7 @@ public class MVPartitionExprResolver {
                 @Override
                 public Exprs visitView(ViewRelation node, MVExprContext context) {
                     SlotRef slot = context.getSlotRef();
-                    TableName tableName = slot.getTblNameWithoutAnalyzed();
+                    TableName tableName = TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed());
                     if (tableName != null && !node.getResolveTableName().equals(tableName)) {
                         return null;
                     }
@@ -535,7 +540,7 @@ public class MVPartitionExprResolver {
                 public Exprs visitCTE(CTERelation node, MVExprContext context) {
                     SlotRef slot = context.getSlotRef();
                     if (slot.getTblNameWithoutAnalyzed() != null) {
-                        String tableName = slot.getTblNameWithoutAnalyzed().getTbl();
+                        String tableName = slot.getTblNameWithoutAnalyzed().getLastPart();
                         String cteName = node.getAlias() != null ? node.getAlias().getTbl() : node.getName();
                         if (cteName != null && !cteName.equalsIgnoreCase(tableName)) {
                             return null;
@@ -649,7 +654,8 @@ public class MVPartitionExprResolver {
             SlotRef slotRef = eq.getSlotRef();
             Expr eqExpr = eq.getExpr();
             eqExprs.add(eq);
-            eqTableInfos.computeIfAbsent(slotRef.getTblNameWithoutAnalyzed(), (ignored) -> new EqTableInfo())
+            eqTableInfos.computeIfAbsent(
+                    TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed()), (ignored) -> new EqTableInfo())
                     .addEqExprs(eqExpr);
         }
 
@@ -662,7 +668,7 @@ public class MVPartitionExprResolver {
         // at least the partition expr should be in mvEquivalentExprsMap
         for (Iterator<MVPartitionExpr> iter = eqExprs.iterator(); iter.hasNext(); ) {
             MVPartitionExpr eq = iter.next();
-            TableName tableName = eq.getSlotRef().getTblNameWithoutAnalyzed();
+            TableName tableName = TableName.fromQualifiedName(eq.getSlotRef().getTblNameWithoutAnalyzed());
             EqTableInfo eqTableInfo = eqTableInfos.get(tableName);
             if (eqTableInfo == null) {
                 continue;

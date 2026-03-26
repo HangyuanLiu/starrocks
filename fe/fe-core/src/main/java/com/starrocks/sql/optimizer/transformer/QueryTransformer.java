@@ -202,7 +202,8 @@ public class QueryTransformer {
                 if (expression instanceof SlotRef) {
                     resolveTableName = queryBlock.getRelation().getResolveTableName();
                 }
-                SlotRef alias = new SlotRef(resolveTableName, outputNames.get(outputExprIdx));
+                SlotRef alias = new SlotRef(resolveTableName != null ? resolveTableName.toQualifiedName() : null,
+                        outputNames.get(outputExprIdx));
                 // order by expr may reference the alias. We need put the alias into the fieldMappings or the
                 // expressionToColumns.
                 // if the alias not be used in the order by expr like:
@@ -214,8 +215,9 @@ public class QueryTransformer {
                 // order by expr t1.v3 referenced the v1 with alias v3, we need set the fieldMappings to ensure order by
                 // expr can be resolved.
                 if (scope.getRelationFields().resolveFields(alias).size() > 1) {
-                    outputTranslations.getExpressionToColumns()
-                            .put(new SlotRef(resolveTableName, outputNames.get(outputExprIdx)), columnRefOperator);
+                    outputTranslations.getExpressionToColumns().put(
+                            new SlotRef(resolveTableName != null ? resolveTableName.toQualifiedName() : null,
+                                    outputNames.get(outputExprIdx)), columnRefOperator);
                 } else {
                     outputTranslations.put(alias, columnRefOperator);
                 }
@@ -683,7 +685,8 @@ public class QueryTransformer {
                 if (expr instanceof SlotRef) {
                     resolveTableName = queryBlock.getRelation().getResolveTableName();
                 }
-                SlotRef qualifiedAlias = new SlotRef(resolveTableName, outputNames.get(i));
+                SlotRef qualifiedAlias = new SlotRef(
+                        resolveTableName != null ? resolveTableName.toQualifiedName() : null, outputNames.get(i));
                 SlotRef unqualifiedAlias = new SlotRef(null, outputNames.get(i));
                 subOpt.getExpressionMapping().getExpressionToColumns().put(unqualifiedAlias, canonicalColumn);
                 subOpt.getExpressionMapping().getExpressionToColumns().put(qualifiedAlias, canonicalColumn);

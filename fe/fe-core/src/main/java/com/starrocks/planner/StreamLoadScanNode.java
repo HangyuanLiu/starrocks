@@ -58,6 +58,7 @@ import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.system.ComputeNode;
@@ -314,7 +315,7 @@ public class StreamLoadScanNode extends LoadScanNode {
                     if (dstSlotDesc.getColumn().isAllowNull()) {
                         srcSlotDesc.setIsNullable(true);
                     }
-                    SlotRef slotRef = new SlotRef(srcSlotDesc);
+                    SlotRef slotRef = SlotRefFactory.fromDescriptor(srcSlotDesc);
                     slotRef.setColumnName(dstSlotDesc.getColumn().getName());
                     expr = slotRef;
                 } else {

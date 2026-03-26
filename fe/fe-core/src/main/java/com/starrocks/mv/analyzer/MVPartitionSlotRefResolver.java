@@ -22,6 +22,7 @@ import com.starrocks.sql.ast.CTERelation;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.JoinRelation;
 import com.starrocks.sql.ast.ParseNode;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
 import com.starrocks.sql.ast.SelectListItem;
@@ -78,7 +79,7 @@ public class MVPartitionSlotRefResolver {
             if (slotRef.getTblNameWithoutAnalyzed() == null) {
                 return node.accept(slotRefResolver, slotRef);
             }
-            String tableName = slotRef.getTblNameWithoutAnalyzed().getTbl();
+            String tableName = slotRef.getTblNameWithoutAnalyzed().getLastPart();
             if (node.getAlias() != null && !node.getAlias().getTbl().equalsIgnoreCase(tableName)) {
                 return null;
             }
@@ -89,7 +90,9 @@ public class MVPartitionSlotRefResolver {
         public Expr visitFieldReference(FieldReference fieldReference, Relation node) {
             Field field = node.getScope().getRelationFields()
                     .getFieldByIndex(fieldReference.getFieldIndex());
-            SlotRef slotRef = new SlotRef(field.getRelationAlias(), field.getName(), field.getName());
+            SlotRef slotRef = new SlotRef(
+                    field.getRelationAlias() != null ? field.getRelationAlias().toQualifiedName() : null,
+                    field.getName(), field.getName());
             slotRef.setType(field.getType());
             return node.accept(slotRefResolver, slotRef);
         }
@@ -106,17 +109,19 @@ public class MVPartitionSlotRefResolver {
         @Override
         public Expr visitSelect(SelectRelation node, SlotRef slot) {
             for (SelectListItem selectListItem : node.getSelectList().getItems()) {
-                TableName tableName = slot.getTblNameWithoutAnalyzed();
+                QualifiedName qualifiedTblName = slot.getTblNameWithoutAnalyzed();
                 if (selectListItem.getAlias() == null) {
                     if (selectListItem.getExpr() instanceof SlotRef) {
                         SlotRef result = (SlotRef) selectListItem.getExpr();
                         if (result.getColumnName().equalsIgnoreCase(slot.getColumnName())
-                                && (tableName == null || tableName.equals(result.getTblNameWithoutAnalyzed()))) {
+                                && (qualifiedTblName == null ||
+                                    qualifiedTblName.equals(result.getTblNameWithoutAnalyzed()))) {
                             return selectListItem.getExpr().accept(EXPR_SHUTTLE, node.getRelation());
                         }
                     }
                 } else {
-                    if (tableName != null && tableName.isFullyQualified()) {
+                    // QualifiedName with >= 2 parts means it has at least db.tbl qualification
+                    if (qualifiedTblName != null && qualifiedTblName.getParts().size() >= 2) {
                         continue;
                     }
                     if (selectListItem.getAlias().equalsIgnoreCase(slot.getColumnName())) {
@@ -130,7 +135,7 @@ public class MVPartitionSlotRefResolver {
         @Override
         public Expr visitSubqueryRelation(SubqueryRelation node, SlotRef slot) {
             if (slot.getTblNameWithoutAnalyzed() != null) {
-                String tableName = slot.getTblNameWithoutAnalyzed().getTbl();
+                String tableName = slot.getTblNameWithoutAnalyzed().getLastPart();
                 if (!node.getAlias().getTbl().equalsIgnoreCase(tableName)) {
                     return null;
                 }
@@ -142,21 +147,21 @@ public class MVPartitionSlotRefResolver {
 
         @Override
         public Expr visitTable(TableRelation node, SlotRef slot) {
-            TableName tableName = slot.getTblNameWithoutAnalyzed();
-            if (node.getName().equals(tableName)) {
+            TableName tblNameFromSlot = TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed());
+            if (node.getName().equals(tblNameFromSlot)) {
                 return slot;
             }
-            if (tableName != null && !node.getResolveTableName().equals(tableName)) {
+            if (tblNameFromSlot != null && !node.getResolveTableName().equals(tblNameFromSlot)) {
                 return null;
             }
             slot = (SlotRef) slot.clone();
-            slot.setTblName(node.getName());
+            slot.setTblName(node.getName().toQualifiedName());
             return slot;
         }
 
         @Override
         public Expr visitView(ViewRelation node, SlotRef slot) {
-            TableName tableName = slot.getTblNameWithoutAnalyzed();
+            TableName tableName = TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed());
             if (tableName != null && !node.getResolveTableName().equals(tableName)) {
                 return null;
             }
@@ -197,7 +202,7 @@ public class MVPartitionSlotRefResolver {
         @Override
         public Expr visitCTE(CTERelation node, SlotRef slot) {
             if (slot.getTblNameWithoutAnalyzed() != null) {
-                String tableName = slot.getTblNameWithoutAnalyzed().getTbl();
+                String tableName = slot.getTblNameWithoutAnalyzed().getLastPart();
                 String cteName = node.getAlias() != null ? node.getAlias().getTbl() : node.getName();
                 if (!cteName.equalsIgnoreCase(tableName)) {
                     return null;
@@ -260,17 +265,19 @@ public class MVPartitionSlotRefResolver {
             //      FROM t1
             // )r;
             for (SelectListItem selectListItem : node.getSelectList().getItems()) {
-                TableName tableName = slot.getTblNameWithoutAnalyzed();
+                QualifiedName qualifiedTblName = slot.getTblNameWithoutAnalyzed();
                 if (selectListItem.getAlias() == null) {
                     if (selectListItem.getExpr() instanceof SlotRef) {
                         SlotRef result = (SlotRef) selectListItem.getExpr();
                         if (result.getColumnName().equalsIgnoreCase(slot.getColumnName())
-                                && (tableName == null || tableName.equals(result.getTblNameWithoutAnalyzed()))) {
+                                && (qualifiedTblName == null ||
+                                    qualifiedTblName.equals(result.getTblNameWithoutAnalyzed()))) {
                             checkWindowFunction(node);
                         }
                     }
                 } else {
-                    if (tableName != null && tableName.isFullyQualified()) {
+                    // QualifiedName with >= 2 parts means it has at least db.tbl qualification
+                    if (qualifiedTblName != null && qualifiedTblName.getParts().size() >= 2) {
                         continue;
                     }
                     if (selectListItem.getAlias().equalsIgnoreCase(slot.getColumnName())) {

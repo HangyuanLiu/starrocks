@@ -305,8 +305,8 @@ public class SelectAnalyzer {
 
                 if (item.getExpr() instanceof SlotRef) {
                     outputFields.add(new Field(name, item.getExpr().getType(),
-                            ((SlotRef) item.getExpr()).getTblNameWithoutAnalyzed(), item.getExpr(),
-                            true, item.getExpr().isNullable()));
+                            TableName.fromQualifiedName(((SlotRef) item.getExpr()).getTblNameWithoutAnalyzed()),
+                            item.getExpr(), true, item.getExpr().isNullable()));
                 } else {
                     outputFields.add(new Field(name, item.getExpr().getType(), null, item.getExpr(),
                             true, item.getExpr().isNullable()));

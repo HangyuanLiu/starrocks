@@ -105,7 +105,7 @@ public class ExprUtils {
         RoaringBitmap usedSlotIds = new RoaringBitmap();
         List<SlotRef> slotRefs = Lists.newArrayList();
         expr.collect(SlotRef.class, slotRefs);
-        slotRefs.stream().map(SlotRef::getSlotId).map(SlotId::asInt).forEach(usedSlotIds::add);
+        slotRefs.stream().map(SlotRef::getSlotId).forEach(usedSlotIds::add);
         return usedSlotIds;
     }
 
@@ -192,12 +192,13 @@ public class ExprUtils {
     }
 
     private static boolean isSlotRefBoundByTupleIds(SlotRef slotRef, List<TupleId> tupleIds) {
-        Preconditions.checkState(slotRef.getDesc() != null, "slot descriptor is null");
+        Preconditions.checkState(slotRef.hasSlotId(), "slot id is not set");
         if (slotRef.isFromLambda()) {
             return true;
         }
+        int slotTupleId = slotRef.getTupleId();
         for (TupleId tupleId : tupleIds) {
-            if (tupleId.equals(slotRef.getDesc().getParent().getId())) {
+            if (tupleId.asInt() == slotTupleId) {
                 return true;
             }
         }
@@ -210,8 +211,8 @@ public class ExprUtils {
         if (expr instanceof SlotRef) {
             SlotRef slotRef = (SlotRef) expr;
             Preconditions.checkState(slotRef.isAnalyzed(), "slot ref is not analyzed");
-            Preconditions.checkNotNull(slotRef.getDesc(), "slot descriptor is null");
-            return slotRef.getDesc().getId().equals(slotId);
+            Preconditions.checkState(slotRef.hasSlotId(), "slot id is not set");
+            return slotRef.getSlotId() == slotId.asInt();
         }
         for (Expr child : expr.getChildren()) {
             if (!isBound(child, slotId)) {

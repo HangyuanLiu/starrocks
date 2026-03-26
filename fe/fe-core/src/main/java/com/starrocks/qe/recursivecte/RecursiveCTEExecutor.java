@@ -238,7 +238,8 @@ public class RecursiveCTEExecutor {
                     // add predicate to filter current level
                     IntLiteral levelLiteral = new IntLiteral(currentLoops);
                     Expr equalsLevel = new BinaryPredicate(BinaryType.EQ,
-                            new SlotRef(tableRelation.getName(), group.levelColumnName), levelLiteral);
+                            new SlotRef(tableRelation.getName().toQualifiedName(), group.levelColumnName),
+                            levelLiteral);
                     if (!this.initPredicate) {
                         this.initPredicate = true;
                         this.tempPredicate = node.getPredicate();
@@ -314,7 +315,8 @@ public class RecursiveCTEExecutor {
 
                 List<SelectListItem> selectItems = Lists.newArrayList();
                 for (int i = 0; i < tempTableStmt.getColumnDefs().size() - 1; i++) {
-                    selectItems.add(new SelectListItem(new SlotRef(name, tempTableStmt.getColumnDefs().get(i).getName()), null));
+                    selectItems.add(new SelectListItem(
+                            new SlotRef(name.toQualifiedName(), tempTableStmt.getColumnDefs().get(i).getName()), null));
                 }
                 SelectRelation selectRelation = new SelectRelation(
                         new SelectList(selectItems, false),

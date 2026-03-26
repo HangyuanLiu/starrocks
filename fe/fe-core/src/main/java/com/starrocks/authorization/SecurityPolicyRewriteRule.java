@@ -69,7 +69,8 @@ public class SecurityPolicyRewriteRule {
                 Map<TableName, Relation> allTablesRelations = AnalyzerUtils.collectAllTableAndViewRelations(maskingExpr);
                 allTablesRelations.values().forEach(r -> r.setCreateByPolicyRewritten(true));
             } else {
-                selectListItemList.add(new SelectListItem(new SlotRef(tableName, columnName), columnName, NodePosition.ZERO));
+                selectListItemList.add(new SelectListItem(
+                        new SlotRef(tableName.toQualifiedName(), columnName), columnName, NodePosition.ZERO));
             }
         }
 

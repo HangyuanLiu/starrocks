@@ -501,7 +501,7 @@ public class ExprToThriftTest {
 
         private static SlotRef buildSlotRef() {
             SlotDescriptor descriptor = new SlotDescriptor(new SlotId(3), "col", IntegerType.INT, true);
-            SlotRef slotRef = new SlotRef(descriptor);
+            SlotRef slotRef = SlotRefFactory.fromDescriptor(descriptor);
             slotRef.setType(IntegerType.INT);
             slotRef.setOriginType(IntegerType.INT);
             return slotRef;

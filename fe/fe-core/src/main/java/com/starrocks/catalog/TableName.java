@@ -47,11 +47,13 @@ import com.starrocks.persist.gson.GsonPreProcessable;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.sql.analyzer.SemanticException;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.TableRef;
 import com.starrocks.sql.parser.NodePosition;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -224,6 +226,43 @@ public class TableName implements Writable, GsonPreProcessable, GsonPostProcessa
 
 
 
+
+    /**
+     * Creates a TableName from a QualifiedName.
+     * Parts map to [catalog, db, tbl] from right to left:
+     * 1 part  -> tbl only
+     * 2 parts -> db.tbl
+     * 3 parts -> catalog.db.tbl
+     */
+    public static TableName fromQualifiedName(QualifiedName qualifiedName) {
+        if (qualifiedName == null) {
+            return null;
+        }
+        List<String> parts = qualifiedName.getParts();
+        String catalog = parts.size() >= 3 ? parts.get(parts.size() - 3) : null;
+        String db = parts.size() >= 2 ? parts.get(parts.size() - 2) : null;
+        String tbl = parts.get(parts.size() - 1);
+        return new TableName(catalog, db, tbl, qualifiedName.getPos());
+    }
+
+    /**
+     * Converts this TableName to a QualifiedName.
+     * Only non-null parts (catalog, db, tbl) are included.
+     */
+    public QualifiedName toQualifiedName() {
+        List<String> parts = new ArrayList<>();
+        // Skip internal catalog to match TableName.toSql() behavior
+        if (catalog != null && !CatalogMgr.isInternalCatalog(catalog)) {
+            parts.add(catalog);
+        }
+        if (db != null) {
+            parts.add(db);
+        }
+        if (tbl != null) {
+            parts.add(tbl);
+        }
+        return QualifiedName.of(parts);
+    }
 
     @Override
     public void gsonPostProcess() throws IOException {

@@ -15,7 +15,6 @@
 package com.starrocks.sql.formatter;
 
 import com.google.common.base.Joiner;
-import com.starrocks.catalog.TableName;
 import com.starrocks.common.util.ParseUtil;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.Field;
@@ -23,6 +22,7 @@ import com.starrocks.sql.ast.CTERelation;
 import com.starrocks.sql.ast.JoinRelation;
 import com.starrocks.sql.ast.NormalizedTableFunctionRelation;
 import com.starrocks.sql.ast.ParseNode;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.SelectList;
 import com.starrocks.sql.ast.SelectListItem;
 import com.starrocks.sql.ast.SelectRelation;
@@ -76,13 +76,13 @@ public class AST2SQLVisitor extends AST2StringVisitor {
     }
 
     // --------------------------------------- Statement -------------------------------------------------
-    private String buildColumnName(TableName tableName, String fieldName, String columnName) {
+    private String buildColumnName(QualifiedName tableName, String fieldName, String columnName) {
         String res = "";
         if (tableName != null && options.isColumnWithTableName()) {
             if (!options.isColumnSimplifyTableName()) {
                 res = tableName.toSql();
             } else {
-                res = "`" + tableName.getTbl() + "`";
+                res = "`" + tableName.getLastPart() + "`";
             }
             res += ".";
         }
@@ -94,13 +94,13 @@ public class AST2SQLVisitor extends AST2StringVisitor {
         return res;
     }
 
-    private String buildStructColumnName(TableName tableName, String fieldName, String columnName) {
+    private String buildStructColumnName(QualifiedName tableName, String fieldName, String columnName) {
         String res = "";
         if (tableName != null) {
             if (!options.isColumnSimplifyTableName()) {
                 res = tableName.toSql();
             } else {
-                res = "`" + tableName.getTbl() + "`";
+                res = "`" + tableName.getLastPart() + "`";
             }
             res += ".";
         }
@@ -210,7 +210,9 @@ public class AST2SQLVisitor extends AST2StringVisitor {
 
                 if (expr instanceof FieldReference) {
                     Field field = stmt.getScope().getRelationFields().getFieldByIndex(i);
-                    selectListString.add(buildColumnName(field.getRelationAlias(), field.getName(), columnName));
+                    selectListString.add(buildColumnName(
+                            field.getRelationAlias() != null ? field.getRelationAlias().toQualifiedName() : null,
+                            field.getName(), columnName));
                 } else if (expr instanceof SlotRef slot) {
                     if (slot.getOriginType().isStructType()) {
                         selectListString.add(buildStructColumnName(slot.getTblNameWithoutAnalyzed(),

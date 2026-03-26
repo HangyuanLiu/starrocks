@@ -300,7 +300,7 @@ public class ShowExecutorSimpleTest {
                 result = new ExpressionRangePartitionInfo(
                         Collections.singletonList(
                                 ColumnIdExpr.create(new SlotRef(
-                                        new TableName("test", "testMv"), column1.getName()))),
+                                        new TableName("test", "testMv").toQualifiedName(), column1.getName()))),
                         Collections.singletonList(column1), PartitionType.RANGE);
 
                 mv.getDefaultDistributionInfo();

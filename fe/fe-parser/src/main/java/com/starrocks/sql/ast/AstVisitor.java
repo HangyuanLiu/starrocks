@@ -55,6 +55,7 @@ import com.starrocks.sql.ast.expression.Parameter;
 import com.starrocks.sql.ast.expression.PlaceHolderExpr;
 import com.starrocks.sql.ast.expression.Predicate;
 import com.starrocks.sql.ast.expression.SetVarHint;
+import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.ast.expression.SubfieldExpr;
 import com.starrocks.sql.ast.expression.TimestampArithmeticExpr;
@@ -1278,6 +1279,10 @@ public interface AstVisitor<R, C> {
     }
 
     default R visitFieldReference(FieldReference node, C context) {
+        return visitExpression(node, context);
+    }
+
+    default R visitSlot(SlotRef node, C context) {
         return visitExpression(node, context);
     }
 

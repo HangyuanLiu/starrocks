@@ -245,7 +245,7 @@ public class ColumnFilterConverterTest {
         StringLiteral stringLiteral = new StringLiteral(timeKey);
         params.add(stringLiteral);
         TableName tableName = new TableName("testdb", "testtbl");
-        SlotRef slotRefDate = new SlotRef(tableName, "date_col");
+        SlotRef slotRefDate = new SlotRef(tableName.toQualifiedName(), "date_col");
         slotRefDate.setType(DateType.DATE);
         params.add(slotRefDate);
         FunctionCallExpr zdtestCallExpr = new FunctionCallExpr(FunctionSet.DATE_TRUNC,
@@ -315,7 +315,7 @@ public class ColumnFilterConverterTest {
 
     @Test
     public void testRewritePredicateFromUnixtimeWithDifferentIntTypes() {
-        SlotRef timeSlotRef = new SlotRef(new TableName(null, "test"), "collect_api_receive_time");
+        SlotRef timeSlotRef = new SlotRef(new TableName(null, "test").toQualifiedName(), "collect_api_receive_time");
         List<Expr> args = Lists.newArrayList(timeSlotRef);
         FunctionCallExpr fromUnixtimeCall = new FunctionCallExpr(FunctionSet.FROM_UNIXTIME, args);
         
@@ -345,7 +345,7 @@ public class ColumnFilterConverterTest {
      */
     @Test 
     public void testRewritePredicateFromUnixtimeMs() {
-        SlotRef timeSlotRef = new SlotRef(new TableName(null, "test"), "collect_api_receive_time");
+        SlotRef timeSlotRef = new SlotRef(new TableName(null, "test").toQualifiedName(), "collect_api_receive_time");
         List<Expr> args = Lists.newArrayList(timeSlotRef);
         FunctionCallExpr fromUnixtimeMsCall = new FunctionCallExpr(FunctionSet.FROM_UNIXTIME_MS, args);
         

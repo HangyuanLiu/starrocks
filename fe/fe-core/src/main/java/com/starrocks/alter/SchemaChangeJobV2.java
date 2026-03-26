@@ -89,6 +89,7 @@ import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
 import com.starrocks.task.AgentBatchTask;
@@ -695,7 +696,7 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
                                             "the ref column");
                                 }
 
-                                SlotRef slotRef = new SlotRef(slotDesc);
+                                SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
                                 slotRef.setColumnName(col.getName());
                                 outputExprs.add(slotRef);
                             }

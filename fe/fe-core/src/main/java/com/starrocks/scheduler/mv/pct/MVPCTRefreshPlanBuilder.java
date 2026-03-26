@@ -261,7 +261,8 @@ public class MVPCTRefreshPlanBuilder {
                 // referring original queryStatement's
                 // output expressions which may cause column missing if the original queryStatement's output contains alias.
                 List<SelectListItem> items = queryRelation.getColumnOutputNames().stream()
-                        .map(x -> new SlotRef(tableName, x))
+                        .map(x -> new SlotRef(tableName.toQualifiedName(), x))
+                        .map(x -> (Expr) x)
                         .map(x -> new SelectListItem(x, null)).collect(Collectors.toList());
                 SelectList selectList = new SelectList(items, false);
                 SelectRelation selectRelation = new SelectRelation(selectList, queryRelation,
@@ -302,7 +303,8 @@ public class MVPCTRefreshPlanBuilder {
 
         QueryRelation queryRelation = queryStatement.getQueryRelation();
         List<SelectListItem> items = queryRelation.getColumnOutputNames().stream()
-                .map(x -> new SlotRef(tableName, x))
+                .map(x -> new SlotRef(tableName.toQualifiedName(), x))
+                .map(x -> (Expr) x)
                 .map(x -> new SelectListItem(x, null)).collect(Collectors.toList());
         SelectList selectList = new SelectList(items, false);
 

@@ -494,7 +494,8 @@ public class ExpressionAnalyzer {
         public Void visitSlot(SlotRef node, Scope scope) {
             ResolvedField resolvedField = scope.resolveField(node);
             node.setType(resolvedField.getField().getType());
-            node.setTblName(resolvedField.getField().getRelationAlias());
+            node.setTblName(resolvedField.getField().getRelationAlias() != null
+                    ? resolvedField.getField().getRelationAlias().toQualifiedName() : null);
             // help to get nullable info in Analyzer phase
             // now it is used in creating mv to decide nullable of fields
             node.setNullable(resolvedField.getField().isNullable());

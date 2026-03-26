@@ -101,12 +101,12 @@ public class ExprVerboseVisitor extends ExprExplainVisitor {
     public String visitSlot(SlotRef node, Void context) {
         if (node.getLabel() != null) {
             return "[" + node.getLabel() + "," +
-                    " " + node.getDesc().getType() + "," +
-                    " " + node.getDesc().getIsNullable() + "]";
+                    " " + node.getType() + "," +
+                    " " + node.isNullable() + "]";
         } else {
-            return "[" + node.getDesc().getId().asInt() + "," +
-                    " " + node.getDesc().getType() + "," +
-                    " " + node.getDesc().getIsNullable() + "]";
+            return "[" + node.getSlotId() + "," +
+                    " " + node.getType() + "," +
+                    " " + node.isNullable() + "]";
         }
     }
 }

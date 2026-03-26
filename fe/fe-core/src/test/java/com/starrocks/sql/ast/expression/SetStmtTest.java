@@ -104,7 +104,7 @@ public class SetStmtTest {
     public void testNonConstantExpr() {
         SlotDescriptor descriptor = new SlotDescriptor(new SlotId(1), "x",
                 IntegerType.INT, false);
-        Expr lhsExpr = new SlotRef(descriptor);
+        Expr lhsExpr = SlotRefFactory.fromDescriptor(descriptor);
         Expr rhsExpr = new IntLiteral(100L);
         ArithmeticExpr addExpr = new ArithmeticExpr(
                 ArithmeticExpr.Operator.ADD, lhsExpr, rhsExpr);

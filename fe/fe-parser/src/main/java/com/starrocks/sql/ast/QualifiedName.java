@@ -58,6 +58,30 @@ public class QualifiedName implements ParseNode {
         return parts;
     }
 
+    /**
+     * Returns the last part of the qualified name.
+     * For example, for "catalog.db.table", returns "table".
+     * For "column", returns "column".
+     */
+    public String getLastPart() {
+        return parts.get(parts.size() - 1);
+    }
+
+    /**
+     * Returns a SQL representation of this qualified name with backtick-quoted parts.
+     * For example, for parts ["db", "table"], returns "`db`.`table`".
+     */
+    public String toSql() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.size(); i++) {
+            if (i > 0) {
+                sb.append(".");
+            }
+            sb.append("`").append(parts.get(i)).append("`");
+        }
+        return sb.toString();
+    }
+
     @Override
     public NodePosition getPos() {
         return pos;

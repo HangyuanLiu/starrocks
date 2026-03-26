@@ -542,7 +542,8 @@ public class AnalyzerUtils {
                 if (skipOutputExpr) {
                     node.getOutputExpression().stream()
                             .filter(expr -> !(expr instanceof SlotRef && ((SlotRef) expr).getQualifiedName() == null &&
-                                    ((SlotRef) expr).getTblNameWithoutAnalyzed().equals(updateTableName)))
+                                    updateTableName.toQualifiedName().equals(
+                                            ((SlotRef) expr).getTblNameWithoutAnalyzed())))
                             .forEach(this::visit);
                 } else {
                     node.getOutputExpression().forEach(this::visit);
@@ -710,7 +711,8 @@ public class AnalyzerUtils {
             if (!slotRef.isFromLambda() && slotRef.getTblNameWithoutAnalyzed() != null) {
                 // when used `slotRef.getColumnName()`, it would like c2.c2_sub1 instead of c2 for struct data type
                 // so finally use `slotRef.getLabel()`
-                put(slotRef.getTblNameWithoutAnalyzed(), slotRef.getLabel().replace("`", ""));
+                put(TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed()),
+                        slotRef.getLabel().replace("`", ""));
             }
             return null;
         }

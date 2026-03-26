@@ -42,8 +42,8 @@ public class RowStoreUtils {
         for (Expr expr : conjuncts) {
             // for simplify binary equals expr (#38582)
             // pk_col = true will be transformed pk_col
-            if (expr instanceof SlotRef && ((SlotRef) expr).getDesc() != null) {
-                keyToValues.put(((SlotRef) expr).getDesc().getColumn().getName(),
+            if (expr instanceof SlotRef && ((SlotRef) expr).hasSlotId()) {
+                keyToValues.put(((SlotRef) expr).getColName(),
                         ImmutableList.of(new BoolLiteral(true)));
                 continue;
             }
@@ -52,7 +52,7 @@ public class RowStoreUtils {
             if (!(column instanceof SlotRef) && !(expr instanceof SlotRef)) {
                 continue;
             }
-            String columnName = ((SlotRef) column).getDesc().getColumn().getName();
+            String columnName = ((SlotRef) column).getColName();
             if (!keyColumnSet.contains(columnName)) {
                 continue;
             }

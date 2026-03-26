@@ -36,6 +36,7 @@ import com.starrocks.catalog.PartitionInfo;
 import com.starrocks.catalog.SinglePartitionInfo;
 import com.starrocks.catalog.Table;
 import com.starrocks.catalog.TableName;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.catalog.TableProperty;
 import com.starrocks.catalog.Tablet;
 import com.starrocks.catalog.mv.MVPlanValidationResult;
@@ -49,7 +50,6 @@ import com.starrocks.common.util.ThreadUtil;
 import com.starrocks.persist.CreateTableInfo;
 import com.starrocks.persist.OperationType;
 import com.starrocks.persist.metablock.SRMetaBlockReaderV2;
-import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.DDLStmtExecutor;
 import com.starrocks.qe.StmtExecutor;
@@ -434,9 +434,9 @@ public class CreateMaterializedViewTest extends MVTestBase {
     private Table getBaseTable(MaterializedView materializedView) {
         Expr dateTruncFuncExpr = materializedView.getPartitionRefTableExprs().get(0);
         SlotRef slotRef = (SlotRef) dateTruncFuncExpr.getChild(1);
-        TableName baseTableName = slotRef.getTblNameWithoutAnalyzed();
+        QualifiedName baseTableQName = slotRef.getTblNameWithoutAnalyzed();
         return GlobalStateMgr.getCurrentState().getLocalMetastore()
-                .getTable(testDb.getFullName(), baseTableName.getTbl());
+                .getTable(testDb.getFullName(), baseTableQName.getLastPart());
     }
 
     public void testFullCreateSync(MaterializedView materializedView, Table baseTable) throws Exception {
@@ -632,7 +632,7 @@ public class CreateMaterializedViewTest extends MVTestBase {
             List<SlotRef> slotRefs = Lists.newArrayList();
             partitionRefTableExpr.collect(SlotRef.class, slotRefs);
             SlotRef slotRef = slotRefs.get(0);
-            TableName baseTableName = slotRef.getTblNameWithoutAnalyzed();
+            TableName baseTableName = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
             Assertions.assertEquals(baseTableName.getDb(), testDb.getFullName());
             Table baseTable = GlobalStateMgr.getCurrentState().getLocalMetastore().getTable(testDb.getFullName(),
                     baseTableName.getTbl());
@@ -2736,9 +2736,8 @@ public class CreateMaterializedViewTest extends MVTestBase {
         Assertions.assertEquals(1, partitionExpr.size());
         Assertions.assertTrue(partitionExpr.get(0) instanceof SlotRef);
         SlotRef slotRef = (SlotRef) partitionExpr.get(0);
-        Assertions.assertNotNull(slotRef.getSlotDescriptorWithoutCheck());
-        SlotDescriptor slotDescriptor = slotRef.getSlotDescriptorWithoutCheck();
-        Assertions.assertEquals(1, slotDescriptor.getId().asInt());
+        Assertions.assertTrue(slotRef.hasSlotId());
+        Assertions.assertEquals(1, slotRef.getSlotId());
     }
 
     @Test

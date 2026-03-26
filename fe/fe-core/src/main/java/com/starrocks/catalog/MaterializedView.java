@@ -82,6 +82,7 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.optimizer.CachingMvPlanContextBuilder;
 import com.starrocks.sql.optimizer.MvRewritePreprocessor;
 import com.starrocks.sql.optimizer.Utils;
@@ -1633,14 +1634,14 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
             List<SlotRef> slotRefs = Lists.newArrayList();
             partitionExpr.collect(SlotRef.class, slotRefs);
             Preconditions.checkState(slotRefs.size() == 1);
-            if (slotRefs.get(0).getSlotDescriptorWithoutCheck() == null) {
+            if (!slotRefs.get(0).hasSlotId()) {
                 for (int i = 0; i < fullSchema.size(); i++) {
                     Column column = fullSchema.get(i);
                     if (column.getName().equalsIgnoreCase(slotRefs.get(0).getColumnName())) {
                         SlotDescriptor slotDescriptor =
                                 new SlotDescriptor(new SlotId(i), column.getName(), column.getType(),
                                         column.isAllowNull());
-                        slotRefs.get(0).setDesc(slotDescriptor);
+                        SlotRefFactory.populateFromDescriptor(slotRefs.get(0), slotDescriptor);
                     }
                 }
             }

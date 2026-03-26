@@ -50,6 +50,7 @@ import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
 import com.starrocks.sql.ast.expression.ExprSubstitutionVisitor;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
+import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.warehouse.cngroup.ComputeResource;
 
@@ -105,7 +106,7 @@ public abstract class LoadScanNode extends ScanNode {
                 throw new StarRocksException("unknown column in where statement. "
                         + "the column '" + slot.getColumnName() + "' in where clause must be in the target table.");
             }
-            SlotRef slotRef = new SlotRef(slotDesc);
+            SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
             slotRef.setColumnName(slot.getColumnName());
             smap.put(slot, slotRef);
         }

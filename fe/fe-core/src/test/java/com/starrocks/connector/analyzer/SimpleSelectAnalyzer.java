@@ -18,6 +18,7 @@ package com.starrocks.connector.analyzer;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import com.starrocks.catalog.TableName;
 import com.starrocks.sql.analyzer.AnalyzeState;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.AstToStringBuilder;
@@ -129,7 +130,8 @@ public class SimpleSelectAnalyzer {
 
                 if (item.getExpr() instanceof SlotRef) {
                     outputFields.add(new Field(name, item.getExpr().getType(),
-                            ((SlotRef) item.getExpr()).getTblNameWithoutAnalyzed(), item.getExpr()));
+                            TableName.fromQualifiedName(((SlotRef) item.getExpr()).getTblNameWithoutAnalyzed()),
+                            item.getExpr()));
                 } else {
                     outputFields.add(new Field(name, item.getExpr().getType(), null, item.getExpr()));
                 }

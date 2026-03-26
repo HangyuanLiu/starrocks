@@ -125,7 +125,7 @@ public class IcebergPartitionUtilsTest extends TableTestBase {
     @Test
     public void testConvertPartitionExprToTerm() {
         TableName tableName = new TableName("db", "tbl");
-        SlotRef slotRef = new SlotRef(tableName, "ts");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(), "ts");
 
         // hour transform
         FunctionCallExpr hourExpr = new FunctionCallExpr("hour", Lists.newArrayList(slotRef));
@@ -145,7 +145,7 @@ public class IcebergPartitionUtilsTest extends TableTestBase {
     @Test
     public void testNormalizePartitionExpr() {
         TableName tableName = new TableName("db", "tbl");
-        SlotRef slotRef = new SlotRef(tableName, "ts");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(), "ts");
 
         // identity transform returns quoted column name
         FunctionCallExpr identityExpr = new FunctionCallExpr("identity", Lists.newArrayList(slotRef));
@@ -169,7 +169,7 @@ public class IcebergPartitionUtilsTest extends TableTestBase {
     @Test
     public void testGetPartitionExprSourceColumn() {
         TableName tableName = new TableName("db", "tbl");
-        SlotRef slotRef = new SlotRef(tableName, "ts");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(), "ts");
 
         // SlotRef returns column name directly
         Assertions.assertEquals("ts", IcebergPartitionUtils.getPartitionExprSourceColumn(slotRef));
