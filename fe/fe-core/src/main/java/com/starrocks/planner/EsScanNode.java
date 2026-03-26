@@ -43,8 +43,6 @@ import com.starrocks.catalog.EsTable;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.connector.elasticsearch.EsShardPartitions;
 import com.starrocks.connector.elasticsearch.EsShardRouting;
-import com.starrocks.connector.elasticsearch.QueryBuilders;
-import com.starrocks.connector.elasticsearch.QueryConverter;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
 import com.starrocks.server.WarehouseManager;
@@ -98,23 +96,6 @@ public class EsScanNode extends ScanNode {
 
     @Override
     public void finalizeStats() throws StarRocksException {
-    }
-
-    /**
-     * Try to unwrap ExecExpr conjuncts back to AST Expr.
-     * Returns null if any conjunct is not an ExecAstExprWrapper (i.e., it's a native ExecExpr).
-     */
-    private static List<com.starrocks.sql.ast.expression.Expr> tryUnwrapAstConjuncts(
-            List<com.starrocks.planner.expression.ExecExpr> conjuncts) {
-        List<com.starrocks.sql.ast.expression.Expr> result = new ArrayList<>();
-        for (com.starrocks.planner.expression.ExecExpr expr : conjuncts) {
-            if (expr instanceof com.starrocks.planner.expression.ExecAstExprWrapper) {
-                result.add(((com.starrocks.planner.expression.ExecAstExprWrapper) expr).getAstExpr());
-            } else {
-                return null;
-            }
-        }
-        return result;
     }
 
     /**
@@ -281,35 +262,10 @@ public class EsScanNode extends ScanNode {
             output.append(prefix).append("SORT COLUMN: ").append(sortColumn).append("\n");
         }
 
+        output.append(prefix).append("PREDICATES: ").append(
+                explainExpr(conjuncts)).append("\n");
         if (conjuncts.isEmpty()) {
-            output.append(prefix).append("PREDICATES: ").append(
-                    explainExpr(conjuncts)).append("\n");
             output.append(prefix).append("ES_QUERY_DSL: ").append("{\"match_all\": {}}").append("\n");
-        } else {
-            // Try to use QueryConverter if conjuncts are AST Expr wrappers;
-            // otherwise fall back to basic explain without ES query DSL generation.
-            List<com.starrocks.sql.ast.expression.Expr> astConjuncts =
-                    tryUnwrapAstConjuncts(getConjuncts());
-            if (astConjuncts != null) {
-                QueryConverter queryConverter = new QueryConverter();
-                QueryBuilders.QueryBuilder queryBuilder = queryConverter.convert(astConjuncts);
-                output.append(prefix).append("PREDICATES: ").append(
-                        explainExpr(conjuncts)).append("\n");
-                output.append(prefix).append("LOCAL_PREDICATES: ")
-                        .append(explainAstExprs(queryConverter.localConjuncts()))
-                        .append("\n");
-                output.append(prefix).append("REMOTE_PREDICATES: ")
-                        .append(explainAstExprs(queryConverter.remoteConjuncts()))
-                        .append("\n");
-                output.append(prefix)
-                        .append("ES_QUERY_DSL: ")
-                        .append(queryBuilder.toString())
-                        .append("\n");
-            } else {
-                // ExecExpr conjuncts from the new planner path; QueryConverter not yet migrated
-                output.append(prefix).append("PREDICATES: ").append(
-                        explainExpr(conjuncts)).append("\n");
-            }
         }
         String indexName = table.getIndexName();
         String typeName = table.getMappingType();

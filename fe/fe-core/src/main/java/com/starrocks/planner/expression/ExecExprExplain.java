@@ -179,15 +179,6 @@ public class ExecExprExplain implements ExecExprVisitor<String, Void> {
         }
         com.starrocks.planner.SlotDescriptor desc = expr.getDesc();
         if (desc != null) {
-            // Check for source expressions (AST Expr) on the descriptor
-            if (desc.getSourceExprs() != null && !desc.getSourceExprs().isEmpty()) {
-                StringBuilder sb = new StringBuilder();
-                sb.append("<slot ").append(desc.getId().asInt()).append(">");
-                for (com.starrocks.sql.ast.expression.Expr sourceExpr : desc.getSourceExprs()) {
-                    sb.append(" ").append(com.starrocks.sql.ast.expression.ExprToSql.toSql(sourceExpr));
-                }
-                return sb.toString();
-            }
             // Check for ExecExpr source label (set by setSourceExecExpr)
             if (desc.hasExecExprSource()) {
                 return "<slot " + desc.getId().asInt() + "> " + desc.getLabel();

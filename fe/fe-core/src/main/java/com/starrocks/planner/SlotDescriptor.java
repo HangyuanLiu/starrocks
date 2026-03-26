@@ -37,14 +37,11 @@ package com.starrocks.planner;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
 import com.starrocks.catalog.Column;
 import com.starrocks.common.FeConstants;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.planner.expression.ExecExprExplain;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.thrift.TSlotDescriptor;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.ScalarType;
@@ -53,9 +50,6 @@ import com.starrocks.type.TypeFactory;
 import com.starrocks.type.TypeSerializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.util.Collections;
-import java.util.List;
 
 public class SlotDescriptor {
 
@@ -67,10 +61,6 @@ public class SlotDescriptor {
 
     // for SlotRef.toSql() in the absence of a path
     private String label_;
-
-    // Expr(s) materialized into this slot; multiple exprs for unions. Should be empty if
-    // path_ is set.
-    private List<Expr> sourceExprs_ = Lists.newArrayList();
 
     // if false, this slot doesn't need to be materialized in parent tuple
     // (and physical layout parameters are invalid)
@@ -213,27 +203,6 @@ public class SlotDescriptor {
 
     public void setLabel(String label) {
         label_ = label;
-    }
-
-    public void setSourceExpr(Expr expr) {
-        sourceExprs_ = Collections.singletonList(expr);
-    }
-
-    public List<Expr> getSourceExprs() {
-        return sourceExprs_;
-    }
-
-    /**
-     * Initializes a slot by setting its source expression information
-     */
-    public void initFromExpr(Expr expr) {
-        setLabel(ExprToSql.toSql(expr));
-        Preconditions.checkState(sourceExprs_.isEmpty());
-        setSourceExpr(expr);
-        Preconditions.checkState(expr.getType().isValid());
-        setType(expr.getType());
-        // Vector query engine need the nullable info
-        setIsNullable(expr.isNullable());
     }
 
     /**

@@ -16,6 +16,7 @@ package com.starrocks.planner.expression;
 
 import com.google.common.collect.Lists;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
+import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TExpr;
 import com.starrocks.thrift.TExprNode;
 import com.starrocks.type.BooleanType;

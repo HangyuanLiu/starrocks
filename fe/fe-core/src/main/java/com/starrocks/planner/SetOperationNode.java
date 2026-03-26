@@ -44,7 +44,6 @@ import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecExprUtils;
 import com.starrocks.planner.expression.ExecSlotRef;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.thrift.TExceptNode;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TExpr;

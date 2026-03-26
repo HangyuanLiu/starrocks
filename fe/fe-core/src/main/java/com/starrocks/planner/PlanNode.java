@@ -45,8 +45,6 @@ import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecExprUtils;
 import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.sql.ast.TreeNode;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
 import com.starrocks.sql.common.PermutationGenerator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.statistics.ColumnStatistic;
@@ -135,7 +133,6 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
     // Runtime filters be consumed by this node.
     protected List<RuntimeFilterDescription> probeRuntimeFilters = Lists.newArrayList();
     protected Set<Integer> localRfWaitingSet = Sets.newHashSet();
-    protected ExprSubstitutionMap outputSmap;
 
     // set if you want to collect execution statistics for this plan node
     protected boolean needCollectExecStats = false;
@@ -621,17 +618,6 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
             return "";
         }
         return exprs.stream().map(ExecExprExplain::explain).collect(Collectors.joining(", "));
-    }
-
-    /**
-     * Explain a list of AST Expr objects (for use by scan nodes that still have Expr-typed predicates).
-     */
-    protected String explainAstExprs(List<? extends com.starrocks.sql.ast.expression.Expr> exprs) {
-        if (exprs == null) {
-            return "";
-        }
-        return exprs.stream().map(com.starrocks.sql.ast.expression.ExprToSql::explain)
-                .collect(Collectors.joining(", "));
     }
 
     protected String explainExpr(ExecExpr... exprs) {

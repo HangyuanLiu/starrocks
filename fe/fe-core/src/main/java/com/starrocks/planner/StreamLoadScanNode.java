@@ -49,7 +49,6 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.load.Load;
 import com.starrocks.load.streamload.StreamLoadInfo;
-import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AggregateType;
 import com.starrocks.sql.ast.expression.ArithmeticExpr;
@@ -60,6 +59,7 @@ import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.StringLiteral;
+import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TBrokerRangeDesc;
 import com.starrocks.thrift.TBrokerScanRange;
@@ -89,8 +89,6 @@ import java.util.Random;
 import java.util.Set;
 
 import static com.starrocks.catalog.DefaultExpr.isValidDefaultFunction;
-
-
 
 /**
  * Used to scan from stream.

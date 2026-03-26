@@ -45,6 +45,7 @@ import com.starrocks.server.WarehouseManager;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.ast.AggregateType;
 import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.ExprCastFunction;
 import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
 import com.starrocks.sql.ast.expression.ExprSubstitutionVisitor;
 import com.starrocks.sql.ast.expression.ExprUtils;
@@ -55,18 +56,33 @@ import com.starrocks.warehouse.cngroup.ComputeResource;
 import java.util.List;
 import java.util.Map;
 
-// NOTE ON AST EXPR USAGE:
+// NOTE ON ExecAstExprWrapper USAGE (legitimate boundary bridge):
 // This class uses AST Expr (com.starrocks.sql.ast.expression.*) in two places:
 //   1. initWhereExpr() — receives an AST Expr from the load job's WHERE clause, performs
-//      slot substitution and analysis, then wraps the result via ExecAstExprWrapper before
-//      adding it as conjuncts. This bridges the load path (which produces AST Expr) to the
-//      planner's ExecExpr interface.
+//      AST-level slot substitution and analysis, then wraps the result via ExecAstExprWrapper
+//      before calling addConjuncts(). The wrapper is the correct bridge here because:
+//        - The Load path produces AST Expr (parsed WHERE clause) that needs AST substitution.
+//        - The planner's conjunct interface requires ExecExpr.
+//        - A full AST-to-ExecExpr converter is not available for arbitrary analyzed expressions.
+//      This is a self-contained island: AST processing stays inside initWhereExpr(), and only
+//      the wrapped ExecExpr leaves the method boundary.
 //   2. checkBitmapCompatibility() — inspects the AST Expr type for bitmap column validation.
 // These are contained uses that do not leak AST Expr into the broader planner ExecExpr interface.
 public abstract class LoadScanNode extends ScanNode {
 
     public LoadScanNode(PlanNodeId id, TupleDescriptor desc, String planNodeName) {
         super(id, desc, planNodeName);
+    }
+
+    /**
+     * Cast expr to SlotDescriptor type. Used by load-path scan nodes.
+     */
+    protected Expr castToSlot(SlotDescriptor slotDesc, Expr expr) throws StarRocksException {
+        if (!slotDesc.getType().matchesType(expr.getType())) {
+            return ExprCastFunction.castTo(expr, slotDesc.getType());
+        } else {
+            return expr;
+        }
     }
 
     protected void initWhereExpr(Expr whereExpr) throws StarRocksException {

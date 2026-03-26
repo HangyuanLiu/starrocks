@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.starrocks.planner.expression;
+package com.starrocks.sql.expression;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -20,6 +20,9 @@ import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionName;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.planner.SlotDescriptor;
+import com.starrocks.planner.expression.ThriftEnumConverter;
+import com.starrocks.qe.ConnectContext;
+import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.ast.AssertNumRowsElement;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
@@ -73,8 +76,6 @@ import com.starrocks.sql.ast.expression.SubfieldExpr;
 import com.starrocks.sql.ast.expression.Subquery;
 import com.starrocks.sql.ast.expression.TimestampArithmeticExpr;
 import com.starrocks.sql.ast.expression.VarBinaryLiteral;
-import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.sql.common.ErrorType;
 import com.starrocks.sql.common.StarRocksPlannerException;
 import com.starrocks.thrift.TAggregateExpr;

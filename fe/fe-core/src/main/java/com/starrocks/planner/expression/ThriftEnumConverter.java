@@ -22,6 +22,7 @@ import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.expression.AnalyticWindow;
 import com.starrocks.sql.ast.expression.AnalyticWindowBoundary;
 import com.starrocks.sql.ast.expression.CompoundPredicate;
+import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TAnalyticWindow;
 import com.starrocks.thrift.TAnalyticWindowBoundary;
 import com.starrocks.thrift.TAnalyticWindowBoundaryType;

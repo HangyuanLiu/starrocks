@@ -15,6 +15,7 @@
 package com.starrocks.planner.expression;
 
 import com.starrocks.sql.ast.expression.MatchExpr;
+import com.starrocks.sql.expression.ExprOpcodeRegistry;
 import com.starrocks.thrift.TExprNode;
 import com.starrocks.thrift.TExprNodeType;
 import com.starrocks.type.BooleanType;

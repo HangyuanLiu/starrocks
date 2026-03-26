@@ -74,7 +74,6 @@ import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.lake.qe.scheduler.DefaultSharedDataWorkerProvider;
 import com.starrocks.load.Load;
-import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariableConstants;
@@ -90,18 +89,6 @@ import com.starrocks.sql.analyzer.SelectAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.IndexDef.IndexType;
 import com.starrocks.sql.ast.KeysType;
-// AST Expr imports — required for catalog-stored expressions, NOT from the ExecExpr plan tree.
-// OlapTableSink reads AST Exprs directly from catalog metadata:
-//   - Expr/SlotRef/ExprSubstitutionMap/ExprSubstitutionVisitor/ExprUtils/ExprToSql:
-//       Used in createSchema() to process MaterializedIndexMeta.getWhereClause() —
-//       the MV where-clause is stored as AST Expr in catalog and must be resolved
-//       against tuple slots, substituted, analyzed, then serialized to Thrift.
-//   - Expr/SlotRef: Used in createPartition() to process ExpressionRangePartitionInfo
-//       and ExpressionRangePartitionInfoV2 partition expressions stored in catalog.
-//   - LiteralExpr: Used in literalExprsToTExprNodes() and setListPartitionValues()
-//       to serialize partition boundary values from ListPartitionInfo/RangePartitionInfo.
-// These cannot be migrated to ExecExpr because the expressions originate from persistent
-// catalog metadata, not from the optimizer's plan-building pipeline.
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
 import com.starrocks.sql.ast.expression.ExprSubstitutionVisitor;
@@ -110,6 +97,7 @@ import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.common.MetaUtils;
+import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.TDataSink;

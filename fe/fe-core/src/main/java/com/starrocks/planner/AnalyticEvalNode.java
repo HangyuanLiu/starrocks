@@ -45,7 +45,6 @@ import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.sql.ast.expression.AnalyticWindow;
-import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.thrift.TAnalyticNode;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TNormalAnalyticNode;

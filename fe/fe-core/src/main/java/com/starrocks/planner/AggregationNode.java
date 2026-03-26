@@ -38,7 +38,6 @@ import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.starrocks.common.AnalysisException;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.IdGenerator;
 import com.starrocks.common.Pair;
@@ -47,13 +46,10 @@ import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecExprUtils;
 import com.starrocks.planner.expression.ExecFunctionCall;
+import com.starrocks.planner.expression.ExecLiteral;
 import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.sql.ast.expression.DecimalLiteral;
-import com.starrocks.sql.ast.expression.ExprCastFunction;
-import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.statistics.ColumnStatistic;
@@ -294,7 +290,7 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
                 msg.agg_node.setSql_grouping_keys(sqlGroupingKeysBuilder.toString());
             }
 
-            List<com.starrocks.sql.ast.expression.Expr> minMaxStats = Lists.newArrayList();
+            List<ExecLiteral> minMaxStats = Lists.newArrayList();
             if (groupByMinMaxStats.size() == groupingExprs.size()) {
                 for (int i = 0; i < groupingExprs.size(); i++) {
                     final ExecExpr expr = groupingExprs.get(i);
@@ -302,26 +298,24 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
                     String min = groupByMinMaxStats.get(i).first.getVarchar();
                     String max = groupByMinMaxStats.get(i).second.getVarchar();
 
-                    try {
-                        Type type = expr.getType();
-                        LiteralExpr minExpr = LiteralExprFactory.create(min, type);
-                        LiteralExpr maxExpr = LiteralExprFactory.create(max, type);
-                        // cast decimal literal to matched precision type
-                        if (minExpr instanceof DecimalLiteral) {
-                            minExpr = (LiteralExpr) ExprCastFunction.uncheckedCastTo(minExpr, type);
-                            maxExpr = (LiteralExpr) ExprCastFunction.uncheckedCastTo(maxExpr, type);
-                        }
-                        minMaxStats.add(minExpr);
-                        minMaxStats.add(maxExpr);
-                    } catch (AnalysisException e) {
+                    Type type = expr.getType();
+                    // Use castToStrictly for decimals to preserve precision, castTo for others
+                    Optional<ConstantOperator> minOp = type.isDecimalOfAnyVersion()
+                            ? ConstantOperator.createVarchar(min).castToStrictly(type)
+                            : ConstantOperator.createVarchar(min).castTo(type);
+                    Optional<ConstantOperator> maxOp = type.isDecimalOfAnyVersion()
+                            ? ConstantOperator.createVarchar(max).castToStrictly(type)
+                            : ConstantOperator.createVarchar(max).castTo(type);
+                    if (minOp.isEmpty() || maxOp.isEmpty()) {
                         break;
                     }
+                    minMaxStats.add(new ExecLiteral(minOp.get(), type));
+                    minMaxStats.add(new ExecLiteral(maxOp.get(), type));
                 }
             }
 
             if (minMaxStats.size() == 2 * groupingExprs.size()) {
-                msg.agg_node.setGroup_by_min_max(
-                        com.starrocks.planner.expression.ExprToThrift.treesToThrift(minMaxStats));
+                msg.agg_node.setGroup_by_min_max(ExecExprSerializer.serializeList(minMaxStats));
             }
         }
 

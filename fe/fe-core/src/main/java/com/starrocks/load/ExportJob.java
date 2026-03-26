@@ -81,8 +81,8 @@ import com.starrocks.planner.PlanNodeId;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.TupleDescriptor;
-import com.starrocks.planner.expression.ExecAstExprWrapper;
 import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.proto.UnlockTabletMetadataRequest;
 import com.starrocks.qe.DefaultCoordinator;
 import com.starrocks.qe.scheduler.Coordinator;
@@ -96,8 +96,6 @@ import com.starrocks.sql.ast.BrokerDesc;
 import com.starrocks.sql.ast.ExportStmt;
 import com.starrocks.sql.ast.LoadStmt;
 import com.starrocks.sql.ast.TableRef;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.system.Backend;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TAgentResult;
@@ -490,17 +488,16 @@ public class ExportJob implements Writable, GsonPostProcessable {
     }
 
     private List<ExecExpr> createOutputExprs() {
-        List<Expr> astExprs = Lists.newArrayList();
+        List<ExecExpr> result = Lists.newArrayList();
         for (int i = 0; i < exportTupleDesc.getSlots().size(); ++i) {
             SlotDescriptor slotDesc = exportTupleDesc.getSlots().get(i);
-            SlotRef slotRef = new SlotRef(slotDesc);
+            ExecSlotRef slotRef = new ExecSlotRef(slotDesc);
             if (slotDesc.getType().getPrimitiveType() == PrimitiveType.CHAR) {
                 slotRef.setType(CharType.CHAR);
             }
-            astExprs.add(slotRef);
+            result.add(slotRef);
         }
-
-        return ExecAstExprWrapper.wrapList(astExprs);
+        return result;
     }
 
     private Coordinator.Factory getCoordinatorFactory() {

@@ -203,13 +203,6 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
             } else {
                 return node.getLabel();
             }
-        } else if (node.getDesc().getSourceExprs() != null) {
-            sb.append("<slot ").append(node.getDesc().getId().asInt()).append(">");
-            for (Expr expr : node.getDesc().getSourceExprs()) {
-                sb.append(" ");
-                sb.append(visit(expr));
-            }
-            return sb.toString();
         } else {
             return "<slot " + node.getDesc().getId().asInt() + ">";
         }

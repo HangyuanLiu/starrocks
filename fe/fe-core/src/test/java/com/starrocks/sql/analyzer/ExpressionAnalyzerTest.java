@@ -15,7 +15,6 @@
 package com.starrocks.sql.analyzer;
 
 import com.starrocks.catalog.Function;
-import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.expression.CollectionElementExpr;
 import com.starrocks.sql.ast.expression.Expr;
@@ -25,6 +24,7 @@ import com.starrocks.sql.ast.expression.LikePredicate;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.ast.expression.UserVariableExpr;
+import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.sql.plan.ExecPlan;
