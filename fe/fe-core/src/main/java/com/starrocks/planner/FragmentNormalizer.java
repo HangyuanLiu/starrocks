@@ -17,12 +17,7 @@ package com.starrocks.planner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
-import com.starrocks.catalog.Column;
-import com.starrocks.catalog.FunctionSet;
-import com.starrocks.catalog.PartitionKey;
-import com.starrocks.common.AnalysisException;
 import com.starrocks.common.IdGenerator;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.UnionFind;
@@ -33,23 +28,11 @@ import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecExprUtils;
 import com.starrocks.planner.expression.ExecLiteral;
 import com.starrocks.planner.expression.ExecSlotRef;
-import com.starrocks.planner.expression.ExprToNormalFormVisitor;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.rpc.ConfigurableSerDesFactory;
 import com.starrocks.server.RunMode;
-import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.KeysType;
-import com.starrocks.sql.ast.expression.BetweenPredicate;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
 import com.starrocks.sql.ast.expression.BinaryType;
-import com.starrocks.sql.ast.expression.CompoundPredicate;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprUtils;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.InPredicate;
-import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.ast.expression.NullLiteral;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.thrift.TCacheParam;
 import com.starrocks.thrift.TExpr;
@@ -62,14 +45,12 @@ import org.apache.thrift.protocol.TCompactProtocol;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.Stack;
 import java.util.stream.Collectors;
@@ -121,19 +102,6 @@ public class FragmentNormalizer {
     public FragmentNormalizer(ExecPlan execPlan, PlanFragment fragment) {
         this.execPlan = execPlan;
         this.fragment = fragment;
-    }
-
-    static Range<PartitionKey> toClosedOpenRange(Range<PartitionKey> range) {
-        PartitionKey lowerBound = range.lowerEndpoint();
-        PartitionKey upperBound = range.upperEndpoint();
-        if (!lowerBound.isMinValue() && !range.contains(lowerBound)) {
-            lowerBound = lowerBound.successor();
-        }
-
-        if (!upperBound.isMaxValue() && range.contains(upperBound)) {
-            upperBound = upperBound.successor();
-        }
-        return Range.closedOpen(lowerBound, upperBound);
     }
 
     public boolean isUncacheable() {
@@ -239,55 +207,6 @@ public class FragmentNormalizer {
         return tupleIdRemapping.computeIfAbsent(tupleId, arg -> tupleIdIdGen.getNextId());
     }
 
-    public ByteBuffer normalizeExpr(Expr expr) {
-        uncacheable = uncacheable || hasNonDeterministicFunctions(expr);
-        TExpr tExpr = ExprToNormalFormVisitor.treeToNormalForm(expr, this);
-        try {
-            TSerializer ser = ConfigurableSerDesFactory.getTSerializer(SIMPLE_JSON.name());
-            return ByteBuffer.wrap(ser.serialize(tExpr));
-        } catch (Exception ignored) {
-            Preconditions.checkArgument(false);
-        }
-        return null;
-    }
-
-    public static class SimpleRangePredicateVisitor implements AstVisitorExtendInterface<String, Void> {
-        @Override
-        public String visitBinaryPredicate(BinaryPredicate node, Void context) {
-            String lhs = visit(node.getChild(0), context);
-            String rhs = visit(node.getChild(1), context);
-            if (lhs == null || rhs == null) {
-                return null;
-            }
-            return String.format("(%s %s %s)", node.getOp().getName(), lhs, rhs);
-        }
-
-        @Override
-        public String visitBetweenPredicate(BetweenPredicate node, Void context) {
-            String lhs = visit(node.getChild(0));
-            List<String> rhsList = node.getChildren().stream().skip(1).map(this::visit).collect(Collectors.toList());
-            if (lhs == null || rhsList.stream().anyMatch(Objects::isNull)) {
-                return null;
-            }
-            String rhsCsv = rhsList.stream().sorted(String::compareTo).collect(Collectors.joining(", "));
-            return String.format("(%s %s (%s))", node.isNotBetween() ? "not_in" : "in", lhs, rhsCsv);
-        }
-
-        @Override
-        public String visitSlot(SlotRef node, Void context) {
-            return String.format("(slot %d)", node.getSlotId().asInt());
-        }
-
-        @Override
-        public String visitLiteral(LiteralExpr node, Void context) {
-            return String.format("(literal %s %s)", node.getStringValue(), node.getType().getPrimitiveType().name());
-        }
-    }
-
-    public String normalizeSimpleRangePredicate(Expr expr) {
-        return expr.accept(new SimpleRangePredicateVisitor(), null);
-    }
-
     public String normalizeSimpleRangePredicate(ExecExpr expr) {
         if (expr instanceof ExecBinaryPredicate) {
             ExecBinaryPredicate bp = (ExecBinaryPredicate) expr;
@@ -322,15 +241,6 @@ public class FragmentNormalizer {
         return null;
     }
 
-    public Pair<List<Integer>, List<ByteBuffer>> normalizeSlotIdsAndExprs(Map<SlotId, Expr> exprMap) {
-        List<Pair<SlotId, ByteBuffer>> slotIdsAndStringFunctions = exprMap.entrySet().stream()
-                .map(e -> new Pair<>(e.getKey(), normalizeExpr(e.getValue())))
-                .sorted(Pair.comparingBySecond()).collect(Collectors.toList());
-        List<SlotId> slotIds = slotIdsAndStringFunctions.stream().map(e -> e.first).collect(Collectors.toList());
-        List<ByteBuffer> exprs = slotIdsAndStringFunctions.stream().map(e -> e.second).collect(Collectors.toList());
-        return new Pair<>(remapSlotIds(slotIds), exprs);
-    }
-
     public Pair<List<Integer>, List<ByteBuffer>> normalizeSlotIdsAndExprs(Map<SlotId, ExecExpr> exprMap, boolean isExecExpr) {
         List<Pair<SlotId, ByteBuffer>> slotIdsAndFunctions = exprMap.entrySet().stream()
                 .map(e -> new Pair<>(e.getKey(), normalizeExecExpr(e.getValue())))
@@ -338,20 +248,6 @@ public class FragmentNormalizer {
         List<SlotId> slotIds = slotIdsAndFunctions.stream().map(e -> e.first).collect(Collectors.toList());
         List<ByteBuffer> exprs = slotIdsAndFunctions.stream().map(e -> e.second).collect(Collectors.toList());
         return new Pair<>(remapSlotIds(slotIds), exprs);
-    }
-
-    public List<ByteBuffer> normalizeExprs(List<Expr> exprList) {
-        if (exprList == null || exprList.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return exprList.stream().map(this::normalizeExpr).sorted(ByteBuffer::compareTo).collect(Collectors.toList());
-    }
-
-    public List<ByteBuffer> normalizeOrderedExprs(List<Expr> exprList) {
-        if (exprList == null || exprList.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return exprList.stream().map(this::normalizeExpr).collect(Collectors.toList());
     }
 
     public ByteBuffer normalizeExecExpr(ExecExpr expr) {
@@ -409,7 +305,7 @@ public class FragmentNormalizer {
             cacheParam.setSlot_remapping(outputSlotIdRemapping);
             cacheParam.setRegion_map(selectedRangeMap);
             cacheParam.setCan_use_multiversion(canUseMultiVersion);
-            cacheParam.setKeys_type(ExprToThrift.keysTypeToThrift(keysType));
+            cacheParam.setKeys_type(ThriftEnumConverter.keysTypeToThrift(keysType));
             cacheParam.setCached_plan_node_ids(cachedPlanNodeIds);
             if (RunMode.isSharedDataMode()) {
                 cacheParam.setIs_lake(true);
@@ -469,39 +365,6 @@ public class FragmentNormalizer {
         endProcessingLeftNode();
     }
 
-    List<Expr> flatAndPredicate(Expr conjunct) {
-        if (!(conjunct instanceof CompoundPredicate)) {
-            return Arrays.asList(conjunct);
-        }
-        CompoundPredicate compoundPredicate = (CompoundPredicate) conjunct;
-        if (compoundPredicate.getOp() != CompoundPredicate.Operator.AND) {
-            return Arrays.asList(conjunct);
-        } else {
-            return compoundPredicate.getChildren().stream()
-                    .flatMap(child -> flatAndPredicate(child).stream()).collect(Collectors.toList());
-        }
-    }
-
-    boolean isSimpleRegionPredicate(Expr expr) {
-
-        if (!(expr instanceof BetweenPredicate) && !(expr instanceof BinaryPredicate)) {
-            return false;
-        }
-        boolean simple = expr.getChild(0) instanceof SlotRef &&
-                expr.getChildren().subList(1, expr.getChildren().size())
-                        .stream().allMatch(e -> (e instanceof LiteralExpr) && !(e instanceof NullLiteral));
-        if (!simple) {
-            return false;
-        }
-        if (expr instanceof BetweenPredicate) {
-            return !((BetweenPredicate) expr).isNotBetween();
-        }
-        if (expr instanceof BinaryPredicate) {
-            return ((BinaryPredicate) expr).getOp() != BinaryType.EQ_FOR_NULL;
-        }
-        return true;
-    }
-
     boolean isSimpleRegionPredicate(ExecExpr expr) {
         if (!(expr instanceof ExecBetweenPredicate) && !(expr instanceof ExecBinaryPredicate)) {
             return false;
@@ -522,191 +385,19 @@ public class FragmentNormalizer {
         return true;
     }
 
-    boolean hasNonDeterministicFunctions(Expr expr) {
-        if (expr instanceof FunctionCallExpr) {
-            FunctionCallExpr callExpr = (FunctionCallExpr) expr;
-            String funcName = callExpr.getFn().functionName();
-            if (FunctionSet.nonDeterministicFunctions.contains(funcName)) {
-                return true;
-            }
-            if (FunctionSet.NOW.equals(funcName)) {
-                return true;
-            }
-            if (FunctionSet.nonDeterministicTimeFunctions.contains(funcName) && callExpr.getChildren().isEmpty()) {
-                return true;
-            }
-        }
-        return expr.getChildren().stream().anyMatch(this::hasNonDeterministicFunctions);
-    }
-
-    List<Range<PartitionKey>> convertPredicateToRange(Column partitionColumn, Expr expr) {
-        List<Range<PartitionKey>> result = Lists.newArrayList();
-        PartitionKey minKey = null;
-        PartitionKey maxKey = null;
-        try {
-            minKey = PartitionKey.createInfinityPartitionKey(Arrays.asList(partitionColumn), false);
-            maxKey = PartitionKey.createInfinityPartitionKey(Arrays.asList(partitionColumn), true);
-        } catch (AnalysisException ignored) {
-        }
-        Preconditions.checkArgument(minKey != null && maxKey != null);
-        if (expr instanceof BinaryPredicate) {
-            BinaryPredicate predicate = (BinaryPredicate) expr;
-            if (predicate.getOp() == BinaryType.EQ_FOR_NULL) {
-                return result;
-            }
-            LiteralExpr rhs = (LiteralExpr) predicate.getChild(1);
-            PartitionKey rhsKey = new PartitionKey();
-            rhsKey.pushColumn(rhs, partitionColumn.getPrimitiveType());
-            switch (predicate.getOp()) {
-                case EQ:
-                    result.add(Range.closed(rhsKey, rhsKey));
-                    break;
-                case NE:
-                    result.add(Range.open(minKey, rhsKey));
-                    result.add(Range.open(rhsKey, maxKey));
-                    break;
-                case LE:
-                    result.add(Range.openClosed(minKey, rhsKey));
-                    break;
-                case GE:
-                    result.add(Range.closedOpen(rhsKey, maxKey));
-                    break;
-                case LT:
-                    result.add(Range.open(minKey, rhsKey));
-                    break;
-                case GT:
-                    result.add(Range.open(rhsKey, maxKey));
-                    break;
-                case EQ_FOR_NULL:
-                    break;
-            }
-            return result;
-        } else if (expr instanceof BetweenPredicate) {
-            BetweenPredicate predicate = (BetweenPredicate) expr;
-            LiteralExpr lowerBound = (LiteralExpr) expr.getChild(1);
-            LiteralExpr upperBound = (LiteralExpr) expr.getChild(2);
-            PartitionKey lowerKey = new PartitionKey();
-            PartitionKey upperKey = new PartitionKey();
-            lowerKey.pushColumn(lowerBound, partitionColumn.getPrimitiveType());
-            lowerKey.pushColumn(upperBound, partitionColumn.getPrimitiveType());
-            if (predicate.isNotBetween()) {
-                result.add(Range.open(minKey, lowerKey));
-                result.add(Range.open(upperKey, upperKey));
-            } else {
-                result.add(Range.closed(lowerKey, upperKey));
-            }
-            return result;
-        } else if (expr instanceof InPredicate) {
-            InPredicate predicate = (InPredicate) expr;
-            for (Expr elem : predicate.getListChildren()) {
-                LiteralExpr literal = (LiteralExpr) elem;
-                PartitionKey key = new PartitionKey();
-                key.pushColumn(literal, partitionColumn.getPrimitiveType());
-                if (predicate.isNotIn()) {
-                    result.add(Range.open(minKey, key));
-                    result.add(Range.open(key, maxKey));
-                } else {
-                    result.add(Range.closed(key, key));
-                }
-            }
-            return result;
-        } else {
-            return Lists.newArrayList();
-        }
-    }
-
-    List<Expr> getPartitionRangePredicates(List<Expr> conjuncts,
-                                           List<Pair<Long, Range<PartitionKey>>> rangeMap,
-                                           List<Column> partitionColumns,
-                                           SlotId partitionSlotId) {
-
-        List<Expr> exprs = conjuncts.stream().flatMap(e -> flatAndPredicate(e).stream()).collect(Collectors.toList());
-        List<Expr> unboundExprs = Lists.newArrayList();
-        List<Expr> boundSimpleRegionExprs = Lists.newArrayList();
-        List<Expr> boundOtherExprs = Lists.newArrayList();
-        for (Expr e : exprs) {
-            if (!ExprUtils.isBound(e, partitionSlotId)) {
-                unboundExprs.add(e);
-                continue;
-            }
-            if (isSimpleRegionPredicate(e)) {
-                SlotRef child0 = (SlotRef) e.getChild(0);
-                // Note: slotId2PartColRangePredicates stores ExecExpr, but this method operates
-                // on AST Expr. In practice, this code path is not reached because
-                // getExprConjunctsByPlanNodeId returns an empty list. The side-effect of populating
-                // the map is only relevant for the ExecExpr path (setPartColRangePredicates).
-                boundSimpleRegionExprs.add(e);
-            } else {
-                boundOtherExprs.add(e);
-            }
-        }
-
-        // TODO(by satanson): If the bound exprs contain no simple range exprs but only contain complex exprs, we
-        //  create a simpleRangeMap without predicates' decomposition to turn on the cache. date_trunc function
-        //  is frequently-used, we should decompose predicates contains date_trunc in the future.
-        if (!boundOtherExprs.isEmpty() && boundSimpleRegionExprs.isEmpty()) {
-            createSimpleRangeMap(rangeMap.stream().map(r -> r.first).collect(Collectors.toSet()));
-            return conjuncts;
-        }
-
-        if (boundSimpleRegionExprs.isEmpty()) {
-            for (Pair<Long, Range<PartitionKey>> range : rangeMap) {
-                selectedRangeMap.put(range.first, range.second.toString());
-            }
-            return conjuncts;
-        }
-
-        Column partitionColumn = partitionColumns.get(0);
-        List<Range<PartitionKey>> partitionRanges = rangeMap.stream()
-                .map(r -> r.second).collect(Collectors.toList());
-
-        // compute the intersection region of partition range and region predicates
-        for (Expr expr : boundSimpleRegionExprs) {
-            List<Range<PartitionKey>> ranges = convertPredicateToRange(partitionColumn, expr);
-            if (ranges.isEmpty()) {
-                continue;
-            }
-            for (Range<PartitionKey> r : ranges) {
-                partitionRanges = partitionRanges.stream().filter(pr ->
-                        pr.isConnected(r)).map(pr -> pr.intersection(r)).collect(Collectors.toList());
-            }
-        }
-        // select the partition ranges should be cached
-        for (int i = 0; i < partitionRanges.size(); ++i) {
-            Range<PartitionKey> range = partitionRanges.get(i);
-            if (range.isEmpty()) {
-                continue;
-            }
-            Optional<Range> optRange = Optional.empty();
-            try {
-                optRange = Optional.ofNullable(toClosedOpenRange(range));
-            } catch (Throwable ignored) {
-            }
-
-            Pair<Long, Range<PartitionKey>> partitionKeyRange = rangeMap.get(i);
-            // when the range is to total cover this partition, we also cache it
-            if (optRange.isPresent() && !optRange.get().isEmpty()) {
-                selectedRangeMap.put(partitionKeyRange.first, optRange.get().toString());
-            }
-        }
-        // After we decompose the predicates, we should create a simple selectedRangeMap to turn on query cache if
-        // we get a empty selectedRangeMap. it is defensive-style programming.
-        if (selectedRangeMap.isEmpty()) {
-            createSimpleRangeMap(rangeMap.stream().map(r -> r.first).collect(Collectors.toSet()));
-            return conjuncts;
-        } else {
-            List<Expr> remainConjuncts = Lists.newArrayList();
-            remainConjuncts.addAll(unboundExprs);
-            remainConjuncts.addAll(boundOtherExprs);
-            return remainConjuncts;
-        }
-    }
-
     // For partition that not support partition column range predicates' decomposition, we
     // just create a simple selectedRangeMap which is used to construct cache key in BE.
     public void createSimpleRangeMap(Collection<Long> selectedPartitionIds) {
         selectedRangeMap = Maps.newHashMap();
         selectedPartitionIds.forEach(id -> selectedRangeMap.put(id, "[]"));
+    }
+
+    /**
+     * Add a single entry to the selectedRangeMap for cache key computation.
+     * Used by OlapScanNode to populate partition-to-range mappings.
+     */
+    public void addSelectedRange(long physicalPartitionId, String rangeString) {
+        selectedRangeMap.put(physicalPartitionId, rangeString);
     }
 
     public Set<SlotId> getSlotsUseAggColumns() {
@@ -720,20 +411,6 @@ public class FragmentNormalizer {
         this.slotsUseAggColumns = slotsUseAggColumns;
     }
 
-    public void addSlotsUseAggColumns(Map<SlotId, Expr> exprs) {
-        if (!isProcessingLeftNode()) {
-            return;
-        }
-        exprs.forEach((slotId, expr) -> {
-            List<SlotRef> slotRefs = Lists.newArrayList();
-            expr.collect(SlotRef.class, slotRefs);
-            Set<SlotId> usedColumnIds = slotRefs.stream().map(SlotRef::getSlotId).collect(Collectors.toSet());
-            if (!Sets.intersection(this.slotsUseAggColumns, usedColumnIds).isEmpty()) {
-                this.slotsUseAggColumns.add(slotId);
-            }
-        });
-    }
-
     public void addSlotsUseAggColumnsExec(Map<SlotId, ExecExpr> exprs) {
         if (!isProcessingLeftNode()) {
             return;
@@ -744,18 +421,6 @@ public class FragmentNormalizer {
                 this.slotsUseAggColumns.add(slotId);
             }
         });
-    }
-
-    public void disableMultiversionIfExprsUseAggColumns(List<Expr> exprs) {
-        if (!isProcessingLeftNode() || exprs == null || exprs.isEmpty()) {
-            return;
-        }
-        List<SlotRef> slotRefs = Lists.newArrayList();
-        exprs.forEach(e -> e.collect(SlotRef.class, slotRefs));
-        Set<SlotId> usedColumnIds = slotRefs.stream().map(SlotRef::getSlotId).collect(Collectors.toSet());
-        if (!Sets.intersection(usedColumnIds, this.slotsUseAggColumns).isEmpty()) {
-            this.setCanUseMultiVersion(false);
-        }
     }
 
     public void disableMultiversionIfExecExprsUseAggColumns(List<ExecExpr> exprs) {
@@ -1037,22 +702,6 @@ public class FragmentNormalizer {
 
     public List<ExecExpr> getConjunctsByPlanNodeId(PlanNode node) {
         return planNodeId2Conjuncts.getOrDefault(node.getId(), node.getConjuncts());
-    }
-
-    /**
-     * Get Expr-typed conjuncts for legacy code paths that still need Expr (e.g., partition range decomposition).
-     * Returns empty list since ExecExpr conjuncts cannot be converted back to Expr.
-     */
-    public List<Expr> getExprConjunctsByPlanNodeId(PlanNode node) {
-        // The ExecExpr-based conjuncts cannot be converted back to Expr.
-        // Return empty list; partition range decomposition will produce its own predicates.
-        return Collections.emptyList();
-    }
-
-    public static Set<SlotId> getSlotIdSet(List<Expr> exprs) {
-        return exprs.stream()
-                .flatMap(e -> e instanceof SlotRef ? Stream.of(((SlotRef) e).getSlotId()) : Stream.empty())
-                .collect(Collectors.toSet());
     }
 
     public static Set<SlotId> getExecExprSlotIdSet(List<ExecExpr> exprs) {

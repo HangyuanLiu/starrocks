@@ -39,7 +39,7 @@ import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExprOpcodeRegistry;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.JoinOperator;
 import com.starrocks.thrift.TEqJoinCondition;
@@ -65,7 +65,7 @@ public class MergeJoinNode extends JoinNode {
     protected void toThrift(TPlanNode msg) {
         msg.node_type = TPlanNodeType.MERGE_JOIN_NODE;
         msg.merge_join_node = new TMergeJoinNode();
-        msg.merge_join_node.join_op = ExprToThrift.joinOperatorToThrift(joinOp);
+        msg.merge_join_node.join_op = ThriftEnumConverter.joinOperatorToThrift(joinOp);
         msg.merge_join_node.distribution_mode = distrMode.toThrift();
         StringBuilder sqlJoinPredicatesBuilder = new StringBuilder();
         for (ExecBinaryPredicate eqJoinPredicate : eqJoinConjuncts) {

@@ -17,16 +17,9 @@ package com.starrocks.planner;
 
 import com.google.common.collect.Range;
 import com.starrocks.catalog.Column;
-import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.PartitionKey;
 import com.starrocks.common.AnalysisException;
-import com.starrocks.qe.ConnectContext;
-import com.starrocks.sql.ast.QueryStatement;
-import com.starrocks.sql.ast.SelectRelation;
-import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.expression.DateLiteral;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.LargeIntLiteral;
 import com.starrocks.sql.ast.expression.LiteralExpr;
@@ -35,7 +28,6 @@ import com.starrocks.type.IntegerType;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.Type;
 import com.starrocks.type.TypeFactory;
-import com.starrocks.utframe.UtFrameUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -43,7 +35,29 @@ import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Tests for PartitionKey range operations used in partition pruning.
+ * The toClosedOpenRange utility was previously in FragmentNormalizer but has been
+ * removed from production code. These tests verify PartitionKey successor behavior
+ * and range conversion correctness, which underpins the query cache range map logic.
+ */
 public class FragmentNormalizerTest {
+
+    /**
+     * Convert a Range to closed-open form [lower, upper) using PartitionKey.successor().
+     * This is a test utility that mirrors the logic previously in FragmentNormalizer.
+     */
+    private static Range<PartitionKey> toClosedOpenRange(Range<PartitionKey> range) {
+        PartitionKey lowerBound = range.lowerEndpoint();
+        PartitionKey upperBound = range.upperEndpoint();
+        if (!lowerBound.isMinValue() && !range.contains(lowerBound)) {
+            lowerBound = lowerBound.successor();
+        }
+        if (!upperBound.isMaxValue() && range.contains(upperBound)) {
+            upperBound = upperBound.successor();
+        }
+        return Range.closedOpen(lowerBound, upperBound);
+    }
 
     private void testHelper(Column partitionColumn, LiteralExpr lower, LiteralExpr lowerSucc, LiteralExpr upper,
                             LiteralExpr upperSucc)
@@ -77,7 +91,7 @@ public class FragmentNormalizerTest {
         for (Object[] tc : cases) {
             Range<PartitionKey> range = (Range<PartitionKey>) tc[0];
             Range<PartitionKey> targetRange = (Range<PartitionKey>) tc[1];
-            Assertions.assertEquals(targetRange, FragmentNormalizer.toClosedOpenRange(range));
+            Assertions.assertEquals(targetRange, toClosedOpenRange(range));
         }
     }
 
@@ -132,46 +146,5 @@ public class FragmentNormalizerTest {
         LiteralExpr upperSucc =
                 new LargeIntLiteral(BigInteger.ONE.shiftLeft(127).subtract(BigInteger.valueOf(1)).toString());
         testHelper(partitionColumn, lower, lowerSucc, upper, upperSucc);
-    }
-
-    @Test
-    public void testNondetermisticTimeFunction() {
-        FragmentNormalizer fragmentNormalizer = new FragmentNormalizer(null, null);
-        ConnectContext ctx = UtFrameUtils.createDefaultCtx();
-        for (String funcName : FunctionSet.nonDeterministicTimeFunctions) {
-            String sql = String.format("select %s()", funcName);
-            StatementBase statementBase;
-            try {
-                statementBase = com.starrocks.sql.parser.SqlParser.parse(sql, ctx.getSessionVariable()).get(0);
-                com.starrocks.sql.analyzer.Analyzer.analyze(statementBase, ctx);
-            } catch (Throwable ignored) {
-                continue;
-            }
-            QueryStatement queryStatement = (QueryStatement) statementBase;
-            SelectRelation selectRelation = (SelectRelation) queryStatement.getQueryRelation();
-            Expr expr = selectRelation.getSelectList().getItems().get(0).getExpr();
-            Assertions.assertTrue(expr instanceof FunctionCallExpr);
-            Assertions.assertTrue(fragmentNormalizer.hasNonDeterministicFunctions(expr));
-        }
-
-        for (String funcName : FunctionSet.nonDeterministicTimeFunctions) {
-            String sql = String.format("select %s('2022-12-01')", funcName);
-            StatementBase statementBase;
-            try {
-                statementBase = com.starrocks.sql.parser.SqlParser.parse(sql, ctx.getSessionVariable()).get(0);
-                com.starrocks.sql.analyzer.Analyzer.analyze(statementBase, ctx);
-            } catch (Throwable ignored) {
-                continue;
-            }
-            QueryStatement queryStatement = (QueryStatement) statementBase;
-            SelectRelation selectRelation = (SelectRelation) queryStatement.getQueryRelation();
-            Expr expr = selectRelation.getSelectList().getItems().get(0).getExpr();
-            Assertions.assertTrue(expr instanceof FunctionCallExpr);
-            if (funcName.equals(FunctionSet.NOW)) {
-                Assertions.assertTrue(fragmentNormalizer.hasNonDeterministicFunctions(expr));
-            } else {
-                Assertions.assertFalse(fragmentNormalizer.hasNonDeterministicFunctions(expr));
-            }
-        }
     }
 }

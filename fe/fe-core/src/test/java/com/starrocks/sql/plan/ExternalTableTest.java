@@ -25,6 +25,9 @@ import com.starrocks.catalog.Replica;
 import com.starrocks.catalog.Tablet;
 import com.starrocks.common.FeConstants;
 import com.starrocks.planner.JDBCScanNode;
+import com.starrocks.planner.expression.ExecAstExprWrapper;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecInPredicate;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.utframe.StarRocksAssert;
@@ -309,10 +312,20 @@ public class ExternalTableTest extends PlanTestBase {
         List<JDBCScanNode> scanNodes = Lists.newArrayList();
         execPlan.getTopFragment().getPlanRoot().collect(JDBCScanNode.class, scanNodes);
         Assertions.assertEquals(1, scanNodes.size());
-        List<InPredicate> predicates = scanNodes.get(0).getConjuncts().stream()
-                .filter(expr -> expr instanceof InPredicate)
-                .map(expr -> (InPredicate) expr).collect(Collectors.toList());
-        Assertions.assertTrue(predicates.isEmpty());
+        // After migration to ExecExpr, conjuncts are ExecExpr types.
+        // Check that no InPredicate-like conjuncts remain (they should be pushed down).
+        List<ExecExpr> inPredicates = scanNodes.get(0).getConjuncts().stream()
+                .filter(expr -> {
+                    if (expr instanceof ExecInPredicate) {
+                        return true;
+                    }
+                    if (expr instanceof ExecAstExprWrapper) {
+                        return ((ExecAstExprWrapper) expr).getAstExpr() instanceof InPredicate;
+                    }
+                    return false;
+                })
+                .collect(Collectors.toList());
+        Assertions.assertTrue(inPredicates.isEmpty());
         String plan = getCostExplain(sql);
         assertCContains(plan, "  1:SCAN JDBC\n" +
                 "     TABLE: `test_table`\n" +

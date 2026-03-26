@@ -60,6 +60,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Prunes range-partitioned tables by comparing partition column filters against the partition
+ * range map. Uses AST {@link LiteralExpr} (via {@link PartitionColumnFilter} and
+ * {@link com.starrocks.catalog.PartitionKey}) because the partition pruning subsystem operates
+ * in the metadata/analysis layer, before the execution plan is constructed.
+ *
+ * <p>AST {@link LiteralExpr} is retained here because {@link com.starrocks.catalog.PartitionKey}
+ * requires it for partition key comparison. This is separate from the ExecExpr execution-plan
+ * expression system.</p>
+ */
 public class RangePartitionPruner implements PartitionPruner {
     private static final Logger LOG = LogManager.getLogger(RangePartitionPruner.class);
 

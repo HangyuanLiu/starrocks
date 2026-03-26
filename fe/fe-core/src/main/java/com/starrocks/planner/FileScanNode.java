@@ -107,6 +107,15 @@ import java.util.stream.Collectors;
 import static com.starrocks.catalog.DefaultExpr.isValidDefaultFunction;
 
 // Broker scan node
+//
+// NOTE ON AST EXPR USAGE:
+// This class constructs AST Expr objects (SlotRef, StringLiteral, NullLiteral, FunctionCallExpr,
+// ArithmeticExpr, IntLiteral) internally in finalizeParams() to build the column mapping and type
+// conversion pipeline for Broker Load. These expressions are serialized directly to Thrift via
+// ExprToThrift.treeToThrift() and placed into TBrokerScanRangeParams.expr_of_dest_slot.
+// They are never exposed as planner ExecExpr conjuncts — the AST usage is a self-contained island
+// for load-specific Thrift serialization. Migrating to ExecExpr would require reimplementing the
+// complex column mapping logic in Load.initColumns and DefaultExpr without clear benefit.
 public class FileScanNode extends LoadScanNode {
     private static final Logger LOG = LogManager.getLogger(FileScanNode.class);
     private static final TBrokerFileStatusComparator T_BROKER_FILE_STATUS_COMPARATOR

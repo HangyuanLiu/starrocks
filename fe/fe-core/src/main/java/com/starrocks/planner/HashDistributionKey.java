@@ -26,6 +26,18 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.zip.CRC32;
 
+/**
+ * Accumulates distribution key column values for hash computation during tablet pruning.
+ * Uses AST {@link LiteralExpr} because the hash distribution pruning subsystem operates
+ * in the metadata/analysis layer, before the execution plan is constructed. The
+ * {@link LiteralExpr#getHashValue} method is used to compute CRC32 hash values that
+ * determine which tablet a row belongs to.
+ *
+ * <p>AST {@link LiteralExpr} is retained here because {@link PartitionColumnFilter} stores
+ * values as {@link LiteralExpr} objects and this class needs the hash computation API
+ * provided by {@link LiteralExpr}. This is separate from the ExecExpr execution-plan
+ * expression system.</p>
+ */
 public class HashDistributionKey {
     private static final Logger LOG = LogManager.getLogger(PartitionKey.class);
     private List<LiteralExpr> keys;

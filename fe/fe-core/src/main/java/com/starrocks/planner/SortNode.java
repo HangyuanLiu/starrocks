@@ -42,7 +42,6 @@ import com.starrocks.common.IdGenerator;
 import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
-import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;

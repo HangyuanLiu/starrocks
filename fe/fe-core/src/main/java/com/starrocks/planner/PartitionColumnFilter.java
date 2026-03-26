@@ -51,6 +51,19 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 
+/**
+ * Holds filter conditions for a single partition/distribution column, used during
+ * partition pruning and tablet distribution pruning. The filters are expressed as AST
+ * {@link LiteralExpr} objects (bounds and IN-list literals) because this class operates
+ * in the metadata/analysis layer: it is populated from the optimizer's column filters
+ * and consumed by {@link RangePartitionPruner}, {@link HashDistributionPruner}, and
+ * {@link RangeDistributionPruner} to determine which partitions/tablets to scan.
+ *
+ * <p>This is intentionally separate from the ExecExpr execution-plan expression system.
+ * AST {@link LiteralExpr} is retained here because {@link com.starrocks.catalog.PartitionKey}
+ * requires it for partition key comparison, and the pruning subsystem runs before
+ * PlanFragmentBuilder constructs the execution plan.</p>
+ */
 public class PartitionColumnFilter {
     private static final Logger LOG = LogManager.getLogger(PartitionColumnFilter.class);
     private LiteralExpr lowerBound;

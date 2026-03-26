@@ -55,6 +55,14 @@ import com.starrocks.warehouse.cngroup.ComputeResource;
 import java.util.List;
 import java.util.Map;
 
+// NOTE ON AST EXPR USAGE:
+// This class uses AST Expr (com.starrocks.sql.ast.expression.*) in two places:
+//   1. initWhereExpr() — receives an AST Expr from the load job's WHERE clause, performs
+//      slot substitution and analysis, then wraps the result via ExecAstExprWrapper before
+//      adding it as conjuncts. This bridges the load path (which produces AST Expr) to the
+//      planner's ExecExpr interface.
+//   2. checkBitmapCompatibility() — inspects the AST Expr type for bitmap column validation.
+// These are contained uses that do not leak AST Expr into the broader planner ExecExpr interface.
 public abstract class LoadScanNode extends ScanNode {
 
     public LoadScanNode(PlanNodeId id, TupleDescriptor desc, String planNodeName) {

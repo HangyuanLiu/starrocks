@@ -78,7 +78,6 @@ import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecSlotRef;
-import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
@@ -1379,30 +1378,31 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
         return optPartitionSlotId;
     }
 
-    private List<Expr> decomposeRangePredicates(List<Column> partitionColumns, FragmentNormalizer normalizer,
-                                                TNormalPlanNode planNode, RangePartitionInfo rangePartitionInfo,
-                                                List<Expr> conjuncts) {
+    /**
+     * Populate the normalizer's selectedRangeMap with partition ranges for cache key computation.
+     * This records the mapping from physical partition id to partition range for the query cache.
+     * The partition range predicates themselves are handled via the ExecExpr path in
+     * {@link FragmentNormalizer#normalize()}.
+     */
+    private void populateSelectedRangeMap(List<Column> partitionColumns, FragmentNormalizer normalizer,
+                                          TNormalPlanNode planNode, RangePartitionInfo rangePartitionInfo) {
         Set<Long> selectedPartIdSet = new HashSet<>(selectedPartitionIds);
         selectedPartIdSet.removeAll(getHotPartitionIds(rangePartitionInfo));
 
         Column column = partitionColumns.get(0);
-        Optional<SlotId> optSlotId = associateSlotIdsWithColumns(normalizer, planNode, Optional.of(column));
-        List<Pair<Long, Range<PartitionKey>>> rangeMap = Lists.newArrayList();
+        associateSlotIdsWithColumns(normalizer, planNode, Optional.of(column));
+
         try {
             List<Map.Entry<Long, Range<PartitionKey>>> rangeMap2 = rangePartitionInfo.getSortedRangeMap(selectedPartIdSet);
-
             for (Map.Entry<Long, Range<PartitionKey>> partitionRange : rangeMap2) {
                 Long partitionId = partitionRange.getKey();
                 Partition partition = olapTable.getPartition(partitionId);
                 for (PhysicalPartition physicalPartition : partition.getSubPartitions()) {
-                    rangeMap.add(new Pair<>(physicalPartition.getId(), partitionRange.getValue()));
+                    normalizer.addSelectedRange(physicalPartition.getId(), partitionRange.getValue().toString());
                 }
             }
-
         } catch (AnalysisException ignored) {
         }
-        Preconditions.checkState(optSlotId.isPresent());
-        return normalizer.getPartitionRangePredicates(conjuncts, rangeMap, partitionColumns, optSlotId.get());
     }
 
     private void normalizeConjunctsNonLeft(FragmentNormalizer normalizer, TNormalPlanNode planNode) {
@@ -1483,10 +1483,11 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
 
         if (isDecomposablePartitionInfo(partitionInfo)) {
             RangePartitionInfo rangePartitionInfo = (RangePartitionInfo) partitionInfo;
-            // decomposeRangePredicates works with Expr-based conjuncts from the normalizer
-            List<Expr> exprConjuncts = normalizer.getExprConjunctsByPlanNodeId(this);
-            exprConjuncts = decomposeRangePredicates(partitionColumns, normalizer, planNode, rangePartitionInfo, exprConjuncts);
-            planNode.setConjuncts(normalizer.normalizeExprs(exprConjuncts));
+            // Populate selectedRangeMap with partition ranges for cache key computation.
+            // Partition range predicate filtering is handled by the ExecExpr path in
+            // FragmentNormalizer.normalize() via slotId2PartColRangePredicates.
+            populateSelectedRangeMap(partitionColumns, normalizer, planNode, rangePartitionInfo);
+            planNode.setConjuncts(normalizer.normalizeExecExprs(normalizer.getConjunctsByPlanNodeId(this)));
         } else {
             associateSlotIdsWithColumns(normalizer, planNode, Optional.empty());
             List<Long> physicalPartitionIds = new ArrayList<>();

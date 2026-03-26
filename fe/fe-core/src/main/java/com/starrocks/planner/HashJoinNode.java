@@ -41,7 +41,7 @@ import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.planner.expression.ExprOpcodeRegistry;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.ast.JoinOperator;
@@ -116,7 +116,7 @@ public class HashJoinNode extends JoinNode {
     protected void toThrift(TPlanNode msg) {
         msg.node_type = TPlanNodeType.HASH_JOIN_NODE;
         msg.hash_join_node = new THashJoinNode();
-        msg.hash_join_node.join_op = ExprToThrift.joinOperatorToThrift(joinOp);
+        msg.hash_join_node.join_op = ThriftEnumConverter.joinOperatorToThrift(joinOp);
         msg.hash_join_node.distribution_mode = distrMode.toThrift();
         StringBuilder sqlJoinPredicatesBuilder = new StringBuilder();
         for (ExecBinaryPredicate eqJoinPredicate : eqJoinConjuncts) {
@@ -211,7 +211,7 @@ public class HashJoinNode extends JoinNode {
     @Override
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         TNormalHashJoinNode hashJoinNode = new TNormalHashJoinNode();
-        hashJoinNode.setJoin_op(ExprToThrift.joinOperatorToThrift(getJoinOp()));
+        hashJoinNode.setJoin_op(ThriftEnumConverter.joinOperatorToThrift(getJoinOp()));
         hashJoinNode.setDistribution_mode(getDistrMode().toThrift());
         hashJoinNode.setEq_join_conjuncts(normalizer.normalizeExecExprs(eqJoinConjuncts));
         hashJoinNode.setOther_join_conjuncts(normalizer.normalizeExecExprs(otherJoinConjuncts));

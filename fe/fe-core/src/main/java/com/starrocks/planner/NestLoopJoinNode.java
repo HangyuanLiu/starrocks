@@ -22,7 +22,7 @@ import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecExprUtils;
 import com.starrocks.planner.expression.ExecSlotRef;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.ast.JoinOperator;
@@ -119,7 +119,7 @@ public class NestLoopJoinNode extends JoinNode implements RuntimeFilterBuildNode
         Preconditions.checkState(!joinOp.isRightSemiAntiJoin());
         msg.node_type = TPlanNodeType.NESTLOOP_JOIN_NODE;
         msg.nestloop_join_node = new TNestLoopJoinNode();
-        msg.nestloop_join_node.join_op = ExprToThrift.joinOperatorToThrift(joinOp);
+        msg.nestloop_join_node.join_op = ThriftEnumConverter.joinOperatorToThrift(joinOp);
 
         if (CollectionUtils.isNotEmpty(otherJoinConjuncts)) {
             for (ExecExpr e : otherJoinConjuncts) {
@@ -148,7 +148,7 @@ public class NestLoopJoinNode extends JoinNode implements RuntimeFilterBuildNode
     @Override
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         TNormalNestLoopJoinNode nlJoinNode = new TNormalNestLoopJoinNode();
-        nlJoinNode.setJoin_op(ExprToThrift.joinOperatorToThrift(getJoinOp()));
+        nlJoinNode.setJoin_op(ThriftEnumConverter.joinOperatorToThrift(getJoinOp()));
         nlJoinNode.setJoin_conjuncts(normalizer.normalizeExecExprs(otherJoinConjuncts));
         planNode.setNestloop_join_node(nlJoinNode);
         planNode.setNode_type(TPlanNodeType.NESTLOOP_JOIN_NODE);

@@ -23,7 +23,7 @@ import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExprOpcodeRegistry;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.sql.ast.JoinOperator;
 import com.starrocks.sql.optimizer.operator.stream.IMTInfo;
 import com.starrocks.thrift.TEqJoinCondition;
@@ -50,7 +50,7 @@ public class StreamJoinNode extends JoinNode {
     protected void toThrift(TPlanNode msg) {
         msg.node_type = TPlanNodeType.STREAM_JOIN_NODE;
         msg.stream_join_node = new TStreamJoinNode();
-        msg.stream_join_node.join_op = ExprToThrift.joinOperatorToThrift(joinOp);
+        msg.stream_join_node.join_op = ThriftEnumConverter.joinOperatorToThrift(joinOp);
 
         if (CollectionUtils.isNotEmpty(eqJoinConjuncts)) {
             for (ExecBinaryPredicate eqJoinPredicate : eqJoinConjuncts) {

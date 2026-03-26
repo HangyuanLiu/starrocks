@@ -50,18 +50,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/*
- * Prune the distribution by distribution columns' predicate, recursively.
+/**
+ * Prunes hash-distributed tablets by distribution columns' predicates, recursively.
  * It only supports binary equal predicate and in predicate with AND combination.
  * For example:
+ * <pre>
  *      where a = 1 and b in (2,3,4) and c in (5,6,7)
  *      a/b/c are distribution columns
+ * </pre>
  *
- * the config 'max_distribution_pruner_recursion_depth' will limit the max recursion depth of pruning.
- * the recursion depth is calculated by the product of element number of all predicates.
- * The above example's depth is 9(= 1 * 3 * 3)
+ * <p>The config 'max_distribution_pruner_recursion_depth' limits the max recursion depth.
+ * The recursion depth is the product of element counts of all predicates.
+ * The above example's depth is 9 (= 1 * 3 * 3).
+ * If depth exceeds the limit, all buckets are returned without pruning.</p>
  *
- * If depth is larger than 'max_distribution_pruner_recursion_depth', all buckets will be return without pruning.
+ * <p>Uses AST {@link LiteralExpr} (via {@link PartitionColumnFilter} and
+ * {@link HashDistributionKey}) because the distribution pruning subsystem operates in
+ * the metadata/analysis layer, before the execution plan is constructed. The
+ * {@link InPredicate} import is used to check whether the first child of the IN predicate
+ * is a {@link SlotRef}. This is separate from the ExecExpr execution-plan expression system.</p>
  */
 public class HashDistributionPruner implements DistributionPruner {
     private static final Logger LOG = LogManager.getLogger(HashDistributionPruner.class);

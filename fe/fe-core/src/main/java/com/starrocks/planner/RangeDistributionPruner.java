@@ -34,6 +34,16 @@ import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
 
+/**
+ * Prunes range-distributed tablets by comparing distribution column filters against the
+ * tablet range map. Uses AST {@link LiteralExpr} (via {@link PartitionColumnFilter}) to
+ * extract string values from filter bounds. The pruning subsystem operates in the
+ * metadata/analysis layer, before the execution plan is constructed.
+ *
+ * <p>AST {@link LiteralExpr} is retained here because {@link PartitionColumnFilter} stores
+ * bounds as {@link LiteralExpr} objects. This is separate from the ExecExpr execution-plan
+ * expression system.</p>
+ */
 public class RangeDistributionPruner implements DistributionPruner {
     // tablets in range order
     private final TreeMap<Range<Tuple>, Long> tabletInOrder;

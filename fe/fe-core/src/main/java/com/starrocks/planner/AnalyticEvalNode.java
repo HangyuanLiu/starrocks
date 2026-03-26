@@ -43,7 +43,7 @@ import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.planner.expression.ExecExprExplain;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ExecSlotRef;
-import com.starrocks.planner.expression.ExprToThrift;
+import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.sql.ast.expression.AnalyticWindow;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.thrift.TAnalyticNode;
@@ -198,11 +198,11 @@ public class AnalyticEvalNode extends PlanNode {
         if (analyticWindow == null) {
             if (!orderByExprs.isEmpty()) {
                 msg.analytic_node.setWindow(
-                        ExprToThrift.analyticWindowToThrift(AnalyticWindow.DEFAULT_WINDOW));
+                        ThriftEnumConverter.analyticWindowToThrift(AnalyticWindow.DEFAULT_WINDOW));
             }
         } else {
             // TODO: Window boundaries should have range_offset_predicate set
-            msg.analytic_node.setWindow(ExprToThrift.analyticWindowToThrift(analyticWindow));
+            msg.analytic_node.setWindow(ThriftEnumConverter.analyticWindowToThrift(analyticWindow));
         }
 
         if (partitionByEq != null) {
@@ -355,7 +355,7 @@ public class AnalyticEvalNode extends PlanNode {
         analyticNode.setOrder_by_exprs(normalizer.normalizeOrderedExecExprs(orderByExprs));
         analyticNode.setAnalytic_functions(normalizer.normalizeExecExprs(analyticFnCalls));
         if (analyticWindow != null) {
-            analyticNode.setWindow(ExprToThrift.analyticWindowToThrift(analyticWindow));
+            analyticNode.setWindow(ThriftEnumConverter.analyticWindowToThrift(analyticWindow));
         }
         if (intermediateTupleDesc != null) {
             analyticNode.setIntermediate_tuple_id(normalizer.remapTupleId(intermediateTupleDesc.getId()).asInt());

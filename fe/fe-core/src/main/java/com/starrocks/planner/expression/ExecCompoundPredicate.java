@@ -61,7 +61,7 @@ public class ExecCompoundPredicate extends ExecExpr {
 
     @Override
     public void toThrift(TExprNode node) {
-        node.setOpcode(ExprToThrift.compoundPredicateOperatorToThrift(compoundType));
+        node.setOpcode(ThriftEnumConverter.compoundPredicateOperatorToThrift(compoundType));
     }
 
     @Override
