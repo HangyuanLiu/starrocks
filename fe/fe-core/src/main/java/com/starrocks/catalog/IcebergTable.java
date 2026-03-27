@@ -50,6 +50,7 @@ import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.NullLiteral;
@@ -487,7 +488,7 @@ public class IcebergTable extends Table {
                                 Function builtinFunction = ExprUtils.getBuiltinFunction(
                                         ((FunctionCallExpr) expr).getFunctionName(),
                                         args, Function.CompareMode.IS_IDENTICAL);
-                                ((FunctionCallExpr) expr).setFn(builtinFunction);
+                                FunctionCallExprFactory.setFn((FunctionCallExpr) expr, builtinFunction);
 
                                 if (((FunctionCallExpr) expr).getFunctionName().equals(
                                         FeConstants.ICEBERG_TRANSFORM_EXPRESSION_PREFIX + "truncate")) {

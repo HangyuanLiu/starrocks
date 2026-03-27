@@ -17,12 +17,12 @@ package com.starrocks.sql.optimizer.transformer;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import com.starrocks.catalog.AggregateFunction;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.OrderByElement;
 import com.starrocks.sql.ast.expression.AnalyticExpr;
@@ -34,6 +34,7 @@ import com.starrocks.sql.ast.expression.ExprCastFunction;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.NullLiteral;
@@ -105,10 +106,11 @@ public class WindowTransformer {
         List<OrderByElement> orderByElements = analyticExpr.getOrderByElements();
 
         // Set a window from UNBOUNDED PRECEDING to CURRENT_ROW for row_number().
-        if (isRowNumberFn(callExpr.getFn())) {
+        String fnName = callExpr.getFunctionName();
+        if (isRowNumberFn(fnName)) {
             Preconditions.checkState(windowFrame == null, "Unexpected window set for row_numer()");
             windowFrame = AnalyticWindow.DEFAULT_ROWS_WINDOW;
-        } else if (isNtileFn(callExpr.getFn())) {
+        } else if (isNtileFn(fnName)) {
             Preconditions.checkState(windowFrame == null, "Unexpected window set for NTILE()");
             windowFrame = AnalyticWindow.DEFAULT_ROWS_WINDOW;
 
@@ -117,18 +119,18 @@ public class WindowTransformer {
             } catch (AnalysisException e) {
                 throw new SemanticException(e.getMessage());
             }
-        } else if (isCumeFn(callExpr.getFn())) {
+        } else if (isCumeFn(fnName)) {
             Preconditions.checkState(windowFrame == null, "Unexpected window set for "
-                    + callExpr.getFn().getFunctionName() + "()");
+                    + callExpr.getFunctionName() + "()");
             windowFrame = AnalyticWindow.DEFAULT_WINDOW;
-        } else if (isOffsetFn(callExpr.getFn())) {
+        } else if (isOffsetFn(fnName)) {
             try {
                 Preconditions.checkState(windowFrame == null);
                 Type firstType = callExpr.getChild(0).getType();
                 // In old planner, the NullLiteral will cast to function arg type.
                 // But in new planner, the NullLiteral type is still null.
                 if (callExpr.getChild(0) instanceof NullLiteral) {
-                    firstType = callExpr.getFn().getArgs()[0];
+                    firstType = callExpr.getFnArgTypes()[0];
                 }
 
                 if (callExpr.getChildren().size() == 1) {
@@ -161,7 +163,7 @@ public class WindowTransformer {
             } catch (AnalysisException e) {
                 throw new SemanticException(e.getMessage());
             }
-        } else if (isApproxTopKFn(callExpr.getFn())) {
+        } else if (isApproxTopKFn(fnName)) {
             Preconditions.checkState(CollectionUtils.isEmpty(orderByElements),
                     "Unexpected order by clause for approx_top_k()");
             Preconditions.checkState(windowFrame == null, "Unexpected window set for approx_top_k()");
@@ -189,8 +191,8 @@ public class WindowTransformer {
             if (reversedFnName != null) {
                 callExpr.resetFnName("", reversedFnName);
                 Function reversedFn = ExprUtils.getBuiltinFunction(reversedFnName,
-                        callExpr.getFn().getArgs(), Function.CompareMode.IS_IDENTICAL);
-                callExpr.setFn(reversedFn);
+                        callExpr.getFnArgTypes(), Function.CompareMode.IS_IDENTICAL);
+                FunctionCallExprFactory.setFn(callExpr, reversedFn);
             }
         }
 
@@ -256,7 +258,8 @@ public class WindowTransformer {
      * to reduce the generation of SortNode
      */
     public static List<LogicalWindowOperator> reorderWindowOperator(
-            List<WindowOperator> windowOperators, ColumnRefFactory columnRefFactory, OptExprBuilder subOpt) {
+            List<WindowOperator> windowOperators, ColumnRefFactory columnRefFactory, OptExprBuilder subOpt,
+            AnalysisContext analysisContext) {
         /*
          * Generate a LogicalAnalyticOperator for each group of
          * window function with the same window frame, partition and order by
@@ -272,7 +275,7 @@ public class WindowTransformer {
                 // eg. select sum(v1), sum(v1) over(order by v2) from foo
                 ScalarOperator agg =
                         SqlToScalarOperatorTranslator.translate(analyticExpr, subOpt.getExpressionMapping(),
-                                columnRefFactory);
+                                columnRefFactory, analysisContext);
                 ColumnRefOperator columnRefOperator =
                         columnRefFactory.create(agg.toString(), agg.getType(), agg.isNullable());
                 analyticCall.put(columnRefOperator, (CallOperator) agg);
@@ -282,7 +285,8 @@ public class WindowTransformer {
             List<ScalarOperator> partitions = new ArrayList<>();
             for (Expr partitionExpression : windowOperator.getPartitionExprs()) {
                 ScalarOperator operator = SqlToScalarOperatorTranslator
-                        .translate(partitionExpression, subOpt.getExpressionMapping(), columnRefFactory);
+                        .translate(partitionExpression, subOpt.getExpressionMapping(), columnRefFactory,
+                                analysisContext);
                 partitions.add(operator);
             }
 
@@ -290,7 +294,8 @@ public class WindowTransformer {
             for (OrderByElement orderByElement : windowOperator.getOrderByElements()) {
                 ColumnRefOperator col =
                         (ColumnRefOperator) SqlToScalarOperatorTranslator
-                                .translate(orderByElement.getExpr(), subOpt.getExpressionMapping(), columnRefFactory);
+                                .translate(orderByElement.getExpr(), subOpt.getExpressionMapping(), columnRefFactory,
+                                        analysisContext);
                 orderings.add(new Ordering(col, orderByElement.getIsAsc(),
                         OrderByElement.nullsFirst(orderByElement.getNullsFirstParam())));
             }
@@ -313,12 +318,13 @@ public class WindowTransformer {
             List<ScalarOperator> skewValueOps = List.of();
             if (windowOperator.getSkewColumn() != null) {
                 skewColumnOp = SqlToScalarOperatorTranslator
-                        .translate(windowOperator.getSkewColumn(), subOpt.getExpressionMapping(), columnRefFactory);
+                        .translate(windowOperator.getSkewColumn(), subOpt.getExpressionMapping(), columnRefFactory,
+                                analysisContext);
             }
             if (windowOperator.getSkewValues() != null && !windowOperator.getSkewValues().isEmpty()) {
                 skewValueOps = windowOperator.getSkewValues().stream()
                         .map(v -> SqlToScalarOperatorTranslator
-                                .translate(v, subOpt.getExpressionMapping(), columnRefFactory))
+                                .translate(v, subOpt.getExpressionMapping(), columnRefFactory, analysisContext))
                         .toList();
             }
 
@@ -489,50 +495,26 @@ public class WindowTransformer {
         return partitionPrefix.contains(subSet);
     }
 
-    public static boolean isAnalyticFn(Function fn) {
-        return fn instanceof AggregateFunction
-                && ((AggregateFunction) fn).isAnalyticFn();
+    public static boolean isOffsetFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.LEAD)
+                || functionName.equalsIgnoreCase(AnalyticExpr.LAG);
     }
 
-    public static boolean isOffsetFn(Function fn) {
-        if (!isAnalyticFn(fn)) {
-            return false;
-        }
-
-        return fn.functionName().equalsIgnoreCase(AnalyticExpr.LEAD) || fn.functionName().equalsIgnoreCase(AnalyticExpr.LAG);
+    public static boolean isNtileFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.NTILE);
     }
 
-    public static boolean isNtileFn(Function fn) {
-        if (!isAnalyticFn(fn)) {
-            return false;
-        }
-
-        return fn.functionName().equalsIgnoreCase(AnalyticExpr.NTILE);
+    public static boolean isCumeFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.CUMEDIST)
+                || functionName.equalsIgnoreCase(AnalyticExpr.PERCENTRANK);
     }
 
-    public static boolean isCumeFn(Function fn) {
-        if (!isAnalyticFn(fn)) {
-            return false;
-        }
-
-        return fn.functionName().equalsIgnoreCase(AnalyticExpr.CUMEDIST) || fn.functionName().equalsIgnoreCase(
-                AnalyticExpr.PERCENTRANK);
+    public static boolean isRowNumberFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.ROWNUMBER);
     }
 
-    public static boolean isRowNumberFn(Function fn) {
-        if (!isAnalyticFn(fn)) {
-            return false;
-        }
-
-        return fn.functionName().equalsIgnoreCase(AnalyticExpr.ROWNUMBER);
-    }
-
-    public static boolean isApproxTopKFn(Function fn) {
-        if (!isAnalyticFn(fn)) {
-            return false;
-        }
-
-        return fn.functionName().equalsIgnoreCase(AnalyticExpr.APPROX_TOP_K);
+    public static boolean isApproxTopKFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.APPROX_TOP_K);
     }
 
     /**

@@ -35,6 +35,7 @@ import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.TableRef;
@@ -57,8 +58,10 @@ import com.starrocks.sql.optimizer.rewrite.scalar.ScalarOperatorRewriteRule;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
+import com.starrocks.sql.optimizer.transformer.MVTransformerContext;
 import com.starrocks.sql.optimizer.transformer.OptExprBuilder;
 import com.starrocks.sql.optimizer.transformer.RelationTransformer;
+import com.starrocks.sql.optimizer.transformer.TransformerContext;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanFragmentBuilder;
 import com.starrocks.thrift.TPartialUpdateMode;
@@ -76,7 +79,11 @@ public class UpdatePlanner {
         QueryRelation query = updateStmt.getQueryStatement().getQueryRelation();
         List<String> colNames = query.getColumnOutputNames();
         ColumnRefFactory columnRefFactory = new ColumnRefFactory();
-        LogicalPlan logicalPlan = new RelationTransformer(columnRefFactory, session).transform(query);
+        MVTransformerContext mvTransformerContext = MVTransformerContext.of(session, true);
+        AnalysisContext analysisContext = (AnalysisContext) updateStmt.getAnalysisContext();
+        TransformerContext transformerContext =
+                new TransformerContext(columnRefFactory, session, mvTransformerContext, analysisContext);
+        LogicalPlan logicalPlan = new RelationTransformer(transformerContext).transform(query);
 
         List<ColumnRefOperator> outputColumns = logicalPlan.getOutputColumn();
         Table targetTable = updateStmt.getTable();

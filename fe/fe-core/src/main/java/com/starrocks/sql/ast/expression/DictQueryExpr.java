@@ -16,7 +16,6 @@
 package com.starrocks.sql.ast.expression;
 
 import com.starrocks.catalog.Function;
-import com.starrocks.catalog.FunctionSet;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
@@ -27,16 +26,18 @@ import java.util.List;
 // dict_mapping(STRING dict_table_name, ANY... keys [, STRING value_column_name])
 public class DictQueryExpr extends FunctionCallExpr {
 
+    public static final String DICT_MAPPING = "dict_mapping";
+
     private TDictQueryExpr dictQueryExpr;
 
     public DictQueryExpr(List<Expr> params) throws SemanticException {
-        super(FunctionSet.DICT_MAPPING, params);
+        super(DICT_MAPPING, params);
     }
 
     public DictQueryExpr(List<Expr> params, TDictQueryExpr dictQueryExpr, Function fn) {
-        super(FunctionSet.DICT_MAPPING, params);
+        super(DICT_MAPPING, params);
         this.dictQueryExpr = dictQueryExpr;
-        this.fn = fn;
+        FunctionCallExprFactory.setFn(this, fn);
         setType(fn.getReturnType());
     }
 

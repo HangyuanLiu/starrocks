@@ -16,6 +16,7 @@ package com.starrocks.sql.formatter;
 
 import com.google.common.base.Joiner;
 import com.starrocks.catalog.FunctionSet;
+import com.starrocks.server.CatalogMgr;
 import com.starrocks.sql.analyzer.AstToStringBuilder;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.OrderByElement;
@@ -195,7 +196,13 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
         QualifiedName tblName = node.getTblName();
 
         if (tblName != null && !node.isFromLambda()) {
-            return tblName.toSql() + "." + "`" + node.getColName() + "`";
+            // Skip the internal catalog name when rendering SQL
+            QualifiedName displayName = tblName;
+            if (tblName.getParts().size() >= 3
+                    && CatalogMgr.isInternalCatalog(tblName.getParts().get(0))) {
+                displayName = QualifiedName.of(tblName.getParts().subList(1, tblName.getParts().size()));
+            }
+            return displayName.toSql() + "." + "`" + node.getColName() + "`";
         } else if (node.getLabel() != null) {
             if (node.isBackQuoted() && !(node.getLabel().startsWith("`") && node.getLabel().endsWith("`"))) {
                 sb.append("`").append(node.getLabel()).append("`");

@@ -22,6 +22,7 @@ import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.SqlFunction;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
 import com.starrocks.sql.analyzer.RelationFields;
 import com.starrocks.sql.analyzer.RelationId;
@@ -54,6 +55,7 @@ import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FieldReference;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.GroupingFunctionCallExpr;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.InformationFunction;
@@ -158,6 +160,12 @@ public final class SqlToScalarOperatorTranslator {
     }
 
     public static ScalarOperator translate(Expr expression, ExpressionMapping expressionMapping,
+                                           ColumnRefFactory columnRefFactory, AnalysisContext analysisContext) {
+        return translate(expression, expressionMapping, null, columnRefFactory,
+                null, null, null, null, false, analysisContext);
+    }
+
+    public static ScalarOperator translate(Expr expression, ExpressionMapping expressionMapping,
                                            List<ColumnRefOperator> correlation, ColumnRefFactory columnRefFactory) {
         return translate(expression, expressionMapping, correlation, columnRefFactory,
                 null, null, null, null, false);
@@ -169,9 +177,19 @@ public final class SqlToScalarOperatorTranslator {
                                            OptExprBuilder builder,
                                            Map<ScalarOperator, SubqueryOperator> subqueryPlaceholders,
                                            boolean useSemiAnti) {
+        return translate(expression, expressionMapping, columnRefFactory, session, cteContext,
+                builder, subqueryPlaceholders, useSemiAnti, null);
+    }
+
+    public static ScalarOperator translate(Expr expression, ExpressionMapping expressionMapping,
+                                           ColumnRefFactory columnRefFactory,
+                                           ConnectContext session, CTETransformerContext cteContext,
+                                           OptExprBuilder builder,
+                                           Map<ScalarOperator, SubqueryOperator> subqueryPlaceholders,
+                                           boolean useSemiAnti, AnalysisContext analysisContext) {
         List<ColumnRefOperator> correlation = Lists.newArrayList();
         ScalarOperator scalarOperator = translate(expression, expressionMapping, correlation, columnRefFactory,
-                session, cteContext, builder, subqueryPlaceholders, useSemiAnti);
+                session, cteContext, builder, subqueryPlaceholders, useSemiAnti, analysisContext);
         if (!correlation.isEmpty()) {
             throw unsupportedException("Only support use correlated columns in the where clause of subqueries");
         }
@@ -184,13 +202,23 @@ public final class SqlToScalarOperatorTranslator {
                                            OptExprBuilder builder,
                                            Map<ScalarOperator, SubqueryOperator> subqueryPlaceholders,
                                            boolean useSemiAnti) {
+        return translate(expression, expressionMapping, correlation, columnRefFactory,
+                session, cteContext, builder, subqueryPlaceholders, useSemiAnti, null);
+    }
+
+    public static ScalarOperator translate(Expr expression, ExpressionMapping expressionMapping,
+                                           List<ColumnRefOperator> correlation, ColumnRefFactory columnRefFactory,
+                                           ConnectContext session, CTETransformerContext cteContext,
+                                           OptExprBuilder builder,
+                                           Map<ScalarOperator, SubqueryOperator> subqueryPlaceholders,
+                                           boolean useSemiAnti, AnalysisContext analysisContext) {
         ColumnRefOperator columnRefOperator = expressionMapping.get(expression);
         if (columnRefOperator != null) {
             return columnRefOperator;
         }
 
         Visitor visitor = new Visitor(expressionMapping, columnRefFactory, correlation,
-                session, cteContext, builder, subqueryPlaceholders);
+                session, cteContext, builder, subqueryPlaceholders, analysisContext);
 
         List<Subquery> subqueries = Lists.newArrayList();
         expression.collect(Subquery.class, subqueries);
@@ -292,11 +320,21 @@ public final class SqlToScalarOperatorTranslator {
         private final CTETransformerContext cteContext;
         public final OptExprBuilder builder;
         public final Map<ScalarOperator, SubqueryOperator> subqueryPlaceholders;
+        private final AnalysisContext analysisContext;
 
         public Visitor(ExpressionMapping expressionMapping, ColumnRefFactory columnRefFactory,
                        List<ColumnRefOperator> correlation, ConnectContext session,
                        CTETransformerContext cteContext, OptExprBuilder builder,
                        Map<ScalarOperator, SubqueryOperator> subqueryPlaceholders) {
+            this(expressionMapping, columnRefFactory, correlation, session,
+                    cteContext, builder, subqueryPlaceholders, null);
+        }
+
+        public Visitor(ExpressionMapping expressionMapping, ColumnRefFactory columnRefFactory,
+                       List<ColumnRefOperator> correlation, ConnectContext session,
+                       CTETransformerContext cteContext, OptExprBuilder builder,
+                       Map<ScalarOperator, SubqueryOperator> subqueryPlaceholders,
+                       AnalysisContext analysisContext) {
             this.expressionMapping = expressionMapping;
             this.columnRefFactory = columnRefFactory;
             if (correlation == null) {
@@ -308,6 +346,11 @@ public final class SqlToScalarOperatorTranslator {
             this.cteContext = cteContext;
             this.builder = builder;
             this.subqueryPlaceholders = subqueryPlaceholders;
+            this.analysisContext = analysisContext;
+        }
+
+        private Function getResolvedFunction(FunctionCallExpr expr) {
+            return FunctionCallExprFactory.getFn(expr, analysisContext);
         }
 
         @Override
@@ -508,7 +551,7 @@ public final class SqlToScalarOperatorTranslator {
             QueryStatement queryStatement = ((Subquery) node.getChild(0)).getQueryStatement();
             QueryRelation relation = queryStatement.getQueryRelation();
             LogicalPlan subqueryPlan = SubqueryUtils.getLogicalPlan(session, cteContext, columnRefFactory,
-                    relation, builder.getExpressionMapping());
+                    relation, builder.getExpressionMapping(), analysisContext);
 
             List<ColumnRefOperator> rightColRefs = subqueryPlan.getOutputColumn();
             ColumnRefOperator rightColRef = rightColRefs.get(0);
@@ -564,7 +607,7 @@ public final class SqlToScalarOperatorTranslator {
         private LogicalPlan getSubqueryPlan(QueryStatement queryStatement) {
             QueryRelation relation = queryStatement.getQueryRelation();
             LogicalPlan subqueryPlan = SubqueryUtils.getLogicalPlan(session, cteContext, columnRefFactory,
-                    relation, builder.getExpressionMapping());
+                    relation, builder.getExpressionMapping(), analysisContext);
 
             if (relation instanceof SelectRelation &&
                     !subqueryPlan.getCorrelation().isEmpty() && ((SelectRelation) relation).hasAggregation()) {
@@ -740,7 +783,7 @@ public final class SqlToScalarOperatorTranslator {
                 arguments.add(ConstantOperator.createInt(columnRefFactory.getNextUniqueId()));
             }
 
-            if (node.getFn() instanceof SqlFunction) {
+            if (getResolvedFunction(node) instanceof SqlFunction) {
                 return visitSqlFunctionCall(node, arguments);
             }
 
@@ -748,14 +791,14 @@ public final class SqlToScalarOperatorTranslator {
                     node.getFunctionName(),
                     node.getType(),
                     arguments,
-                    node.getFn(),
+                    getResolvedFunction(node),
                     node.getParams().isDistinct());
             callOperator.setHints(node.getHints());
             return callOperator;
         }
 
         public ScalarOperator visitSqlFunctionCall(FunctionCallExpr node, List<ScalarOperator> arguments) {
-            SqlFunction sqlFunction = (SqlFunction) node.getFn();
+            SqlFunction sqlFunction = (SqlFunction) getResolvedFunction(node);
             Expr expr = sqlFunction.getAnalyzeExpr();
             if (expr == null) {
                 throw new StarRocksPlannerException("view function analyze expr is null",
@@ -786,7 +829,7 @@ public final class SqlToScalarOperatorTranslator {
                     .collect(Collectors.toList());
             CallOperator callOperator =
                     new CallOperator(functionCallExpr.getFunctionName(), functionCallExpr.getType(), arguments,
-                            functionCallExpr.getFn(), functionCallExpr.getParams().isDistinct());
+                            getResolvedFunction(functionCallExpr), functionCallExpr.getParams().isDistinct());
             callOperator.setIgnoreNulls(functionCallExpr.getIgnoreNulls());
             return callOperator;
         }
@@ -869,7 +912,7 @@ public final class SqlToScalarOperatorTranslator {
             }
 
             LogicalPlan subqueryPlan = SubqueryUtils.getLogicalPlan(session, cteContext,
-                    columnRefFactory, queryRelation, builder.getExpressionMapping());
+                    columnRefFactory, queryRelation, builder.getExpressionMapping(), analysisContext);
             if (subqueryPlan.getOutputColumn().size() != 1) {
                 throw new SemanticException("Scalar subquery should output one column");
             }
@@ -916,7 +959,7 @@ public final class SqlToScalarOperatorTranslator {
                     .stream()
                     .map(child -> visit(child, context.clone(node)))
                     .collect(Collectors.toList());
-            return new DictQueryOperator(arguments, node.getDictQueryExpr(), node.getFn(), node.getType());
+            return new DictQueryOperator(arguments, node.getDictQueryExpr(), getResolvedFunction(node), node.getType());
         }
 
         @Override

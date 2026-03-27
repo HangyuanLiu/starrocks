@@ -345,7 +345,7 @@ public class ExprToThriftTest {
             FunctionCallExpr call = new FunctionCallExpr("abs", List.of(new IntLiteral(-3)));
             ScalarFunction fn = ScalarFunction.createBuiltinOperator("abs",
                     Lists.newArrayList(IntegerType.INT), IntegerType.INT);
-            call.setFn(fn);
+            FunctionCallExprFactory.setFn(call, fn);
             call.setType(IntegerType.INT);
             call.setOriginType(IntegerType.INT);
             return call;
@@ -355,7 +355,7 @@ public class ExprToThriftTest {
             FunctionCallExpr call = new FunctionCallExpr("sum", List.of(new IntLiteral(3)));
             AggregateFunction fn = AggregateFunction.createBuiltin("sum", List.of(IntegerType.INT),
                     IntegerType.INT, IntegerType.INT, false, false, false, false);
-            call.setFn(fn);
+            FunctionCallExprFactory.setFn(call, fn);
             call.setType(IntegerType.INT);
             call.setOriginType(IntegerType.INT);
             return call;
@@ -365,7 +365,7 @@ public class ExprToThriftTest {
             FunctionCallExpr call = new FunctionCallExpr("row_number", Collections.emptyList());
             AggregateFunction fn = AggregateFunction.createBuiltin("row_number", Collections.emptyList(),
                     IntegerType.BIGINT, IntegerType.BIGINT, false, false, true, true);
-            call.setFn(fn);
+            FunctionCallExprFactory.setFn(call, fn);
             call.setType(IntegerType.BIGINT);
             call.setOriginType(IntegerType.BIGINT);
             call.setIsAnalyticFnCall(true);

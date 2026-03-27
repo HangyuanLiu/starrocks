@@ -21,6 +21,7 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.type.DateType;
 import com.starrocks.type.IntegerType;
@@ -35,7 +36,7 @@ public class PartitionExprAnalyzer {
     /**
      * Recursive analyze the date_trunc function
      */
-    public static void analyzeDateTruncFunction(FunctionCallExpr funcCall, SlotRef partitionSlotRef) {
+    public static Function analyzeDateTruncFunction(FunctionCallExpr funcCall, SlotRef partitionSlotRef) {
         String functionName = funcCall.getFunctionName();
         if (functionName.equalsIgnoreCase(FunctionSet.DATE_TRUNC)) {
             Expr arg1 = funcCall.getParams().exprs().get(1);
@@ -45,8 +46,9 @@ public class PartitionExprAnalyzer {
                 Function builtinFunction = ExprUtils.getBuiltinFunction(funcCall.getFunctionName(),
                         dateTruncType, Function.CompareMode.IS_IDENTICAL);
 
-                funcCall.setFn(builtinFunction);
+                FunctionCallExprFactory.setFn(funcCall, builtinFunction);
                 funcCall.setType(targetColType);
+                return builtinFunction;
             } else if (arg1 instanceof FunctionCallExpr) {
                 analyzePartitionExpr((FunctionCallExpr) arg1, partitionSlotRef);
 
@@ -55,10 +57,12 @@ public class PartitionExprAnalyzer {
                 Function builtinFunction = ExprUtils.getBuiltinFunction(funcCall.getFunctionName(),
                         dateTruncType, Function.CompareMode.IS_IDENTICAL);
 
-                funcCall.setFn(builtinFunction);
+                FunctionCallExprFactory.setFn(funcCall, builtinFunction);
                 funcCall.setType(targetColType);
+                return builtinFunction;
             }
         }
+        return null;
     }
 
     /**
@@ -71,8 +75,7 @@ public class PartitionExprAnalyzer {
             Type targetColType = partitionSlotRef.getType();
             String functionName = functionCallExpr.getFunctionName();
             if (functionName.equalsIgnoreCase(FunctionSet.DATE_TRUNC)) {
-                analyzeDateTruncFunction(functionCallExpr, partitionSlotRef);
-                builtinFunction = functionCallExpr.getFn();
+                builtinFunction = analyzeDateTruncFunction(functionCallExpr, partitionSlotRef);
                 targetColType = functionCallExpr.getType();
             } else if (functionName.equalsIgnoreCase(FunctionSet.TIME_SLICE)) {
                 Type[] timeSliceType = {DateType.DATETIME, IntegerType.INT, VarcharType.VARCHAR, VarcharType.VARCHAR};
@@ -144,7 +147,7 @@ public class PartitionExprAnalyzer {
                 throw new SemanticException(msg, expr.getPos());
             }
 
-            functionCallExpr.setFn(builtinFunction);
+            FunctionCallExprFactory.setFn(functionCallExpr, builtinFunction);
             functionCallExpr.setType(targetColType);
         } else if (expr instanceof CastExpr) {
             CastExpr castExpr = (CastExpr) expr;

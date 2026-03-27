@@ -117,9 +117,11 @@ import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
 import com.starrocks.sql.optimizer.rule.tvr.common.TvrOpUtils;
 import com.starrocks.sql.optimizer.transformer.ExpressionMapping;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
+import com.starrocks.sql.optimizer.transformer.MVTransformerContext;
 import com.starrocks.sql.optimizer.transformer.OptExprBuilder;
 import com.starrocks.sql.optimizer.transformer.RelationTransformer;
 import com.starrocks.sql.optimizer.transformer.SqlToScalarOperatorTranslator;
+import com.starrocks.sql.optimizer.transformer.TransformerContext;
 import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.sql.parser.ParsingException;
 import com.starrocks.sql.parser.SqlParser;
@@ -538,7 +540,10 @@ public class MaterializedViewAnalyzer {
 
                 QueryRelation queryRelation = query.getQueryRelation();
                 ColumnRefFactory columnRefFactory = new ColumnRefFactory();
-                LogicalPlan logicalPlan = new RelationTransformer(columnRefFactory, ctx).transform(queryRelation);
+                MVTransformerContext mvTransformerContext = MVTransformerContext.of(ctx, true);
+                TransformerContext transformerContext =
+                        new TransformerContext(columnRefFactory, ctx, mvTransformerContext, null);
+                LogicalPlan logicalPlan = new RelationTransformer(transformerContext).transform(queryRelation);
                 Map<ColumnRefOperator, ScalarOperator> columnRefMap = new HashMap<>();
                 List<ColumnRefOperator> outputColumns = new ArrayList<>();
                 for (int colIdx = 0; colIdx < logicalPlan.getOutputColumn().size(); colIdx++) {

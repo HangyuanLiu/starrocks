@@ -15,6 +15,7 @@
 package com.starrocks.sql.optimizer.transformer;
 
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.RelationFields;
 import com.starrocks.sql.analyzer.RelationId;
 import com.starrocks.sql.analyzer.Scope;
@@ -27,6 +28,7 @@ public class TransformerContext {
     private final ExpressionMapping outer;
     private final CTETransformerContext cteContext;
     private final MVTransformerContext mvTransformerContext;
+    private final AnalysisContext analysisContext;
 
     public TransformerContext(
             ColumnRefFactory columnRefFactory,
@@ -34,7 +36,19 @@ public class TransformerContext {
             MVTransformerContext mvTransformerContext) {
         this(columnRefFactory, session,
                 new ExpressionMapping(new Scope(RelationId.anonymous(), new RelationFields())),
-                new CTETransformerContext(session.getSessionVariable().getCboCTEMaxLimit()), mvTransformerContext);
+                new CTETransformerContext(session.getSessionVariable().getCboCTEMaxLimit()),
+                mvTransformerContext, null);
+    }
+
+    public TransformerContext(
+            ColumnRefFactory columnRefFactory,
+            ConnectContext session,
+            MVTransformerContext mvTransformerContext,
+            AnalysisContext analysisContext) {
+        this(columnRefFactory, session,
+                new ExpressionMapping(new Scope(RelationId.anonymous(), new RelationFields())),
+                new CTETransformerContext(session.getSessionVariable().getCboCTEMaxLimit()),
+                mvTransformerContext, analysisContext);
     }
 
     public TransformerContext(
@@ -43,11 +57,22 @@ public class TransformerContext {
             ExpressionMapping outer,
             CTETransformerContext cteContext,
             MVTransformerContext mvTransformerContext) {
+        this(columnRefFactory, session, outer, cteContext, mvTransformerContext, null);
+    }
+
+    public TransformerContext(
+            ColumnRefFactory columnRefFactory,
+            ConnectContext session,
+            ExpressionMapping outer,
+            CTETransformerContext cteContext,
+            MVTransformerContext mvTransformerContext,
+            AnalysisContext analysisContext) {
         this.columnRefFactory = columnRefFactory;
         this.session = session;
         this.outer = outer;
         this.cteContext = cteContext;
         this.mvTransformerContext = mvTransformerContext;
+        this.analysisContext = analysisContext;
     }
 
     public ColumnRefFactory getColumnRefFactory() {
@@ -68,5 +93,9 @@ public class TransformerContext {
 
     public MVTransformerContext getMVTransformerContext() {
         return mvTransformerContext;
+    }
+
+    public AnalysisContext getAnalysisContext() {
+        return analysisContext;
     }
 }

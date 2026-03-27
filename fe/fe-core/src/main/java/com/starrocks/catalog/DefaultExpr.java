@@ -25,6 +25,7 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.FunctionParams;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.MapExpr;
@@ -166,7 +167,7 @@ public class DefaultExpr implements GsonPreProcessable, GsonPostProcessable {
             FunctionCallExpr functionCallExpr =
                     new FunctionCallExpr(functionName, new FunctionParams(false, exprs));
             Function fn = ExprUtils.getBuiltinFunction(functionName, argumentTypes, Function.CompareMode.IS_IDENTICAL);
-            functionCallExpr.setFn(fn);
+            FunctionCallExprFactory.setFn(functionCallExpr, fn);
             functionCallExpr.setType(fn.getReturnType());
             return functionCallExpr;
         }
@@ -228,7 +229,7 @@ public class DefaultExpr implements GsonPreProcessable, GsonPostProcessable {
                 }
                 FunctionCallExpr newFuncExpr = new FunctionCallExpr(funcName, newChildren);
                 newFuncExpr.setType(funcExpr.getType());
-                newFuncExpr.setFn(funcExpr.getFn());
+                newFuncExpr.copyFnFieldsFrom(funcExpr);
                 return newFuncExpr;
             }
         }

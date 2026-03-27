@@ -29,6 +29,7 @@ import com.starrocks.sql.ast.StatisticsType;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.statistic.StatisticExecutor;
@@ -210,13 +211,13 @@ public abstract class HyperQueryJob {
                 Function.CompareMode.IS_IDENTICAL);
 
         FunctionCallExpr unhexExpr = new FunctionCallExpr("unhex", Lists.newArrayList(new StringLiteral(str)));
-        unhexExpr.setFn(unhex);
+        FunctionCallExprFactory.setFn(unhexExpr, unhex);
         unhexExpr.setType(unhex.getReturnType());
 
         Function fn = ExprUtils.getBuiltinFunction("hll_deserialize", new Type[] {VarcharType.VARCHAR},
                 Function.CompareMode.IS_IDENTICAL);
         FunctionCallExpr fe = new FunctionCallExpr("hll_deserialize", Lists.newArrayList(unhexExpr));
-        fe.setFn(fn);
+        FunctionCallExprFactory.setFn(fe, fn);
         fe.setType(fn.getReturnType());
         return fe;
     }

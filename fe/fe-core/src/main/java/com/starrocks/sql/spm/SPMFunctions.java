@@ -23,6 +23,7 @@ import com.starrocks.sql.ast.expression.BetweenPredicate;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.common.TypeManager;
@@ -115,7 +116,7 @@ public class SPMFunctions {
         List<Expr> children = Lists.newArrayList(new IntLiteral(placeholderID, IntegerType.BIGINT));
         children.addAll(input);
         FunctionCallExpr expr = new FunctionCallExpr(func, children);
-        expr.setFn(getSPMFunction(func, NullType.NULL, children.stream().map(Expr::getType).toList()));
+        FunctionCallExprFactory.setFn(expr, getSPMFunction(func, NullType.NULL, children.stream().map(Expr::getType).toList()));
         expr.setType(NullType.NULL);
         return expr;
     }

@@ -43,6 +43,7 @@ import com.starrocks.common.util.TimeUtils;
 import com.starrocks.mv.analyzer.MVPartitionExpr;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.ast.DistributionDesc;
 import com.starrocks.sql.ast.HashDistributionDesc;
@@ -537,8 +538,9 @@ public class MvUtils {
         Preconditions.checkState(mvStmt instanceof QueryStatement);
         Analyzer.analyze(mvStmt, connectContext);
         QueryRelation query = ((QueryStatement) mvStmt).getQueryRelation();
+        AnalysisContext analysisContext = (AnalysisContext) mvStmt.getAnalysisContext();
         TransformerContext transformerContext =
-                new TransformerContext(columnRefFactory, connectContext, mvTransformerContext);
+                new TransformerContext(columnRefFactory, connectContext, mvTransformerContext, analysisContext);
         LogicalPlan logicalPlan = new RelationTransformer(transformerContext).transform(query);
         Optimizer optimizer =
                 OptimizerFactory.create(

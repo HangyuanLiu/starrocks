@@ -59,6 +59,10 @@ public abstract class StatementBase implements ParseNode {
 
     private ExplainLevel explainLevel;
 
+    // Opaque analysis context object, typed as AnalysisContext in fe-core.
+    // Stores analysis results (resolved Functions, etc.) keyed by AST node identity.
+    private Object analysisContext;
+
     private String traceMode;
 
     private String traceModule;
@@ -104,6 +108,14 @@ public abstract class StatementBase implements ParseNode {
 
     public boolean isExplainAnalyze() {
         return isExplain && explainLevel == ExplainLevel.ANALYZE;
+    }
+
+    public Object getAnalysisContext() {
+        return analysisContext;
+    }
+
+    public void setAnalysisContext(Object analysisContext) {
+        this.analysisContext = analysisContext;
     }
 
     public ExplainLevel getExplainLevel() {

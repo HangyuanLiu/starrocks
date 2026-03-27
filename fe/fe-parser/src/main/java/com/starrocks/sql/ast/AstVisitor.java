@@ -33,6 +33,8 @@ import com.starrocks.sql.ast.expression.DictionaryGetExpr;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.FieldReference;
 import com.starrocks.sql.ast.expression.FloatLiteral;
+import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.GroupingFunctionCallExpr;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.InformationFunction;
 import com.starrocks.sql.ast.expression.IntLiteral;
@@ -1284,6 +1286,14 @@ public interface AstVisitor<R, C> {
 
     default R visitSlot(SlotRef node, C context) {
         return visitExpression(node, context);
+    }
+
+    default R visitFunctionCall(FunctionCallExpr node, C context) {
+        return visitExpression(node, context);
+    }
+
+    default R visitGroupingFunctionCall(GroupingFunctionCallExpr node, C context) {
+        return visitFunctionCall(node, context);
     }
 
     default R visitLimitElement(LimitElement node, C context) {

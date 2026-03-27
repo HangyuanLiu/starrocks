@@ -41,6 +41,7 @@ import com.starrocks.connector.metadata.MetadataTable;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.AnalyzeState;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
@@ -78,6 +79,7 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.LimitElement;
 import com.starrocks.sql.ast.expression.SlotRef;
@@ -178,17 +180,19 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
     private final CTETransformerContext cteContext;
     private final List<ColumnRefOperator> correlation = new ArrayList<>();
     private final MVTransformerContext mvTransformerContext;
+    private final AnalysisContext analysisContext;
 
     public RelationTransformer(ColumnRefFactory columnRefFactory, ConnectContext session) {
         this(columnRefFactory, session,
                 new ExpressionMapping(new Scope(RelationId.anonymous(), new RelationFields())),
                 new CTETransformerContext(session.getSessionVariable().getCboCTEMaxLimit()),
-                new MVTransformerContext(session, true));
+                new MVTransformerContext(session, true), null);
     }
 
     public RelationTransformer(ColumnRefFactory columnRefFactory, ConnectContext session, ExpressionMapping outer,
-                               CTETransformerContext cteContext, MVTransformerContext mvTransformerContext) {
-        this(new TransformerContext(columnRefFactory, session, outer, cteContext, mvTransformerContext));
+                               CTETransformerContext cteContext, MVTransformerContext mvTransformerContext,
+                               AnalysisContext analysisContext) {
+        this(new TransformerContext(columnRefFactory, session, outer, cteContext, mvTransformerContext, analysisContext));
     }
 
     public RelationTransformer(TransformerContext context) {
@@ -197,6 +201,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
         this.outer = context.getOuter();
         this.cteContext = context.getCteContext();
         this.mvTransformerContext = context.getMVTransformerContext();
+        this.analysisContext = context.getAnalysisContext();
     }
 
     // transform relation to plan with session variable sql_select_limit
@@ -250,9 +255,10 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
             LogicalCTEAnchorOperator anchorOperator = new LogicalCTEAnchorOperator(cteId);
             LogicalCTEProduceOperator produceOperator = new LogicalCTEProduceOperator(cteId);
             LogicalPlan producerPlan =
-                    new RelationTransformer(columnRefFactory, session,
+                    new RelationTransformer(new TransformerContext(columnRefFactory, session,
                             new ExpressionMapping(new Scope(RelationId.anonymous(), new RelationFields())),
-                            cteContext, mvTransformerContext).transform(cteRelation.getCteQueryStatement().getQueryRelation());
+                            cteContext, mvTransformerContext, analysisContext))
+                            .transform(cteRelation.getCteQueryStatement().getQueryRelation());
             OptExprBuilder produceOptBuilder =
                     new OptExprBuilder(produceOperator, Lists.newArrayList(producerPlan.getRootBuilder()),
                             producerPlan.getRootBuilder().getExpressionMapping());
@@ -295,7 +301,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
     @Override
     public LogicalPlan visitSelect(SelectRelation node, ExpressionMapping context) {
         QueryTransformer queryTransformer = new QueryTransformer(columnRefFactory, session, cteContext,
-                mvTransformerContext);
+                mvTransformerContext, analysisContext);
         LogicalPlan logicalPlan = queryTransformer.plan(node, outer);
         return logicalPlan;
     }
@@ -452,7 +458,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
         final List<Expr> orderByExpressions = setRelation.getOrderByExpressions();
         for (Expr expression : orderByExpressions) {
             final ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translate(expression,
-                    root.getExpressionMapping(), columnRefFactory);
+                    root.getExpressionMapping(), columnRefFactory, analysisContext);
 
             ColumnRefOperator columnRefOperator = null;
             if (scalarOperator.isColumnRef()) {
@@ -490,7 +496,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
                     continue;
                 }
                 ColumnRefOperator column = (ColumnRefOperator) SqlToScalarOperatorTranslator.translate(item.getExpr(),
-                        root.getExpressionMapping(), columnRefFactory);
+                        root.getExpressionMapping(), columnRefFactory, analysisContext);
                 Ordering ordering = new Ordering(column, item.getIsAsc(),
                         OrderByElement.nullsFirst(item.getNullsFirstParam()));
                 if (!orderByColumns.contains(column)) {
@@ -536,7 +542,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
 
                 ScalarOperator constant = SqlToScalarOperatorTranslator.translate(row.get(fieldIdx),
                         new ExpressionMapping(new Scope(RelationId.anonymous(), new RelationFields())),
-                        columnRefFactory);
+                        columnRefFactory, analysisContext);
                 valuesRow.add(constant);
 
                 if (constant.isNullable()) {
@@ -621,7 +627,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
         ScalarOperator partitionPredicate = null;
         if (node.getPartitionPredicate() != null) {
             partitionPredicate = SqlToScalarOperatorTranslator.translate(node.getPartitionPredicate(),
-                    new ExpressionMapping(node.getScope(), outputVariables), columnRefFactory);
+                    new ExpressionMapping(node.getScope(), outputVariables), columnRefFactory, analysisContext);
         }
 
         TvrVersionRange tableVersionRange;
@@ -813,7 +819,8 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
             Scope scope = new Scope(RelationId.anonymous(), new RelationFields());
             ExpressionAnalyzer.analyzeExpression(version.get(), new AnalyzeState(), scope, session);
             ExpressionMapping expressionMapping = new ExpressionMapping(scope);
-            result = SqlToScalarOperatorTranslator.translate(version.get(), expressionMapping, new ColumnRefFactory());
+            result = SqlToScalarOperatorTranslator.translate(version.get(), expressionMapping, new ColumnRefFactory(),
+                    analysisContext);
         } catch (Exception e) {
             throw new SemanticException("Failed to resolve query period [type: %s, value: %s]. msg: %s",
                     type.toString(), version.get().toString(), e.getMessage());
@@ -1120,7 +1127,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
                     expressionMapping, columnRefFactory,
                     session, cteContext,
                     new OptExprBuilder(null, Lists.newArrayList(leftOpt, rightOpt), expressionMapping),
-                    null, false);
+                    null, false, analysisContext);
         }
 
         List<ScalarOperator> skewValues = Lists.newArrayList();
@@ -1171,8 +1178,8 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
         }
 
         FunctionCallExpr expr = new FunctionCallExpr(tableFunction.getFunctionName().getFunction(), node.getChildExpressions());
-        expr.setFn(tableFunction);
-        ScalarOperator operator = SqlToScalarOperatorTranslator.translate(expr, context, columnRefFactory);
+        FunctionCallExprFactory.setFn(expr, tableFunction);
+        ScalarOperator operator = SqlToScalarOperatorTranslator.translate(expr, context, columnRefFactory, analysisContext);
 
         if (operator.isConstantRef() && ((ConstantOperator) operator).isNull()) {
             throw new StarRocksPlannerException("table function not support null parameter", ErrorType.USER_ERROR);
@@ -1212,7 +1219,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
         List<Expr> groupKeys = node.getGroupByKeys();
         List<FunctionCallExpr> aggFunctions = node.getRewrittenAggFunctions();
         QueryTransformer queryTransformer = new QueryTransformer(columnRefFactory, session, cteContext,
-                mvTransformerContext);
+                mvTransformerContext, analysisContext);
         OptExprBuilder builder = queryTransformer.aggregate(
                 queryPlan.getRootBuilder(), groupKeys, aggFunctions, null, ImmutableList.of());
 
@@ -1471,13 +1478,13 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
             if (isJoinLeftRelatedSubquery(node, exprConjunct)) {
                 scalarConjunct = SqlToScalarOperatorTranslator.translate(exprConjunct,
                         expressionMapping, columnRefFactory,
-                        session, cteContext, leftOpt, subqueryPlaceholders, true);
+                        session, cteContext, leftOpt, subqueryPlaceholders, true, analysisContext);
                 allSubqueryPlaceholders.putAll(subqueryPlaceholders);
                 subqueryPlaceholders.keySet().forEach(o -> subqueryRelations.put(o, true));
             } else {
                 scalarConjunct = SqlToScalarOperatorTranslator.translate(exprConjunct,
                         expressionMapping, columnRefFactory,
-                        session, cteContext, rightOpt, subqueryPlaceholders, true);
+                        session, cteContext, rightOpt, subqueryPlaceholders, true, analysisContext);
                 allSubqueryPlaceholders.putAll(subqueryPlaceholders);
                 subqueryPlaceholders.keySet().forEach(o -> subqueryRelations.put(o, false));
             }

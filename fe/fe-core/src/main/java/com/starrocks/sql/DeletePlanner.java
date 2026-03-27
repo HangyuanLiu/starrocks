@@ -44,6 +44,7 @@ import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.DeleteStmt;
 import com.starrocks.sql.ast.QueryRelation;
@@ -62,7 +63,9 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
+import com.starrocks.sql.optimizer.transformer.MVTransformerContext;
 import com.starrocks.sql.optimizer.transformer.RelationTransformer;
+import com.starrocks.sql.optimizer.transformer.TransformerContext;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanFragmentBuilder;
 import com.starrocks.thrift.TResultSinkType;
@@ -97,7 +100,11 @@ public class DeletePlanner {
         QueryRelation query = deleteStatement.getQueryStatement().getQueryRelation();
         List<String> colNames = query.getColumnOutputNames();
         ColumnRefFactory columnRefFactory = new ColumnRefFactory();
-        LogicalPlan logicalPlan = new RelationTransformer(columnRefFactory, session).transform(query);
+        MVTransformerContext mvTransformerContext = MVTransformerContext.of(session, true);
+        AnalysisContext analysisContext = (AnalysisContext) deleteStatement.getAnalysisContext();
+        TransformerContext transformerContext =
+                new TransformerContext(columnRefFactory, session, mvTransformerContext, analysisContext);
+        LogicalPlan logicalPlan = new RelationTransformer(transformerContext).transform(query);
 
         // Determine physical properties based on table type
         PhysicalPropertySet requiredProperty;

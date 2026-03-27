@@ -70,23 +70,24 @@ public class AnalyticAnalyzer {
                     analyticExpr.getPos());
         }
 
-        if (!isAnalyticFn(analyticFunction.getFn())) {
+        if (!analyticFunction.isWindowFunction()) {
             throw new SemanticException("Function '%s' not supported with OVER clause.",
                     ExprToSql.toSql(analyticExpr.getFnCall()), analyticFunction.getPos());
         }
 
+        String analyticFnName = analyticFunction.getFunctionName();
         for (Expr e : analyticExpr.getFnCall().getChildren()) {
             if (e.getType().isBitmapType() &&
-                    !analyticFunction.getFn().functionName().equals(FunctionSet.BITMAP_UNION_COUNT) &&
-                    !analyticFunction.getFn().functionName().equals(FunctionSet.BITMAP_UNION) &&
-                    !analyticFunction.getFn().functionName().equals(FunctionSet.LEAD) &&
-                    !analyticFunction.getFn().functionName().equals(FunctionSet.LAG)) {
+                    !analyticFnName.equals(FunctionSet.BITMAP_UNION_COUNT) &&
+                    !analyticFnName.equals(FunctionSet.BITMAP_UNION) &&
+                    !analyticFnName.equals(FunctionSet.LEAD) &&
+                    !analyticFnName.equals(FunctionSet.LAG)) {
                 throw new SemanticException("bitmap type could only used for bitmap_union_count/bitmap_union/lead/lag " +
                         "window function", e.getPos());
             } else if (e.getType().isHllType() &&
-                    !analyticFunction.getFn().functionName().equals(AnalyticExpr.HLL_UNION_AGG) &&
-                    !analyticFunction.getFn().functionName().equals(FunctionSet.LEAD) &&
-                    !analyticFunction.getFn().functionName().equals(FunctionSet.LAG)) {
+                    !analyticFnName.equals(AnalyticExpr.HLL_UNION_AGG) &&
+                    !analyticFnName.equals(FunctionSet.LEAD) &&
+                    !analyticFnName.equals(FunctionSet.LAG)) {
                 throw new SemanticException("hll type could only used for hll_union_agg/lead/lag window function",
                         e.getPos());
             } else if (e.getType().isPercentile()) {
@@ -94,7 +95,7 @@ public class AnalyticAnalyzer {
             }
         }
 
-        if (isOffsetFn(analyticFunction.getFn()) && analyticFunction.getChildren().size() > 1) {
+        if (isOffsetFn(analyticFnName) && analyticFunction.getChildren().size() > 1) {
             Expr offset = analyticFunction.getChild(1);
             if (!isPositiveConstantInteger(offset)) {
                 throw new SemanticException(
@@ -108,7 +109,7 @@ public class AnalyticAnalyzer {
                 Type firstType = analyticFunction.getChild(0).getType();
 
                 if (analyticFunction.getChild(0) instanceof NullLiteral) {
-                    firstType = analyticFunction.getFn().getArgs()[0];
+                    firstType = analyticFunction.getFnArgTypes()[0];
                 }
 
                 try {
@@ -136,7 +137,7 @@ public class AnalyticAnalyzer {
             }
         }
 
-        if (isNtileFn(analyticFunction.getFn())) {
+        if (isNtileFn(analyticFnName)) {
             Expr numBuckets = analyticFunction.getChild(0);
             if (!isPositiveConstantInteger(numBuckets)) {
                 throw new SemanticException(
@@ -164,8 +165,8 @@ public class AnalyticAnalyzer {
         }
 
         if (analyticExpr.getWindow() != null) {
-            if ((isRankingFn(analyticFunction.getFn()) || isCumeFn(analyticFunction.getFn()) ||
-                    isOffsetFn(analyticFunction.getFn()) || isHllAggFn(analyticFunction.getFn()))) {
+            if ((isRankingFn(analyticFnName) || isCumeFn(analyticFnName) ||
+                    isOffsetFn(analyticFnName) || isHllAggFn(analyticFnName))) {
                 throw new SemanticException("Windowing clause not allowed with '" + ExprToSql.toSql(analyticFunction) + "'",
                         analyticExpr.getPos());
             }
@@ -396,6 +397,31 @@ public class AnalyticAnalyzer {
         }
 
         return fn.functionName().equalsIgnoreCase(AnalyticExpr.HLL_UNION_AGG);
+    }
+
+    private static boolean isOffsetFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.LEAD) ||
+                functionName.equalsIgnoreCase(AnalyticExpr.LAG);
+    }
+
+    private static boolean isRankingFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.RANK)
+                || functionName.equalsIgnoreCase(AnalyticExpr.DENSERANK)
+                || functionName.equalsIgnoreCase(AnalyticExpr.ROWNUMBER)
+                || functionName.equalsIgnoreCase(AnalyticExpr.NTILE);
+    }
+
+    private static boolean isCumeFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.CUMEDIST)
+                || functionName.equalsIgnoreCase(AnalyticExpr.PERCENTRANK);
+    }
+
+    private static boolean isNtileFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.NTILE);
+    }
+
+    private static boolean isHllAggFn(String functionName) {
+        return functionName.equalsIgnoreCase(AnalyticExpr.HLL_UNION_AGG);
     }
 
     private static boolean isPositiveConstantInteger(Expr offset) {

@@ -81,12 +81,23 @@ public class AnalyzeState {
      */
     private final IdGenerator<ExprId> nondeterministicIdGenerator = ExprId.createGenerator();
 
+    // Per-query analysis context for storing resolved Functions etc.
+    private AnalysisContext analysisContext;
+
     /**
      * Columns that do not appear in GroupBy for use with MODE_ONLY_FULL_GROUP_BY.
      */
     private final List<Expr> columnNotInGroupBy = new ArrayList<>();
 
     public AnalyzeState() {
+    }
+
+    public AnalysisContext getAnalysisContext() {
+        return analysisContext;
+    }
+
+    public void setAnalysisContext(AnalysisContext analysisContext) {
+        this.analysisContext = analysisContext;
     }
 
     public Scope getOutputScope() {

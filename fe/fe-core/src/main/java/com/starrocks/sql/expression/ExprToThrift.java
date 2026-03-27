@@ -22,6 +22,7 @@ import com.starrocks.catalog.FunctionSet;
 import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SqlModeHelper;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.ast.AssertNumRowsElement;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
@@ -54,6 +55,7 @@ import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FieldReference;
 import com.starrocks.sql.ast.expression.FloatLiteral;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.InformationFunction;
 import com.starrocks.sql.ast.expression.IntLiteral;
@@ -119,6 +121,10 @@ public final class ExprToThrift {
 
     private static final Visitor VISITOR = new Visitor();
 
+    // AnalysisContext for the current treeToThrift call, used by Visitor.visitFunctionCall.
+    // This is scoped to the call (set/cleared around treeToThrift), not a global state.
+    private static AnalysisContext currentAnalysisContext;
+
     private ExprToThrift() {
     }
 
@@ -128,9 +134,19 @@ public final class ExprToThrift {
 
     // Convert this expr, including all children, to its Thrift representation.
     public static TExpr treeToThrift(Expr expr) {
-        TExpr result = new TExpr();
-        treeToThriftHelper(expr, result, VISITOR::visit);
-        return result;
+        return treeToThrift(expr, null);
+    }
+
+    public static TExpr treeToThrift(Expr expr, AnalysisContext analysisContext) {
+        AnalysisContext prev = currentAnalysisContext;
+        currentAnalysisContext = analysisContext;
+        try {
+            TExpr result = new TExpr();
+            treeToThriftHelper(expr, result, VISITOR::visit);
+            return result;
+        } finally {
+            currentAnalysisContext = prev;
+        }
     }
 
     public static List<TExpr> treesToThrift(List<? extends Expr> exprs) {
@@ -383,7 +399,10 @@ public final class ExprToThrift {
             } else {
                 msg.node_type = TExprNodeType.FUNCTION_CALL;
             }
-            Function fn = node.getFn();
+            // Function is looked up from the AnalysisContext stored in the enclosing
+            // treeToThrift call. For paths without AnalysisContext, fn will be null
+            // and TFunction won't be set (the ExecExpr path handles this separately).
+            Function fn = FunctionCallExprFactory.getFn(node, currentAnalysisContext);
             if (fn != null) {
                 TFunction tfn = fn.toThrift();
                 tfn.setIgnore_nulls(node.getIgnoreNulls());
@@ -391,6 +410,8 @@ public final class ExprToThrift {
                 if (fn.hasVarArgs()) {
                     msg.setVararg_start_idx(fn.getNumArgs() - 1);
                 }
+            } else if (node.hasFnId() && node.isFnHasVarArgs()) {
+                msg.setVararg_start_idx(node.getFnNumArgs() - 1);
             }
             return null;
         }

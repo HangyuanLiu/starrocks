@@ -251,8 +251,7 @@ public class TableName implements Writable, GsonPreProcessable, GsonPostProcessa
      */
     public QualifiedName toQualifiedName() {
         List<String> parts = new ArrayList<>();
-        // Skip internal catalog to match TableName.toSql() behavior
-        if (catalog != null && !CatalogMgr.isInternalCatalog(catalog)) {
+        if (catalog != null) {
             parts.add(catalog);
         }
         if (db != null) {

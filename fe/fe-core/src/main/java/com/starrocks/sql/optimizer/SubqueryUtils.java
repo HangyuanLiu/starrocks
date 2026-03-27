@@ -46,6 +46,7 @@ import com.starrocks.sql.optimizer.transformer.LogicalPlan;
 import com.starrocks.sql.optimizer.transformer.MVTransformerContext;
 import com.starrocks.sql.optimizer.transformer.OptExprBuilder;
 import com.starrocks.sql.optimizer.transformer.RelationTransformer;
+import com.starrocks.sql.optimizer.transformer.TransformerContext;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.Type;
 
@@ -100,13 +101,21 @@ public class SubqueryUtils {
     public static LogicalPlan getLogicalPlan(ConnectContext session, CTETransformerContext cteContext,
                                              ColumnRefFactory columnRefFactory, QueryRelation relation,
                                              ExpressionMapping outer) {
+        return getLogicalPlan(session, cteContext, columnRefFactory, relation, outer, null);
+    }
+
+    public static LogicalPlan getLogicalPlan(ConnectContext session, CTETransformerContext cteContext,
+                                             ColumnRefFactory columnRefFactory, QueryRelation relation,
+                                             ExpressionMapping outer,
+                                             com.starrocks.sql.analyzer.AnalysisContext analysisContext) {
         // For in subQuery, the order by is meaningless
         if (!relation.hasLimit()) {
             relation.getOrderBy().clear();
         }
 
-        return new RelationTransformer(columnRefFactory, session, outer, cteContext,
-                new MVTransformerContext(session, true)).transform(relation);
+        TransformerContext transformerContext = new TransformerContext(columnRefFactory, session, outer, cteContext,
+                new MVTransformerContext(session, true), analysisContext);
+        return new RelationTransformer(transformerContext).transform(relation);
     }
 
     private static Function getAggregateFunction(String functionName, Type[] argTypes) {

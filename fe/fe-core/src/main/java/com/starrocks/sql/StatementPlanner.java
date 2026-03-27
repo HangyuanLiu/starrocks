@@ -315,7 +315,10 @@ public class StatementPlanner {
 
         try (Timer ignored = Tracers.watchScope("Transformer")) {
             // get a logicalPlan without inlining views
-            TransformerContext transformerContext = new TransformerContext(columnRefFactory, session, mvTransformerContext);
+            com.starrocks.sql.analyzer.AnalysisContext analysisCtx =
+                    (com.starrocks.sql.analyzer.AnalysisContext) stmt.getAnalysisContext();
+            TransformerContext transformerContext =
+                    new TransformerContext(columnRefFactory, session, mvTransformerContext, analysisCtx);
             logicalPlan = new RelationTransformer(transformerContext).transformWithSelectLimit(query);
         }
 
@@ -384,8 +387,10 @@ public class StatementPlanner {
                 MVTransformerContext mvTransformerContext = MVTransformerContext.of(session, true);
                 try (Timer ignored = Tracers.watchScope("Transformer")) {
                     // get a logicalPlan without inlining views
+                    com.starrocks.sql.analyzer.AnalysisContext analysisCtx =
+                            (com.starrocks.sql.analyzer.AnalysisContext) queryStmt.getAnalysisContext();
                     TransformerContext transformerContext =
-                            new TransformerContext(columnRefFactory, session, mvTransformerContext);
+                            new TransformerContext(columnRefFactory, session, mvTransformerContext, analysisCtx);
                     logicalPlan = new RelationTransformer(transformerContext).transformWithSelectLimit(query);
                 }
 

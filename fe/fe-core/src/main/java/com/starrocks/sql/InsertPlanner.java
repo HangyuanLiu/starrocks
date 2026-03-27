@@ -59,6 +59,7 @@ import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.AnalyzeState;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
@@ -115,9 +116,11 @@ import com.starrocks.sql.optimizer.statistics.ColumnDict;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
 import com.starrocks.sql.optimizer.transformer.ExpressionMapping;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
+import com.starrocks.sql.optimizer.transformer.MVTransformerContext;
 import com.starrocks.sql.optimizer.transformer.OptExprBuilder;
 import com.starrocks.sql.optimizer.transformer.RelationTransformer;
 import com.starrocks.sql.optimizer.transformer.SqlToScalarOperatorTranslator;
+import com.starrocks.sql.optimizer.transformer.TransformerContext;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanFragmentBuilder;
 import com.starrocks.system.SystemInfoService;
@@ -329,7 +332,11 @@ public class InsertPlanner {
         ColumnRefFactory columnRefFactory = new ColumnRefFactory();
         LogicalPlan logicalPlan;
         try (Timer ignore = Tracers.watchScope("Transform")) {
-            logicalPlan = new RelationTransformer(columnRefFactory, session).transform(queryRelation);
+            MVTransformerContext mvTransformerContext = MVTransformerContext.of(session, true);
+            AnalysisContext analysisContext = (AnalysisContext) insertStmt.getAnalysisContext();
+            TransformerContext transformerContext =
+                    new TransformerContext(columnRefFactory, session, mvTransformerContext, analysisContext);
+            logicalPlan = new RelationTransformer(transformerContext).transform(queryRelation);
         }
 
         //3. Fill in the default value and NULL

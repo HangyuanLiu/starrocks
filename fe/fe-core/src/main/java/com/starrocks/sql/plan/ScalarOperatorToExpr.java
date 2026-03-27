@@ -42,6 +42,7 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprCastFunction;
 import com.starrocks.sql.ast.expression.FloatLiteral;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.FunctionParams;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.InformationFunction;
@@ -525,7 +526,7 @@ public class ScalarOperatorToExpr {
                     }
                     callExpr = new FunctionCallExpr(call.getFnName(), new FunctionParams(false, arguments));
                     Preconditions.checkNotNull(call.getFunction());
-                    ((FunctionCallExpr) callExpr).setFn(call.getFunction());
+                    FunctionCallExprFactory.setFn((FunctionCallExpr) callExpr, call.getFunction());
                     callExpr.setIgnoreNulls(call.getIgnoreNulls());
                     break;
                 default:
@@ -538,7 +539,7 @@ public class ScalarOperatorToExpr {
                         callExpr = new FunctionCallExpr(call.getFnName(), new FunctionParams(call.isDistinct(), arg));
                     }
                     Preconditions.checkNotNull(call.getFunction());
-                    ((FunctionCallExpr) callExpr).setFn(call.getFunction());
+                    FunctionCallExprFactory.setFn((FunctionCallExpr) callExpr, call.getFunction());
                     callExpr.setIgnoreNulls(call.getIgnoreNulls());
                     break;
             }

@@ -135,6 +135,7 @@ import static com.starrocks.thrift.PlanNodesConstants.CACHE_STATS_TOTAL_BYTES_CO
 public class QueryAnalyzer {
     private final ConnectContext session;
     private final MetadataMgr metadataMgr;
+    private AnalysisContext analysisContext;
 
     public QueryAnalyzer(ConnectContext session) {
         this.session = session;
@@ -142,7 +143,14 @@ public class QueryAnalyzer {
     }
 
     public void analyze(StatementBase node) {
+        this.analysisContext = (AnalysisContext) node.getAnalysisContext();
         new Visitor().process(node, new Scope(RelationId.anonymous(), new RelationFields()));
+    }
+
+    private AnalyzeState newAnalyzeState() {
+        AnalyzeState state = new AnalyzeState();
+        state.setAnalysisContext(analysisContext);
+        return state;
     }
 
     /**
@@ -242,8 +250,8 @@ public class QueryAnalyzer {
                 ExprUtils.reset(entry.getValue());
 
                 try {
-                    ExpressionAnalyzer.analyzeExpression(entry.getKey(), new AnalyzeState(), scope, session);
-                    ExpressionAnalyzer.analyzeExpression(entry.getValue(), new AnalyzeState(), scope, session);
+                    ExpressionAnalyzer.analyzeExpression(entry.getKey(), newAnalyzeState(), scope, session);
+                    ExpressionAnalyzer.analyzeExpression(entry.getValue(), newAnalyzeState(), scope, session);
                 } catch (Exception ignore) {
                     // skip this generated column rewrite if hit any exception
                     // some exception is reasonable because some of illegal generated column
@@ -263,8 +271,8 @@ public class QueryAnalyzer {
                 Expr generatedColumnExpression = column.getGeneratedColumnExpr(table.getIdToColumn());
                 if (generatedColumnExpression != null) {
                     SlotRef slotRef = new SlotRef(null, column.getName());
-                    ExpressionAnalyzer.analyzeExpression(generatedColumnExpression, new AnalyzeState(), scope, session);
-                    ExpressionAnalyzer.analyzeExpression(slotRef, new AnalyzeState(), scope, session);
+                    ExpressionAnalyzer.analyzeExpression(generatedColumnExpression, newAnalyzeState(), scope, session);
+                    ExpressionAnalyzer.analyzeExpression(slotRef, newAnalyzeState(), scope, session);
                     generatedExprToColumnRef.put(generatedColumnExpression, slotRef);
                 }
             }
@@ -479,7 +487,8 @@ public class QueryAnalyzer {
 
         @Override
         public Scope visitSelect(SelectRelation selectRelation, Scope scope) {
-            AnalyzeState analyzeState = new AnalyzeState();
+            AnalyzeState analyzeState = newAnalyzeState();
+            analyzeState.setAnalysisContext(analysisContext);
             //Record aliases at this level to prevent alias conflicts
             Set<TableName> aliasSet = new HashSet<>();
             Relation resolvedRelation = resolveTableRef(selectRelation.getRelation(), scope, aliasSet);
@@ -1077,7 +1086,7 @@ public class QueryAnalyzer {
                 Scope joinScope = new Scope(RelationId.of(join),
                         leftScope.getRelationFields().joinWith(rightScope.getRelationFields()));
                 joinScope.setParent(parentScope);
-                analyzeExpression(joinEqual, new AnalyzeState(), joinScope);
+                analyzeExpression(joinEqual, newAnalyzeState(), joinScope);
 
                 AnalyzerUtils.verifyNoAggregateFunctions(joinEqual, "JOIN");
                 AnalyzerUtils.verifyNoWindowFunctions(joinEqual, "JOIN");
@@ -1353,7 +1362,7 @@ public class QueryAnalyzer {
                     }
                     Scope joinScope = new Scope(RelationId.of(join),
                             leftScope.getRelationFields().joinWith(rightScope.getRelationFields()));
-                    analyzeExpression(join.getSkewColumn(), new AnalyzeState(), joinScope);
+                    analyzeExpression(join.getSkewColumn(), newAnalyzeState(), joinScope);
                 } else {
                     throw new SemanticException("Skew join column must be specified");
                 }
@@ -1434,7 +1443,7 @@ public class QueryAnalyzer {
                     expression = new FieldReference((int) ordinal - 1, null);
                 }
 
-                analyzeExpression(expression, new AnalyzeState(), scope);
+                analyzeExpression(expression, newAnalyzeState(), scope);
 
                 if (!expression.getType().canOrderBy()) {
                     throw new SemanticException(Type.NOT_SUPPORT_ORDER_ERROR_MSG);
@@ -1578,7 +1587,7 @@ public class QueryAnalyzer {
                 outputTypes = outputColumnTypes.toArray(new Type[0]);
             } else {
                 Preconditions.checkState(!rows.isEmpty());
-                AnalyzeState analyzeState = new AnalyzeState();
+                AnalyzeState analyzeState = newAnalyzeState();
 
                 List<Expr> firstRow = node.getRow(0);
                 firstRow.forEach(e -> analyzeExpression(e, analyzeState, scope));
@@ -1613,7 +1622,7 @@ public class QueryAnalyzer {
 
         @Override
         public Scope visitPivotRelation(PivotRelation node, Scope context) {
-            AnalyzeState analyzeState = new AnalyzeState();
+            AnalyzeState analyzeState = newAnalyzeState();
             Scope queryScope = process(node.getQuery(), context);
 
             List<Pair<String, Expr>> aggAliasExprs = new ArrayList<>();
@@ -1726,7 +1735,7 @@ public class QueryAnalyzer {
 
         @Override
         public Scope visitTableFunction(TableFunctionRelation node, Scope scope) {
-            AnalyzeState analyzeState = new AnalyzeState();
+            AnalyzeState analyzeState = newAnalyzeState();
             List<Expr> args = node.getFunctionParams().exprs();
             Type[] argTypes = new Type[args.size()];
             for (int i = 0; i < args.size(); ++i) {

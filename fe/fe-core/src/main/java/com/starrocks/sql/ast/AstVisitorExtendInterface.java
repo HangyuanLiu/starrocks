@@ -25,8 +25,6 @@ import com.starrocks.sql.ast.expression.DictionaryGetExpr;
 import com.starrocks.sql.ast.expression.ExistsPredicate;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.FieldReference;
-import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.GroupingFunctionCallExpr;
 import com.starrocks.sql.ast.expression.LambdaArgument;
 import com.starrocks.sql.ast.expression.LambdaFunctionExpr;
 import com.starrocks.sql.ast.expression.LimitElement;
@@ -663,13 +661,7 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
     }
 
     // ------------------------------------------- Functions ----------------------------------------
-    default R visitFunctionCall(FunctionCallExpr node, C context) {
-        return visitExpression(node, context);
-    }
-
-    default R visitGroupingFunctionCall(GroupingFunctionCallExpr node, C context) {
-        return visitFunctionCall(node, context);
-    }
+    // visitFunctionCall and visitGroupingFunctionCall are now in AstVisitor (fe-parser)
 
     // ------------------------------------------- Collections --------------------------------------
 

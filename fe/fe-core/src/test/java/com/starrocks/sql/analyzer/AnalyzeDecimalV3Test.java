@@ -15,6 +15,7 @@
 package com.starrocks.sql.analyzer;
 
 import com.starrocks.catalog.AggregateFunction;
+import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.common.Config;
 import com.starrocks.qe.ConnectContext;
@@ -24,6 +25,7 @@ import com.starrocks.sql.ast.SelectRelation;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOperator;
@@ -93,10 +95,14 @@ public class AnalyzeDecimalV3Test {
     }
 
     public static QueryRelation analyzeSuccess(String originStmt) throws Exception {
+        return (QueryRelation) analyzeStatement(originStmt).getQueryRelation();
+    }
+
+    public static QueryStatement analyzeStatement(String originStmt) throws Exception {
         StatementBase statementBase = com.starrocks.sql.parser.SqlParser
                 .parse(originStmt, ctx.getSessionVariable().getSqlMode()).get(0);
         Analyzer.analyze(statementBase, ctx);
-        return ((QueryStatement) statementBase).getQueryRelation();
+        return (QueryStatement) statementBase;
     }
 
     @Test
@@ -183,8 +189,9 @@ public class AnalyzeDecimalV3Test {
                 "   min(col_decimal_p38s30) as decimal128_min\n" +
                 "from db1.decimal_table\n";
 
-        QueryRelation queryRelation = analyzeSuccess(sql1);
-        List<Expr> items = ((SelectRelation) queryRelation).getOutputExpression();
+        QueryStatement stmt = analyzeStatement(sql1);
+        AnalysisContext analysisCtx = (AnalysisContext) stmt.getAnalysisContext();
+        List<Expr> items = ((SelectRelation) stmt.getQueryRelation()).getOutputExpression();
 
         Type[] expectTypes = Arrays.asList(
                 TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4),
@@ -197,7 +204,8 @@ public class AnalyzeDecimalV3Test {
             Assertions.assertTrue(items.get(i) != null);
             Type type = items.get(i).getType();
             Type expectType = expectTypes[i / 2];
-            AggregateFunction fn = (AggregateFunction) ((FunctionCallExpr) items.get(i)).getFn();
+            AggregateFunction fn =
+                    (AggregateFunction) FunctionCallExprFactory.getFn((FunctionCallExpr) items.get(i), analysisCtx);
             Type returnType = fn.getReturnType();
             Type argType = fn.getArgs()[0];
             Type serdeType = fn.getIntermediateType();
@@ -227,8 +235,9 @@ public class AnalyzeDecimalV3Test {
                 "   multi_distinct_sum(col_decimal_p38s30) as decimal128_multi_distinct_sum\n" +
                 "from db1.decimal_table\n";
 
-        QueryRelation queryRelation = analyzeSuccess(sql1);
-        List<Expr> items = ((SelectRelation) queryRelation).getOutputExpression();
+        QueryStatement stmt2 = analyzeStatement(sql1);
+        AnalysisContext analysisCtx2 = (AnalysisContext) stmt2.getAnalysisContext();
+        List<Expr> items = ((SelectRelation) stmt2.getQueryRelation()).getOutputExpression();
 
         Type[] expectArgTypes = Arrays.asList(
                 TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 4),
@@ -250,8 +259,10 @@ public class AnalyzeDecimalV3Test {
             Type expectArgType = expectArgTypes[i / 3];
             Type expectReturnType = expectReturnTypes[i / 3];
 
-            Assertions.assertTrue(((FunctionCallExpr) items.get(i)).getFn() instanceof AggregateFunction);
-            AggregateFunction fn = (AggregateFunction) ((FunctionCallExpr) items.get(i)).getFn();
+            Assertions.assertTrue(
+                    FunctionCallExprFactory.getFn((FunctionCallExpr) items.get(i), analysisCtx2) instanceof AggregateFunction);
+            AggregateFunction fn =
+                    (AggregateFunction) FunctionCallExprFactory.getFn((FunctionCallExpr) items.get(i), analysisCtx2);
             Type returnType = fn.getReturnType();
             Type argType = fn.getArgs()[0];
             Type serdeType = fn.getIntermediateType();
@@ -805,16 +816,18 @@ public class AnalyzeDecimalV3Test {
                 "from db1.decimal_table\n";
 
         {
-            SelectRelation queryRelation = (SelectRelation) analyzeSuccess(sql);
-            List<Expr> items = ((SelectRelation) queryRelation).getOutputExpression();
+            QueryStatement stmt3 = analyzeStatement(sql);
+            AnalysisContext analysisCtx3 = (AnalysisContext) stmt3.getAnalysisContext();
+            List<Expr> items = ((SelectRelation) stmt3.getQueryRelation()).getOutputExpression();
 
             Assertions.assertEquals(items.size(), 24);
             for (int i = 0; i < items.size(); ++i) {
                 Expr expr = items.get(i);
                 Assertions.assertEquals(expr.getType(), FloatType.DOUBLE);
-                Assertions.assertEquals(((FunctionCallExpr) expr).getFn().getArgs()[0], FloatType.DOUBLE);
-                Assertions.assertEquals(((FunctionCallExpr) expr).getFn().getReturnType(), FloatType.DOUBLE);
-                Assertions.assertEquals(((AggregateFunction) ((FunctionCallExpr) expr).getFn()).getIntermediateType(),
+                Function fn = FunctionCallExprFactory.getFn((FunctionCallExpr) expr, analysisCtx3);
+                Assertions.assertEquals(fn.getArgs()[0], FloatType.DOUBLE);
+                Assertions.assertEquals(fn.getReturnType(), FloatType.DOUBLE);
+                Assertions.assertEquals(((AggregateFunction) fn).getIntermediateType(),
                         VarbinaryType.VARBINARY);
             }
         }

@@ -93,12 +93,13 @@ public class FunctionAnalyzer {
         SUPPORTED_TGT_TYPES.addAll(Lists.newArrayList("HLL_8", "HLL_6", "HLL_4"));
     }
 
-    public static void analyze(FunctionCallExpr functionCallExpr) {
-        if (functionCallExpr.getFn() instanceof AggregateFunction) {
+    public static void analyze(FunctionCallExpr functionCallExpr, Function fn) {
+        if (functionCallExpr.isAggregateFn()) {
             analyzeBuiltinAggFunction(functionCallExpr);
         }
 
-        if (functionCallExpr.getParams().isStar() && !(functionCallExpr.getFn() instanceof AggregateFunction)) {
+        if (functionCallExpr.getParams().isStar()
+                && !functionCallExpr.isAggregateFn()) {
             throw new SemanticException("Cannot pass '*' to scalar function.", functionCallExpr.getPos());
         }
 
@@ -174,7 +175,6 @@ public class FunctionAnalyzer {
                         functionCallExpr.getPos());
             }
         }
-        Function fn = functionCallExpr.getFn();
         final String funcName = fnName;
         if (fn instanceof StateFunctionCombinator) {
             // analyze `_state` combinator function by using its arg function

@@ -72,6 +72,7 @@ import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FieldReference;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
+import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.GroupingFunctionCallExpr;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.InformationFunction;
@@ -447,6 +448,10 @@ public class ExpressionAnalyzer {
         public Visitor(AnalyzeState analyzeState, ConnectContext session) {
             this.analyzeState = analyzeState;
             this.session = session;
+        }
+
+        protected void resolveFunction(FunctionCallExpr expr, Function fn) {
+            FunctionCallExprFactory.setFn(expr, fn, analyzeState.getAnalysisContext());
         }
 
         @Override
@@ -1008,7 +1013,7 @@ public class ExpressionAnalyzer {
         public Void visitFunctionCall(FunctionCallExpr node, Scope scope) {
             if (node.isNondeterministicBuiltinFnName()) {
                 ExprId exprId = analyzeState.getNextNondeterministicId();
-                node.setNondeterministicId(exprId);
+                node.setNondeterministicId(exprId.asInt());
             }
             String fnName = node.getFunctionName();
 
@@ -1128,9 +1133,9 @@ public class ExpressionAnalyzer {
                 // This must be after reordering because it depends on parameter positions
                 FunctionAnalyzer.validateNullConstraints(fnName, fn, node);
 
-                node.setFn(fn);
+                resolveFunction(node, fn);
                 node.setType(fn.getReturnType());
-                FunctionAnalyzer.analyze(node);
+                FunctionAnalyzer.analyze(node, fn);
                 return null;
             }
 
@@ -1152,9 +1157,9 @@ public class ExpressionAnalyzer {
                             visit(child, scope);
                         }
                     }
-                    node.setFn(fn);
+                    resolveFunction(node, fn);
                     node.setType(fn.getReturnType());
-                    FunctionAnalyzer.analyze(node);
+                    FunctionAnalyzer.analyze(node, fn);
                     return null;
                 }
                 // Try to provide a more user-friendly error message for positional calls
@@ -1166,9 +1171,9 @@ public class ExpressionAnalyzer {
                                 .join(Arrays.stream(argumentTypes).map(Type::toSql).collect(Collectors.toList())));
                 throw new SemanticException(msg, node.getPos());
             }
-            node.setFn(fn);
+            resolveFunction(node, fn);
             node.setType(fn.getReturnType());
-            FunctionAnalyzer.analyze(node);
+            FunctionAnalyzer.analyze(node, fn);
             return null;
         }
 
@@ -1537,7 +1542,7 @@ public class ExpressionAnalyzer {
             Function fn = ExprUtils.getBuiltinFunction(node.getFunctionName(),
                     childTypes, Function.CompareMode.IS_IDENTICAL);
 
-            node.setFn(fn);
+            resolveFunction(node, fn);
             node.setType(fn.getReturnType());
             return null;
         }
@@ -1910,7 +1915,7 @@ public class ExpressionAnalyzer {
 
             Function fn = new Function(FunctionName.createFnName(FunctionSet.DICT_MAPPING), actualTypes, valueType, false);
             fn.setBinaryType(TFunctionBinaryType.BUILTIN);
-            node.setFn(fn);
+            resolveFunction(node, fn);
 
             node.setDictQueryExpr(dictQueryExpr);
             return null;

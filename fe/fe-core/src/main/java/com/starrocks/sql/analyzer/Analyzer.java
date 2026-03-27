@@ -195,6 +195,9 @@ public class Analyzer {
     }
 
     public static void analyze(StatementBase statement, ConnectContext context) {
+        if (statement.getAnalysisContext() == null) {
+            statement.setAnalysisContext(new AnalysisContext());
+        }
         GlobalStateMgr.getCurrentState().getAnalyzer().analyzerVisitor.visit(statement, context);
     }
 
