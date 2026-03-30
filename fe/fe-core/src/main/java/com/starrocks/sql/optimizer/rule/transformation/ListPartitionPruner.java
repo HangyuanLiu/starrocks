@@ -43,6 +43,7 @@ import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CompoundPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ConstantOperatorConvertor;
 import com.starrocks.sql.optimizer.operator.scalar.InPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.IsNullPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.OperatorFunctionChecker;
@@ -52,14 +53,12 @@ import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorVisitor;
 import com.starrocks.sql.optimizer.rewrite.ReplaceColumnRefRewriter;
 import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriter;
 import com.starrocks.sql.optimizer.transformer.SqlToScalarOperatorTranslator;
-import com.starrocks.sql.plan.ScalarOperatorToExpr;
 import com.starrocks.type.Type;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -564,9 +563,7 @@ public class ListPartitionPruner implements PartitionPruner {
         }
         if (operator instanceof CastOperator && operator.getChild(0).isConstantRef()) {
             ConstantOperator child = (ConstantOperator) operator.getChild(0);
-            ScalarOperatorToExpr.FormatterContext formatterContext =
-                    new ScalarOperatorToExpr.FormatterContext(new HashMap<>());
-            LiteralExpr literal = (LiteralExpr) ScalarOperatorToExpr.buildExecExpression(child, formatterContext);
+            LiteralExpr literal = ConstantOperatorConvertor.toLiteralExpr(child);
             try {
                 literal = castLiteralExpr(literal, operator.getType());
                 return ConstantOperator.createObject(literal.getRealObjectValue(), operator.getType());
@@ -610,9 +607,7 @@ public class ListPartitionPruner implements PartitionPruner {
             return null;
         }
 
-        ScalarOperatorToExpr.FormatterContext formatterContext =
-                new ScalarOperatorToExpr.FormatterContext(new HashMap<>());
-        LiteralExpr literal = (LiteralExpr) ScalarOperatorToExpr.buildExecExpression(rightChild, formatterContext);
+        LiteralExpr literal = ConstantOperatorConvertor.toLiteralExpr(rightChild);
 
         BinaryType type = binaryPredicate.getBinaryType();
         switch (type) {
@@ -761,10 +756,8 @@ public class ListPartitionPruner implements PartitionPruner {
         }
 
         for (int i = 1; i < inPredicate.getChildren().size(); ++i) {
-            ScalarOperatorToExpr.FormatterContext formatterContext =
-                    new ScalarOperatorToExpr.FormatterContext(new HashMap<>());
             LiteralExpr literal =
-                    (LiteralExpr) ScalarOperatorToExpr.buildExecExpression(inPredicate.getChild(i), formatterContext);
+                    ConstantOperatorConvertor.toLiteralExpr((ConstantOperator) inPredicate.getChild(i));
             Set<Long> partitions = partitionValueMap.get(literal);
             if (partitions != null) {
                 if (inPredicate.isNotIn()) {
