@@ -55,7 +55,6 @@ import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FieldReference;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.GroupingFunctionCallExpr;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.InformationFunction;
@@ -350,7 +349,7 @@ public final class SqlToScalarOperatorTranslator {
         }
 
         private Function getResolvedFunction(FunctionCallExpr expr) {
-            Function fn = FunctionCallExprFactory.getFn(expr, analysisContext);
+            Function fn = analysisContext != null ? analysisContext.getFunction(expr) : null;
             if (fn != null) {
                 return fn;
             }

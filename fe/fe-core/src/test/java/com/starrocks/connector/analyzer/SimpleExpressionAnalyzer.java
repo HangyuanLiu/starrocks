@@ -21,6 +21,7 @@ import com.google.common.collect.Lists;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.common.AnalysisException;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.AnalyzeState;
 import com.starrocks.sql.analyzer.AstToStringBuilder;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
@@ -50,7 +51,6 @@ import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FieldReference;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.GroupingFunctionCallExpr;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.IsNullPredicate;
@@ -578,7 +578,7 @@ public class SimpleExpressionAnalyzer {
             Function fn = ExprUtils.getBuiltinFunction(node.getFunctionName(),
                     childTypes, Function.CompareMode.IS_IDENTICAL);
 
-            FunctionCallExprFactory.setFn(node, fn);
+            AnalysisContext.populateCachedFields(node, fn);
             node.setType(fn.getReturnType());
             return null;
         }

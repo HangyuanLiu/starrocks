@@ -16,6 +16,7 @@
 package com.starrocks.sql.ast.expression;
 
 import com.starrocks.catalog.Function;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AstVisitor;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
@@ -37,7 +38,7 @@ public class DictQueryExpr extends FunctionCallExpr {
     public DictQueryExpr(List<Expr> params, TDictQueryExpr dictQueryExpr, Function fn) {
         super(DICT_MAPPING, params);
         this.dictQueryExpr = dictQueryExpr;
-        FunctionCallExprFactory.setFn(this, fn);
+        AnalysisContext.populateCachedFields(this, fn);
         setType(fn.getReturnType());
     }
 

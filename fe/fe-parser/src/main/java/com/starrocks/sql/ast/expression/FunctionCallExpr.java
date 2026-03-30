@@ -66,7 +66,7 @@ public class FunctionCallExpr extends Expr {
     // resetAnalysisState() which is used during expr substitution.
     private boolean isMergeAggFn;
 
-    // Cached properties from the resolved Function object, set via FunctionCallExprFactory.setFn().
+    // Cached properties from the resolved Function object, set via AnalysisContext.populateCachedFields().
     private boolean isAggregateFn = false;
     private boolean fnNullable = true;
     private Type[] fnArgTypes;

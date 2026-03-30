@@ -25,7 +25,6 @@ import com.starrocks.sql.ast.SelectRelation;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOperator;
@@ -205,7 +204,7 @@ public class AnalyzeDecimalV3Test {
             Type type = items.get(i).getType();
             Type expectType = expectTypes[i / 2];
             AggregateFunction fn =
-                    (AggregateFunction) FunctionCallExprFactory.getFn((FunctionCallExpr) items.get(i), analysisCtx);
+                    (AggregateFunction) analysisCtx.getFunction((FunctionCallExpr) items.get(i));
             Type returnType = fn.getReturnType();
             Type argType = fn.getArgs()[0];
             Type serdeType = fn.getIntermediateType();
@@ -260,9 +259,9 @@ public class AnalyzeDecimalV3Test {
             Type expectReturnType = expectReturnTypes[i / 3];
 
             Assertions.assertTrue(
-                    FunctionCallExprFactory.getFn((FunctionCallExpr) items.get(i), analysisCtx2) instanceof AggregateFunction);
+                    analysisCtx2.getFunction((FunctionCallExpr) items.get(i)) instanceof AggregateFunction);
             AggregateFunction fn =
-                    (AggregateFunction) FunctionCallExprFactory.getFn((FunctionCallExpr) items.get(i), analysisCtx2);
+                    (AggregateFunction) analysisCtx2.getFunction((FunctionCallExpr) items.get(i));
             Type returnType = fn.getReturnType();
             Type argType = fn.getArgs()[0];
             Type serdeType = fn.getIntermediateType();
@@ -824,7 +823,7 @@ public class AnalyzeDecimalV3Test {
             for (int i = 0; i < items.size(); ++i) {
                 Expr expr = items.get(i);
                 Assertions.assertEquals(expr.getType(), FloatType.DOUBLE);
-                Function fn = FunctionCallExprFactory.getFn((FunctionCallExpr) expr, analysisCtx3);
+                Function fn = analysisCtx3.getFunction((FunctionCallExpr) expr);
                 Assertions.assertEquals(fn.getArgs()[0], FloatType.DOUBLE);
                 Assertions.assertEquals(fn.getReturnType(), FloatType.DOUBLE);
                 Assertions.assertEquals(((AggregateFunction) fn).getIntermediateType(),

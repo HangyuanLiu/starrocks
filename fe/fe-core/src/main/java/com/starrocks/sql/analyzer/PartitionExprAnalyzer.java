@@ -21,7 +21,6 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.type.DateType;
 import com.starrocks.type.IntegerType;
@@ -46,7 +45,7 @@ public class PartitionExprAnalyzer {
                 Function builtinFunction = ExprUtils.getBuiltinFunction(funcCall.getFunctionName(),
                         dateTruncType, Function.CompareMode.IS_IDENTICAL);
 
-                FunctionCallExprFactory.setFn(funcCall, builtinFunction);
+                AnalysisContext.populateCachedFields(funcCall, builtinFunction);
                 funcCall.setType(targetColType);
                 return builtinFunction;
             } else if (arg1 instanceof FunctionCallExpr) {
@@ -57,7 +56,7 @@ public class PartitionExprAnalyzer {
                 Function builtinFunction = ExprUtils.getBuiltinFunction(funcCall.getFunctionName(),
                         dateTruncType, Function.CompareMode.IS_IDENTICAL);
 
-                FunctionCallExprFactory.setFn(funcCall, builtinFunction);
+                AnalysisContext.populateCachedFields(funcCall, builtinFunction);
                 funcCall.setType(targetColType);
                 return builtinFunction;
             }
@@ -147,7 +146,7 @@ public class PartitionExprAnalyzer {
                 throw new SemanticException(msg, expr.getPos());
             }
 
-            FunctionCallExprFactory.setFn(functionCallExpr, builtinFunction);
+            AnalysisContext.populateCachedFields(functionCallExpr, builtinFunction);
             functionCallExpr.setType(targetColType);
         } else if (expr instanceof CastExpr) {
             CastExpr castExpr = (CastExpr) expr;

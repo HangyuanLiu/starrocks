@@ -55,7 +55,6 @@ import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FieldReference;
 import com.starrocks.sql.ast.expression.FloatLiteral;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.InformationFunction;
 import com.starrocks.sql.ast.expression.IntLiteral;
@@ -408,7 +407,7 @@ public final class ExprToThrift {
             // Function is looked up from the AnalysisContext stored in the enclosing
             // treeToThrift call. For paths without AnalysisContext, fn will be null
             // and TFunction won't be set (the ExecExpr path handles this separately).
-            Function fn = FunctionCallExprFactory.getFn(node, currentAnalysisContext);
+            Function fn = currentAnalysisContext != null ? currentAnalysisContext.getFunction(node) : null;
             if (fn != null) {
                 TFunction tfn = fn.toThrift();
                 tfn.setIgnore_nulls(node.getIgnoreNulls());

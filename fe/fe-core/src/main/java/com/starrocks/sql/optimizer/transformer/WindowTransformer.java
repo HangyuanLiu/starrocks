@@ -34,7 +34,6 @@ import com.starrocks.sql.ast.expression.ExprCastFunction;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.NullLiteral;
@@ -192,7 +191,7 @@ public class WindowTransformer {
                 callExpr.resetFnName("", reversedFnName);
                 Function reversedFn = ExprUtils.getBuiltinFunction(reversedFnName,
                         callExpr.getFnArgTypes(), Function.CompareMode.IS_IDENTICAL);
-                FunctionCallExprFactory.setFn(callExpr, reversedFn);
+                AnalysisContext.populateCachedFields(callExpr, reversedFn);
             }
         }
 

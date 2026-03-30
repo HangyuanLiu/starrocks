@@ -79,7 +79,6 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.LimitElement;
 import com.starrocks.sql.ast.expression.SlotRef;
@@ -1178,7 +1177,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
         }
 
         FunctionCallExpr expr = new FunctionCallExpr(tableFunction.getFunctionName().getFunction(), node.getChildExpressions());
-        FunctionCallExprFactory.setFn(expr, tableFunction);
+        AnalysisContext.populateCachedFields(expr, tableFunction);
         ScalarOperator operator = SqlToScalarOperatorTranslator.translate(expr, context, columnRefFactory, analysisContext);
 
         if (operator.isConstantRef() && ((ConstantOperator) operator).isNull()) {

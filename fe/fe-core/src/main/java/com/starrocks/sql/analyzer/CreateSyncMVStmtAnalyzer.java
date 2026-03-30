@@ -55,7 +55,6 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.FunctionParams;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.IsNullPredicate;
@@ -548,7 +547,7 @@ public class CreateSyncMVStmtAnalyzer {
                     Function fn = ExprUtils.getBuiltinFunction(FunctionSet.TO_BITMAP, new Type[] {baseType},
                             Function.CompareMode.IS_IDENTICAL);
                     defineExpr = new FunctionCallExpr(FunctionSet.TO_BITMAP, Lists.newArrayList(defineExpr));
-                    FunctionCallExprFactory.setFn((FunctionCallExpr) defineExpr, fn);
+                    AnalysisContext.populateCachedFields((FunctionCallExpr) defineExpr, fn);
                     defineExpr.setType(BitmapType.BITMAP);
                 } else {
                     throw new SemanticException("Unsupported bitmap_agg type:" + baseType);

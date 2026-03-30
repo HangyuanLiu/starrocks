@@ -72,7 +72,6 @@ import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FieldReference;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.GroupingFunctionCallExpr;
 import com.starrocks.sql.ast.expression.InPredicate;
 import com.starrocks.sql.ast.expression.InformationFunction;
@@ -451,7 +450,12 @@ public class ExpressionAnalyzer {
         }
 
         protected void resolveFunction(FunctionCallExpr expr, Function fn) {
-            FunctionCallExprFactory.setFn(expr, fn, analyzeState.getAnalysisContext());
+            AnalysisContext ctx = analyzeState.getAnalysisContext();
+            if (ctx != null) {
+                ctx.registerFunction(expr, fn);
+            } else {
+                AnalysisContext.populateCachedFields(expr, fn);
+            }
         }
 
         @Override

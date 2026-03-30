@@ -14,6 +14,7 @@
 
 package com.starrocks.sql.analyzer;
 
+import com.starrocks.catalog.AggregateFunction;
 import com.starrocks.catalog.Function;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
 
@@ -32,13 +33,26 @@ public class AnalysisContext {
     public void registerFunction(FunctionCallExpr expr, Function fn) {
         long fnId;
         if (expr.hasFnId()) {
-            // Re-analysis: reuse existing fnId so clones can still find the Function
             fnId = expr.getFnId();
         } else {
             fnId = FunctionCallExpr.nextFnId();
             expr.setFnId(fnId);
         }
         resolvedFunctions.put(fnId, fn);
+        populateCachedFields(expr, fn);
+    }
+
+    /**
+     * Populate cached typed fields on FunctionCallExpr from a resolved Function.
+     * Use this for paths that don't need AnalysisContext (planner, statistics, etc.).
+     */
+    public static void populateCachedFields(FunctionCallExpr expr, Function fn) {
+        expr.setAggregateFn(fn instanceof AggregateFunction);
+        expr.setFnNullable(fn.isNullable());
+        expr.setFnArgTypes(fn.getArgs());
+        expr.setFnHasVarArgs(fn.hasVarArgs());
+        expr.setFnNumArgs(fn.getNumArgs());
+        expr.setWindowFunction(fn instanceof AggregateFunction && ((AggregateFunction) fn).isAnalyticFn());
     }
 
     public Function getFunction(FunctionCallExpr expr) {

@@ -22,6 +22,7 @@ import com.starrocks.persist.ColumnIdExpr;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.PartitionDescAnalyzer;
 import com.starrocks.sql.ast.CreateTableStmt;
@@ -33,7 +34,6 @@ import com.starrocks.sql.ast.SingleRangePartitionDesc;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
-import com.starrocks.sql.ast.expression.FunctionCallExprFactory;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.common.MetaUtils;
@@ -80,7 +80,7 @@ public class ExpressionRangePartitionInfoTest {
         fnChildren.add(new StringLiteral("month"));
         fnChildren.add(slotRef2);
         functionCallExpr = new FunctionCallExpr("date_trunc", fnChildren);
-        FunctionCallExprFactory.setFn(functionCallExpr, ExprUtils.getBuiltinFunction(
+        AnalysisContext.populateCachedFields(functionCallExpr, ExprUtils.getBuiltinFunction(
                 "date_trunc", new Type[] {VarcharType.VARCHAR, DateType.DATETIME}, Function.CompareMode.IS_IDENTICAL));
 
         FeConstants.runningUnitTest = true;
