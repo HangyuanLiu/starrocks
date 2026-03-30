@@ -122,8 +122,4 @@ public interface ExecExprVisitor<R, C> {
     default R visitExecInformationFunction(ExecInformationFunction expr, C context) {
         return visitExecExpr(expr, context);
     }
-
-    default R visitExecAstExprWrapper(ExecAstExprWrapper expr, C context) {
-        return visitExecExpr(expr, context);
-    }
 }

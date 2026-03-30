@@ -189,33 +189,6 @@ public class JDBCScanNode extends ScanNode {
                         }
                         return super.visitExecLiteral(expr, context);
                     }
-
-                    @Override
-                    public String visitExecAstExprWrapper(
-                            com.starrocks.planner.expression.ExecAstExprWrapper expr, Void context) {
-                        com.starrocks.sql.ast.expression.Expr astExpr = expr.getAstExpr();
-                        java.util.List<com.starrocks.sql.ast.expression.SlotRef> slotRefs =
-                                com.google.common.collect.Lists.newArrayList();
-                        com.starrocks.sql.ast.expression.ExprUtils.collectList(
-                                java.util.Collections.singletonList(astExpr),
-                                com.starrocks.sql.ast.expression.SlotRef.class, slotRefs);
-                        com.starrocks.sql.ast.expression.ExprSubstitutionMap sMap =
-                                new com.starrocks.sql.ast.expression.ExprSubstitutionMap();
-                        for (com.starrocks.sql.ast.expression.SlotRef slotRef : slotRefs) {
-                            com.starrocks.sql.ast.expression.SlotRef tmpRef =
-                                    (com.starrocks.sql.ast.expression.SlotRef) slotRef.clone();
-                            tmpRef.setTblName(null);
-                            tmpRef.setLabel(identifier + tmpRef.getLabel() + identifier);
-                            sMap.put(slotRef, tmpRef);
-                        }
-                        java.util.ArrayList<com.starrocks.sql.ast.expression.Expr> cloned =
-                                com.starrocks.sql.ast.expression.ExprUtils.cloneList(
-                                        java.util.Collections.singletonList(astExpr), sMap);
-                        com.starrocks.sql.ast.expression.Expr result =
-                                com.starrocks.sql.ast.expression.ExprUtils.replaceLargeStringLiteral(
-                                        cloned.get(0));
-                        return com.starrocks.sql.analyzer.AstToStringBuilder.toString(result);
-                    }
                 };
         for (com.starrocks.planner.expression.ExecExpr p : conjuncts) {
             filters.add(p.accept(quotedSqlExplain, null));

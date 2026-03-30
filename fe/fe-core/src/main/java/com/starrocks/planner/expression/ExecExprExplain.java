@@ -66,12 +66,6 @@ public class ExecExprExplain implements ExecExprVisitor<String, Void> {
             // For non-string types, delegate to the standard implementation
             return INSTANCE.visitExecLiteral(expr, context);
         }
-
-        @Override
-        public String visitExecAstExprWrapper(ExecAstExprWrapper expr, Void context) {
-            // Use AstToStringBuilder which produces full strings without truncation
-            return com.starrocks.sql.analyzer.AstToStringBuilder.toString(expr.getAstExpr());
-        }
     };
 
     /**
@@ -141,10 +135,6 @@ public class ExecExprExplain implements ExecExprVisitor<String, Void> {
             return sb.toString();
         }
 
-        @Override
-        public String visitExecAstExprWrapper(ExecAstExprWrapper expr, Void context) {
-            return com.starrocks.sql.ast.expression.ExprToSql.explain(expr.getAstExpr());
-        }
     };
 
     /**
@@ -164,12 +154,6 @@ public class ExecExprExplain implements ExecExprVisitor<String, Void> {
     @Override
     public String visitExecExpr(ExecExpr expr, Void context) {
         return "<unknown-exec-expr>";
-    }
-
-    @Override
-    public String visitExecAstExprWrapper(ExecAstExprWrapper expr, Void context) {
-        // Normal mode: use toSql (simple format), not explain (verbose format)
-        return com.starrocks.sql.ast.expression.ExprToSql.toSql(expr.getAstExpr());
     }
 
     @Override

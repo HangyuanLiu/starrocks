@@ -35,8 +35,7 @@ import com.starrocks.thrift.TVarType;
 /**
  * Pure enum-to-Thrift conversion methods that have no dependency on AST {@code Expr}.
  * <p>
- * Planner nodes should use this class instead of {@code ExprToThrift} for enum
- * conversions so they do not pull in the AST Expr dependency.
+ * Planner nodes use this class for enum conversions.
  */
 public final class ThriftEnumConverter {
 

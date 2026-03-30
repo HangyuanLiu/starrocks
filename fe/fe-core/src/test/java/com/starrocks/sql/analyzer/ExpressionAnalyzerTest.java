@@ -15,6 +15,7 @@
 package com.starrocks.sql.analyzer;
 
 import com.starrocks.catalog.Function;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.expression.CollectionElementExpr;
 import com.starrocks.sql.ast.expression.Expr;
@@ -24,7 +25,6 @@ import com.starrocks.sql.ast.expression.LikePredicate;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.ast.expression.UserVariableExpr;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.sql.plan.ExecPlan;
@@ -100,8 +100,8 @@ public class ExpressionAnalyzerTest extends PlanTestBase {
         }
 
         Assertions.assertEquals(TExprNodeType.MAP_ELEMENT_EXPR,
-                ExprToThrift
-                        .treeToThrift(collectionElementExpr3).getNodes().get(0).getNode_type());
+                ExecExprSerializer
+                        .serializeAstExpr(collectionElementExpr3).getNodes().get(0).getNode_type());
     }
 
     @Test
@@ -135,8 +135,8 @@ public class ExpressionAnalyzerTest extends PlanTestBase {
                         new Scope(RelationId.anonymous(), new RelationFields())));
 
         Assertions.assertEquals(TExprNodeType.ARRAY_ELEMENT_EXPR,
-                ExprToThrift
-                        .treeToThrift(collectionElementExpr2).getNodes().get(0).getNode_type());
+                ExecExprSerializer
+                        .serializeAstExpr(collectionElementExpr2).getNodes().get(0).getNode_type());
     }
 
     @Test

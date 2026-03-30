@@ -17,8 +17,10 @@ package com.starrocks.planner.expression;
 import com.google.common.collect.Lists;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.expression.ExprToThrift;
+import com.starrocks.sql.ast.expression.NullLiteral;
+import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.thrift.TExpr;
 import com.starrocks.thrift.TExprNode;
 import com.starrocks.type.BooleanType;
@@ -30,7 +32,7 @@ import java.util.stream.Collectors;
 
 /**
  * Serializes an {@link ExecExpr} tree into a {@link TExpr} (Thrift representation).
- * This replaces {@code ExprToThrift.treeToThrift} for the ExecExpr hierarchy.
+ * Serializes ExecExpr trees into Thrift TExpr for BE consumption.
  */
 public final class ExecExprSerializer {
 
@@ -52,15 +54,16 @@ public final class ExecExprSerializer {
     }
 
     // ---- AST Expr convenience methods ----
-    // These wrap AST Expr objects via ExecAstExprWrapper and serialize them.
-    // They are the recommended replacement for direct ExprToThrift calls.
+    // These convert AST Expr objects to ExecExpr and serialize them.
+    // These convert AST Expr to ExecExpr via the scalar operator pipeline, then serialize.
 
     /**
      * Serialize an AST {@link Expr} to a {@link TExpr}.
-     * Wraps the Expr in an {@link ExecAstExprWrapper} and delegates to {@link #serialize}.
+     * Converts the Expr to an ExecExpr via the scalar operator pipeline, then serializes.
      */
     public static TExpr serializeAstExpr(Expr expr) {
-        return serialize(ExecAstExprWrapper.wrap(expr));
+        ExecExpr execExpr = ExprUtils.analyzeAndCastFold(expr);
+        return serialize(execExpr);
     }
 
     /**
@@ -76,11 +79,18 @@ public final class ExecExprSerializer {
 
     /**
      * Serialize a {@link LiteralExpr} to a single {@link TExprNode}.
-     * This is the replacement for the common pattern:
-     * {@code ExprToThrift.treeToThrift(literal).getNodes().get(0)}
+     * Constructs an {@link ExecLiteral} directly from the literal expression,
+     * avoiding the full scalar operator pipeline.
      */
     public static TExprNode serializeLiteralToNode(LiteralExpr literal) {
-        TExpr texpr = serializeAstExpr(literal);
+        ConstantOperator constOp;
+        if (literal instanceof NullLiteral) {
+            constOp = ConstantOperator.createNull(literal.getType());
+        } else {
+            constOp = ConstantOperator.createObject(literal.getRealObjectValue(), literal.getType());
+        }
+        ExecLiteral execLiteral = new ExecLiteral(constOp, literal.getType());
+        TExpr texpr = serialize(execLiteral);
         return texpr.getNodes().get(0);
     }
 
@@ -94,20 +104,9 @@ public final class ExecExprSerializer {
     }
 
     private static void serializeHelper(ExecExpr expr, TExpr container) {
-        // For AST Expr wrappers, delegate to the original AST serialization path
-        if (expr instanceof ExecAstExprWrapper) {
-            TExpr astResult = ExprToThrift.treeToThrift(((ExecAstExprWrapper) expr).getAstExpr());
-            if (astResult.getNodes() != null) {
-                for (com.starrocks.thrift.TExprNode n : astResult.getNodes()) {
-                    container.addToNodes(n);
-                }
-            }
-            return;
-        }
-
         Type exprType = expr.getType();
 
-        // Replace NULL_TYPE with BOOLEAN, matching ExprToThrift behavior.
+        // Replace NULL_TYPE with BOOLEAN for BE compatibility.
         // If the expression has null type, serialize a null literal with boolean type instead.
         if (exprType.isNull()) {
             serializeNullLiteral(container);
@@ -138,8 +137,7 @@ public final class ExecExprSerializer {
     }
 
     /**
-     * Serialize a NULL literal with BOOLEAN type, matching the behavior of
-     * {@code ExprToThrift.treeToThriftHelper} when it encounters a null-typed expression.
+     * Serialize a NULL literal with BOOLEAN type for BE compatibility.
      */
     private static void serializeNullLiteral(TExpr container) {
         Type boolType = BooleanType.BOOLEAN;

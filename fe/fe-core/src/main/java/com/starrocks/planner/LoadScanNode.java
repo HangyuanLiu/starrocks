@@ -42,7 +42,6 @@ import com.starrocks.qe.SimpleScheduler;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
 import com.starrocks.server.WarehouseManager;
-import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.ast.AggregateType;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprCastFunction;
@@ -57,18 +56,11 @@ import com.starrocks.warehouse.cngroup.ComputeResource;
 import java.util.List;
 import java.util.Map;
 
-// NOTE ON ExecAstExprWrapper USAGE (legitimate boundary bridge):
 // This class uses AST Expr (com.starrocks.sql.ast.expression.*) in two places:
 //   1. initWhereExpr() — receives an AST Expr from the load job's WHERE clause, performs
-//      AST-level slot substitution and analysis, then wraps the result via ExecAstExprWrapper
-//      before calling addConjuncts(). The wrapper is the correct bridge here because:
-//        - The Load path produces AST Expr (parsed WHERE clause) that needs AST substitution.
-//        - The planner's conjunct interface requires ExecExpr.
-//        - A full AST-to-ExecExpr converter is not available for arbitrary analyzed expressions.
-//      This is a self-contained island: AST processing stays inside initWhereExpr(), and only
-//      the wrapped ExecExpr leaves the method boundary.
+//      AST-level slot substitution and analysis, then converts to ExecExpr via analyzeAndCastFold
+//      before calling addConjuncts().
 //   2. checkBitmapCompatibility() — inspects the AST Expr type for bitmap column validation.
-// These are contained uses that do not leak AST Expr into the broader planner ExecExpr interface.
 public abstract class LoadScanNode extends ScanNode {
 
     public LoadScanNode(PlanNodeId id, TupleDescriptor desc, String planNodeName) {
@@ -116,13 +108,12 @@ public abstract class LoadScanNode extends ScanNode {
             smap.put(slot, slotRef);
         }
         whereExpr = ExprSubstitutionVisitor.rewrite(whereExpr, smap);
-        whereExpr = ExprUtils.analyzeAndCastFoldToExpr(whereExpr);
 
-        if (!whereExpr.getType().isBoolean()) {
+        com.starrocks.planner.expression.ExecExpr whereExecExpr = ExprUtils.analyzeAndCastFold(whereExpr);
+        if (!whereExecExpr.getType().isBoolean()) {
             throw new StarRocksException("where statement is not a valid statement return bool");
         }
-        addConjuncts(com.starrocks.planner.expression.ExecAstExprWrapper.wrapList(
-                AnalyzerUtils.extractConjuncts(whereExpr)));
+        addConjuncts(java.util.Collections.singletonList(whereExecExpr));
     }
 
     protected void checkBitmapCompatibility(SlotDescriptor slotDesc, Expr expr)

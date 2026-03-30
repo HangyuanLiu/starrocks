@@ -130,18 +130,11 @@ public class MysqlScanNode extends ScanNode {
 
     // We convert predicates of the form <slotref> op <constant> to MySQL filters.
     //
-    // AST Expr usage rationale: conjuncts may contain ExecAstExprWrapper instances that
-    // wrap legacy AST Expr nodes. For MySQL SQL generation we need to strip table-name
-    // qualifiers from SlotRefs and produce MySQL-dialect SQL. The ExecAstExprWrapper
-    // visitor below handles this by unwrapping to AST Expr, performing the substitution,
-    // and using AstToStringBuilder for SQL text. Native ExecExpr conjuncts are handled
-    // by the base ExecExprExplain visitor. This mirrors the JDBCScanNode pattern.
     private void createMySQLFilters() {
         if (conjuncts.isEmpty()) {
             return;
         }
-        // Build a custom ExecExprExplain that produces MySQL-dialect SQL for each conjunct,
-        // handling both native ExecExpr and ExecAstExprWrapper cases.
+        // Build a custom ExecExprExplain that produces MySQL-dialect SQL for each conjunct.
         com.starrocks.planner.expression.ExecExprExplain mysqlSqlExplain =
                 new com.starrocks.planner.expression.ExecExprExplain() {
                     @Override
@@ -167,33 +160,6 @@ public class MysqlScanNode extends ScanNode {
                             return "'" + s + "'";
                         }
                         return super.visitExecLiteral(expr, context);
-                    }
-
-                    @Override
-                    public String visitExecAstExprWrapper(
-                            com.starrocks.planner.expression.ExecAstExprWrapper expr, Void context) {
-                        // Unwrap to AST Expr, strip table qualifiers, and generate MySQL SQL
-                        com.starrocks.sql.ast.expression.Expr astExpr = expr.getAstExpr();
-                        java.util.List<com.starrocks.sql.ast.expression.SlotRef> slotRefs =
-                                com.google.common.collect.Lists.newArrayList();
-                        com.starrocks.sql.ast.expression.ExprUtils.collectList(
-                                java.util.Collections.singletonList(astExpr),
-                                com.starrocks.sql.ast.expression.SlotRef.class, slotRefs);
-                        com.starrocks.sql.ast.expression.ExprSubstitutionMap sMap =
-                                new com.starrocks.sql.ast.expression.ExprSubstitutionMap();
-                        for (com.starrocks.sql.ast.expression.SlotRef slotRef : slotRefs) {
-                            com.starrocks.sql.ast.expression.SlotRef tmpRef =
-                                    (com.starrocks.sql.ast.expression.SlotRef) slotRef.clone();
-                            tmpRef.setTblName(null);
-                            sMap.put(slotRef, tmpRef);
-                        }
-                        java.util.ArrayList<com.starrocks.sql.ast.expression.Expr> cloned =
-                                com.starrocks.sql.ast.expression.ExprUtils.cloneList(
-                                        java.util.Collections.singletonList(astExpr), sMap);
-                        com.starrocks.sql.ast.expression.Expr result =
-                                com.starrocks.sql.ast.expression.ExprUtils.replaceLargeStringLiteral(
-                                        cloned.get(0));
-                        return com.starrocks.sql.ast.expression.ExprToSql.toMySql(result);
                     }
                 };
         for (com.starrocks.planner.expression.ExecExpr p : conjuncts) {

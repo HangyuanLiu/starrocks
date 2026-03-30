@@ -24,14 +24,12 @@ import com.starrocks.catalog.FunctionSet;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.planner.SlotId;
 import com.starrocks.planner.TupleId;
-import com.starrocks.planner.expression.ExecAstExprWrapper;
 import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.planner.expression.ExecLiteral;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
-import com.starrocks.sql.common.UnsupportedException;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperatorConvertor;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
@@ -375,32 +373,24 @@ public class ExprUtils {
     public static ExecExpr analyzeAndCastFold(Expr expr) {
         ExpressionAnalyzer.analyzeExpressionIgnoreSlot(expr, ConnectContext.get());
         // Translating expr to scalar in order to do some rewrites
-        try {
-            ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translate(expr);
-            ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
-            // Add cast and constant fold
-            scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
-            return ScalarOperatorToExecExpr.buildIgnoreSlot(scalarOperator,
-                    new ScalarOperatorToExecExpr.FormatterContext(Maps.newHashMap()));
-        } catch (UnsupportedException e) {
-            return ExecAstExprWrapper.wrap(expr);
-        }
+        ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translate(expr);
+        ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
+        // Add cast and constant fold
+        scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
+        return ScalarOperatorToExecExpr.buildIgnoreSlot(scalarOperator,
+                new ScalarOperatorToExecExpr.FormatterContext(Maps.newHashMap()));
     }
 
     public static ExecExpr analyzeLoadExpr(Expr expr,
             java.util.function.Function<SlotRef, ColumnRefOperator> slotResolver) {
         ExpressionAnalyzer.analyzeExpressionIgnoreSlot(expr, ConnectContext.get());
         // Translating expr to scalar in order to do some rewrites
-        try {
-            ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translateLoadExpr(expr, slotResolver);
-            ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
-            // Add cast and constant fold
-            scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
-            return ScalarOperatorToExecExpr.buildIgnoreSlot(scalarOperator,
-                    new ScalarOperatorToExecExpr.FormatterContext(Maps.newHashMap()));
-        } catch (UnsupportedException e) {
-            return ExecAstExprWrapper.wrap(expr);
-        }
+        ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translateLoadExpr(expr, slotResolver);
+        ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
+        // Add cast and constant fold
+        scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
+        return ScalarOperatorToExecExpr.buildIgnoreSlot(scalarOperator,
+                new ScalarOperatorToExecExpr.FormatterContext(Maps.newHashMap()));
     }
 
     /**
@@ -427,14 +417,10 @@ public class ExprUtils {
 
     /**
      * Convert an {@link ExecExpr} back to an AST {@link Expr}.
-     * If the ExecExpr is an {@link ExecAstExprWrapper}, unwrap it.
      * If it is an {@link ExecLiteral}, convert via {@link ConstantOperatorConvertor}.
      * Otherwise, return the fallback expression.
      */
     private static Expr execExprToAstExpr(ExecExpr execExpr, Expr fallback) {
-        if (execExpr instanceof ExecAstExprWrapper) {
-            return ((ExecAstExprWrapper) execExpr).getAstExpr();
-        }
         if (execExpr instanceof ExecLiteral) {
             return ConstantOperatorConvertor.toLiteralExpr(((ExecLiteral) execExpr).getValue());
         }

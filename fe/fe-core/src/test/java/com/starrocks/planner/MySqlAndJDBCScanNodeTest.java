@@ -19,16 +19,15 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.JDBCTable;
 import com.starrocks.catalog.MysqlTable;
 import com.starrocks.common.DdlException;
-import com.starrocks.sql.ast.expression.BinaryPredicate;
+import com.starrocks.planner.expression.ExecBinaryPredicate;
+import com.starrocks.planner.expression.ExecCompoundPredicate;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecInPredicate;
+import com.starrocks.planner.expression.ExecLiteral;
+import com.starrocks.planner.expression.ExecSlotRef;
 import com.starrocks.sql.ast.expression.BinaryType;
 import com.starrocks.sql.ast.expression.CompoundPredicate;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.InPredicate;
-import com.starrocks.sql.ast.expression.LargeStringLiteral;
-import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.StringLiteral;
-import com.starrocks.planner.expression.ExecAstExprWrapper;
-import com.starrocks.sql.parser.NodePosition;
+import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.type.VarcharType;
 import org.assertj.core.util.Lists;
 import org.junit.jupiter.api.Assertions;
@@ -40,15 +39,15 @@ import java.util.Map;
 
 public class MySqlAndJDBCScanNodeTest {
 
-    private List<Expr> createConjuncts() {
-        SlotRef slotRef = new SlotRef(null, "col");
-        slotRef.setSlotId(1);
-        slotRef.setType(VarcharType.VARCHAR);
-        slotRef.setNullable(true);
-        Expr expr0 = new InPredicate(slotRef,
-                Lists.newArrayList(new LargeStringLiteral(Strings.repeat("ABCDE", 11), NodePosition.ZERO)), true);
-        Expr expr1 = new BinaryPredicate(BinaryType.EQ, slotRef, StringLiteral.create("ABC"));
-        Expr expr2 = new CompoundPredicate(CompoundPredicate.Operator.OR, expr0, expr1);
+    private List<ExecExpr> createConjuncts() {
+        SlotDescriptor slotDesc = new SlotDescriptor(new SlotId(1), "col", VarcharType.VARCHAR, true);
+        ExecSlotRef slotRef = new ExecSlotRef("col", slotDesc);
+        String longStr = Strings.repeat("ABCDE", 11);
+        ExecLiteral longStrLiteral = new ExecLiteral(ConstantOperator.createVarchar(longStr), VarcharType.VARCHAR);
+        ExecLiteral abcLiteral = new ExecLiteral(ConstantOperator.createVarchar("ABC"), VarcharType.VARCHAR);
+        ExecExpr expr0 = new ExecInPredicate(true, Lists.newArrayList(slotRef, longStrLiteral));
+        ExecExpr expr1 = new ExecBinaryPredicate(BinaryType.EQ, slotRef, abcLiteral);
+        ExecExpr expr2 = new ExecCompoundPredicate(CompoundPredicate.Operator.OR, expr0, expr1);
         return Lists.newArrayList(expr0, expr1, expr2);
     }
 
@@ -66,14 +65,14 @@ public class MySqlAndJDBCScanNodeTest {
         TupleDescriptor tupleDesc = new TupleDescriptor(new TupleId(1));
         tupleDesc.setTable(mysqlTable);
         MysqlScanNode scanNode = new MysqlScanNode(new PlanNodeId(1), tupleDesc, mysqlTable);
-        scanNode.getConjuncts().addAll(ExecAstExprWrapper.wrapList(createConjuncts()));
+        scanNode.getConjuncts().addAll(createConjuncts());
         scanNode.computeColumnsAndFilters();
         String nodeString = scanNode.getExplainString();
         Assertions.assertTrue(nodeString.contains("SELECT * FROM `test_table` " +
-                "WHERE (col NOT IN ('ABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDE')) " +
-                "AND (col = 'ABC') AND " +
-                "((col NOT IN ('ABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDE')) OR " +
-                "(col = 'ABC'))"), nodeString);
+                "WHERE (`col` NOT IN ('ABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDE')) " +
+                "AND (`col` = 'ABC') AND " +
+                "((`col` NOT IN ('ABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDE')) OR " +
+                "(`col` = 'ABC'))"), nodeString);
     }
 
     @Test
@@ -90,7 +89,7 @@ public class MySqlAndJDBCScanNodeTest {
         TupleDescriptor tupleDesc = new TupleDescriptor(new TupleId(1));
         tupleDesc.setTable(mysqlTable);
         JDBCScanNode scanNode = new JDBCScanNode(new PlanNodeId(1), tupleDesc, mysqlTable);
-        scanNode.getConjuncts().addAll(ExecAstExprWrapper.wrapList(createConjuncts()));
+        scanNode.getConjuncts().addAll(createConjuncts());
         scanNode.computeColumnsAndFilters();
         String nodeString = scanNode.getExplainString();
         Assertions.assertTrue(nodeString.contains("SELECT * FROM `jdbc_table` WHERE " +
