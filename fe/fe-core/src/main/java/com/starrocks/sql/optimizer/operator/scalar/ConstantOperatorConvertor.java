@@ -35,10 +35,9 @@ import java.time.LocalDateTime;
 /**
  * Converts a {@link ConstantOperator} to its corresponding {@link LiteralExpr}.
  *
- * <p>This utility class is a focused replacement for the constant-conversion portion of
- * {@code ScalarOperatorToExpr.Formatter#visitConstant}, intended for use in partition-pruning
- * paths that only need to convert constants to literals without the full expression-building
- * infrastructure.
+ * <p>This utility class provides constant-to-literal conversion without the full
+ * expression-building infrastructure of ScalarOperatorToExecExpr, intended for use in
+ * partition-pruning and other paths that only need to convert constants to literals.
  */
 public final class ConstantOperatorConvertor {
 

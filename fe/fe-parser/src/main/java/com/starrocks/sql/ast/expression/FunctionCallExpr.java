@@ -56,7 +56,7 @@ public class FunctionCallExpr extends Expr {
     private long fnId = -1;
 
     // Opaque reference to the resolved Function object.
-    // Set by FunctionCallExprFactory for paths without AnalysisContext (planner, ScalarOperatorToExpr).
+    // Set by FunctionCallExprFactory for paths without AnalysisContext (planner, ScalarOperatorToExecExpr).
     // Primary access should be through AnalysisContext via fnId.
     protected Object fn;
 

@@ -97,7 +97,6 @@ import java.util.stream.Collectors;
 
 /**
  * Converts a {@link ScalarOperator} tree into an {@link ExecExpr} tree.
- * This is the ExecExpr counterpart of {@link ScalarOperatorToExpr}.
  */
 public class ScalarOperatorToExecExpr {
 

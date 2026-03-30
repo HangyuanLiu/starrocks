@@ -26,17 +26,18 @@ import com.starrocks.planner.SlotId;
 import com.starrocks.planner.TupleId;
 import com.starrocks.planner.expression.ExecAstExprWrapper;
 import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecLiteral;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.common.UnsupportedException;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ConstantOperatorConvertor;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriter;
 import com.starrocks.sql.optimizer.transformer.SqlToScalarOperatorTranslator;
 import com.starrocks.sql.plan.ScalarOperatorToExecExpr;
-import com.starrocks.sql.plan.ScalarOperatorToExpr;
 import com.starrocks.type.InvalidType;
 import com.starrocks.type.Type;
 import org.roaringbitmap.RoaringBitmap;
@@ -409,16 +410,8 @@ public class ExprUtils {
      * AST transformations).
      */
     public static Expr analyzeAndCastFoldToExpr(Expr expr) {
-        ExpressionAnalyzer.analyzeExpressionIgnoreSlot(expr, ConnectContext.get());
-        try {
-            ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translate(expr);
-            ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
-            scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
-            return ScalarOperatorToExpr.buildExprIgnoreSlot(scalarOperator,
-                    new ScalarOperatorToExpr.FormatterContext(Maps.newHashMap()));
-        } catch (UnsupportedException e) {
-            return expr;
-        }
+        ExecExpr execExpr = analyzeAndCastFold(expr);
+        return execExprToAstExpr(execExpr, expr);
     }
 
     /**
@@ -428,16 +421,24 @@ public class ExprUtils {
      */
     public static Expr analyzeLoadExprToExpr(Expr expr,
             java.util.function.Function<SlotRef, ColumnRefOperator> slotResolver) {
-        ExpressionAnalyzer.analyzeExpressionIgnoreSlot(expr, ConnectContext.get());
-        try {
-            ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translateLoadExpr(expr, slotResolver);
-            ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
-            scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
-            return ScalarOperatorToExpr.buildExprIgnoreSlot(scalarOperator,
-                    new ScalarOperatorToExpr.FormatterContext(Maps.newHashMap()));
-        } catch (UnsupportedException e) {
-            return expr;
+        ExecExpr execExpr = analyzeLoadExpr(expr, slotResolver);
+        return execExprToAstExpr(execExpr, expr);
+    }
+
+    /**
+     * Convert an {@link ExecExpr} back to an AST {@link Expr}.
+     * If the ExecExpr is an {@link ExecAstExprWrapper}, unwrap it.
+     * If it is an {@link ExecLiteral}, convert via {@link ConstantOperatorConvertor}.
+     * Otherwise, return the fallback expression.
+     */
+    private static Expr execExprToAstExpr(ExecExpr execExpr, Expr fallback) {
+        if (execExpr instanceof ExecAstExprWrapper) {
+            return ((ExecAstExprWrapper) execExpr).getAstExpr();
         }
+        if (execExpr instanceof ExecLiteral) {
+            return ConstantOperatorConvertor.toLiteralExpr(((ExecLiteral) execExpr).getValue());
+        }
+        return fallback;
     }
 
     public static boolean containsDictMappingExpr(Expr expr) {

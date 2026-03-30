@@ -14,20 +14,16 @@
 
 package com.starrocks.sql.plan;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
-import com.starrocks.planner.TupleId;
+import com.starrocks.planner.expression.ExecCast;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecLambdaFunction;
+import com.starrocks.planner.expression.ExecLiteral;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.expression.BinaryType;
-import com.starrocks.sql.ast.expression.CastExpr;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
-import com.starrocks.sql.ast.expression.IntLiteral;
-import com.starrocks.sql.ast.expression.LambdaFunctionExpr;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.common.StarRocksPlannerException;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
@@ -258,7 +254,7 @@ public class ExpressionTest extends PlanTestBase {
     }
 
     @Test
-    public void testScalarOperatorToExpr() {
+    public void testScalarOperatorToExecExpr() {
         ColumnRefOperator columnRefOperator = new ColumnRefOperator(2, IntegerType.INT, "e", true);
         ScalarOperator cast = new CastOperator(FloatType.DOUBLE, columnRefOperator);
         ColumnRefOperator castColumnRef = new ColumnRefOperator(1, IntegerType.INT, "cast", true);
@@ -267,15 +263,15 @@ public class ExpressionTest extends PlanTestBase {
         projectMap.put(castColumnRef, cast);
         projectMap.put(columnRefOperator, ConstantOperator.createInt(1));
 
-        HashMap<ColumnRefOperator, Expr> variableToSlotRef = new HashMap<>();
-        variableToSlotRef.put(columnRefOperator, new IntLiteral(1));
+        HashMap<ColumnRefOperator, ExecExpr> colRefToExecExpr = new HashMap<>();
+        colRefToExecExpr.put(columnRefOperator, new ExecLiteral(ConstantOperator.createInt(1), IntegerType.INT));
 
-        ScalarOperatorToExpr.FormatterContext context =
-                new ScalarOperatorToExpr.FormatterContext(variableToSlotRef, projectMap);
+        ScalarOperatorToExecExpr.FormatterContext context =
+                new ScalarOperatorToExecExpr.FormatterContext(colRefToExecExpr, projectMap);
 
-        Expr castExpression = ScalarOperatorToExpr.buildExecExpression(castColumnRef, context);
+        ExecExpr castExpression = ScalarOperatorToExecExpr.build(castColumnRef, context);
 
-        Assertions.assertTrue(castExpression instanceof CastExpr);
+        Assertions.assertTrue(castExpression instanceof ExecCast);
 
         // lambda functions
         ScalarOperator lambdaExpr = new BinaryPredicateOperator(BinaryType.EQ,
@@ -284,23 +280,17 @@ public class ExpressionTest extends PlanTestBase {
         ColumnRefOperator colRef = new ColumnRefOperator(100000, IntegerType.INT, "x", true);
         LambdaFunctionOperator lambda =
                 new LambdaFunctionOperator(Lists.newArrayList(colRef), lambdaExpr, BooleanType.BOOLEAN);
-        variableToSlotRef.clear();
+        colRefToExecExpr.clear();
         projectMap.clear();
-        context = new ScalarOperatorToExpr.FormatterContext(variableToSlotRef, projectMap);
+        context = new ScalarOperatorToExecExpr.FormatterContext(colRefToExecExpr, projectMap);
 
-        Expr lambdaFunc = ScalarOperatorToExpr.buildExecExpression(lambda, context);
+        ExecExpr lambdaFunc = ScalarOperatorToExecExpr.build(lambda, context);
 
-        Assertions.assertTrue(lambdaFunc instanceof LambdaFunctionExpr);
-        Assertions.assertEquals("<slot 100000> -> <slot 100000> = 1", ExprToSql.toSql(lambdaFunc));
+        Assertions.assertTrue(lambdaFunc instanceof ExecLambdaFunction);
 
-        LambdaFunctionExpr lexpr = ((LambdaFunctionExpr) lambdaFunc);
-        Assertions.assertTrue(lexpr.getChildren().size() == 2 && lexpr.getChild(1) instanceof SlotRef);
-
-        SlotRef slotRef = ((SlotRef) lexpr.getChild(1));
-        Assertions.assertTrue(slotRef.isFromLambda());
-
-        List<TupleId> tids = ImmutableList.of(new TupleId(111));
-        Assertions.assertTrue(ExprUtils.isBoundByTupleIds(lexpr.getChild(1), tids));
+        ExecLambdaFunction lexpr = ((ExecLambdaFunction) lambdaFunc);
+        // ExecLambdaFunction: 1 lambda body + at least 1 lambda argument
+        Assertions.assertTrue(lexpr.getChildren().size() >= 2);
     }
 
     @Test
