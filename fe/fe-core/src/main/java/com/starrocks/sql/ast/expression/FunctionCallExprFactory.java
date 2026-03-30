@@ -22,8 +22,8 @@ import com.starrocks.sql.analyzer.AnalysisContext;
  * Populates cached typed fields on FunctionCallExpr and registers the resolved Function
  * in the given AnalysisContext.
  * <p>
- * The Function object is stored on FunctionCallExpr only for hashCode/equals consistency.
- * External callers should use AnalysisContext to retrieve the Function by fnId.
+ * The Function object is NOT stored on FunctionCallExpr.
+ * Use AnalysisContext to retrieve the Function by fnId.
  */
 public class FunctionCallExprFactory {
 
@@ -32,7 +32,6 @@ public class FunctionCallExprFactory {
      * Use this when AnalysisContext is available (analysis and transformation paths).
      */
     public static void setFn(FunctionCallExpr expr, Function fn, AnalysisContext ctx) {
-        expr.fn = fn;
         if (ctx != null) {
             ctx.registerFunction(expr, fn);
         }
@@ -52,13 +51,9 @@ public class FunctionCallExprFactory {
      */
     public static Function getFn(FunctionCallExpr expr, AnalysisContext ctx) {
         if (ctx != null) {
-            Function fn = ctx.getFunction(expr);
-            if (fn != null) {
-                return fn;
-            }
+            return ctx.getFunction(expr);
         }
-        // Fallback: read from expr for paths without AnalysisContext
-        return (Function) expr.fn;
+        return null;
     }
 
     private static void setFnFields(FunctionCallExpr expr, Function fn) {

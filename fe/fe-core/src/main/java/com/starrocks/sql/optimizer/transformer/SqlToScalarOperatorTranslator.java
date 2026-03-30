@@ -350,7 +350,20 @@ public final class SqlToScalarOperatorTranslator {
         }
 
         private Function getResolvedFunction(FunctionCallExpr expr) {
-            return FunctionCallExprFactory.getFn(expr, analysisContext);
+            Function fn = FunctionCallExprFactory.getFn(expr, analysisContext);
+            if (fn != null) {
+                return fn;
+            }
+            // Fallback: re-resolve from GlobalStateMgr's function registry.
+            // This handles paths where AnalysisContext is null or the function
+            // was registered via the 2-arg setFn (e.g., partition expressions,
+            // programmatically-created FunctionCallExprs).
+            if (expr.getFnArgTypes() != null) {
+                fn = ExprUtils.getBuiltinFunction(
+                        expr.getFunctionName(), expr.getFnArgTypes(),
+                        Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
+            }
+            return fn;
         }
 
         @Override

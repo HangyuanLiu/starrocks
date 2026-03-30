@@ -66,10 +66,6 @@ public class FunctionCallExpr extends Expr {
     // resetAnalysisState() which is used during expr substitution.
     private boolean isMergeAggFn;
 
-    // Resolved Function object stored for hashCode/equals consistency.
-    // Not exposed via public API; set by FunctionCallExprFactory.
-    Object fn;
-
     // Cached properties from the resolved Function object, set via FunctionCallExprFactory.setFn().
     private boolean isAggregateFn = false;
     private boolean fnNullable = true;
@@ -162,7 +158,6 @@ public class FunctionCallExpr extends Expr {
 
     public void copyFnFieldsFrom(FunctionCallExpr other) {
         this.fnId = other.fnId;
-        this.fn = other.fn;
         this.isAggregateFn = other.isAggregateFn;
         this.fnNullable = other.fnNullable;
         this.fnArgTypes = other.fnArgTypes;
@@ -267,7 +262,6 @@ public class FunctionCallExpr extends Expr {
         isAnalyticFnCall = e.isAnalyticFnCall;
         fnParams = params;
         fnId = e.fnId;
-        fn = e.fn;
         isAggregateFn = e.isAggregateFn;
         fnNullable = e.fnNullable;
         fnArgTypes = e.fnArgTypes;
@@ -283,7 +277,6 @@ public class FunctionCallExpr extends Expr {
     protected FunctionCallExpr(FunctionCallExpr other) {
         super(other);
         fnId = other.fnId;
-        fn = other.fn;
         isAggregateFn = other.isAggregateFn;
         fnNullable = other.fnNullable;
         fnArgTypes = other.fnArgTypes;
@@ -331,7 +324,6 @@ public class FunctionCallExpr extends Expr {
         // fn_ such that analyze() hits the special-case code for merge agg fns that
         // handles this case.
         if (!isMergeAggFn) {
-            fn = null;
             isAggregateFn = false;
             fnNullable = true;
             fnArgTypes = null;
@@ -358,7 +350,7 @@ public class FunctionCallExpr extends Expr {
     }
 
     public boolean isAggregateFunction() {
-        Preconditions.checkState(fn != null);
+        Preconditions.checkState(fnArgTypes != null);
         return isAggregateFn && !isAnalyticFnCall;
     }
 
@@ -382,7 +374,7 @@ public class FunctionCallExpr extends Expr {
     // TODO(kks): improve this
     public boolean isNullable() {
         // check if fn always return non null
-        if (fn != null && !fnNullable) {
+        if (fnArgTypes != null && !fnNullable) {
             return false;
         }
         // check children nullable
@@ -441,7 +433,7 @@ public class FunctionCallExpr extends Expr {
     @Override
     public int hashCode() {
         // @Note: fnParams is different with children Expr. use children plz.
-        return Objects.hash(super.hashCode(), type, fnRef.getFnName().toString(), nondeterministicId, fn);
+        return Objects.hash(super.hashCode(), type, fnRef.getFnName().toString(), nondeterministicId);
     }
 
     @Override
@@ -454,8 +446,7 @@ public class FunctionCallExpr extends Expr {
                 && fnParams.isDistinct() == o.fnParams.isDistinct()
                 && fnParams.isStar() == o.fnParams.isStar()
                 && nondeterministicId == o.nondeterministicId
-                && Objects.equals(fnParams.getOrderByElements(), o.fnParams.getOrderByElements())
-                && Objects.equals(fn, o.fn);
+                && Objects.equals(fnParams.getOrderByElements(), o.fnParams.getOrderByElements());
     }
 
     /**
