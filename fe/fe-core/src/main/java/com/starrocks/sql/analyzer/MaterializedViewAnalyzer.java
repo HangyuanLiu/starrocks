@@ -56,8 +56,6 @@ import com.starrocks.common.util.DateUtils;
 import com.starrocks.common.util.PropertyAnalyzer;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.mv.analyzer.MVPartitionSlotRefResolver;
-import com.starrocks.planner.SlotDescriptor;
-import com.starrocks.planner.SlotId;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.server.GlobalStateMgr;
@@ -99,7 +97,6 @@ import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.ast.expression.TimestampArithmeticExpr;
 import com.starrocks.sql.ast.expression.TypeDef;
 import com.starrocks.sql.common.PListCell;
@@ -1659,12 +1656,9 @@ public class MaterializedViewAnalyzer {
             throw new SemanticException("Materialized view partition exp column:"
                     + slotRef.getColumnName() + " is not found in query statement");
         }
-        SlotDescriptor slotDescriptor = new SlotDescriptor(new SlotId(columnId), slotRef.getColumnName(),
-                mvPartitionColumn.getType(), mvPartitionColumn.isAllowNull());
-        SlotRefFactory.populateFromDescriptor(slotRef, slotDescriptor);
+        slotRef.setSlotId(columnId);
         slotRef.setType(mvPartitionColumn.getType());
         slotRef.setNullable(mvPartitionColumn.isAllowNull());
-        slotRef.setType(mvPartitionColumn.getType());
         return mvPartitionColumn;
     }
 
@@ -1809,12 +1803,9 @@ public class MaterializedViewAnalyzer {
             LOG.warn("Materialized view partition exp column:" + slotRef.getColumnName() + " is not found in query statement");
             return;
         }
-        SlotDescriptor slotDescriptor = new SlotDescriptor(new SlotId(columnId), slotRef.getColumnName(),
-                mvPartitionColumn.getType(), mvPartitionColumn.isAllowNull());
-        SlotRefFactory.populateFromDescriptor(slotRef, slotDescriptor);
+        slotRef.setSlotId(columnId);
         slotRef.setType(mvPartitionColumn.getType());
         slotRef.setNullable(mvPartitionColumn.isAllowNull());
-        slotRef.setType(mvPartitionColumn.getType());
         slotRef.setColumnName(mvPartitionColumn.getName());
         // set it to null to avoid the slot ref referring to the original base table
         slotRef.setTblName(null);

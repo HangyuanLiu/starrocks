@@ -71,7 +71,7 @@ import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
+
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TBrokerFileStatus;
@@ -401,8 +401,13 @@ public class FileScanNode extends LoadScanNode {
                 SlotDescriptor srcSlotDesc = slotDescByName.get(destSlotDesc.getColumn().getName());
                 if (srcSlotDesc != null) {
                     destSidToSrcSidWithoutTrans.put(destSlotDesc.getId().asInt(), srcSlotDesc.getId().asInt());
-                    SlotRef slotRef = SlotRefFactory.fromDescriptor(srcSlotDesc);
-                    slotRef.setColumnName(destSlotDesc.getColumn().getName());
+                    SlotRef slotRef = new SlotRef(null, destSlotDesc.getColumn().getName());
+                    slotRef.setSlotId(srcSlotDesc.getId().asInt());
+                    if (srcSlotDesc.getParent() != null) {
+                        slotRef.setTupleId(srcSlotDesc.getParent().getId().asInt());
+                    }
+                    slotRef.setType(srcSlotDesc.getType());
+                    slotRef.setNullable(srcSlotDesc.getIsNullable());
                     expr = slotRef;
                 } else {
                     Column column = destSlotDesc.getColumn();

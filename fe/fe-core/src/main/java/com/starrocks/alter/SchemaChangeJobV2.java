@@ -72,9 +72,6 @@ import com.starrocks.common.util.TimeUtils;
 import com.starrocks.common.util.concurrent.MarkedCountDownLatch;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
-import com.starrocks.planner.DescriptorTable;
-import com.starrocks.planner.SlotDescriptor;
-import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.qe.ConnectContext;
@@ -91,7 +88,6 @@ import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
 import com.starrocks.task.AgentBatchTask;
 import com.starrocks.task.AgentTask;
@@ -665,24 +661,9 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
                     Map<Integer, TExpr> mcExprs = new HashMap<>();
                     TAlterTabletMaterializedColumnReq generatedColumnReq = new TAlterTabletMaterializedColumnReq();
                     if (hasNewGeneratedColumn) {
-                        DescriptorTable descTbl = new DescriptorTable();
-                        TupleDescriptor tupleDesc = descTbl.createTupleDescriptor();
-                        Map<String, SlotDescriptor> slotDescByName = new HashMap<>();
-
-                        /*
-                         * The expression substitution is needed here, because all slotRefs in
-                         * GeneratedColumnExpr are still is unAnalyzed. slotRefs get isAnalyzed == true
-                         * if it is init by SlotDescriptor. The slot information will be used by be to indentify
-                         * the column location in a chunk.
-                         */
+                        Map<String, Column> columnByName = new HashMap<>();
                         for (Column col : tbl.getFullSchema()) {
-                            SlotDescriptor slotDesc = descTbl.addSlotDescriptor(tupleDesc);
-                            slotDesc.setType(col.getType());
-                            slotDesc.setColumn(new Column(col));
-                            slotDesc.setIsMaterialized(true);
-                            slotDesc.setIsNullable(col.isAllowNull());
-
-                            slotDescByName.put(col.getName(), slotDesc);
+                            columnByName.put(col.getName(), col);
                         }
 
                         for (Column generatedColumn : diffGeneratedColumnSchema) {
@@ -690,15 +671,14 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
                             List<Expr> outputExprs = Lists.newArrayList();
 
                             for (Column col : tbl.getBaseSchema()) {
-                                SlotDescriptor slotDesc = slotDescByName.get(col.getName());
-
-                                if (slotDesc == null) {
+                                if (!columnByName.containsKey(col.getName())) {
                                     throw new AlterCancelException("Expression for generated column can not find " +
                                             "the ref column");
                                 }
 
-                                SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
-                                slotRef.setColumnName(col.getName());
+                                SlotRef slotRef = new SlotRef(null, col.getName());
+                                slotRef.setType(col.getType());
+                                slotRef.setNullable(col.isAllowNull());
                                 outputExprs.add(slotRef);
                             }
 

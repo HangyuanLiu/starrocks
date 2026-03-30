@@ -90,7 +90,7 @@ import com.starrocks.sql.ast.ResourceDesc;
 import com.starrocks.sql.ast.expression.CastExpr;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprCastFunction;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
+import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.system.Backend;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.task.AgentBatchTask;
@@ -1058,7 +1058,14 @@ public class SparkLoadJob extends BulkLoadJob {
 
                 SlotDescriptor srcSlotDesc = srcSlotDescByName.get(destSlotDesc.getColumn().getName());
                 destSidToSrcSidWithoutTrans.put(destSlotDesc.getId().asInt(), srcSlotDesc.getId().asInt());
-                Expr expr = SlotRefFactory.fromDescriptor(srcSlotDesc);
+                SlotRef srcSlotRef = new SlotRef(null, srcSlotDesc.getColumn().getName());
+                srcSlotRef.setSlotId(srcSlotDesc.getId().asInt());
+                if (srcSlotDesc.getParent() != null) {
+                    srcSlotRef.setTupleId(srcSlotDesc.getParent().getId().asInt());
+                }
+                srcSlotRef.setType(srcSlotDesc.getType());
+                srcSlotRef.setNullable(srcSlotDesc.getIsNullable());
+                Expr expr = srcSlotRef;
                 expr = castToSlot(destSlotDesc, expr);
                 params.putToExpr_of_dest_slot(destSlotDesc.getId().asInt(), ExecExprSerializer.serializeAstExpr(expr));
             }

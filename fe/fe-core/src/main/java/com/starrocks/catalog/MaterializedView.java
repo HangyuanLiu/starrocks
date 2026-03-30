@@ -55,8 +55,6 @@ import com.starrocks.persist.gson.GsonPostProcessable;
 import com.starrocks.persist.gson.GsonPreProcessable;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.planner.DescriptorTable.ReferencedPartitionInfo;
-import com.starrocks.planner.SlotDescriptor;
-import com.starrocks.planner.SlotId;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.scheduler.Task;
@@ -82,7 +80,6 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.optimizer.CachingMvPlanContextBuilder;
 import com.starrocks.sql.optimizer.MvRewritePreprocessor;
 import com.starrocks.sql.optimizer.Utils;
@@ -1629,8 +1626,7 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
         if (partitionInfo.isExprRangePartitioned()) {
             ExpressionRangePartitionInfo expressionRangePartitionInfo = (ExpressionRangePartitionInfo) partitionInfo;
             Expr partitionExpr = expressionRangePartitionInfo.getPartitionExprs(idToColumn).get(0);
-            // for Partition slot ref, the SlotDescriptor is not serialized, so should recover it here.
-            // the SlotDescriptor is used by toThrift, which influences the execution process.
+            // Recover slot metadata on the partition SlotRef (not serialized in metadata).
             List<SlotRef> slotRefs = Lists.newArrayList();
             partitionExpr.collect(SlotRef.class, slotRefs);
             Preconditions.checkState(slotRefs.size() == 1);
@@ -1638,10 +1634,9 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
                 for (int i = 0; i < fullSchema.size(); i++) {
                     Column column = fullSchema.get(i);
                     if (column.getName().equalsIgnoreCase(slotRefs.get(0).getColumnName())) {
-                        SlotDescriptor slotDescriptor =
-                                new SlotDescriptor(new SlotId(i), column.getName(), column.getType(),
-                                        column.isAllowNull());
-                        SlotRefFactory.populateFromDescriptor(slotRefs.get(0), slotDescriptor);
+                        slotRefs.get(0).setSlotId(i);
+                        slotRefs.get(0).setType(column.getType());
+                        slotRefs.get(0).setNullable(column.isAllowNull());
                     }
                 }
             }

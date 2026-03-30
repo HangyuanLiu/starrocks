@@ -31,7 +31,6 @@ import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.IsNullPredicate;
 import com.starrocks.sql.ast.expression.LikePredicate;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.IntegerType;
@@ -42,7 +41,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
+
 
 public class QueryConverterTest {
 
@@ -165,20 +164,12 @@ public class QueryConverterTest {
     SlotRef mockSlotRef(String colName, Type type) {
         SlotDescriptor slotDesc = new SlotDescriptor(idGenerator.getNextId(), colName, type, true);
         slotDesc.setColumn(new Column(colName, type));
-        SlotRef slotRef = SlotRefFactory.fromDescriptor(randomLabel(), slotDesc);
+        SlotRef slotRef = new SlotRef(null, slotDesc.getLabel());
+        slotRef.setSlotId(slotDesc.getId().asInt());
+        slotRef.setType(slotDesc.getType());
+        slotRef.setNullable(slotDesc.getIsNullable());
         slotRef.setColumnName(colName);
         return slotRef;
     }
 
-    String randomLabel() {
-        String str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        Random random = new Random();
-        StringBuffer stringBuffer = new StringBuffer();
-        for (int i = 0; i < 10; i++) {
-            int number = random.nextInt(str.length());
-            stringBuffer.append(str.charAt(number));
-        }
-        return stringBuffer.toString();
-
-    }
 }

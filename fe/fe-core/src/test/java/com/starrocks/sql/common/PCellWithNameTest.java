@@ -17,8 +17,7 @@ package com.starrocks.sql.common;
 import com.google.common.collect.Range;
 import com.starrocks.catalog.PartitionKey;
 import com.starrocks.common.AnalysisException;
-import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
+import com.starrocks.sql.ast.expression.SlotRef;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -156,7 +155,8 @@ public class PCellWithNameTest {
             }
         };
 
-        Expr slotRef = SlotRefFactory.fromSlotId(9);
+        SlotRef slotRef = new SlotRef(null, "");
+        slotRef.setSlotId(9);
         List<PCellWithName.PCellWithNorm> result = PCellWithName.normalizePCellWithNames(null, null, rangeMap, slotRef);
         Assertions.assertEquals(1, result.size());
         Assertions.assertSame(result.get(0).basePCell(), result.get(0).normalized());
@@ -170,7 +170,9 @@ public class PCellWithNameTest {
         Range<PartitionKey> r1 = Range.closed(k1, k2);
         PCellWithName pcell = new PCellWithName(partitionName, new PRangeCell(r1));
 
+        SlotRef slotRef1 = new SlotRef(null, "");
+        slotRef1.setSlotId(1);
         Assertions.assertSame(pcell, PCellWithName.toNormalizedCell(pcell, null));
-        Assertions.assertSame(pcell, PCellWithName.toNormalizedCell(pcell, SlotRefFactory.fromSlotId(1)));
+        Assertions.assertSame(pcell, PCellWithName.toNormalizedCell(pcell, slotRef1));
     }
 }

@@ -86,7 +86,6 @@ import com.starrocks.sql.ast.expression.LambdaArgument;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.thrift.TBrokerScanRangeParams;
@@ -789,8 +788,13 @@ public class Load {
                 if (useVectorizedLoad) {
                     slotDesc.setIsMaterialized(true);
                 }
-                SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
-                slotRef.setColumnName(slot.getColumnName());
+                SlotRef slotRef = new SlotRef(null, slot.getColumnName());
+                slotRef.setSlotId(slotDesc.getId().asInt());
+                if (slotDesc.getParent() != null) {
+                    slotRef.setTupleId(slotDesc.getParent().getId().asInt());
+                }
+                slotRef.setType(slotDesc.getType());
+                slotRef.setNullable(slotDesc.getIsNullable());
                 smap.put(slot, slotRef);
             }
             Expr expr = ExprSubstitutionVisitor.rewrite(entry.getValue(), smap);
@@ -841,8 +845,13 @@ public class Load {
                     }
                     smap.put(slot, replaceExpr);
                 } else {
-                    SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
-                    slotRef.setColumnName(slot.getColumnName());
+                    SlotRef slotRef = new SlotRef(null, slot.getColumnName());
+                    slotRef.setSlotId(slotDesc.getId().asInt());
+                    if (slotDesc.getParent() != null) {
+                        slotRef.setTupleId(slotDesc.getParent().getId().asInt());
+                    }
+                    slotRef.setType(slotDesc.getType());
+                    slotRef.setNullable(slotDesc.getIsNullable());
                     Expr replaceExpr = slotRef;
                     if (replaceExpr.getType().matchesType(VarcharType.VARCHAR) &&
                             !replaceExpr.getType().matchesType(slot.getType())) {
@@ -876,8 +885,13 @@ public class Load {
                     if (useVectorizedLoad) {
                         slotDesc.setIsMaterialized(true);
                     }
-                    SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
-                    slotRef.setColumnName(slot.getColumnName());
+                    SlotRef slotRef = new SlotRef(null, slot.getColumnName());
+                    slotRef.setSlotId(slotDesc.getId().asInt());
+                    if (slotDesc.getParent() != null) {
+                        slotRef.setTupleId(slotDesc.getParent().getId().asInt());
+                    }
+                    slotRef.setType(slotDesc.getType());
+                    slotRef.setNullable(slotDesc.getIsNullable());
                     smap.put(slot, new CastExpr(tbl.getColumn(slot.getColumnName()).getType(), slotRef));
                 } else if (exprsByName.get(slot.getColumnName()) != null) {
                     smap.put(slot, new CastExpr(tbl.getColumn(slot.getColumnName()).getType(),

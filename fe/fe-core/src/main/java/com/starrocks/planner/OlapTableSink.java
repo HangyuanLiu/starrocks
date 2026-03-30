@@ -97,7 +97,7 @@ import com.starrocks.sql.ast.expression.ExprSubstitutionVisitor;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
+
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.system.SystemInfoService;
@@ -509,8 +509,10 @@ public class OlapTableSink extends DataSink {
                 for (SlotRef slot : slots) {
                     SlotDescriptor slotDesc = descMap.get(slot.getColumnName());
                     Preconditions.checkNotNull(slotDesc);
-                    SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
-                    slotRef.setColumnName(slot.getColumnName());
+                    SlotRef slotRef = new SlotRef(null, slot.getColumnName());
+                    slotRef.setSlotId(slotDesc.getId().asInt());
+                    slotRef.setType(slotDesc.getType());
+                    slotRef.setNullable(slotDesc.getIsNullable());
                     smap.put(slot, slotRef);
                 }
                 whereClause = ExprSubstitutionVisitor.rewrite(whereClause, smap);
@@ -522,8 +524,10 @@ public class OlapTableSink extends DataSink {
                 for (Column col : table.getBaseSchema()) {
                     SlotDescriptor slotDesc = descMap.get(col.getName());
                     Preconditions.checkState(slotDesc != null);
-                    SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
-                    slotRef.setColumnName(col.getName());
+                    SlotRef slotRef = new SlotRef(null, col.getName());
+                    slotRef.setSlotId(slotDesc.getId().asInt());
+                    slotRef.setType(slotDesc.getType());
+                    slotRef.setNullable(slotDesc.getIsNullable());
                     outputExprs.add(slotRef);
                 }
                 ConnectContext connectContext = new ConnectContext();
@@ -654,7 +658,9 @@ public class OlapTableSink extends DataSink {
                     for (SlotDescriptor slotDesc : tupleDescriptor.getSlots()) {
                         Column column = slotDesc.getColumn();
                         if (column.getName().equalsIgnoreCase(slotRefs.get(0).getColumnName())) {
-                            SlotRefFactory.populateFromDescriptor(slotRefs.get(0), slotDesc);
+                            slotRefs.get(0).setSlotId(slotDesc.getId().asInt());
+                            slotRefs.get(0).setType(slotDesc.getType());
+                            slotRefs.get(0).setNullable(slotDesc.getIsNullable());
                             break;
                         }
                     }
@@ -675,7 +681,9 @@ public class OlapTableSink extends DataSink {
                     for (SlotDescriptor slotDesc : tupleDescriptor.getSlots()) {
                         Column column = slotDesc.getColumn();
                         if (column.getName().equalsIgnoreCase(slotRefs.get(0).getColumnName())) {
-                            SlotRefFactory.populateFromDescriptor(slotRefs.get(0), slotDesc);
+                            slotRefs.get(0).setSlotId(slotDesc.getId().asInt());
+                            slotRefs.get(0).setType(slotDesc.getType());
+                            slotRefs.get(0).setNullable(slotDesc.getIsNullable());
                             break;
                         }
                     }

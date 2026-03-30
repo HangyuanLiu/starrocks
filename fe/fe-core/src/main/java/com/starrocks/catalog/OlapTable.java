@@ -85,8 +85,6 @@ import com.starrocks.memory.estimate.IgnoreMemoryTrack;
 import com.starrocks.persist.ColocatePersistInfo;
 import com.starrocks.persist.OriginStatementInfo;
 import com.starrocks.planner.DescriptorTable.ReferencedPartitionInfo;
-import com.starrocks.planner.SlotDescriptor;
-import com.starrocks.planner.SlotId;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
@@ -105,7 +103,6 @@ import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.common.PCellNone;
 import com.starrocks.sql.common.PCellSortedSet;
@@ -2779,20 +2776,17 @@ public class OlapTable extends Table {
         ExpressionRangePartitionInfo expressionRangePartitionInfo = (ExpressionRangePartitionInfo) partitionInfo;
         // currently, automatic partition only supports one expression
         Expr partitionExpr = expressionRangePartitionInfo.getPartitionExprs(idToColumn).get(0);
-        // for Partition slot ref, the SlotDescriptor is not serialized, so should
-        // recover it here.
-        // the SlotDescriptor is used by toThrift, which influences the execution
-        // process.
+        // Recover slot metadata on the partition SlotRef (not serialized in metadata).
+        // Schema change should update slot id.
         List<SlotRef> slotRefs = Lists.newArrayList();
         partitionExpr.collect(SlotRef.class, slotRefs);
         Preconditions.checkState(slotRefs.size() == 1);
-        // schema change should update slot id
         for (int i = 0; i < fullSchema.size(); i++) {
             Column column = fullSchema.get(i);
             if (column.getName().equalsIgnoreCase(slotRefs.get(0).getColumnName())) {
-                SlotDescriptor slotDescriptor = new SlotDescriptor(new SlotId(i), column.getName(),
-                        column.getType(), column.isAllowNull());
-                SlotRefFactory.populateFromDescriptor(slotRefs.get(0), slotDescriptor);
+                slotRefs.get(0).setSlotId(i);
+                slotRefs.get(0).setType(column.getType());
+                slotRefs.get(0).setNullable(column.isAllowNull());
             }
         }
     }

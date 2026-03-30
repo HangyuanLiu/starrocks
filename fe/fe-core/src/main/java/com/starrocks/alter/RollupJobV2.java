@@ -85,7 +85,6 @@ import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
 import com.starrocks.sql.ast.expression.ExprSubstitutionVisitor;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.optimizer.rule.mv.MVUtils;
 import com.starrocks.task.AgentBatchTask;
@@ -482,15 +481,19 @@ public class RollupJobV2 extends AlterJobV2 implements GsonPostProcessable {
                 throw new AlterCancelException("slotDesc is null, slot = " + slot.getColumnName()
                         + ", column = " + name);
             }
-            SlotRefFactory.populateFromDescriptor(slot, slotDesc);
+            slot.setSlotId(slotDesc.getId().asInt());
+            slot.setType(slotDesc.getType());
+            slot.setNullable(slotDesc.getIsNullable());
         }
 
         ExprSubstitutionMap smap = new ExprSubstitutionMap();
         for (SlotRef slot : slots) {
             SlotDescriptor slotDesc = slotDescByName.get(slot.getColumnName());
             Preconditions.checkNotNull(slotDesc);
-            SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
-            slotRef.setColumnName(slot.getColumnName());
+            SlotRef slotRef = new SlotRef(null, slot.getColumnName());
+            slotRef.setSlotId(slotDesc.getId().asInt());
+            slotRef.setType(slotDesc.getType());
+            slotRef.setNullable(slotDesc.getIsNullable());
             smap.put(slot, slotRef);
         }
         Expr newExpr = ExprSubstitutionVisitor.rewrite(defineExpr, smap);
@@ -551,8 +554,10 @@ public class RollupJobV2 extends AlterJobV2 implements GsonPostProcessable {
                 throw new AlterCancelException("Expression for materialized view column can not find " +
                         "the ref column");
             }
-            SlotRef slotRef = SlotRefFactory.fromDescriptor(slotDesc);
-            slotRef.setColumnName(col.getName());
+            SlotRef slotRef = new SlotRef(null, col.getName());
+            slotRef.setSlotId(slotDesc.getId().asInt());
+            slotRef.setType(slotDesc.getType());
+            slotRef.setNullable(slotDesc.getIsNullable());
             outputExprs.add(slotRef);
         }
 
