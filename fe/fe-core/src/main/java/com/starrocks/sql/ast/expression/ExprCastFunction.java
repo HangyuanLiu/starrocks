@@ -159,7 +159,7 @@ public final class ExprCastFunction {
     }
 
     private static Expr castFunctionCall(FunctionCallExpr expr, Type targetType) {
-        if (expr.getFn() == null || expr.getType() == null) {
+        if (expr.getFnArgTypes() == null || expr.getType() == null) {
             return null;
         }
         if (expr.getType().equals(targetType)) {

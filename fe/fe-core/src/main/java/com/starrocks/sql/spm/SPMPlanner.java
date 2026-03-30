@@ -182,8 +182,8 @@ public class SPMPlanner {
                 return true;
             }
             FunctionCallExpr other = cast(node2);
-            Preconditions.checkNotNull(node.getFn());
-            Preconditions.checkNotNull(other.getFn());
+            Preconditions.checkState(node.getFnArgTypes() != null);
+            Preconditions.checkState(other.getFnArgTypes() != null);
             if (!StringUtils.equals(node.getFunctionName(),
                     other.getFunctionName())) {
                 return false;

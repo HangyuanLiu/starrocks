@@ -735,7 +735,7 @@ public class SelectAnalyzer {
                     if (outputExpr instanceof FunctionCallExpr) {
                         FunctionCallExpr funcCall = (FunctionCallExpr) outputExpr;
                         // Check if it's an aggregate or analytic function (fn must be set and analyzed)
-                        if (funcCall.getFn() != null &&
+                        if (funcCall.getFnArgTypes() != null &&
                                 (funcCall.isAggregateFunction() || funcCall.isAnalyticFnCall())) {
                             return slotRef;
                         }

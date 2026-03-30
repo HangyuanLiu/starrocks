@@ -568,7 +568,7 @@ public class ExpressionRangePartitionInfoTest {
         Assertions.assertTrue(exprs.get(0) instanceof FunctionCallExpr);
         FunctionCallExpr fn = (FunctionCallExpr) exprs.get(0);
         // The function should have been resolved by analyzePartitionExpr
-        Assertions.assertNotNull(fn.getFn(),
+        Assertions.assertNotNull(fn.getFnArgTypes(),
                 "Partition expression should have resolved function after column rename");
         // The slot ref column name should be updated to the new name
         SlotRef slotRef = AnalyzerUtils.getSlotRefFromFunctionCall(fn);

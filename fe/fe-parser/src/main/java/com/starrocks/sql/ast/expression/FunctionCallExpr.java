@@ -55,11 +55,6 @@ public class FunctionCallExpr extends Expr {
     // to look up the resolved Function object. Survives clone/copy since it's a plain long.
     private long fnId = -1;
 
-    // Opaque reference to the resolved Function object.
-    // Set by FunctionCallExprFactory for paths without AnalysisContext (planner, ScalarOperatorToExecExpr).
-    // Primary access should be through AnalysisContext via fnId.
-    protected Object fn;
-
     private FunctionRef fnRef;
     private FunctionParams fnParams;
 
@@ -70,6 +65,10 @@ public class FunctionCallExpr extends Expr {
     // instead of the update symbol. This flag also affects the behavior of
     // resetAnalysisState() which is used during expr substitution.
     private boolean isMergeAggFn;
+
+    // Resolved Function object stored for hashCode/equals consistency.
+    // Not exposed via public API; set by FunctionCallExprFactory.
+    Object fn;
 
     // Cached properties from the resolved Function object, set via FunctionCallExprFactory.setFn().
     private boolean isAggregateFn = false;
@@ -111,14 +110,6 @@ public class FunctionCallExpr extends Expr {
 
     public boolean hasFnId() {
         return fnId >= 0;
-    }
-
-    public Object getFn() {
-        return fn;
-    }
-
-    public void setFn(Object fn) {
-        this.fn = fn;
     }
 
     public boolean isAggregateFn() {
