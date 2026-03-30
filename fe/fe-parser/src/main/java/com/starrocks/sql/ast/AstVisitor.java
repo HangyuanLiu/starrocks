@@ -14,6 +14,7 @@
 
 package com.starrocks.sql.ast;
 
+import com.starrocks.sql.ast.expression.AnalyticExpr;
 import com.starrocks.sql.ast.expression.ArithmeticExpr;
 import com.starrocks.sql.ast.expression.ArrayExpr;
 import com.starrocks.sql.ast.expression.ArraySliceExpr;
@@ -1285,6 +1286,10 @@ public interface AstVisitor<R, C> {
     }
 
     default R visitSlot(SlotRef node, C context) {
+        return visitExpression(node, context);
+    }
+
+    default R visitAnalyticExpr(AnalyticExpr node, C context) {
         return visitExpression(node, context);
     }
 

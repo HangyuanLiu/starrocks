@@ -15,7 +15,6 @@
 package com.starrocks.sql.ast;
 
 import com.starrocks.connector.parser.trino.PlaceholderExpr;
-import com.starrocks.sql.ast.expression.AnalyticExpr;
 import com.starrocks.sql.ast.expression.ArithmeticExpr;
 import com.starrocks.sql.ast.expression.CastExpr;
 import com.starrocks.sql.ast.expression.DecimalLiteral;
@@ -711,9 +710,7 @@ public interface AstVisitorExtendInterface<R, C> extends AstVisitor<R, C> {
         return visitExpression(node, context);
     }
 
-    default R visitAnalyticExpr(AnalyticExpr node, C context) {
-        return visitExpression(node, context);
-    }
+
 
     default R visitCastExpr(CastExpr node, C context) {
         return visitExpression(node, context);
