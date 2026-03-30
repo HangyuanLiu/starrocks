@@ -798,7 +798,7 @@ public class Load {
             try {
                 java.util.function.Function<SlotRef, ColumnRefOperator> resolveSlotFunc =
                         (slotRef) -> resolveSlotRef(descriptorTable, srcTupleDesc, slotDescByName, slotRef);
-                expr = ExprUtils.analyzeLoadExpr(expr, resolveSlotFunc);
+                expr = ExprUtils.analyzeLoadExprToExpr(expr, resolveSlotFunc);
             } catch (SemanticException e) {
                 ErrorReport.reportAnalysisException(ERR_MAPPING_EXPR_INVALID, AstToSQLBuilder.toSQL(entry.getValue()),
                         e.getDetailMsg(), entry.getKey());
@@ -853,7 +853,7 @@ public class Load {
             }
             Expr expr = ExprSubstitutionVisitor.rewrite(entry.getValue(), smap);
 
-            expr = ExprUtils.analyzeAndCastFold(expr);
+            expr = ExprUtils.analyzeAndCastFoldToExpr(expr);
 
             // check if contain aggregation
             List<FunctionCallExpr> funcs = Lists.newArrayList();
@@ -888,7 +888,7 @@ public class Load {
                 }
             }
             Expr expr = ExprSubstitutionVisitor.rewrite(entry.getValue(), smap);
-            expr = ExprUtils.analyzeAndCastFold(expr);
+            expr = ExprUtils.analyzeAndCastFoldToExpr(expr);
 
             exprsByName.put(entry.getKey(), expr);
         }

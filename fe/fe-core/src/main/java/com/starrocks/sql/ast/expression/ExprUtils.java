@@ -24,6 +24,8 @@ import com.starrocks.catalog.FunctionSet;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.planner.SlotId;
 import com.starrocks.planner.TupleId;
+import com.starrocks.planner.expression.ExecAstExprWrapper;
+import com.starrocks.planner.expression.ExecExpr;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
@@ -33,6 +35,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriter;
 import com.starrocks.sql.optimizer.transformer.SqlToScalarOperatorTranslator;
+import com.starrocks.sql.plan.ScalarOperatorToExecExpr;
 import com.starrocks.sql.plan.ScalarOperatorToExpr;
 import com.starrocks.type.InvalidType;
 import com.starrocks.type.Type;
@@ -368,13 +371,48 @@ public class ExprUtils {
         }
     }
 
-    public static Expr analyzeAndCastFold(Expr expr) {
+    public static ExecExpr analyzeAndCastFold(Expr expr) {
         ExpressionAnalyzer.analyzeExpressionIgnoreSlot(expr, ConnectContext.get());
         // Translating expr to scalar in order to do some rewrites
         try {
             ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translate(expr);
             ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
             // Add cast and constant fold
+            scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
+            return ScalarOperatorToExecExpr.buildIgnoreSlot(scalarOperator,
+                    new ScalarOperatorToExecExpr.FormatterContext(Maps.newHashMap()));
+        } catch (UnsupportedException e) {
+            return ExecAstExprWrapper.wrap(expr);
+        }
+    }
+
+    public static ExecExpr analyzeLoadExpr(Expr expr,
+            java.util.function.Function<SlotRef, ColumnRefOperator> slotResolver) {
+        ExpressionAnalyzer.analyzeExpressionIgnoreSlot(expr, ConnectContext.get());
+        // Translating expr to scalar in order to do some rewrites
+        try {
+            ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translateLoadExpr(expr, slotResolver);
+            ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
+            // Add cast and constant fold
+            scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
+            return ScalarOperatorToExecExpr.buildIgnoreSlot(scalarOperator,
+                    new ScalarOperatorToExecExpr.FormatterContext(Maps.newHashMap()));
+        } catch (UnsupportedException e) {
+            return ExecAstExprWrapper.wrap(expr);
+        }
+    }
+
+    /**
+     * Like {@link #analyzeAndCastFold(Expr)} but returns an AST {@link Expr}.
+     * Use this variant when the caller needs to continue manipulating the result
+     * as an AST Expr (e.g., for type checking, literal extraction, or further
+     * AST transformations).
+     */
+    public static Expr analyzeAndCastFoldToExpr(Expr expr) {
+        ExpressionAnalyzer.analyzeExpressionIgnoreSlot(expr, ConnectContext.get());
+        try {
+            ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translate(expr);
+            ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
             scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
             return ScalarOperatorToExpr.buildExprIgnoreSlot(scalarOperator,
                     new ScalarOperatorToExpr.FormatterContext(Maps.newHashMap()));
@@ -383,13 +421,17 @@ public class ExprUtils {
         }
     }
 
-    public static Expr analyzeLoadExpr(Expr expr, java.util.function.Function<SlotRef, ColumnRefOperator> slotResolver) {
+    /**
+     * Like {@link #analyzeLoadExpr(Expr, java.util.function.Function)} but returns an AST {@link Expr}.
+     * Use this variant when the caller needs to continue manipulating the result
+     * as an AST Expr.
+     */
+    public static Expr analyzeLoadExprToExpr(Expr expr,
+            java.util.function.Function<SlotRef, ColumnRefOperator> slotResolver) {
         ExpressionAnalyzer.analyzeExpressionIgnoreSlot(expr, ConnectContext.get());
-        // Translating expr to scalar in order to do some rewrites
         try {
             ScalarOperator scalarOperator = SqlToScalarOperatorTranslator.translateLoadExpr(expr, slotResolver);
             ScalarOperatorRewriter scalarRewriter = new ScalarOperatorRewriter();
-            // Add cast and constant fold
             scalarOperator = scalarRewriter.rewrite(scalarOperator, ScalarOperatorRewriter.DEFAULT_REWRITE_RULES);
             return ScalarOperatorToExpr.buildExprIgnoreSlot(scalarOperator,
                     new ScalarOperatorToExpr.FormatterContext(Maps.newHashMap()));

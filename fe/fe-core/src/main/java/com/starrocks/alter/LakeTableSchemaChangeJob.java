@@ -52,6 +52,8 @@ import com.starrocks.lake.Utils;
 import com.starrocks.planner.DescriptorTable;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.TupleDescriptor;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.proto.AggregatePublishVersionRequest;
 import com.starrocks.proto.TxnInfoPB;
 import com.starrocks.proto.TxnTypePB;
@@ -70,7 +72,6 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.SlotRefFactory;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.task.AgentBatchTask;
@@ -664,7 +665,8 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
 
                             Expr generatedColumnExpr = expr.accept(visitor, null);
 
-                            generatedColumnExpr = ExprUtils.analyzeAndCastFold(generatedColumnExpr);
+                            ExecExpr execGeneratedColumnExpr =
+                                    ExprUtils.analyzeAndCastFold(generatedColumnExpr);
 
                             int columnIndex = -1;
                             if (generatedColumn.isNameWithPrefix(SchemaChangeHandler.SHADOW_NAME_PREFIX)) {
@@ -674,7 +676,8 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
                                 columnIndex = table.getFullSchema().indexOf(generatedColumn);
                             }
 
-                            mcExprs.put(columnIndex, ExprToThrift.treeToThrift(generatedColumnExpr));
+                            mcExprs.put(columnIndex,
+                                    ExecExprSerializer.serialize(execGeneratedColumnExpr));
                         }
                         // we need this thing, otherwise some expr evalution will fail in BE
                         TQueryGlobals queryGlobals = new TQueryGlobals();

@@ -116,7 +116,7 @@ public class SetStmtAnalyzer {
         } else if (unResolvedExpression instanceof SlotRef) {
             resolvedExpression = new StringLiteral(((SlotRef) unResolvedExpression).getColumnName());
         } else {
-            Expr e = ExprUtils.analyzeAndCastFold(unResolvedExpression);
+            Expr e = ExprUtils.analyzeAndCastFoldToExpr(unResolvedExpression);
             if (!e.isConstant()) {
                 throw new SemanticException("Set statement only support constant expr.");
             }
@@ -592,7 +592,7 @@ public class SetStmtAnalyzer {
             userVariable.setEvaluatedExpression(NullLiteral.create(StringType.STRING));
         } else {
             Expr foldedExpression;
-            foldedExpression = ExprUtils.analyzeAndCastFold(expression);
+            foldedExpression = ExprUtils.analyzeAndCastFoldToExpr(expression);
 
             if (ExprUtils.isLiteral(foldedExpression)) {
                 userVariable.setEvaluatedExpression(foldedExpression);

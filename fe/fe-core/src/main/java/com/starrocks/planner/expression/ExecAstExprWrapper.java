@@ -47,6 +47,13 @@ public class ExecAstExprWrapper extends ExecExpr {
     }
 
     /**
+     * Wrap a single AST Expr into an ExecExpr wrapper.
+     */
+    public static ExecExpr wrap(Expr expr) {
+        return new ExecAstExprWrapper(expr);
+    }
+
+    /**
      * Wrap a list of AST Expr into ExecExpr wrappers.
      */
     public static List<ExecExpr> wrapList(List<? extends Expr> exprs) {

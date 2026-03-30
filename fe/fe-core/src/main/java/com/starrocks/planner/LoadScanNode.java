@@ -111,7 +111,7 @@ public abstract class LoadScanNode extends ScanNode {
             smap.put(slot, slotRef);
         }
         whereExpr = ExprSubstitutionVisitor.rewrite(whereExpr, smap);
-        whereExpr = ExprUtils.analyzeAndCastFold(whereExpr);
+        whereExpr = ExprUtils.analyzeAndCastFoldToExpr(whereExpr);
 
         if (!whereExpr.getType().isBoolean()) {
             throw new StarRocksException("where statement is not a valid statement return bool");

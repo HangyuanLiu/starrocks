@@ -74,6 +74,8 @@ import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.lake.qe.scheduler.DefaultSharedDataWorkerProvider;
 import com.starrocks.load.Load;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariableConstants;
@@ -92,7 +94,6 @@ import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprSubstitutionMap;
 import com.starrocks.sql.ast.expression.ExprSubstitutionVisitor;
-import com.starrocks.sql.ast.expression.ExprToSql;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.SlotRef;
@@ -539,11 +540,11 @@ public class OlapTableSink extends DataSink {
                                 outputExprs, connectContext);
 
                 whereClause = whereClause.accept(visitor, null);
-                whereClause = ExprUtils.analyzeAndCastFold(whereClause);
+                ExecExpr execWhereClause = ExprUtils.analyzeAndCastFold(whereClause);
 
-                indexSchema.setWhere_clause(ExprToThrift.treeToThrift(whereClause));
+                indexSchema.setWhere_clause(ExecExprSerializer.serialize(execWhereClause));
                 if (LOG.isDebugEnabled()) {
-                    LOG.debug("OlapTableSink Where clause: {}", ExprToSql.explain(whereClause));
+                    LOG.debug("OlapTableSink Where clause: {}", execWhereClause);
                 }
             }
         }

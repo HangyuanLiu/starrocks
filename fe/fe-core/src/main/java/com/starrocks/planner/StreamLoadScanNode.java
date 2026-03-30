@@ -49,6 +49,8 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.load.Load;
 import com.starrocks.load.streamload.StreamLoadInfo;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AggregateType;
 import com.starrocks.sql.ast.expression.ArithmeticExpr;
@@ -60,7 +62,6 @@ import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.ast.expression.StringLiteral;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TBrokerRangeDesc;
 import com.starrocks.thrift.TBrokerScanRange;
@@ -363,11 +364,12 @@ public class StreamLoadScanNode extends LoadScanNode {
 
             if (negative && dstSlotDesc.getColumn().getAggregationType() == AggregateType.SUM) {
                 expr = new ArithmeticExpr(ArithmeticExpr.Operator.MULTIPLY, expr, new IntLiteral(-1));
-                expr = ExprUtils.analyzeAndCastFold(expr);
             }
             expr = castToSlot(dstSlotDesc, expr);
+            ExecExpr execExpr = ExprUtils.analyzeAndCastFold(expr);
 
-            paramCreateContext.params.putToExpr_of_dest_slot(dstSlotDesc.getId().asInt(), ExprToThrift.treeToThrift(expr));
+            paramCreateContext.params.putToExpr_of_dest_slot(dstSlotDesc.getId().asInt(),
+                    ExecExprSerializer.serialize(execExpr));
         }
         paramCreateContext.params.setDest_sid_to_src_sid_without_trans(destSidToSrcSidWithoutTrans);
         paramCreateContext.params.setSrc_tuple_id(paramCreateContext.tupleDescriptor.getId().asInt());

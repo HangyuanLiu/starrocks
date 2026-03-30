@@ -58,6 +58,8 @@ import com.starrocks.fs.HdfsUtil;
 import com.starrocks.load.BrokerFileGroup;
 import com.starrocks.load.Load;
 import com.starrocks.load.loadv2.LoadJob;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.AggregateType;
 import com.starrocks.sql.ast.BrokerDesc;
@@ -71,7 +73,6 @@ import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.ast.expression.StringLiteral;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TBrokerFileStatus;
 import com.starrocks.thrift.TBrokerRangeDesc;
@@ -450,10 +451,11 @@ public class FileScanNode extends LoadScanNode {
             // analyze negative
             if (isNegative && destSlotDesc.getColumn().getAggregationType() == AggregateType.SUM) {
                 expr = new ArithmeticExpr(ArithmeticExpr.Operator.MULTIPLY, expr, new IntLiteral(-1));
-                expr = ExprUtils.analyzeAndCastFold(expr);
             }
             expr = castToSlot(destSlotDesc, expr);
-            context.params.putToExpr_of_dest_slot(destSlotDesc.getId().asInt(), ExprToThrift.treeToThrift(expr));
+            ExecExpr execExpr = ExprUtils.analyzeAndCastFold(expr);
+            context.params.putToExpr_of_dest_slot(destSlotDesc.getId().asInt(),
+                    ExecExprSerializer.serialize(execExpr));
         }
         context.params.setDest_sid_to_src_sid_without_trans(destSidToSrcSidWithoutTrans);
         context.params.setSrc_tuple_id(context.tupleDescriptor.getId().asInt());

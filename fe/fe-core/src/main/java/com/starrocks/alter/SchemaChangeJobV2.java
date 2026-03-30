@@ -75,6 +75,8 @@ import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.planner.DescriptorTable;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.TupleDescriptor;
+import com.starrocks.planner.expression.ExecExpr;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
@@ -90,7 +92,6 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.SlotRefFactory;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
 import com.starrocks.task.AgentBatchTask;
 import com.starrocks.task.AgentTask;
@@ -733,7 +734,8 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
 
                             Expr generatedColumnExpr = expr.accept(visitor, null);
 
-                            generatedColumnExpr = ExprUtils.analyzeAndCastFold(generatedColumnExpr);
+                            ExecExpr execGeneratedColumnExpr =
+                                    ExprUtils.analyzeAndCastFold(generatedColumnExpr);
 
                             int columnIndex = -1;
                             if (generatedColumn.isNameWithPrefix(SchemaChangeHandler.SHADOW_NAME_PREFIX)) {
@@ -743,7 +745,8 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
                                 columnIndex = tbl.getFullSchema().indexOf(generatedColumn);
                             }
 
-                            mcExprs.put(columnIndex, ExprToThrift.treeToThrift(generatedColumnExpr));
+                            mcExprs.put(columnIndex,
+                                    ExecExprSerializer.serialize(execGeneratedColumnExpr));
                         }
                         // we need this thing, otherwise some expr evalution will fail in BE
                         TQueryGlobals queryGlobals = new TQueryGlobals();
