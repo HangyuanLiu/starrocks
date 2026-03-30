@@ -22,7 +22,6 @@ import com.starrocks.sql.ast.SetType;
 import com.starrocks.sql.ast.expression.AnalyticWindow;
 import com.starrocks.sql.ast.expression.AnalyticWindowBoundary;
 import com.starrocks.sql.ast.expression.CompoundPredicate;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TAnalyticWindow;
 import com.starrocks.thrift.TAnalyticWindowBoundary;
 import com.starrocks.thrift.TAnalyticWindowBoundaryType;
@@ -36,7 +35,7 @@ import com.starrocks.thrift.TVarType;
 /**
  * Pure enum-to-Thrift conversion methods that have no dependency on AST {@code Expr}.
  * <p>
- * Planner nodes should use this class instead of {@link ExprToThrift} for enum
+ * Planner nodes should use this class instead of {@code ExprToThrift} for enum
  * conversions so they do not pull in the AST Expr dependency.
  */
 public final class ThriftEnumConverter {

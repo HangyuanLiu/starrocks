@@ -50,10 +50,10 @@ import com.starrocks.common.util.TimeUtils;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.persist.ReplicaPersistInfo;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TAlterJobType;
 import com.starrocks.thrift.TAlterMaterializedViewParam;
 import com.starrocks.thrift.TAlterTabletMaterializedColumnReq;
@@ -278,7 +278,7 @@ public class AlterReplicaTask extends AgentTask implements Runnable {
                     entry.getValue().collect(SlotRef.class, slots);
                     TAlterMaterializedViewParam mvParam = new TAlterMaterializedViewParam(entry.getKey());
                     mvParam.setOrigin_column_name(slots.get(0).getColumnName());
-                    mvParam.setMv_expr(ExprToThrift.treeToThrift(entry.getValue()));
+                    mvParam.setMv_expr(ExecExprSerializer.serializeAstExpr(entry.getValue()));
                     req.addToMaterialized_view_params(mvParam);
                 }
 
@@ -293,7 +293,7 @@ public class AlterReplicaTask extends AgentTask implements Runnable {
                 req.setQuery_options(queryOptions);
             }
             if (whereExpr != null) {
-                req.setWhere_expr(ExprToThrift.treeToThrift(whereExpr));
+                req.setWhere_expr(ExecExprSerializer.serializeAstExpr(whereExpr));
             }
             if (tDescTable != null) {
                 req.setDesc_tbl(tDescTable);

@@ -42,6 +42,7 @@ import com.starrocks.connector.iceberg.procedure.RewriteManifestsProcedure;
 import com.starrocks.connector.iceberg.procedure.RollbackToSnapshotProcedure;
 import com.starrocks.persist.ColumnIdExpr;
 import com.starrocks.planner.DescriptorTable;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.rpc.ConfigurableSerDesFactory;
 import com.starrocks.server.CatalogMgr;
@@ -55,7 +56,6 @@ import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TBucketFunction;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.TCompressedPartitionMap;
@@ -512,7 +512,7 @@ public class IcebergTable extends Table {
                         .findColumnName(nativeTable.spec().fields().get(i).sourceId()));
                 partInfo.setPartition_column_name(nativeTable.spec().fields().get(i).name());
                 partInfo.setTransform_expr(nativeTable.spec().fields().get(i).transform().toString());
-                partInfo.setPartition_expr(ExprToThrift.treeToThrift(partitionExprs.get(i)));
+                partInfo.setPartition_expr(ExecExprSerializer.serializeAstExpr(partitionExprs.get(i)));
                 partitionInfos.add(partInfo);
             }
             tIcebergTable.setPartition_info(partitionInfos);
@@ -527,7 +527,7 @@ public class IcebergTable extends Table {
                 THdfsPartition tPartition = new THdfsPartition();
                 List<LiteralExpr> keys = key.getKeys();
                 tPartition.setPartition_key_exprs(keys.stream()
-                        .map(ExprToThrift::treeToThrift)
+                        .map(ExecExprSerializer::serializeAstExpr)
                         .collect(Collectors.toList()));
                 tPartitionMap.putToPartitions(partitionId, tPartition);
             }

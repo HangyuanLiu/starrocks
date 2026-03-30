@@ -116,7 +116,13 @@ import java.util.function.BiConsumer;
 
 /**
  * Convert {@link Expr} nodes into their Thrift representation via {@link AstVisitorExtendInterface}.
+ *
+ * @deprecated Use {@link com.starrocks.planner.expression.ExecExprSerializer} instead.
+ *     For AST Expr serialization, use {@code ExecExprSerializer.serializeAstExpr(Expr)}.
+ *     For literal-to-node extraction, use {@code ExecExprSerializer.serializeLiteralToNode(LiteralExpr)}.
+ *     For enum conversions, use {@link com.starrocks.planner.expression.ThriftEnumConverter}.
  */
+@Deprecated
 public final class ExprToThrift {
 
     private static final Visitor VISITOR = new Visitor();

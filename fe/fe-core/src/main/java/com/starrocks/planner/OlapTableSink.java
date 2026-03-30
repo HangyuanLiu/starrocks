@@ -99,7 +99,7 @@ import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.SlotRefFactory;
 import com.starrocks.sql.common.MetaUtils;
-import com.starrocks.sql.expression.ExprToThrift;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.TDataSink;
@@ -658,7 +658,7 @@ public class OlapTableSink extends DataSink {
                             break;
                         }
                     }
-                    partitionParam.setPartition_exprs(ExprToThrift.treesToThrift(
+                    partitionParam.setPartition_exprs(ExecExprSerializer.serializeAstExprs(
                             exprPartitionInfo.getPartitionExprs(table.getIdToColumn())));
                 } else if (rangePartitionInfo instanceof ExpressionRangePartitionInfoV2) {
                     ExpressionRangePartitionInfoV2 expressionRangePartitionInfoV2 = (ExpressionRangePartitionInfoV2) rangePartitionInfo;
@@ -679,7 +679,7 @@ public class OlapTableSink extends DataSink {
                             break;
                         }
                     }
-                    partitionParam.setPartition_exprs(ExprToThrift.treesToThrift(
+                    partitionParam.setPartition_exprs(ExecExprSerializer.serializeAstExprs(
                             expressionRangePartitionInfoV2.getPartitionExprs(table.getIdToColumn())));
                 }
                 break;
@@ -774,9 +774,7 @@ public class OlapTableSink extends DataSink {
     }
 
     private static List<TExprNode> literalExprsToTExprNodes(List<LiteralExpr> values) {
-        return values.stream()
-                .map(value -> ExprToThrift.treeToThrift(value).getNodes().get(0))
-                .collect(Collectors.toList());
+        return ExecExprSerializer.serializeLiteralsToNodes(values);
     }
 
     private static void setListPartitionValues(ListPartitionInfo listPartitionInfo, Partition partition,
@@ -816,14 +814,14 @@ public class OlapTableSink extends DataSink {
         if (range.hasLowerBound() && !range.lowerEndpoint().isMinValue()) {
             for (int i = 0; i < partColNum; i++) {
                 tPartition.addToStart_keys(
-                        ExprToThrift.treeToThrift(range.lowerEndpoint().getKeys().get(i)).getNodes().get(0));
+                        ExecExprSerializer.serializeLiteralToNode(range.lowerEndpoint().getKeys().get(i)));
             }
         }
         // set end keys
         if (range.hasUpperBound() && !range.upperEndpoint().isMaxValue()) {
             for (int i = 0; i < partColNum; i++) {
                 tPartition.addToEnd_keys(
-                        ExprToThrift.treeToThrift(range.upperEndpoint().getKeys().get(i)).getNodes().get(0));
+                        ExecExprSerializer.serializeLiteralToNode(range.upperEndpoint().getKeys().get(i)));
             }
         }
 

@@ -39,7 +39,6 @@ import com.starrocks.rpc.PBackendService;
 import com.starrocks.rpc.PExecShortCircuitRequest;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.system.Backend;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TExecShortCircuitParams;
@@ -238,7 +237,7 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
         List<TKeyLiteralExpr> keyLiteralExprs = keyTuples.stream().map(keyTuple -> {
             TKeyLiteralExpr keyLiteralExpr = new TKeyLiteralExpr();
             keyLiteralExpr.setLiteral_exprs(keyTuple.stream()
-                    .map(ExprToThrift::treeToThrift)
+                    .map(ExecExprSerializer::serializeAstExpr)
                     .collect(Collectors.toList()));
             return keyLiteralExpr;
         }).collect(Collectors.toList());

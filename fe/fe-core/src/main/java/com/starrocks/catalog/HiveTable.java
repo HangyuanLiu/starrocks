@@ -53,10 +53,10 @@ import com.starrocks.connector.hive.HiveStorageFormat;
 import com.starrocks.connector.hive.HiveUtils;
 import com.starrocks.persist.ModifyTableColumnOperationLog;
 import com.starrocks.planner.DescriptorTable.ReferencedPartitionInfo;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.TExpr;
 import com.starrocks.thrift.THdfsPartition;
@@ -365,7 +365,7 @@ public class HiveTable extends Table {
             List<TExpr> partitionKeyExprs = Lists.newArrayListWithCapacity(keys.size());
             for (int j = 0; j < keys.size(); j++) {
                 LiteralExpr literal = HiveUtils.normalizeKey(keys.get(j), partitionColumns.get(j).getType());
-                partitionKeyExprs.add(ExprToThrift.treeToThrift(literal));
+                partitionKeyExprs.add(ExecExprSerializer.serializeAstExpr(literal));
             }
             tPartition.setPartition_key_exprs(partitionKeyExprs);
 

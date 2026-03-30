@@ -16,8 +16,8 @@ package com.starrocks.catalog;
 
 import com.google.common.base.Preconditions;
 import com.google.gson.annotations.SerializedName;
+import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.sql.ast.KeysType;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.TCompressionType;
 import com.starrocks.thrift.TOlapTableIndex;
@@ -138,7 +138,7 @@ public class SchemaInfo {
     public TTabletSchema toTabletSchema() {
         TTabletSchema tSchema = new TTabletSchema();
         tSchema.setShort_key_column_count(shortKeyColumnCount);
-        tSchema.setKeys_type(ExprToThrift.keysTypeToThrift(keysType));
+        tSchema.setKeys_type(ThriftEnumConverter.keysTypeToThrift(keysType));
         tSchema.setStorage_type(storageType);
         tSchema.setId(id);
         tSchema.setSchema_version(version);

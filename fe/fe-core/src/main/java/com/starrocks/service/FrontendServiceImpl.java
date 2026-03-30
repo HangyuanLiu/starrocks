@@ -145,6 +145,8 @@ import com.starrocks.planner.SlotId;
 import com.starrocks.planner.StreamLoadPlanner;
 import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.planner.TupleId;
+import com.starrocks.planner.expression.ExecExprSerializer;
+import com.starrocks.planner.expression.ThriftEnumConverter;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.ConnectProcessor;
 import com.starrocks.qe.DefaultCoordinator;
@@ -179,7 +181,6 @@ import com.starrocks.sql.ast.TableRef;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.common.StarRocksPlannerException;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.sql.parser.NodePosition;
 import com.starrocks.staros.StarMgrServer;
 import com.starrocks.statistic.StatsConstants;
@@ -987,7 +988,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         if (ctx == null) {
             return result;
         }
-        SetType setType = ExprToThrift.setTypeFromThrift(params.getVarType());
+        SetType setType = ThriftEnumConverter.setTypeFromThrift(params.getVarType());
         List<List<String>> rows = GlobalStateMgr.getCurrentState().getVariableMgr().dump(setType,
                 ctx.getSessionVariable(), null);
         if (setType != SetType.VERBOSE) {
@@ -2045,16 +2046,16 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             if (range.hasLowerBound() && !range.lowerEndpoint().isMinValue()) {
                 for (int i = 0; i < partColNum; i++) {
                     tPartition.addToStart_keys(
-                            ExprToThrift
-                                    .treeToThrift(range.lowerEndpoint().getKeys().get(i)).getNodes().get(0));
+                            ExecExprSerializer
+                                    .serializeLiteralToNode(range.lowerEndpoint().getKeys().get(i)));
                 }
             }
             // set end keys
             if (range.hasUpperBound() && !range.upperEndpoint().isMaxValue()) {
                 for (int i = 0; i < partColNum; i++) {
                     tPartition.addToEnd_keys(
-                            ExprToThrift
-                                    .treeToThrift(range.upperEndpoint().getKeys().get(i)).getNodes().get(0));
+                            ExecExprSerializer
+                                    .serializeLiteralToNode(range.upperEndpoint().getKeys().get(i)));
                 }
             }
         } else if (partitionInfo instanceof ListPartitionInfo) {
@@ -2065,10 +2066,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                     physicalPartition.getParentId());
             if (multiValues != null && !multiValues.isEmpty()) {
                 inKeysExprNodes = multiValues.stream()
-                        .map(values -> values.stream()
-                                .map(value -> ExprToThrift
-                                        .treeToThrift(value).getNodes().get(0))
-                                .collect(Collectors.toList()))
+                        .map(values -> ExecExprSerializer.serializeLiteralsToNodes(values))
                         .collect(Collectors.toList());
                 tPartition.setIn_keys(inKeysExprNodes);
             }
@@ -2076,10 +2074,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             List<LiteralExpr> values = listPartitionInfo.getLiteralExprValues().get(physicalPartition.getParentId());
             if (values != null && !values.isEmpty()) {
                 inKeysExprNodes = values.stream()
-                        .map(value -> Lists.newArrayList(value).stream()
-                                .map(value1 -> ExprToThrift
-                                        .treeToThrift(value1).getNodes().get(0))
-                                .collect(Collectors.toList()))
+                        .map(value -> ExecExprSerializer.serializeLiteralsToNodes(Lists.newArrayList(value)))
                         .collect(Collectors.toList());
             }
 
@@ -2808,10 +2803,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
     }
 
     private static List<TExprNode> literalExprsToTExprNodes(List<LiteralExpr> values) {
-        return values.stream()
-                .map(value -> ExprToThrift
-                        .treeToThrift(value).getNodes().get(0))
-                .collect(Collectors.toList());
+        return ExecExprSerializer.serializeLiteralsToNodes(values);
     }
 
     private static void buildPartitionInfo(OlapTable olapTable, List<TOlapTablePartition> partitions,
@@ -2825,16 +2817,16 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             if (range.hasLowerBound() && !range.lowerEndpoint().isMinValue()) {
                 for (int i = 0; i < partColNum; i++) {
                     tPartition.addToStart_keys(
-                            ExprToThrift
-                                    .treeToThrift(range.lowerEndpoint().getKeys().get(i)).getNodes().get(0));
+                            ExecExprSerializer
+                                    .serializeLiteralToNode(range.lowerEndpoint().getKeys().get(i)));
                 }
             }
             // set end keys
             if (range.hasUpperBound() && !range.upperEndpoint().isMaxValue()) {
                 for (int i = 0; i < partColNum; i++) {
                     tPartition.addToEnd_keys(
-                            ExprToThrift
-                                    .treeToThrift(range.upperEndpoint().getKeys().get(i)).getNodes().get(0));
+                            ExecExprSerializer
+                                    .serializeLiteralToNode(range.upperEndpoint().getKeys().get(i)));
                 }
             }
         } else if (partitionInfo instanceof ListPartitionInfo) {
@@ -2844,10 +2836,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             List<List<LiteralExpr>> multiValues = listPartitionInfo.getMultiLiteralExprValues().get(partition.getId());
             if (multiValues != null && !multiValues.isEmpty()) {
                 inKeysExprNodes = multiValues.stream()
-                        .map(values -> values.stream()
-                                .map(value -> ExprToThrift
-                                        .treeToThrift(value).getNodes().get(0))
-                                .collect(Collectors.toList()))
+                        .map(values -> ExecExprSerializer.serializeLiteralsToNodes(values))
                         .collect(Collectors.toList());
                 tPartition.setIn_keys(inKeysExprNodes);
             }
@@ -2855,10 +2844,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             List<LiteralExpr> values = listPartitionInfo.getLiteralExprValues().get(partition.getId());
             if (values != null && !values.isEmpty()) {
                 inKeysExprNodes = values.stream()
-                        .map(value -> Lists.newArrayList(value).stream()
-                                .map(value1 -> ExprToThrift
-                                        .treeToThrift(value1).getNodes().get(0))
-                                .collect(Collectors.toList()))
+                        .map(value -> ExecExprSerializer.serializeLiteralsToNodes(Lists.newArrayList(value)))
                         .collect(Collectors.toList());
             }
 

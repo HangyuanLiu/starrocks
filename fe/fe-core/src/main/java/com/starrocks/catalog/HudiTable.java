@@ -29,10 +29,10 @@ import com.starrocks.connector.RemoteFileInfo;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.connector.hudi.HudiRemoteFileDesc;
 import com.starrocks.planner.DescriptorTable;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.THdfsPartition;
 import com.starrocks.thrift.THdfsPartitionLocation;
@@ -266,7 +266,7 @@ public class HudiTable extends Table {
 
             List<LiteralExpr> keys = key.getKeys();
             tPartition.setPartition_key_exprs(keys.stream()
-                    .map(ExprToThrift::treeToThrift)
+                    .map(ExecExprSerializer::serializeAstExpr)
                     .collect(Collectors.toList()));
 
             THdfsPartitionLocation tPartitionLocation = new THdfsPartitionLocation();

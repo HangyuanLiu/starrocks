@@ -46,6 +46,7 @@ import com.starrocks.persist.ColumnIdExpr;
 import com.starrocks.persist.ExpressionSerializedObject;
 import com.starrocks.persist.gson.GsonPostProcessable;
 import com.starrocks.persist.gson.GsonPreProcessable;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.analyzer.ColumnDefAnalyzer;
@@ -62,7 +63,6 @@ import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.ast.expression.TypeDef;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TAggStateDesc;
 import com.starrocks.thrift.TAggregationType;
 import com.starrocks.thrift.TColumn;
@@ -513,7 +513,7 @@ public class Column implements Writable, GsonPreProcessable, GsonPostProcessable
         tColumn.setIs_allow_null(this.isAllowNull);
         tColumn.setIs_auto_increment(this.isAutoIncrement);
         if (this.defaultExpr != null && this.defaultExpr.getExprObject() != null) {
-            tColumn.setDefault_expr(ExprToThrift.treeToThrift(this.defaultExpr.getExprObject()));
+            tColumn.setDefault_expr(ExecExprSerializer.serializeAstExpr(this.defaultExpr.getExprObject()));
         } else if (this.defaultValue != null) {
             tColumn.setDefault_value(this.defaultValue);
         }

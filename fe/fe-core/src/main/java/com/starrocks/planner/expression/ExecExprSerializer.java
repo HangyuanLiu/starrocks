@@ -16,6 +16,8 @@ package com.starrocks.planner.expression;
 
 import com.google.common.collect.Lists;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
+import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TExpr;
 import com.starrocks.thrift.TExprNode;
@@ -24,10 +26,11 @@ import com.starrocks.type.Type;
 import com.starrocks.type.TypeSerializer;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Serializes an {@link ExecExpr} tree into a {@link TExpr} (Thrift representation).
- * This replaces {@link ExprToThrift#treeToThrift} for the ExecExpr hierarchy.
+ * This replaces {@code ExprToThrift.treeToThrift} for the ExecExpr hierarchy.
  */
 public final class ExecExprSerializer {
 
@@ -46,6 +49,48 @@ public final class ExecExprSerializer {
             result.add(serialize(expr));
         }
         return result;
+    }
+
+    // ---- AST Expr convenience methods ----
+    // These wrap AST Expr objects via ExecAstExprWrapper and serialize them.
+    // They are the recommended replacement for direct ExprToThrift calls.
+
+    /**
+     * Serialize an AST {@link Expr} to a {@link TExpr}.
+     * Wraps the Expr in an {@link ExecAstExprWrapper} and delegates to {@link #serialize}.
+     */
+    public static TExpr serializeAstExpr(Expr expr) {
+        return serialize(ExecAstExprWrapper.wrap(expr));
+    }
+
+    /**
+     * Serialize a list of AST {@link Expr} to a list of {@link TExpr}.
+     */
+    public static List<TExpr> serializeAstExprs(List<? extends Expr> exprs) {
+        List<TExpr> result = Lists.newArrayList();
+        for (Expr expr : exprs) {
+            result.add(serializeAstExpr(expr));
+        }
+        return result;
+    }
+
+    /**
+     * Serialize a {@link LiteralExpr} to a single {@link TExprNode}.
+     * This is the replacement for the common pattern:
+     * {@code ExprToThrift.treeToThrift(literal).getNodes().get(0)}
+     */
+    public static TExprNode serializeLiteralToNode(LiteralExpr literal) {
+        TExpr texpr = serializeAstExpr(literal);
+        return texpr.getNodes().get(0);
+    }
+
+    /**
+     * Serialize a list of {@link LiteralExpr} to a list of {@link TExprNode}.
+     */
+    public static List<TExprNode> serializeLiteralsToNodes(List<LiteralExpr> literals) {
+        return literals.stream()
+                .map(ExecExprSerializer::serializeLiteralToNode)
+                .collect(Collectors.toList());
     }
 
     private static void serializeHelper(ExecExpr expr, TExpr container) {
@@ -94,7 +139,7 @@ public final class ExecExprSerializer {
 
     /**
      * Serialize a NULL literal with BOOLEAN type, matching the behavior of
-     * {@link ExprToThrift#treeToThriftHelper} when it encounters a null-typed expression.
+     * {@code ExprToThrift.treeToThriftHelper} when it encounters a null-typed expression.
      */
     private static void serializeNullLiteral(TExpr container) {
         Type boolType = BooleanType.BOOLEAN;

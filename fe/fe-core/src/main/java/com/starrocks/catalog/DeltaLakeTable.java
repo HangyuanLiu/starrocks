@@ -23,9 +23,9 @@ import com.starrocks.connector.delta.DeltaUtils;
 import com.starrocks.connector.metastore.MetastoreTable;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.planner.DescriptorTable;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.TDeltaLakeTable;
 import com.starrocks.thrift.THdfsPartition;
@@ -147,7 +147,7 @@ public class DeltaLakeTable extends Table {
 
         List<LiteralExpr> keys = key.getKeys();
         tPartition.setPartition_key_exprs(keys.stream()
-                .map(ExprToThrift::treeToThrift)
+                .map(ExecExprSerializer::serializeAstExpr)
                 .collect(Collectors.toList()));
 
         THdfsPartitionLocation tPartitionLocation = new THdfsPartitionLocation();

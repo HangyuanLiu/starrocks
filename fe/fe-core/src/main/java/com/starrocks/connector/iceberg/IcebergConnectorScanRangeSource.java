@@ -39,10 +39,10 @@ import com.starrocks.planner.PartitionIdGenerator;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.SlotId;
 import com.starrocks.planner.TupleDescriptor;
+import com.starrocks.planner.expression.ExecExprSerializer;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.LiteralExprFactory;
-import com.starrocks.sql.expression.ExprToThrift;
 import com.starrocks.thrift.TExpr;
 import com.starrocks.thrift.TExprMinMaxValue;
 import com.starrocks.thrift.THdfsPartition;
@@ -349,7 +349,7 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
 
         THdfsPartition tPartition = new THdfsPartition();
         tPartition.setPartition_key_exprs(referencedPartitionInfo.getKey().getKeys().stream()
-                .map(ExprToThrift::treeToThrift)
+                .map(ExecExprSerializer::serializeAstExpr)
                 .collect(Collectors.toList()));
 
         hdfsScanRange.setPartition_value(tPartition);
@@ -433,7 +433,7 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
      */
     private void setExtendedColumns(SlotDescriptor slot, Map<Integer, TExpr> extendedColumns, LiteralExpr value,
                                     boolean registerExtendedSlot) {
-        extendedColumns.put(slot.getId().asInt(), ExprToThrift.treeToThrift(value));
+        extendedColumns.put(slot.getId().asInt(), ExecExprSerializer.serializeAstExpr(value));
         if (registerExtendedSlot && !extendedColumnSlotIds.contains(slot.getId().asInt())) {
             extendedColumnSlotIds.add(slot.getId().asInt());
         }
