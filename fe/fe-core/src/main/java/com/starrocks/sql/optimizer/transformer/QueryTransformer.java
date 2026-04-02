@@ -27,6 +27,7 @@ import com.starrocks.sql.analyzer.RelationFields;
 import com.starrocks.sql.analyzer.RelationId;
 import com.starrocks.sql.analyzer.Scope;
 import com.starrocks.sql.ast.OrderByElement;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.Relation;
 import com.starrocks.sql.ast.SelectRelation;
 import com.starrocks.sql.ast.TreeNode;
@@ -203,7 +204,9 @@ public class QueryTransformer {
                 if (expression instanceof SlotRef) {
                     resolveTableName = queryBlock.getRelation().getResolveTableName();
                 }
-                SlotRef alias = new SlotRef(resolveTableName, outputNames.get(outputExprIdx));
+                QualifiedName resolveQN = resolveTableName != null
+                        ? resolveTableName.toQualifiedName() : null;
+                SlotRef alias = new SlotRef(resolveQN, outputNames.get(outputExprIdx));
                 // order by expr may reference the alias. We need put the alias into the fieldMappings or the
                 // expressionToColumns.
                 // if the alias not be used in the order by expr like:
@@ -216,7 +219,7 @@ public class QueryTransformer {
                 // expr can be resolved.
                 if (scope.getRelationFields().resolveFields(alias).size() > 1) {
                     outputTranslations.getExpressionToColumns()
-                            .put(new SlotRef(resolveTableName, outputNames.get(outputExprIdx)), columnRefOperator);
+                            .put(new SlotRef(resolveQN, outputNames.get(outputExprIdx)), columnRefOperator);
                 } else {
                     outputTranslations.put(alias, columnRefOperator);
                 }
@@ -698,8 +701,10 @@ public class QueryTransformer {
                 if (expr instanceof SlotRef) {
                     resolveTableName = queryBlock.getRelation().getResolveTableName();
                 }
-                SlotRef qualifiedAlias = new SlotRef(resolveTableName, outputNames.get(i));
-                SlotRef unqualifiedAlias = new SlotRef(null, outputNames.get(i));
+                QualifiedName resolveQN = resolveTableName != null
+                        ? resolveTableName.toQualifiedName() : null;
+                SlotRef qualifiedAlias = new SlotRef(resolveQN, outputNames.get(i));
+                SlotRef unqualifiedAlias = new SlotRef((QualifiedName) null, outputNames.get(i));
                 subOpt.getExpressionMapping().getExpressionToColumns().put(unqualifiedAlias, canonicalColumn);
                 subOpt.getExpressionMapping().getExpressionToColumns().put(qualifiedAlias, canonicalColumn);
             }

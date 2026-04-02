@@ -506,7 +506,7 @@ public class OlapTableSink extends DataSink {
                 for (SlotRef slot : slots) {
                     SlotDescriptor slotDesc = descMap.get(slot.getColumnName());
                     Preconditions.checkNotNull(slotDesc);
-                    SlotRef slotRef = new SlotRef(slotDesc);
+                    SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
                     slotRef.setColumnName(slot.getColumnName());
                     smap.put(slot, slotRef);
                 }
@@ -519,7 +519,7 @@ public class OlapTableSink extends DataSink {
                 for (Column col : table.getBaseSchema()) {
                     SlotDescriptor slotDesc = descMap.get(col.getName());
                     Preconditions.checkState(slotDesc != null);
-                    SlotRef slotRef = new SlotRef(slotDesc);
+                    SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
                     slotRef.setColumnName(col.getName());
                     outputExprs.add(slotRef);
                 }
@@ -651,7 +651,11 @@ public class OlapTableSink extends DataSink {
                     for (SlotDescriptor slotDesc : tupleDescriptor.getSlots()) {
                         Column column = slotDesc.getColumn();
                         if (column.getName().equalsIgnoreCase(slotRefs.get(0).getColumnName())) {
-                            slotRefs.get(0).setDesc(slotDesc);
+                            SlotRef ref = slotRefs.get(0);
+                            ref.setSlotId(slotDesc.getId().asInt());
+                            ref.setTupleId(slotDesc.getParent().getId().asInt());
+                            ref.setType(slotDesc.getType());
+                            ref.setNullable(slotDesc.getIsNullable());
                             break;
                         }
                     }
@@ -672,7 +676,11 @@ public class OlapTableSink extends DataSink {
                     for (SlotDescriptor slotDesc : tupleDescriptor.getSlots()) {
                         Column column = slotDesc.getColumn();
                         if (column.getName().equalsIgnoreCase(slotRefs.get(0).getColumnName())) {
-                            slotRefs.get(0).setDesc(slotDesc);
+                            SlotRef ref = slotRefs.get(0);
+                            ref.setSlotId(slotDesc.getId().asInt());
+                            ref.setTupleId(slotDesc.getParent().getId().asInt());
+                            ref.setType(slotDesc.getType());
+                            ref.setNullable(slotDesc.getIsNullable());
                             break;
                         }
                     }

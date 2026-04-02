@@ -41,7 +41,7 @@ public class GroupByClauseTest {
         ArrayList<Expr> groupingExprs = new ArrayList<>();
         String[] cols = {"k2", "k2", "k3", "k1"};
         for (String col : cols) {
-            Expr expr = new SlotRef(new TableName("testdb", "t"), col);
+            Expr expr = new SlotRef(new TableName("testdb", "t").toQualifiedName(), col);
             groupingExprs.add(expr);
         }
 
@@ -59,7 +59,7 @@ public class GroupByClauseTest {
         ArrayList<Expr> groupingExprs = new ArrayList<>();
         String[] cols = {"k2", "k2", "k3", "k1"};
         for (String col : cols) {
-            Expr expr = new SlotRef(new TableName("testdb", "t"), col);
+            Expr expr = new SlotRef(new TableName("testdb", "t").toQualifiedName(), col);
             groupingExprs.add(expr);
         }
 
@@ -77,7 +77,7 @@ public class GroupByClauseTest {
         ArrayList<Expr> groupingExprs = new ArrayList<>();
         String[] cols = {"k1", "k2", "k3", "k1"};
         for (String col : cols) {
-            Expr expr = new SlotRef(new TableName("testdb", "t"), col);
+            Expr expr = new SlotRef(new TableName("testdb", "t").toQualifiedName(), col);
             groupingExprs.add(expr);
         }
         GroupByClause groupByClause = new GroupByClause(ExprUtils.cloneList(groupingExprs),

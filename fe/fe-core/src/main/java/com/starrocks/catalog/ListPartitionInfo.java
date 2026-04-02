@@ -428,7 +428,7 @@ public class ListPartitionInfo extends PartitionInfo {
             if (column.isGeneratedColumn()) {
                 partitionExprs.add(column.getGeneratedColumnExpr(idToColumn));
             } else {
-                partitionExprs.add(new SlotRef(tableName, column.getName()));
+                partitionExprs.add(new SlotRef(tableName.toQualifiedName(), column.getName()));
             }
         }
         return partitionExprs;

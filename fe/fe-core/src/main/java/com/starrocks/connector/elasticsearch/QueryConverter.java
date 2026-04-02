@@ -178,7 +178,7 @@ public class QueryConverter implements AstVisitorExtendInterface<QueryBuilders.Q
 
     @Override
     public QueryBuilders.QueryBuilder visitInPredicate(InPredicate node, Void context) {
-        String column = ((SlotRef) exprWithoutCast(node.getChild(0))).getDesc().getColumn().getName();
+        String column = ((SlotRef) exprWithoutCast(node.getChild(0))).getColumnName();
         List<Object> values = node.getListChildren()
                 .stream()
                 .map(QueryConverter::valueFor)
@@ -218,7 +218,7 @@ public class QueryConverter implements AstVisitorExtendInterface<QueryBuilders.Q
 
         @Override
         public String visitSlot(SlotRef node, Void context) {
-            return node.getColumn().getName();
+            return node.getColumnName();
         }
     }
 

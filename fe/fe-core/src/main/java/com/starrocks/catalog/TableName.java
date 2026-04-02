@@ -47,6 +47,7 @@ import com.starrocks.persist.gson.GsonPreProcessable;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.sql.analyzer.SemanticException;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.TableRef;
 import com.starrocks.sql.parser.NodePosition;
 import org.apache.commons.lang3.StringUtils;
@@ -122,6 +123,33 @@ public class TableName implements Writable, GsonPreProcessable, GsonPostProcessa
         }
         return new TableName(tableRef.getCatalogName(), tableRef.getDbName(),
                 tableRef.getTableName(), tableRef.getPos());
+    }
+
+    /**
+     * Creates a TableName from a QualifiedName.
+     * Maps QualifiedName parts to catalog/db/tbl based on the number of parts:
+     * - 1 part:  tbl
+     * - 2 parts: db.tbl
+     * - 3 parts: catalog.db.tbl
+     *
+     * @param qualifiedName the QualifiedName to convert
+     * @return a TableName instance, or null if qualifiedName is null
+     */
+    public static TableName fromQualifiedName(QualifiedName qualifiedName) {
+        if (qualifiedName == null) {
+            return null;
+        }
+        List<String> parts = qualifiedName.getParts();
+        switch (parts.size()) {
+            case 1:
+                return new TableName(null, null, parts.get(0));
+            case 2:
+                return new TableName(null, parts.get(0), parts.get(1));
+            case 3:
+                return new TableName(parts.get(0), parts.get(1), parts.get(2));
+            default:
+                throw new IllegalArgumentException("QualifiedName has too many parts: " + qualifiedName);
+        }
     }
 
     public void normalization(ConnectContext connectContext) {
@@ -252,5 +280,19 @@ public class TableName implements Writable, GsonPreProcessable, GsonPostProcessa
     @Override
     public int hashCode() {
         return Objects.hash(catalog, tbl, db);
+    }
+
+    public com.starrocks.sql.ast.QualifiedName toQualifiedName() {
+        java.util.ArrayList<String> parts = new java.util.ArrayList<>();
+        if (catalog != null) {
+            parts.add(catalog);
+        }
+        if (db != null) {
+            parts.add(db);
+        }
+        if (tbl != null) {
+            parts.add(tbl);
+        }
+        return com.starrocks.sql.ast.QualifiedName.of(parts);
     }
 }

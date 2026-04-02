@@ -60,7 +60,7 @@ public class MVColumnBitmapUnionPatternTest {
     @Test
     public void testCorrectExpr1() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef = new SlotRef(tableName, "c1");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(),"c1");
         Deencapsulation.setField(slotRef, "type", IntegerType.INT);
         List<Expr> child0Params = Lists.newArrayList();
         child0Params.add(slotRef);
@@ -75,7 +75,7 @@ public class MVColumnBitmapUnionPatternTest {
     @Test
     public void testCorrectExpr2(@Injectable CastExpr castExpr) {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef = new SlotRef(tableName, "c1");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(),"c1");
         Deencapsulation.setField(slotRef, "type", IntegerType.INT);
         List<Expr> child0Params = Lists.newArrayList();
         child0Params.add(castExpr);
@@ -90,7 +90,7 @@ public class MVColumnBitmapUnionPatternTest {
     @Test
     public void testUpperCaseOfFunction() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef = new SlotRef(tableName, "c1");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(),"c1");
         Deencapsulation.setField(slotRef, "type", IntegerType.INT);
         List<Expr> child0Params = Lists.newArrayList();
         child0Params.add(slotRef);
@@ -105,8 +105,8 @@ public class MVColumnBitmapUnionPatternTest {
     @Test
     public void testIncorrectArithmeticExpr1() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef1 = new SlotRef(tableName, "c1");
-        SlotRef slotRef2 = new SlotRef(tableName, "c2");
+        SlotRef slotRef1 = new SlotRef(tableName.toQualifiedName(),"c1");
+        SlotRef slotRef2 = new SlotRef(tableName.toQualifiedName(),"c2");
         ArithmeticExpr arithmeticExpr = new ArithmeticExpr(ArithmeticExpr.Operator.ADD, slotRef1, slotRef2);
         List<Expr> params = Lists.newArrayList();
         params.add(arithmeticExpr);
@@ -118,8 +118,8 @@ public class MVColumnBitmapUnionPatternTest {
     @Test
     public void testIncorrectArithmeticExpr2() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef1 = new SlotRef(tableName, "c1");
-        SlotRef slotRef2 = new SlotRef(tableName, "c2");
+        SlotRef slotRef1 = new SlotRef(tableName.toQualifiedName(),"c1");
+        SlotRef slotRef2 = new SlotRef(tableName.toQualifiedName(),"c2");
         ArithmeticExpr arithmeticExpr = new ArithmeticExpr(ArithmeticExpr.Operator.ADD, slotRef1, slotRef2);
         List<Expr> child0Params = Lists.newArrayList();
         child0Params.add(arithmeticExpr);
@@ -135,7 +135,7 @@ public class MVColumnBitmapUnionPatternTest {
     @Test
     public void testIncorrectDecimalSlotRef() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef1 = new SlotRef(tableName, "c1");
+        SlotRef slotRef1 = new SlotRef(tableName.toQualifiedName(),"c1");
         Deencapsulation.setField(slotRef1, "type", DecimalType.DECIMALV2);
         List<Expr> child0Params = Lists.newArrayList();
         child0Params.add(slotRef1);
@@ -152,12 +152,12 @@ public class MVColumnBitmapUnionPatternTest {
     public void testAggTableBitmapColumn(@Injectable SlotDescriptor desc,
                                          @Injectable Column column) {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef1 = new SlotRef(tableName, "c1");
+        SlotRef slotRef1 = new SlotRef(tableName.toQualifiedName(),"c1");
         List<Expr> params = Lists.newArrayList();
         params.add(slotRef1);
         FunctionCallExpr expr = new FunctionCallExpr(FunctionSet.BITMAP_UNION, params);
         slotRef1.setType(BitmapType.BITMAP);
-        slotRef1.setDesc(desc);
+        // setDesc removed in ExecExpr migration; type is already set above
         MVColumnBitmapUnionPattern pattern = new MVColumnBitmapUnionPattern();
         Assertions.assertTrue(pattern.match(expr));
     }

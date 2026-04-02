@@ -162,7 +162,7 @@ public class RepeatNode extends PlanNode {
             SlotRef slotRef = (SlotRef) probeExpr;
             if (slotRef.isNullable()) {
                 slotRefWithNullValue = true;
-                slotId = slotRef.getSlotId();
+                slotId = new SlotId(slotRef.getSlotId());
             }
         }
 

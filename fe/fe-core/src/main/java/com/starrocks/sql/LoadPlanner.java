@@ -48,6 +48,7 @@ import com.starrocks.planner.PlanFragmentId;
 import com.starrocks.planner.PlanNodeId;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.planner.SlotDescriptor;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.planner.StreamLoadScanNode;
 import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.qe.ConnectContext;
@@ -59,7 +60,6 @@ import com.starrocks.sql.ast.BrokerDesc;
 import com.starrocks.sql.ast.ImportColumnDesc;
 import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.expression.Expr;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
 import com.starrocks.sql.optimizer.statistics.IDictManager;
 import com.starrocks.sql.plan.ExecPlan;
@@ -342,7 +342,7 @@ public class LoadPlanner {
                 List<Column> keyColumns = olapDestTable.getKeyColumnsByIndexMetaId(olapDestTable.getBaseIndexMetaId());
                 List<Expr> partitionExprs = Lists.newArrayList();
                 keyColumns.forEach(column -> {
-                    partitionExprs.add(new SlotRef(tupleDesc.getColumnSlot(column.getName())));
+                    partitionExprs.add(SlotRefBuilder.fromDescriptor(tupleDesc.getColumnSlot(column.getName())));
                 });
 
                 DataPartition dataPartition = new DataPartition(TPartitionType.HASH_PARTITIONED, partitionExprs);

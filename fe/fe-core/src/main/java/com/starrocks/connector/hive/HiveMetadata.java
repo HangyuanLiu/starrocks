@@ -243,7 +243,8 @@ public class HiveMetadata implements ConnectorMetadata {
             String partitionColName = partitionColNames.get(index);
             Expr partitionColValueExpr = stmt.getKeyPartitionRef().getPartitionColValues().get(index);
             BinaryPredicate eqPredicate = new BinaryPredicate(BinaryType.EQ,
-                    new SlotRef(new TableName(stmt.getCatalogName(), stmt.getDbName(), stmt.getTblName()), partitionColName),
+                    new SlotRef(new TableName(stmt.getCatalogName(), stmt.getDbName(), stmt.getTblName()).toQualifiedName(),
+                            partitionColName),
                     partitionColValueExpr);
             predicates.add(eqPredicate);
         }

@@ -17,12 +17,14 @@ package com.starrocks.sql.plan;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.starrocks.catalog.TableName;
 import com.starrocks.common.FeConstants;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.SlotId;
+import com.starrocks.planner.SlotRefBuilder;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.SemanticException;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.expression.ArithmeticExpr;
 import com.starrocks.sql.ast.expression.ArrayExpr;
 import com.starrocks.sql.ast.expression.ArraySliceExpr;
@@ -526,7 +528,7 @@ public class ScalarOperatorToExpr {
                     }
                     callExpr = new FunctionCallExpr(call.getFnName(), new FunctionParams(false, arguments));
                     Preconditions.checkNotNull(call.getFunction());
-                    ((FunctionCallExpr) callExpr).setFn(call.getFunction());
+                    AnalysisContext.populateCachedFields((FunctionCallExpr) callExpr, call.getFunction());
                     callExpr.setIgnoreNulls(call.getIgnoreNulls());
                     break;
                 default:
@@ -539,7 +541,7 @@ public class ScalarOperatorToExpr {
                         callExpr = new FunctionCallExpr(call.getFnName(), new FunctionParams(call.isDistinct(), arg));
                     }
                     Preconditions.checkNotNull(call.getFunction());
-                    ((FunctionCallExpr) callExpr).setFn(call.getFunction());
+                    AnalysisContext.populateCachedFields((FunctionCallExpr) callExpr, call.getFunction());
                     callExpr.setIgnoreNulls(call.getIgnoreNulls());
                     break;
             }
@@ -589,20 +591,20 @@ public class ScalarOperatorToExpr {
             List<Expr> arguments = Lists.newArrayList();
             List<Expr> newArguments = Lists.newArrayList();
             for (ColumnRefOperator ref : operator.getRefColumns()) {
-                SlotRef slot = new SlotRef(new SlotDescriptor(
+                SlotRef slot = SlotRefBuilder.fromDescriptor(new SlotDescriptor(
                         new SlotId(ref.getId()), ref.getName(), ref.getType(), ref.isNullable()));
-                slot.setTblName(new TableName(TableName.LAMBDA_FUNC_TABLE, TableName.LAMBDA_FUNC_TABLE));
+                slot.setTblName(QualifiedName.of(SlotRef.LAMBDA_FUNC_TABLE, SlotRef.LAMBDA_FUNC_TABLE));
                 hackTypeNull(slot);
                 context.colRefToExpr.put(ref, slot);
                 arguments.add(slot);
             }
             // construct common sub operator map
             Map<SlotRef, Expr> commonSubOperatorMap =
-                    Maps.newTreeMap(Comparator.comparing(ref -> ref.getSlotId().asInt()));
+                    Maps.newTreeMap(Comparator.comparing(ref -> ref.getSlotId()));
 
             for (Map.Entry<ColumnRefOperator, ScalarOperator> kv : operator.getColumnRefMap().entrySet()) {
                 ColumnRefOperator ref = kv.getKey();
-                SlotRef slot = new SlotRef(new SlotDescriptor(
+                SlotRef slot = SlotRefBuilder.fromDescriptor(new SlotDescriptor(
                         new SlotId(ref.getId()), ref.getName(), ref.getType(), ref.isNullable()));
                 hackTypeNull(slot);
                 commonSubOperatorMap.put(slot, buildExpr.build(kv.getValue(), context));
@@ -718,7 +720,7 @@ public class ScalarOperatorToExpr {
         public Expr visitVariableReference(ColumnRefOperator node, FormatterContext context) {
             SlotDescriptor descriptor = new SlotDescriptor(new SlotId(node.getId()), node.getName(),
                     node.getType(), node.isNullable());
-            return new SlotRef(descriptor);
+            return SlotRefBuilder.fromDescriptor(descriptor);
         }
     }
 }

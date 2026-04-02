@@ -54,7 +54,7 @@ public class MVColumnOneChildPatternTest {
     @Test
     public void testCorrectSum() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef = new SlotRef(tableName, "c1");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(),"c1");
         List<Expr> params = Lists.newArrayList();
         params.add(slotRef);
         FunctionCallExpr functionCallExpr = new FunctionCallExpr(AggregateType.SUM.name(), params);
@@ -66,7 +66,7 @@ public class MVColumnOneChildPatternTest {
     @Test
     public void testCorrectMin() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef = new SlotRef(tableName, "c1");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(),"c1");
         List<Expr> child0Params = Lists.newArrayList();
         child0Params.add(slotRef);
         List<Expr> params = Lists.newArrayList();
@@ -80,7 +80,7 @@ public class MVColumnOneChildPatternTest {
     @Test
     public void testCorrectCountField() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef = new SlotRef(tableName, "c1");
+        SlotRef slotRef = new SlotRef(tableName.toQualifiedName(),"c1");
         List<Expr> params = Lists.newArrayList();
         params.add(slotRef);
         FunctionCallExpr functionCallExpr = new FunctionCallExpr(FunctionSet.COUNT, params);
@@ -102,8 +102,8 @@ public class MVColumnOneChildPatternTest {
     @Test
     public void testIncorrectArithmeticExpr() {
         TableName tableName = new TableName("db", "table");
-        SlotRef slotRef1 = new SlotRef(tableName, "c1");
-        SlotRef slotRef2 = new SlotRef(tableName, "c2");
+        SlotRef slotRef1 = new SlotRef(tableName.toQualifiedName(),"c1");
+        SlotRef slotRef2 = new SlotRef(tableName.toQualifiedName(),"c2");
         ArithmeticExpr arithmeticExpr = new ArithmeticExpr(ArithmeticExpr.Operator.ADD, slotRef1, slotRef2);
         List<Expr> params = Lists.newArrayList();
         params.add(arithmeticExpr);

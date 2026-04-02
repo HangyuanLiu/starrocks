@@ -834,7 +834,7 @@ public class SyncPartitionUtils {
             expr.collect(SlotRef.class, slotRefs);
             slotRef = slotRefs.get(0);
         }
-        TableName tableName = slotRef.getTblNameWithoutAnalyzed();
+        TableName tableName = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
         // base version meta for olap table and external table are different, we need to drop them separately
         dropBaseVersionMetaForOlapTable(mv, mvPartitionName, partitionRange, refreshContext, tableName);
         dropBaseVersionMetaForExternalTable(mv, mvPartitionName, refreshContext, tableName);

@@ -15,7 +15,6 @@
 package com.starrocks.sql.spm;
 
 import com.google.common.collect.Lists;
-import com.starrocks.catalog.TableName;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.ShowResultMetaFactory;
 import com.starrocks.qe.ShowResultSet;
@@ -71,9 +70,9 @@ public class SPMStmtExecutor {
             SPMAst2SQLBuilder builder = new SPMAst2SQLBuilder(false, true);
             String digest = builder.build(p);
             long hash = builder.buildHash();
-            SlotRef ref1 = new SlotRef(new TableName(), "bindsqldigest");
+            SlotRef ref1 = new SlotRef(null, "bindsqldigest");
             ref1.setType(VarcharType.VARCHAR);
-            SlotRef ref2 = new SlotRef(new TableName(), "bindsqlhash");
+            SlotRef ref2 = new SlotRef(null, "bindsqlhash");
             ref2.setType(IntegerType.BIGINT);
             where = new CompoundPredicate(CompoundPredicate.Operator.AND,
                     new BinaryPredicate(BinaryType.EQ, ref1, new StringLiteral(digest)),

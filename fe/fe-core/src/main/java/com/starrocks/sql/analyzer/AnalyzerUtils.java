@@ -30,7 +30,6 @@ import com.google.common.collect.Sets;
 import com.starrocks.authorization.AccessDeniedException;
 import com.starrocks.authorization.ObjectType;
 import com.starrocks.authorization.PrivilegeType;
-import com.starrocks.catalog.AggregateFunction;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.ExpressionRangePartitionInfo;
 import com.starrocks.catalog.Function;
@@ -187,7 +186,7 @@ public class AnalyzerUtils {
     public static void verifyNoAggregateFunctions(Expr expression, String clause) {
         List<FunctionCallExpr> functions = Lists.newArrayList();
         expression.collectAll((Predicate<Expr>) arg -> arg instanceof FunctionCallExpr &&
-                ((FunctionCallExpr) arg).getFn() instanceof AggregateFunction, functions);
+                ((FunctionCallExpr) arg).isAggregateFn(), functions);
         if (!functions.isEmpty()) {
             throw new SemanticException(clause + " clause cannot contain aggregations", expression.getPos());
         }
@@ -710,7 +709,8 @@ public class AnalyzerUtils {
             if (!slotRef.isFromLambda() && slotRef.getTblNameWithoutAnalyzed() != null) {
                 // when used `slotRef.getColumnName()`, it would like c2.c2_sub1 instead of c2 for struct data type
                 // so finally use `slotRef.getLabel()`
-                put(slotRef.getTblNameWithoutAnalyzed(), slotRef.getLabel().replace("`", ""));
+                put(TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed()),
+                        slotRef.getLabel().replace("`", ""));
             }
             return null;
         }

@@ -268,7 +268,7 @@ public class FragmentNormalizer {
 
         @Override
         public String visitSlot(SlotRef node, Void context) {
-            return String.format("(slot %d)", node.getSlotId().asInt());
+            return String.format("(slot %d)", node.getSlotId());
         }
 
         @Override
@@ -428,7 +428,7 @@ public class FragmentNormalizer {
     boolean hasNonDeterministicFunctions(Expr expr) {
         if (expr instanceof FunctionCallExpr) {
             FunctionCallExpr callExpr = (FunctionCallExpr) expr;
-            String funcName = callExpr.getFn().functionName();
+            String funcName = callExpr.getFunctionName();
             if (FunctionSet.nonDeterministicFunctions.contains(funcName)) {
                 return true;
             }
@@ -535,7 +535,7 @@ public class FragmentNormalizer {
             if (isSimpleRegionPredicate(e)) {
                 SlotRef child0 = (SlotRef) e.getChild(0);
                 List<Expr> exprList =
-                        slotId2PartColRangePredicates.computeIfAbsent(child0.getSlotId(),
+                        slotId2PartColRangePredicates.computeIfAbsent(new SlotId(child0.getSlotId()),
                                 slotId -> Lists.newArrayList());
                 exprList.add(e);
                 boundSimpleRegionExprs.add(e);
@@ -630,7 +630,7 @@ public class FragmentNormalizer {
         exprs.forEach((slotId, expr) -> {
             List<SlotRef> slotRefs = Lists.newArrayList();
             expr.collect(SlotRef.class, slotRefs);
-            Set<SlotId> usedColumnIds = slotRefs.stream().map(SlotRef::getSlotId).collect(Collectors.toSet());
+            Set<SlotId> usedColumnIds = slotRefs.stream().map(s -> new SlotId(s.getSlotId())).collect(Collectors.toSet());
             if (!Sets.intersection(this.slotsUseAggColumns, usedColumnIds).isEmpty()) {
                 this.slotsUseAggColumns.add(slotId);
             }
@@ -643,7 +643,7 @@ public class FragmentNormalizer {
         }
         List<SlotRef> slotRefs = Lists.newArrayList();
         exprs.forEach(e -> e.collect(SlotRef.class, slotRefs));
-        Set<SlotId> usedColumnIds = slotRefs.stream().map(SlotRef::getSlotId).collect(Collectors.toSet());
+        Set<SlotId> usedColumnIds = slotRefs.stream().map(s -> new SlotId(s.getSlotId())).collect(Collectors.toSet());
         if (!Sets.intersection(usedColumnIds, this.slotsUseAggColumns).isEmpty()) {
             this.setCanUseMultiVersion(false);
         }
@@ -872,7 +872,7 @@ public class FragmentNormalizer {
             Expr expr = p.first;
             //ByteBuffer norm = p.second;
             String norm = p.second;
-            SlotId slotId = ((SlotRef) expr.getChild(0)).getSlotId();
+            SlotId slotId = new SlotId(((SlotRef) expr.getChild(0)).getSlotId());
             slotId2PartColRangePredicates.computeIfAbsent(slotId, id -> Lists.newArrayList()).add(expr);
             slotId2DerivedPredicates.computeIfAbsent(slotId, i -> Sets.newHashSet()).add(norm);
         });
@@ -893,7 +893,8 @@ public class FragmentNormalizer {
                 if (eqSlotId.equals(partColSlotId)) {
                     continue;
                 }
-                SlotRef eqSlotRef = new SlotRef(eqSlotId);
+                SlotRef eqSlotRef = new SlotRef(null, "");
+                eqSlotRef.setSlotId(eqSlotId.asInt());
                 List<String> derivedExprs = exprList.stream().map(e -> {
                     Expr newExpr = e.clone();
                     newExpr.setChild(0, eqSlotRef.clone());
@@ -921,7 +922,7 @@ public class FragmentNormalizer {
 
     public static Set<SlotId> getSlotIdSet(List<Expr> exprs) {
         return exprs.stream()
-                .flatMap(e -> e instanceof SlotRef ? Stream.of(((SlotRef) e).getSlotId()) : Stream.empty())
+                .flatMap(e -> e instanceof SlotRef ? Stream.of(new SlotId(((SlotRef) e).getSlotId())) : Stream.empty())
                 .collect(Collectors.toSet());
     }
 
@@ -931,7 +932,7 @@ public class FragmentNormalizer {
             if (!isSimpleRegionPredicate(e)) {
                 return true;
             }
-            SlotId slotId = ((SlotRef) e.getChild(0)).getSlotId();
+            SlotId slotId = new SlotId(((SlotRef) e.getChild(0)).getSlotId());
             if (!selectedSlotIdSet.isEmpty() && !selectedSlotIdSet.contains(slotId)) {
                 return true;
             }

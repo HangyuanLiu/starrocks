@@ -434,7 +434,7 @@ public class CreateMaterializedViewTest extends MVTestBase {
     private Table getBaseTable(MaterializedView materializedView) {
         Expr dateTruncFuncExpr = materializedView.getPartitionRefTableExprs().get(0);
         SlotRef slotRef = (SlotRef) dateTruncFuncExpr.getChild(1);
-        TableName baseTableName = slotRef.getTblNameWithoutAnalyzed();
+        TableName baseTableName = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
         return GlobalStateMgr.getCurrentState().getLocalMetastore()
                 .getTable(testDb.getFullName(), baseTableName.getTbl());
     }
@@ -632,7 +632,7 @@ public class CreateMaterializedViewTest extends MVTestBase {
             List<SlotRef> slotRefs = Lists.newArrayList();
             partitionRefTableExpr.collect(SlotRef.class, slotRefs);
             SlotRef slotRef = slotRefs.get(0);
-            TableName baseTableName = slotRef.getTblNameWithoutAnalyzed();
+            TableName baseTableName = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
             Assertions.assertEquals(baseTableName.getDb(), testDb.getFullName());
             Table baseTable = GlobalStateMgr.getCurrentState().getLocalMetastore().getTable(testDb.getFullName(),
                     baseTableName.getTbl());

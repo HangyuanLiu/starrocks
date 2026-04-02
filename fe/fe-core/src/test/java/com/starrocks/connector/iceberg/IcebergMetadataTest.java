@@ -1960,7 +1960,7 @@ public class IcebergMetadataTest extends TableTestBase {
 
         // add & drop partition columns
         {
-            SlotRef partitionSlot = new SlotRef(tableName, "dt");
+            SlotRef partitionSlot = new SlotRef(tableName.toQualifiedName(), "dt");
             clauses.clear();
             AddPartitionColumnClause addPartitionColumnClause =
                     new AddPartitionColumnClause(List.of(partitionSlot), NodePosition.ZERO);
@@ -1978,7 +1978,7 @@ public class IcebergMetadataTest extends TableTestBase {
             List<String> functions =
                     Lists.newArrayList("year", "month", "day", "truncate", "bucket", "identity", "void", "unknown", "trunc");
             Set<String> badFunctions = new HashSet<>(Lists.newArrayList("void", "unknown", "trunc"));
-            SlotRef partitionSlot = new SlotRef(tableName, "dt");
+            SlotRef partitionSlot = new SlotRef(tableName.toQualifiedName(), "dt");
             for (String fn : functions) {
                 FunctionCallExpr functionCallExpr = null;
                 if (fn.equals("truncate") || fn.equals("bucket")) {
@@ -2041,7 +2041,7 @@ public class IcebergMetadataTest extends TableTestBase {
                 Executors.newSingleThreadExecutor(), Executors.newSingleThreadExecutor(), null);
 
         TableName tableName = new TableName("db", "tbl");
-        SlotRef partitionSlot = new SlotRef(tableName, "dt");
+        SlotRef partitionSlot = new SlotRef(tableName.toQualifiedName(), "dt");
         FunctionCallExpr dayExpr = new FunctionCallExpr("day", Lists.newArrayList(partitionSlot));
         FunctionCallExpr monthExpr = new FunctionCallExpr("month", Lists.newArrayList(partitionSlot));
 
@@ -2075,7 +2075,7 @@ public class IcebergMetadataTest extends TableTestBase {
                 Executors.newSingleThreadExecutor(), Executors.newSingleThreadExecutor(), null);
 
         TableName tableName = new TableName("db", "tbl");
-        SlotRef partitionSlot = new SlotRef(tableName, "dt");
+        SlotRef partitionSlot = new SlotRef(tableName.toQualifiedName(), "dt");
         FunctionCallExpr dayExpr = new FunctionCallExpr("day", Lists.newArrayList(partitionSlot));
         FunctionCallExpr monthExpr = new FunctionCallExpr("month", Lists.newArrayList(partitionSlot));
 
@@ -2122,11 +2122,11 @@ public class IcebergMetadataTest extends TableTestBase {
                 Executors.newSingleThreadExecutor(), Executors.newSingleThreadExecutor(), null);
 
         TableName tableName = new TableName("db", "tbl");
-        SlotRef partitionSlot = new SlotRef(tableName, "dt");
+        SlotRef partitionSlot = new SlotRef(tableName.toQualifiedName(), "dt");
         FunctionCallExpr monthExpr = new FunctionCallExpr("month", Lists.newArrayList(partitionSlot));
 
         // replace by field name: "dt_day" is the default name for day(dt)
-        SlotRef fieldNameRef = new SlotRef(tableName, "dt_day");
+        SlotRef fieldNameRef = new SlotRef(tableName.toQualifiedName(), "dt_day");
         metadata.alterTable(new ConnectContext(), new AlterTableStmt(createTableRef(tableName),
                 List.of(new ReplacePartitionColumnClause(fieldNameRef, monthExpr, NodePosition.ZERO))));
         mockedNativeTableFV2.refresh();
@@ -2135,7 +2135,7 @@ public class IcebergMetadataTest extends TableTestBase {
         Assertions.assertFalse(partitionFields.contains("day(`dt`)"));
 
         // non-existent field name should fail
-        SlotRef badFieldName = new SlotRef(tableName, "no_such_field");
+        SlotRef badFieldName = new SlotRef(tableName.toQualifiedName(), "no_such_field");
         Assertions.assertThrows(DdlException.class, () -> metadata.alterTable(new ConnectContext(),
                 new AlterTableStmt(createTableRef(tableName),
                         List.of(new ReplacePartitionColumnClause(badFieldName, monthExpr, NodePosition.ZERO)))));
@@ -2165,7 +2165,7 @@ public class IcebergMetadataTest extends TableTestBase {
                 Executors.newSingleThreadExecutor(), Executors.newSingleThreadExecutor(), null);
 
         TableName tableName = new TableName("db", "tbl");
-        SlotRef partitionSlot = new SlotRef(tableName, "dt");
+        SlotRef partitionSlot = new SlotRef(tableName.toQualifiedName(), "dt");
         FunctionCallExpr dayExpr = new FunctionCallExpr("day", Lists.newArrayList(partitionSlot));
         FunctionCallExpr monthExpr = new FunctionCallExpr("month", Lists.newArrayList(partitionSlot));
 
@@ -2175,8 +2175,9 @@ public class IcebergMetadataTest extends TableTestBase {
         mockedNativeTableFV2.refresh();
 
         // Try to replace day(dt) with month(dt) - should fail because month(dt) already exists
-        FunctionCallExpr dayExpr2 = new FunctionCallExpr("day", Lists.newArrayList(new SlotRef(tableName, "dt")));
-        FunctionCallExpr monthExpr2 = new FunctionCallExpr("month", Lists.newArrayList(new SlotRef(tableName, "dt")));
+        SlotRef dtRef2 = new SlotRef(tableName.toQualifiedName(), "dt");
+        FunctionCallExpr dayExpr2 = new FunctionCallExpr("day", Lists.newArrayList(dtRef2));
+        FunctionCallExpr monthExpr2 = new FunctionCallExpr("month", Lists.newArrayList(dtRef2));
         Assertions.assertThrows(DdlException.class, () -> metadata.alterTable(new ConnectContext(),
                 new AlterTableStmt(createTableRef(tableName),
                         List.of(new ReplacePartitionColumnClause(dayExpr2, monthExpr2, NodePosition.ZERO)))));
@@ -2206,13 +2207,13 @@ public class IcebergMetadataTest extends TableTestBase {
                 Executors.newSingleThreadExecutor(), Executors.newSingleThreadExecutor(), null);
 
         TableName tableName = new TableName("db", "tbl");
-        SlotRef partitionSlot = new SlotRef(tableName, "dt");
+        SlotRef partitionSlot = new SlotRef(tableName.toQualifiedName(), "dt");
         FunctionCallExpr monthExpr = new FunctionCallExpr("month", Lists.newArrayList(partitionSlot));
 
         // Using "dt" as old partition - "dt" is a schema column name, so resolvePartitionFieldName
         // returns null (treats it as identity transform, not a field name reference)
         // This should fail because identity(dt) is not an existing partition (day(dt) is)
-        SlotRef schemaColRef = new SlotRef(tableName, "dt");
+        SlotRef schemaColRef = new SlotRef(tableName.toQualifiedName(), "dt");
         Assertions.assertThrows(DdlException.class, () -> metadata.alterTable(new ConnectContext(),
                 new AlterTableStmt(createTableRef(tableName),
                         List.of(new ReplacePartitionColumnClause(schemaColRef, monthExpr, NodePosition.ZERO)))));

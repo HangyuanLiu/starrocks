@@ -390,7 +390,7 @@ public class FileScanNode extends LoadScanNode {
                 SlotDescriptor srcSlotDesc = slotDescByName.get(destSlotDesc.getColumn().getName());
                 if (srcSlotDesc != null) {
                     destSidToSrcSidWithoutTrans.put(destSlotDesc.getId().asInt(), srcSlotDesc.getId().asInt());
-                    SlotRef slotRef = new SlotRef(srcSlotDesc);
+                    SlotRef slotRef = SlotRefBuilder.fromDescriptor(srcSlotDesc);
                     slotRef.setColumnName(destSlotDesc.getColumn().getName());
                     expr = slotRef;
                 } else {

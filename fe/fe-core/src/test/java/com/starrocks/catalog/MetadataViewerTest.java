@@ -207,7 +207,7 @@ public class MetadataViewerTest {
         TableRef tableRef = new TableRef(qualifiedName, null, NodePosition.ZERO);
 
         // Create where clause: status = 'DEAD'
-        SlotRef leftChild = new SlotRef(tableName, "status");
+        SlotRef leftChild = new SlotRef(tableName.toQualifiedName(), "status");
         StringLiteral rightChild = new StringLiteral("DEAD");
         BinaryPredicate where = new BinaryPredicate(BinaryType.EQ, leftChild, rightChild);
 
@@ -225,7 +225,7 @@ public class MetadataViewerTest {
         TableRef tableRef = new TableRef(qualifiedName, null, NodePosition.ZERO);
 
         // Create where clause: status != 'DEAD'
-        SlotRef leftChild = new SlotRef(tableName, "status");
+        SlotRef leftChild = new SlotRef(tableName.toQualifiedName(), "status");
         StringLiteral rightChild = new StringLiteral("DEAD");
         BinaryPredicate where = new BinaryPredicate(BinaryType.NE, leftChild, rightChild);
 
@@ -243,7 +243,7 @@ public class MetadataViewerTest {
         TableRef tableRef = new TableRef(qualifiedName, null, NodePosition.ZERO);
 
         // Create where clause: status = 'INVALID_STATUS'
-        SlotRef leftChild = new SlotRef(tableName, "status");
+        SlotRef leftChild = new SlotRef(tableName.toQualifiedName(), "status");
         StringLiteral rightChild = new StringLiteral("INVALID_STATUS");
         BinaryPredicate where = new BinaryPredicate(BinaryType.EQ, leftChild, rightChild);
 
@@ -262,7 +262,7 @@ public class MetadataViewerTest {
         TableRef tableRef = new TableRef(qualifiedName, null, NodePosition.ZERO);
 
         // Create where clause: name = 'test' (not status column)
-        SlotRef leftChild = new SlotRef(tableName, "name");
+        SlotRef leftChild = new SlotRef(tableName.toQualifiedName(), "name");
         StringLiteral rightChild = new StringLiteral("test");
         BinaryPredicate where = new BinaryPredicate(BinaryType.EQ, leftChild, rightChild);
 
@@ -281,7 +281,7 @@ public class MetadataViewerTest {
         TableRef tableRef = new TableRef(qualifiedName, null, NodePosition.ZERO);
 
         // Create where clause: status = 'OK'
-        SlotRef leftChild = new SlotRef(tableName, "status");
+        SlotRef leftChild = new SlotRef(tableName.toQualifiedName(), "status");
         StringLiteral rightChild = new StringLiteral("OK");
         BinaryPredicate where = new BinaryPredicate(BinaryType.EQ, leftChild, rightChild);
 

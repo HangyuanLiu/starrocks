@@ -132,7 +132,7 @@ public class RewriteDataFilesProcedure extends IcebergTableProcedure {
             List<SlotRef> slots = new ArrayList<>();
             partitionFilter.collect(SlotRef.class, slots);
             for (SlotRef slot : slots) {
-                slot.setTblName(new TableName(dbName, tableName));
+                slot.setTblName(new TableName(dbName, tableName).toQualifiedName());
             }
             partitionFilterSql = ExprToSql.toSql(partitionFilter);
         }

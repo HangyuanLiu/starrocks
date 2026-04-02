@@ -42,6 +42,7 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.mysql.privilege.MockedAuth;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.SlotId;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -104,7 +105,7 @@ public class SetStmtTest {
     public void testNonConstantExpr() {
         SlotDescriptor descriptor = new SlotDescriptor(new SlotId(1), "x",
                 IntegerType.INT, false);
-        Expr lhsExpr = new SlotRef(descriptor);
+        Expr lhsExpr = SlotRefBuilder.fromDescriptor(descriptor);
         Expr rhsExpr = new IntLiteral(100L);
         ArithmeticExpr addExpr = new ArithmeticExpr(
                 ArithmeticExpr.Operator.ADD, lhsExpr, rhsExpr);

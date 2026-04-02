@@ -6180,6 +6180,7 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
 
             // use virtual table name to indicate subquery.
             TableName qualifyTableName = new TableName(null, "__QUALIFY__TABLE");
+            QualifiedName qualifyQualifiedName = qualifyTableName.toQualifiedName();
             subqueryRelation.setAlias(qualifyTableName);
 
             // use virtual item name to indicate column of window function.
@@ -6197,7 +6198,7 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
                 if (item.getExpr() instanceof SlotRef) {
                     SlotRef exprRef = (SlotRef) item.getExpr();
                     String columnName = item.getAlias() == null ? exprRef.getColumnName() : item.getAlias();
-                    SlotRef resultSlotRef = new SlotRef(qualifyTableName, columnName);
+                    SlotRef resultSlotRef = new SlotRef(qualifyQualifiedName, columnName);
                     selectItemsOuter.add(new SelectListItem(resultSlotRef, null));
                 } else {
                     throw new ParsingException("Can't support result other than column.");
@@ -6209,7 +6210,7 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
 
             // used to construct BinaryPredicate for QUALIFY.
             IntLiteral rightValue = new IntLiteral(selectValue);
-            SlotRef leftSlotRef = new SlotRef(qualifyTableName, "__QUALIFY__VALUE");
+            SlotRef leftSlotRef = new SlotRef(qualifyQualifiedName, "__QUALIFY__VALUE");
 
             BinaryType op = getComparisonOperator(((TerminalNode) context.comparisonOperator()
                     .getChild(0)).getSymbol());

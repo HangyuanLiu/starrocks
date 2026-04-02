@@ -103,7 +103,7 @@ public class ExpressionRangePartitionInfo extends RangePartitionInfo implements 
             }
             // column name is the original column name before rename.
             ColumnId columnId = slotRef.getColumnId() != null
-                    ? slotRef.getColumnId() : ColumnId.create(slotRef.getColumnName());
+                    ? ColumnId.create(slotRef.getColumnId()) : ColumnId.create(slotRef.getColumnName());
             if (!idToColumn.containsKey(columnId)) {
                 continue;
             }
@@ -276,12 +276,13 @@ public class ExpressionRangePartitionInfo extends RangePartitionInfo implements 
 
             @Override
             public Void visitSlot(SlotRef node, Void context) {
-                TableName tableName = node.getTblNameWithoutAnalyzed();
+                TableName tableName = TableName.fromQualifiedName(node.getTblNameWithoutAnalyzed());
                 if (tableName != null) {
                     if (!Strings.isNullOrEmpty(dbName)) {
                         tableName.setDb(dbName);
                     }
                     tableName.setTbl(newTableName);
+                    node.setTblName(tableName.toQualifiedName());
                 }
                 return null;
             }

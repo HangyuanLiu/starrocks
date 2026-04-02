@@ -21,6 +21,7 @@ import com.starrocks.common.IdGenerator;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.SlotId;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.sql.ast.expression.BinaryPredicate;
 import com.starrocks.sql.ast.expression.BinaryType;
 import com.starrocks.sql.ast.expression.CompoundPredicate;
@@ -164,7 +165,7 @@ public class QueryConverterTest {
     SlotRef mockSlotRef(String colName, Type type) {
         SlotDescriptor slotDesc = new SlotDescriptor(idGenerator.getNextId(), "", type, true);
         slotDesc.setColumn(new Column(colName, type));
-        SlotRef slotRef = new SlotRef(randomLabel(), slotDesc);
+        SlotRef slotRef = SlotRefBuilder.fromDescriptor(randomLabel(), slotDesc);
         return slotRef;
     }
 

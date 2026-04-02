@@ -72,6 +72,7 @@ import com.starrocks.persist.OriginStatementInfo;
 import com.starrocks.persist.gson.GsonPostProcessable;
 import com.starrocks.planner.DescriptorTable;
 import com.starrocks.planner.SlotDescriptor;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
@@ -481,14 +482,19 @@ public class RollupJobV2 extends AlterJobV2 implements GsonPostProcessable {
                 throw new AlterCancelException("slotDesc is null, slot = " + slot.getColumnName()
                         + ", column = " + name);
             }
-            slot.setDesc(slotDesc);
+            slot.setSlotId(slotDesc.getId().asInt());
+            if (slotDesc.getParent() != null) {
+                slot.setTupleId(slotDesc.getParent().getId().asInt());
+            }
+            slot.setType(slotDesc.getType());
+            slot.setNullable(slotDesc.getIsNullable());
         }
 
         ExprSubstitutionMap smap = new ExprSubstitutionMap();
         for (SlotRef slot : slots) {
             SlotDescriptor slotDesc = slotDescByName.get(slot.getColumnName());
             Preconditions.checkNotNull(slotDesc);
-            SlotRef slotRef = new SlotRef(slotDesc);
+            SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
             slotRef.setColumnName(slot.getColumnName());
             smap.put(slot, slotRef);
         }
@@ -550,7 +556,7 @@ public class RollupJobV2 extends AlterJobV2 implements GsonPostProcessable {
                 throw new AlterCancelException("Expression for materialized view column can not find " +
                         "the ref column");
             }
-            SlotRef slotRef = new SlotRef(slotDesc);
+            SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
             slotRef.setColumnName(col.getName());
             outputExprs.add(slotRef);
         }

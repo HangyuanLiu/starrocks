@@ -343,7 +343,7 @@ public class ExchangeNode extends PlanNode {
 
     private boolean isPartitionByExprSlotRef(Expr probeExpr, Expr partitionByExpr) {
         if (probeExpr instanceof SlotRef && partitionByExpr instanceof SlotRef) {
-            return ((SlotRef) probeExpr).getSlotId().asInt() == ((SlotRef) partitionByExpr).getSlotId().asInt();
+            return ((SlotRef) probeExpr).getSlotId() == ((SlotRef) partitionByExpr).getSlotId();
         } else {
             return false;
         }

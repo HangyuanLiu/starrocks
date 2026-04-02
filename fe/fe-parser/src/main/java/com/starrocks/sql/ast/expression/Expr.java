@@ -164,7 +164,7 @@ public abstract class Expr extends TreeNode<Expr> implements ParseNode, Cloneabl
     /**
      * Set the expr to be analyzed and computes isConstant_.
      */
-    protected void analysisDone() {
+    public void analysisDone() {
         Preconditions.checkState(!isAnalyzed);
         // We need to compute the const-ness as the last step, since analysis may change
         // the result, e.g. by resolving function.

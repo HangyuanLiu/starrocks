@@ -65,7 +65,7 @@ public class SyncPartitionUtilsTest extends StarRocksTestBase {
 
     @BeforeAll
     public static void beforeClass() throws Exception {
-        slotRef = new SlotRef(TABLE_NAME, "k1");
+        slotRef = new SlotRef(TABLE_NAME.toQualifiedName(), "k1");
         partitionColumn = new Column("k1", DateType.DATETIME);
     }
 
@@ -812,7 +812,7 @@ public class SyncPartitionUtilsTest extends StarRocksTestBase {
     @Test
     public void transferRangeHandlesNonFunctionExpression() throws Exception {
         Range<PartitionKey> baseRange = createRange("2020-01-01", "2020-02-01");
-        Expr nonFunctionExpr = new SlotRef(TABLE_NAME, "column");
+        Expr nonFunctionExpr = new SlotRef(TABLE_NAME.toQualifiedName(), "column");
 
         Range<PartitionKey> result = SyncPartitionUtils.transferRange(baseRange, nonFunctionExpr);
 
@@ -929,7 +929,7 @@ public class SyncPartitionUtilsTest extends StarRocksTestBase {
         final DateLiteral minValue = DateLiteral.createMinValue(DateType.DATE);
         Range<PartitionKey> range = createRange(minValue, plusDay(minValue, 1));
         {
-            Expr partitionExpr = new SlotRef(TABLE_NAME, "column");
+            Expr partitionExpr = new SlotRef(TABLE_NAME.toQualifiedName(), "column");
             Range<PartitionKey> result = SyncPartitionUtils.transferRange(range, partitionExpr);
             Assertions.assertEquals(result, range);
         }
@@ -951,7 +951,7 @@ public class SyncPartitionUtilsTest extends StarRocksTestBase {
         final DateLiteral maxValue = DateLiteral.createMaxValue(DateType.DATE);
         Range<PartitionKey> range = createRange(plusDay(maxValue, -1), maxValue);
         {
-            Expr partitionExpr = new SlotRef(TABLE_NAME, "column");
+            Expr partitionExpr = new SlotRef(TABLE_NAME.toQualifiedName(), "column");
             Range<PartitionKey> result = SyncPartitionUtils.transferRange(range, partitionExpr);
             Assertions.assertEquals(result, range);
         }

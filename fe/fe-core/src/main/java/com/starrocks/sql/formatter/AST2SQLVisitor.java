@@ -213,11 +213,11 @@ public class AST2SQLVisitor extends AST2StringVisitor {
                     selectListString.add(buildColumnName(field.getRelationAlias(), field.getName(), columnName));
                 } else if (expr instanceof SlotRef slot) {
                     if (slot.getOriginType().isStructType()) {
-                        selectListString.add(buildStructColumnName(slot.getTblNameWithoutAnalyzed(),
+                        selectListString.add(buildStructColumnName(TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed()),
                                 slot.getColumnName(), columnName));
                     } else {
-                        selectListString.add(buildColumnName(slot.getTblNameWithoutAnalyzed(), slot.getColumnName(),
-                                columnName));
+                        selectListString.add(buildColumnName(TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed()),
+                                slot.getColumnName(), columnName));
                     }
                 } else if (columnName != null) {
                     selectListString.add(visit(expr) + " AS " + ParseUtil.backquote(columnName));
@@ -481,10 +481,10 @@ public class AST2SQLVisitor extends AST2StringVisitor {
     @Override
     public String visitSlot(SlotRef expr, Void context) {
         if (expr.getOriginType().isStructType()) {
-            return buildStructColumnName(expr.getTblNameWithoutAnalyzed(),
+            return buildStructColumnName(TableName.fromQualifiedName(expr.getTblNameWithoutAnalyzed()),
                     expr.getColumnName(), expr.getColumnName());
         } else {
-            return buildColumnName(expr.getTblNameWithoutAnalyzed(),
+            return buildColumnName(TableName.fromQualifiedName(expr.getTblNameWithoutAnalyzed()),
                     expr.getColumnName(), expr.getColumnName());
         }
     }

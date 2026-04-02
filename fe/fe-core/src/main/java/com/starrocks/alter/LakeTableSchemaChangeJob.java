@@ -608,8 +608,12 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
                                             "Expression for generated column can not find the ref column: "
                                                     + col.getName());
                                 }
-                                outputExprs.add(SlotRef.createAnalyzed(slotId,
-                                        col.getName(), col.getType(), col.isAllowNull()));
+                                SlotRef slotRef = new SlotRef(null, col.getName());
+                                slotRef.setSlotId(slotId);
+                                slotRef.setType(col.getType());
+                                slotRef.setNullable(col.isAllowNull());
+                                slotRef.analysisDone();
+                                outputExprs.add(slotRef);
                             }
 
                             TableName tableName = new TableName(db.getFullName(), table.getName());

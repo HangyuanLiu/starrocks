@@ -115,12 +115,12 @@ public class Field {
             return tryToParseAsStructType(expr);
         }
 
-        TableName tableName = expr.getTblNameWithoutAnalyzed();
+        TableName tableName = TableName.fromQualifiedName(expr.getTblNameWithoutAnalyzed());
         if (tableName != null) {
             if (relationAlias == null) {
                 return false;
             }
-            return matchesPrefix(expr.getTblNameWithoutAnalyzed()) && expr.getColumnName().equalsIgnoreCase(this.name);
+            return matchesPrefix(tableName) && expr.getColumnName().equalsIgnoreCase(this.name);
         } else {
             return expr.getColumnName().equalsIgnoreCase(this.name);
         }

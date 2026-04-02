@@ -15,7 +15,6 @@
 package com.starrocks.planner.expression;
 
 import com.starrocks.planner.FragmentNormalizer;
-import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.SlotId;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.expression.Expr;
@@ -49,9 +48,10 @@ public class ExprToNormalFormVisitor implements AstVisitorExtendInterface<Void, 
     @Override
     public Void visitSlot(SlotRef node, TExprNode msg) {
         msg.node_type = TExprNodeType.SLOT_REF;
-        SlotDescriptor desc = node.getDesc();
-        if (desc != null) {
-            SlotId slotId = normalizer.isNotRemappingSlotId() ? desc.getId() : normalizer.remapSlotId(desc.getId());
+        int rawSlotId = node.getSlotId();
+        if (rawSlotId != 0) {
+            SlotId slotId = normalizer.isNotRemappingSlotId() ?
+                    new SlotId(rawSlotId) : normalizer.remapSlotId(new SlotId(rawSlotId));
             msg.slot_ref = new TSlotRef(slotId.asInt(), 0);
         } else {
             msg.slot_ref = new TSlotRef(0, 0);

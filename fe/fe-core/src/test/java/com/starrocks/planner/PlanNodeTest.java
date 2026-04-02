@@ -19,6 +19,7 @@ import com.google.common.collect.Lists;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.type.IntegerType;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.utframe.StarRocksTestBase;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -35,8 +36,8 @@ public class PlanNodeTest extends StarRocksTestBase {
 
     Expr createSlotRef(int idx) {
         SlotId slotId = new SlotId(idx);
-        SlotDescriptor descriptor = new SlotDescriptor(slotId, Integer.toString(idx), IntegerType.INT,true);
-        return new SlotRef(Integer.toString(idx), descriptor);
+        SlotDescriptor descriptor = new SlotDescriptor(slotId, Integer.toString(idx), IntegerType.INT, true);
+        return SlotRefBuilder.fromDescriptor(Integer.toString(idx), descriptor);
     }
 
     List<List<Expr>> createSlotRefArray(int m, int n) {
@@ -58,7 +59,7 @@ public class PlanNodeTest extends StarRocksTestBase {
             if (!(expr instanceof SlotRef)) {
                 Assertions.assertTrue(false);
             }
-            result.add(((SlotRef) expr).getSlotId().asInt());
+            result.add(((SlotRef) expr).getSlotId());
         }
         return result;
     }

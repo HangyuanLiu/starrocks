@@ -20,6 +20,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.starrocks.alter.AlterJobV2;
 import com.starrocks.catalog.MaterializedIndex.IndexState;
+import com.starrocks.catalog.TableName;
 import com.starrocks.common.Config;
 import com.starrocks.common.Pair;
 import com.starrocks.common.StarRocksException;
@@ -328,7 +329,7 @@ public class MaterializedViewTest extends StarRocksTestBase {
         Assertions.assertEquals(1, exprs.size());
         Assertions.assertTrue(exprs.get(0) instanceof SlotRef);
         SlotRef slotRef = (SlotRef) exprs.get(0);
-        Assertions.assertEquals("mv_new_name", slotRef.getTblNameWithoutAnalyzed().getTbl());
+        Assertions.assertEquals("mv_new_name", TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed()).getTbl());
         starRocksAssert.dropMaterializedView("mv_new_name");
 
         String alterSql2 = "alter materialized view mv_to_rename2 rename mv_new_name2;";
@@ -346,7 +347,7 @@ public class MaterializedViewTest extends StarRocksTestBase {
         Expr rightChild = exprs2.get(0).getChild(1);
         Assertions.assertTrue(rightChild instanceof SlotRef);
         SlotRef slotRef2 = (SlotRef) rightChild;
-        Assertions.assertEquals("mv_new_name2", slotRef2.getTblNameWithoutAnalyzed().getTbl());
+        Assertions.assertEquals("mv_new_name2", TableName.fromQualifiedName(slotRef2.getTblNameWithoutAnalyzed()).getTbl());
         starRocksAssert.dropMaterializedView("mv_new_name2");
     }
 

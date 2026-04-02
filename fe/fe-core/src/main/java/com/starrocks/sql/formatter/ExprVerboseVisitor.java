@@ -71,13 +71,13 @@ public class ExprVerboseVisitor extends ExprExplainVisitor {
             sb.append(')');
         }
 
-        if (node.getFn() != null) {
+        if (node.getFnArgTypes() != null) {
             sb.append(" args: ");
-            for (int i = 0; i < node.getFn().getArgs().length; ++i) {
+            for (int i = 0; i < node.getFnArgTypes().length; ++i) {
                 if (i != 0) {
                     sb.append(',');
                 }
-                sb.append(node.getFn().getArgs()[i].getPrimitiveType().toString());
+                sb.append(node.getFnArgTypes()[i].getPrimitiveType().toString());
             }
             sb.append(";");
             sb.append(" result: ").append(node.getType()).append(";");
@@ -99,14 +99,21 @@ public class ExprVerboseVisitor extends ExprExplainVisitor {
 
     @Override
     public String visitSlot(SlotRef node, Void context) {
+        // Use descriptor's type/nullable for explain (matches old behavior of reading from SlotDescriptor)
+        com.starrocks.type.Type type = node.getType();
+        boolean nullable = node.isNullable();
+        if (node.getDescriptorRef() instanceof com.starrocks.planner.SlotDescriptor desc) {
+            type = desc.getType();
+            nullable = desc.getIsNullable();
+        }
         if (node.getLabel() != null) {
             return "[" + node.getLabel() + "," +
-                    " " + node.getDesc().getType() + "," +
-                    " " + node.getDesc().getIsNullable() + "]";
+                    " " + type + "," +
+                    " " + nullable + "]";
         } else {
-            return "[" + node.getDesc().getId().asInt() + "," +
-                    " " + node.getDesc().getType() + "," +
-                    " " + node.getDesc().getIsNullable() + "]";
+            return "[" + node.getSlotId() + "," +
+                    " " + type + "," +
+                    " " + nullable + "]";
         }
     }
 }

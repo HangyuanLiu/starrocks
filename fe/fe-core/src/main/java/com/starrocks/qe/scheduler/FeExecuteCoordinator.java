@@ -356,7 +356,7 @@ public class FeExecuteCoordinator extends Coordinator {
         } else {
             List<ScalarOperator> alignedRow = execPlan.getOutputExprs().stream()
                     .map(expr -> {
-                        int slotId = ((SlotRef) expr).getSlotId().asInt();
+                        int slotId = ((SlotRef) expr).getSlotId();
                         return valuesOperator.getProjection().getColumnRefMap().entrySet().stream()
                                 .filter(entry -> entry.getKey().getId() == slotId)
                                 .map(Map.Entry::getValue)

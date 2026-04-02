@@ -77,6 +77,7 @@ import com.starrocks.metric.TableMetricsRegistry;
 import com.starrocks.persist.BrokerPropertiesPersistInfo;
 import com.starrocks.planner.DescriptorTable;
 import com.starrocks.planner.SlotDescriptor;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.qe.ConnectContext;
@@ -90,7 +91,6 @@ import com.starrocks.sql.ast.ResourceDesc;
 import com.starrocks.sql.ast.expression.CastExpr;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprCastFunction;
-import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.system.Backend;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.task.AgentBatchTask;
@@ -1058,7 +1058,7 @@ public class SparkLoadJob extends BulkLoadJob {
 
                 SlotDescriptor srcSlotDesc = srcSlotDescByName.get(destSlotDesc.getColumn().getName());
                 destSidToSrcSidWithoutTrans.put(destSlotDesc.getId().asInt(), srcSlotDesc.getId().asInt());
-                Expr expr = new SlotRef(srcSlotDesc);
+                Expr expr = SlotRefBuilder.fromDescriptor(srcSlotDesc);
                 expr = castToSlot(destSlotDesc, expr);
                 params.putToExpr_of_dest_slot(destSlotDesc.getId().asInt(), ExprToThrift.treeToThrift(expr));
             }

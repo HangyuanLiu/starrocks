@@ -231,8 +231,8 @@ public class HashJoinNode extends JoinNode {
             if (!eq.getOp().equals(BinaryType.EQ)) {
                 continue;
             }
-            SlotId lhsSlotId = ((SlotRef) eq.getChild(0)).getSlotId();
-            SlotId rhsSlotId = ((SlotRef) eq.getChild(1)).getSlotId();
+            SlotId lhsSlotId = new SlotId(((SlotRef) eq.getChild(0)).getSlotId());
+            SlotId rhsSlotId = new SlotId(((SlotRef) eq.getChild(1)).getSlotId());
             normalizer.getEquivRelation().union(lhsSlotId, rhsSlotId);
         }
     }

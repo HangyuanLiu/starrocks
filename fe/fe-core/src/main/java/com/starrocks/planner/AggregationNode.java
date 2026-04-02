@@ -437,7 +437,7 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
             if (!(gexpr instanceof SlotRef)) {
                 continue;
             }
-            if (((SlotRef) gexpr).getSlotId().asInt() == ((SlotRef) expr).getSlotId().asInt()) {
+            if (((SlotRef) gexpr).getSlotId() == ((SlotRef) expr).getSlotId()) {
                 newSlotExprs.add(gexpr);
             }
         }
@@ -492,7 +492,7 @@ public class AggregationNode extends PlanNode implements RuntimeFilterBuildNode 
         // greater than 24 bytes(it is equivalent to three bigint-typed group-by columns), then cache populating penalty
         // is unacceptable.
         List<ColumnStatistic> stringColumnStatistics = slotRefs.stream()
-                .map(slot -> columnStatistics.get(new ColumnRefOperator(slot.getSlotId().asInt(),
+                .map(slot -> columnStatistics.get(new ColumnRefOperator(slot.getSlotId(),
                         UnknownType.UNKNOWN_TYPE, "key", false)))
                 .filter(stat -> stat != null && !stat.isUnknown() &&
                         stat.getAverageRowSize() * stat.getDistinctValuesCount() > 24 * cardinalityLimit)

@@ -108,6 +108,7 @@ import com.starrocks.planner.SelectNode;
 import com.starrocks.planner.SetOperationNode;
 import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.planner.SlotId;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.planner.SortInfo;
 import com.starrocks.planner.SortNode;
 import com.starrocks.planner.SplitCastPlanFragment;
@@ -123,6 +124,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.LocalMetastore;
 import com.starrocks.server.WarehouseManager;
 import com.starrocks.service.FrontendOptions;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.DecimalV3FunctionAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -689,7 +691,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setIsNullable(expr.isNullable());
                 slotDescriptor.setIsMaterialized(false);
                 slotDescriptor.setType(expr.getType());
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
 
             Map<SlotId, Expr> projectMap = Maps.newHashMap();
@@ -705,7 +708,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setIsMaterialized(true);
                 slotDescriptor.setType(expr.getType());
 
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
 
             ProjectNode projectNode =
@@ -761,7 +765,7 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setType(expr.getType());
                     slotDescriptor.setOriginType(expr.getType());
                     context.getColRefToExpr()
-                            .put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                            .put(entry.getKey(), SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
                 }
                 ((OlapScanNode) inputFragment.getPlanRoot()).setHeavyExprs(heavyExprMap);
             }
@@ -781,7 +785,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setIsNullable(expr.isNullable());
                 slotDescriptor.setIsMaterialized(false);
                 slotDescriptor.setType(expr.getType());
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
 
             Map<SlotId, Expr> projectMap = Maps.newHashMap();
@@ -796,7 +801,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setIsNullable(expr.isNullable());
                 slotDescriptor.setIsMaterialized(true);
                 slotDescriptor.setType(expr.getType());
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
 
             ProjectNode projectNode =
@@ -856,13 +862,13 @@ public class PlanFragmentBuilder {
 
                         context.getColRefToExpr().put(new ColumnRefOperator(stringRef.getId(), stringRef.getType(),
                                         "<dict-code>", slotDescriptor.getIsNullable()),
-                                new SlotRef(stringRef.toString(), slotDescriptor));
+                                SlotRefBuilder.fromDescriptor(stringRef.toString(), slotDescriptor));
                     } else {
                         // Note: must change the parent tuple id
                         SlotDescriptor slotDescriptor = new SlotDescriptor(slot.getId(), tupleDescriptor, slot);
                         tupleDescriptor.addSlot(slotDescriptor);
-                        SlotRef inputSlotRef = new SlotRef(slot);
-                        SlotRef outputSlotRef = new SlotRef(slotDescriptor);
+                        SlotRef inputSlotRef = SlotRefBuilder.fromDescriptor(slot);
+                        SlotRef outputSlotRef = SlotRefBuilder.fromDescriptor(slotDescriptor);
                         slotRefMap.put(outputSlotRef, inputSlotRef);
                     }
                 }
@@ -1022,7 +1028,8 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setOriginType(entry.getKey().getType());
                     slotDescriptor.setType(entry.getKey().getType());
                 }
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
 
             // set column access path
@@ -1081,7 +1088,7 @@ public class PlanFragmentBuilder {
             if (!nodeRefs.keySet().containsAll(columnRefs)) {
                 nodeRefs = Maps.newHashMap(nodeRefs);
                 for (ColumnRefOperator f : columnRefs) {
-                    nodeRefs.computeIfAbsent(f, k -> new SlotRef(f.getName(),
+                    nodeRefs.computeIfAbsent(f, k -> SlotRefBuilder.fromDescriptor(f.getName(),
                             new SlotDescriptor(new SlotId(f.getId()), f.getName(), f.getType(), true)));
                 }
             }
@@ -1122,7 +1129,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setIsNullable(entry.getValue().isAllowNull());
                 slotDescriptor.setIsMaterialized(true);
                 slotDescriptor.setType(entry.getKey().getType());
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().getName(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().getName(), slotDescriptor));
             }
             tupleDescriptor.computeMemLayout();
 
@@ -1146,7 +1154,8 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setOriginType(entry.getKey().getType());
                     slotDescriptor.setType(entry.getKey().getType());
                 }
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
         }
 
@@ -1202,7 +1211,8 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setIsNullable(column.isAllowNull());
                     slotDescriptor.setIsMaterialized(true);
                     context.getColRefToExpr()
-                            .putIfAbsent(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDescriptor));
+                            .putIfAbsent(columnRefOperator,
+                                    SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDescriptor));
                 }
             }
             minMaxTuple.computeMemLayout();
@@ -1697,7 +1707,8 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setOriginType(entry.getKey().getType());
                     slotDescriptor.setType(entry.getKey().getType());
                 }
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
 
             IcebergMetadataScanNode metadataScanNode =
@@ -1756,7 +1767,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setColumn(entry.getValue());
                 slotDescriptor.setIsNullable(entry.getValue().isAllowNull());
                 slotDescriptor.setIsMaterialized(true);
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
 
             tupleDescriptor.computeMemLayout();
@@ -1967,7 +1979,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setColumn(entry.getValue());
                 slotDescriptor.setIsNullable(entry.getValue().isAllowNull());
                 slotDescriptor.setIsMaterialized(true);
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().getName(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().getName(), slotDescriptor));
             }
             tupleDescriptor.computeMemLayout();
 
@@ -2013,7 +2026,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setColumn(entry.getValue());
                 slotDescriptor.setIsNullable(entry.getValue().isAllowNull());
                 slotDescriptor.setIsMaterialized(true);
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
             tupleDescriptor.computeMemLayout();
 
@@ -2060,7 +2074,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setColumn(entry.getValue());
                 slotDescriptor.setIsNullable(entry.getValue().isAllowNull());
                 slotDescriptor.setIsMaterialized(true);
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().getName(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().getName(), slotDescriptor));
             }
             tupleDescriptor.computeMemLayout();
 
@@ -2135,7 +2150,7 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setIsMaterialized(true);
                 slotDescriptor.setType(columnRefOperator.getType());
                 context.getColRefToExpr()
-                        .put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDescriptor));
+                        .put(columnRefOperator, SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDescriptor));
             }
             tupleDescriptor.computeMemLayout();
 
@@ -2198,7 +2213,7 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setIsMaterialized(true);
                 slotDescriptor.setType(columnRefOperator.getType());
                 context.getColRefToExpr()
-                        .put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDescriptor));
+                        .put(columnRefOperator, SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDescriptor));
             }
             tupleDescriptor.computeMemLayout();
 
@@ -2318,17 +2333,18 @@ public class PlanFragmentBuilder {
                 slotDesc.setIsNullable(aggExpr.isNullable());
                 slotDesc.setIsMaterialized(true);
                 context.getColRefToExpr()
-                        .put(aggregation.getKey(), new SlotRef(aggregation.getKey().toString(), slotDesc));
+                        .put(aggregation.getKey(), SlotRefBuilder.fromDescriptor(aggregation.getKey().toString(), slotDesc));
 
                 SlotDescriptor intermediateSlotDesc = new SlotDescriptor(slotDesc.getId(), slotDesc.getParent());
-                AggregateFunction aggrFn = (AggregateFunction) aggExpr.getFn();
+                AggregateFunction aggrFn = (AggregateFunction) AnalysisContext.getFunctionByExpr(aggExpr);
                 Type intermediateType = aggrFn.getIntermediateType() != null ?
                         aggrFn.getIntermediateType() : aggrFn.getReturnType();
                 intermediateType = AnalyzerUtils.replaceNullType2Boolean(intermediateType);
                 intermediateSlotDesc.setType(intermediateType);
                 intermediateSlotDesc.setIsNullable(aggrFn.isNullable());
                 intermediateSlotDesc.setIsMaterialized(true);
-                SlotRef intermediateSlotRef = new SlotRef(aggregation.getKey().toString(), intermediateSlotDesc);
+                SlotRef intermediateSlotRef =
+                        SlotRefBuilder.fromDescriptor(aggregation.getKey().toString(), intermediateSlotDesc);
                 intermediateAggrExprs.add(intermediateSlotRef);
             }
 
@@ -2342,9 +2358,9 @@ public class PlanFragmentBuilder {
                 slotDesc.setType(partitionExpr.getType());
                 slotDesc.setIsNullable(partitionExpr.isNullable());
                 slotDesc.setIsMaterialized(true);
-                context.getColRefToExpr().put(column, new SlotRef(column.toString(), slotDesc));
+                context.getColRefToExpr().put(column, SlotRefBuilder.fromDescriptor(column.toString(), slotDesc));
 
-                partitionExpressions.add(new SlotRef(slotDesc));
+                partitionExpressions.add(SlotRefBuilder.fromDescriptor(slotDesc));
             }
 
             outputTupleDesc.computeMemLayout();
@@ -2524,8 +2540,9 @@ public class PlanFragmentBuilder {
                     slotDesc.setType(sortExpr.getType());
 
                     context.getColRefToExpr()
-                            .put(ordering.getColumnRef(), new SlotRef(ordering.getColumnRef().toString(), slotDesc));
-                    sortExprs.add(new SlotRef(slotDesc));
+                            .put(ordering.getColumnRef(),
+                                    SlotRefBuilder.fromDescriptor(ordering.getColumnRef().toString(), slotDesc));
+                    sortExprs.add(SlotRefBuilder.fromDescriptor(slotDesc));
                 }
 
                 SortInfo sortInfo = new SortInfo(Lists.newArrayList(), -1, sortExprs,
@@ -2596,28 +2613,31 @@ public class PlanFragmentBuilder {
                 final String functionName = functionCallExpr.getFunctionName();
                 if (functionName.equalsIgnoreCase(FunctionSet.COUNT)) {
                     replaceExpr = new FunctionCallExpr(FunctionSet.MULTI_DISTINCT_COUNT, functionCallExpr.getParams());
-                    replaceExpr.setFn(ExprUtils.getBuiltinFunction(FunctionSet.MULTI_DISTINCT_COUNT,
-                            functionCallExpr.getFn().getArgs(),
-                            IS_NONSTRICT_SUPERTYPE_OF));
+                    Function resolvedFn = ExprUtils.getBuiltinFunction(FunctionSet.MULTI_DISTINCT_COUNT,
+                            functionCallExpr.getFnArgTypes(),
+                            IS_NONSTRICT_SUPERTYPE_OF);
+                    AnalysisContext.populateCachedFields(replaceExpr, resolvedFn);
                     replaceExpr.getParams().setIsDistinct(false);
                     replaceExpr.setType(functionCallExpr.getType());
                 } else if (functionName.equalsIgnoreCase(FunctionSet.SUM)) {
                     replaceExpr = new FunctionCallExpr(FunctionSet.MULTI_DISTINCT_SUM, functionCallExpr.getParams());
+                    Function sumFn = ExprUtils.getBuiltinFunction(FunctionSet.SUM,
+                            functionCallExpr.getFnArgTypes(), IS_NONSTRICT_SUPERTYPE_OF);
                     Function multiDistinctSum = DecimalV3FunctionAnalyzer.convertSumToMultiDistinctSum(
-                            functionCallExpr.getFn(), functionCallExpr.getChild(0).getType());
-                    replaceExpr.setFn(multiDistinctSum);
+                            sumFn, functionCallExpr.getChild(0).getType());
+                    AnalysisContext.populateCachedFields(replaceExpr, multiDistinctSum);
                     replaceExpr.getParams().setIsDistinct(false);
                     replaceExpr.setType(functionCallExpr.getType());
                 } else if (functionName.equals(FunctionSet.ARRAY_AGG)) {
                     replaceExpr = new FunctionCallExpr(FunctionSet.ARRAY_AGG_DISTINCT, functionCallExpr.getParams());
                     AggregateFunction fn =
                             (AggregateFunction) ExprUtils.getBuiltinFunction(FunctionSet.ARRAY_AGG_DISTINCT,
-                                    functionCallExpr.getFn().getArgs(),
+                                    functionCallExpr.getFnArgTypes(),
                                     IS_NONSTRICT_SUPERTYPE_OF);
                     fn = DecimalV3FunctionAnalyzer.rectifyAggregationFunction(
-                            fn, functionCallExpr.getFn().getArgs()[0], functionCallExpr.getFn().getReturnType());
+                            fn, functionCallExpr.getFnArgTypes()[0], functionCallExpr.getType());
 
-                    replaceExpr.setFn(fn);
+                    AnalysisContext.populateCachedFields(replaceExpr, fn);
                     replaceExpr.getParams().setIsDistinct(false);
                     replaceExpr.setType(functionCallExpr.getType());
                 }
@@ -2785,9 +2805,10 @@ public class PlanFragmentBuilder {
                 slotDesc.setType(sortExpr.getType());
 
                 context.getColRefToExpr()
-                        .put(ordering.getColumnRef(), new SlotRef(ordering.getColumnRef().toString(), slotDesc));
+                        .put(ordering.getColumnRef(),
+                                SlotRefBuilder.fromDescriptor(ordering.getColumnRef().toString(), slotDesc));
                 resolvedTupleExprs.add(sortExpr);
-                sortExprs.add(new SlotRef(slotDesc));
+                sortExprs.add(SlotRefBuilder.fromDescriptor(slotDesc));
 
                 outputColumnRefSet.except(List.of(ordering.getColumnRef()));
             }
@@ -2810,7 +2831,8 @@ public class PlanFragmentBuilder {
                     slotDesc.setIsMaterialized(true);
                     slotDesc.setIsNullable(preAggFunction.isNullable());
                     slotDesc.setType(preAggFunction.getType());
-                    context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDesc));
+                    context.getColRefToExpr().put(entry.getKey(),
+                            SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDesc));
 
                     outputColumnRefSet.except(List.of(entry.getKey()));
 
@@ -2833,7 +2855,7 @@ public class PlanFragmentBuilder {
                 slotDesc.setIsNullable(outputExpr.isNullable());
                 slotDesc.setType(outputExpr.getType());
 
-                context.getColRefToExpr().put(columnRef, new SlotRef(columnRef.toString(), slotDesc));
+                context.getColRefToExpr().put(columnRef, SlotRefBuilder.fromDescriptor(columnRef.toString(), slotDesc));
                 resolvedTupleExprs.add(outputExpr);
             }
 
@@ -3301,15 +3323,15 @@ public class PlanFragmentBuilder {
                 // Only boolean/numeric/string type can be optimized via array_agg_distinct
                 if (call.isDistinct() && call.getFunctionName().equals(FunctionSet.ARRAY_AGG) &&
                         call.getFnParams().exprs().size() == 1 && (
-                        call.getFn().getArgs()[0].isNumericType() || call.getFn().getArgs()[0].isStringType() ||
-                                call.getFn().getArgs()[0].isBoolean())) {
+                        call.getFnArgTypes()[0].isNumericType() || call.getFnArgTypes()[0].isStringType() ||
+                                call.getFnArgTypes()[0].isBoolean())) {
                     FunctionCallExpr newCall = new FunctionCallExpr(FunctionSet.ARRAY_AGG_DISTINCT, call.getParams());
                     AggregateFunction fn =
                             (AggregateFunction) ExprUtils.getBuiltinFunction(FunctionSet.ARRAY_AGG_DISTINCT,
-                                    call.getFn().getArgs(), IS_NONSTRICT_SUPERTYPE_OF);
+                                    call.getFnArgTypes(), IS_NONSTRICT_SUPERTYPE_OF);
                     fn = DecimalV3FunctionAnalyzer.rectifyAggregationFunction(
-                            fn, call.getFn().getArgs()[0], call.getFn().getReturnType());
-                    newCall.setFn(fn);
+                            fn, call.getFnArgTypes()[0], call.getType());
+                    AnalysisContext.populateCachedFields(newCall, fn);
                     newCall.getParams().setIsDistinct(false);
                     newCall.setType(call.getType());
                     analyticFunction = newCall;
@@ -3323,7 +3345,7 @@ public class PlanFragmentBuilder {
                 slotDesc.setIsNullable(analyticFunction.isNullable());
                 slotDesc.setIsMaterialized(true);
                 context.getColRefToExpr()
-                        .put(analyticCall.getKey(), new SlotRef(analyticCall.getKey().toString(), slotDesc));
+                        .put(analyticCall.getKey(), SlotRefBuilder.fromDescriptor(analyticCall.getKey().toString(), slotDesc));
             }
             outputTupleDesc.computeMemLayout();
 
@@ -3396,13 +3418,13 @@ public class PlanFragmentBuilder {
                     }
 
                     SlotRef slotRef = (SlotRef) expr;
-                    Integer dictSlotId = stringIdToDictId.get(slotRef.getDesc().getId().asInt());
+                    Integer dictSlotId = stringIdToDictId.get(slotRef.getSlotId());
                     if (dictSlotId == null) {
                         return expr;
                     }
 
                     SlotDescriptor slotDesc = context.getDescTbl().getSlotDesc(new SlotId(dictSlotId));
-                    return new SlotRef(slotDesc);
+                    return SlotRefBuilder.fromDescriptor(slotDesc);
                 }).collect(Collectors.toList());
 
                 sortNode.setAnalyticPartitionExprs(partitionExprsBeforeDecode);
@@ -3435,7 +3457,8 @@ public class PlanFragmentBuilder {
                 slotDesc.setIsMaterialized(true);
                 slotDesc.setIsNullable(columnRefOperator.isNullable());
 
-                context.getColRefToExpr().put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDesc));
+                context.getColRefToExpr().put(columnRefOperator,
+                        SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDesc));
             }
 
             SetOperationNode setOperationNode;
@@ -3506,7 +3529,7 @@ public class PlanFragmentBuilder {
                     isNullable |= childExpr.isNullable();
                 }
                 slotDesc.setIsNullable(isNullable);
-                setOutputList.add(new SlotRef(String.valueOf(columnRefOperator.getId()), slotDesc));
+                setOutputList.add(SlotRefBuilder.fromDescriptor(String.valueOf(columnRefOperator.getId()), slotDesc));
             }
             setOperationTuple.computeMemLayout();
             setOperationNode.setSetOperationOutputList(setOutputList);
@@ -3616,7 +3639,8 @@ public class PlanFragmentBuilder {
                 slotDesc.setIsMaterialized(true);
                 slotDesc.setIsNullable(columnRefOperator.isNullable());
 
-                context.getColRefToExpr().put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDesc));
+                context.getColRefToExpr().put(columnRefOperator,
+                        SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDesc));
             }
             outputGroupingTuple.computeMemLayout();
 
@@ -3684,7 +3708,8 @@ public class PlanFragmentBuilder {
                 slotDesc.setIsMaterialized(true);
                 slotDesc.setIsNullable(columnRefOperator.isNullable());
 
-                context.getColRefToExpr().put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDesc));
+                context.getColRefToExpr().put(columnRefOperator,
+                        SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDesc));
             }
             udtfOutputTuple.computeMemLayout();
 
@@ -3898,7 +3923,8 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setIsNullable(expr.isNullable());
                     slotDescriptor.setIsMaterialized(false);
                     slotDescriptor.setType(expr.getType());
-                    context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                    context.getColRefToExpr().put(entry.getKey(),
+                            SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
                 }
             }
             return commonSubExprMap;
@@ -4200,7 +4226,8 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setColumn(entry.getValue());
                 slotDescriptor.setIsNullable(entry.getValue().isAllowNull());
                 slotDescriptor.setIsMaterialized(true);
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                context.getColRefToExpr().put(entry.getKey(),
+                        SlotRefBuilder.fromDescriptor(entry.getKey().toString(), slotDescriptor));
             }
 
             // set predicate
@@ -4371,7 +4398,7 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setIsMaterialized(true);
                 slotDescriptor.setType(entry.getKey().getType());
                 context.getColRefToExpr().put(entry.getKey(),
-                        new SlotRef(entry.getKey().getName(), slotDescriptor));
+                        SlotRefBuilder.fromDescriptor(entry.getKey().getName(), slotDescriptor));
 
                 columnIdToNames.put(entry.getKey().getId(), entry.getValue().getName());
             }
@@ -4421,7 +4448,8 @@ public class PlanFragmentBuilder {
                 slotDesc.setIsMaterialized(true);
                 slotDesc.setIsNullable(columnRefOperator.isNullable());
 
-                context.getColRefToExpr().put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDesc));
+                context.getColRefToExpr().put(columnRefOperator,
+                        SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDesc));
             }
 
             // all use union pass through, wchch means just output the input-chunk
@@ -4596,7 +4624,8 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setColumn(columnRefOperatorColumnMap.get(columnRefOperator));
                     slotDescriptor.setIsMaterialized(true);
                     slotDescriptor.setIsNullable(columnRefOperator.isNullable());
-                    context.getColRefToExpr().put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDescriptor));
+                    context.getColRefToExpr().put(columnRefOperator,
+                            SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDescriptor));
                 }
 
                 List<ColumnRefOperator> lookupRefColumns = rowIdToLookUpRefColumns.get(entry.getKey());
@@ -4606,7 +4635,8 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setColumn(columnRefOperatorColumnMap.get(columnRefOperator));
                     slotDescriptor.setIsMaterialized(true);
                     slotDescriptor.setIsNullable(columnRefOperator.isNullable());
-                    context.getColRefToExpr().put(columnRefOperator, new SlotRef(columnRefOperator.toString(), slotDescriptor));
+                    context.getColRefToExpr().put(columnRefOperator,
+                            SlotRefBuilder.fromDescriptor(columnRefOperator.toString(), slotDescriptor));
                 }
                 List<ColumnRefOperator> fetchRefColumns = rowIdToFetchRefColumns.get(entry.getKey());
                 List<SlotId> fetchRefSlotIds = fetchRefColumns.stream()

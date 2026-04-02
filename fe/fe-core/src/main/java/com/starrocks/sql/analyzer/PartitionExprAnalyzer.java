@@ -45,7 +45,7 @@ public class PartitionExprAnalyzer {
                 Function builtinFunction = ExprUtils.getBuiltinFunction(funcCall.getFunctionName(),
                         dateTruncType, Function.CompareMode.IS_IDENTICAL);
 
-                funcCall.setFn(builtinFunction);
+                AnalysisContext.populateCachedFields(funcCall, builtinFunction);
                 funcCall.setType(targetColType);
             } else if (arg1 instanceof FunctionCallExpr) {
                 analyzePartitionExpr((FunctionCallExpr) arg1, partitionSlotRef);
@@ -55,7 +55,7 @@ public class PartitionExprAnalyzer {
                 Function builtinFunction = ExprUtils.getBuiltinFunction(funcCall.getFunctionName(),
                         dateTruncType, Function.CompareMode.IS_IDENTICAL);
 
-                funcCall.setFn(builtinFunction);
+                AnalysisContext.populateCachedFields(funcCall, builtinFunction);
                 funcCall.setType(targetColType);
             }
         }
@@ -72,8 +72,8 @@ public class PartitionExprAnalyzer {
             String functionName = functionCallExpr.getFunctionName();
             if (functionName.equalsIgnoreCase(FunctionSet.DATE_TRUNC)) {
                 analyzeDateTruncFunction(functionCallExpr, partitionSlotRef);
-                builtinFunction = functionCallExpr.getFn();
-                targetColType = functionCallExpr.getType();
+                // analyzeDateTruncFunction already populates cached fields and type
+                return;
             } else if (functionName.equalsIgnoreCase(FunctionSet.TIME_SLICE)) {
                 Type[] timeSliceType = {DateType.DATETIME, IntegerType.INT, VarcharType.VARCHAR, VarcharType.VARCHAR};
                 builtinFunction = ExprUtils.getBuiltinFunction(functionCallExpr.getFunctionName(),
@@ -144,7 +144,7 @@ public class PartitionExprAnalyzer {
                 throw new SemanticException(msg, expr.getPos());
             }
 
-            functionCallExpr.setFn(builtinFunction);
+            AnalysisContext.populateCachedFields(functionCallExpr, builtinFunction);
             functionCallExpr.setType(targetColType);
         } else if (expr instanceof CastExpr) {
             CastExpr castExpr = (CastExpr) expr;

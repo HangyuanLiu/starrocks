@@ -494,7 +494,8 @@ public class ExpressionAnalyzer {
         public Void visitSlot(SlotRef node, Scope scope) {
             ResolvedField resolvedField = scope.resolveField(node);
             node.setType(resolvedField.getField().getType());
-            node.setTblName(resolvedField.getField().getRelationAlias());
+            TableName alias = resolvedField.getField().getRelationAlias();
+            node.setTblName(alias != null ? alias.toQualifiedName() : null);
             // help to get nullable info in Analyzer phase
             // now it is used in creating mv to decide nullable of fields
             node.setNullable(resolvedField.getField().isNullable());
@@ -1007,7 +1008,7 @@ public class ExpressionAnalyzer {
         public Void visitFunctionCall(FunctionCallExpr node, Scope scope) {
             if (node.isNondeterministicBuiltinFnName()) {
                 ExprId exprId = analyzeState.getNextNondeterministicId();
-                node.setNondeterministicId(exprId);
+                node.setNondeterministicId(exprId.asInt());
             }
             String fnName = node.getFunctionName();
 
@@ -1127,7 +1128,7 @@ public class ExpressionAnalyzer {
                 // This must be after reordering because it depends on parameter positions
                 FunctionAnalyzer.validateNullConstraints(fnName, fn, node);
 
-                node.setFn(fn);
+                AnalysisContext.populateCachedFields(node, fn);
                 node.setType(fn.getReturnType());
                 FunctionAnalyzer.analyze(node);
                 return null;
@@ -1151,7 +1152,7 @@ public class ExpressionAnalyzer {
                             visit(child, scope);
                         }
                     }
-                    node.setFn(fn);
+                    AnalysisContext.populateCachedFields(node, fn);
                     node.setType(fn.getReturnType());
                     FunctionAnalyzer.analyze(node);
                     return null;
@@ -1165,7 +1166,7 @@ public class ExpressionAnalyzer {
                                 .join(Arrays.stream(argumentTypes).map(Type::toSql).collect(Collectors.toList())));
                 throw new SemanticException(msg, node.getPos());
             }
-            node.setFn(fn);
+            AnalysisContext.populateCachedFields(node, fn);
             node.setType(fn.getReturnType());
             FunctionAnalyzer.analyze(node);
             return null;
@@ -1536,7 +1537,7 @@ public class ExpressionAnalyzer {
             Function fn = ExprUtils.getBuiltinFunction(node.getFunctionName(),
                     childTypes, Function.CompareMode.IS_IDENTICAL);
 
-            node.setFn(fn);
+            AnalysisContext.populateCachedFields(node, fn);
             node.setType(fn.getReturnType());
             return null;
         }
@@ -1909,7 +1910,7 @@ public class ExpressionAnalyzer {
 
             Function fn = new Function(FunctionName.createFnName(FunctionSet.DICT_MAPPING), actualTypes, valueType, false);
             fn.setBinaryType(TFunctionBinaryType.BUILTIN);
-            node.setFn(fn);
+            AnalysisContext.populateCachedFields(node, fn);
 
             node.setDictQueryExpr(dictQueryExpr);
             return null;

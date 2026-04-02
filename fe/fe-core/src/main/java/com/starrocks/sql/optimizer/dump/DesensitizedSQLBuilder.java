@@ -185,13 +185,13 @@ public class DesensitizedSQLBuilder {
                             desensitizeColumnName(field.getRelationAlias(), field.getName(), aliasName));
                 } else if (expr instanceof SlotRef) {
                     SlotRef slot = (SlotRef) expr;
+                    TableName slotTableName = TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed());
                     if (slot.getOriginType().isStructType()) {
-                        selectListString.add(desensitizeStructColumnName(slot.getTblNameWithoutAnalyzed(),
+                        selectListString.add(desensitizeStructColumnName(slotTableName,
                                 slot.getColumnName(), aliasName));
                     } else {
                         selectListString.add(
-                                desensitizeColumnName(slot.getTblNameWithoutAnalyzed(), slot.getColumnName(),
-                                        aliasName));
+                                desensitizeColumnName(slotTableName, slot.getColumnName(), aliasName));
                     }
                 } else {
                     selectListString.add(StringUtils.isEmpty(aliasName) ?
@@ -423,10 +423,10 @@ public class DesensitizedSQLBuilder {
         @Override
         public String visitSlot(SlotRef expr, Void context) {
             if (expr.getOriginType().isStructType()) {
-                return desensitizeStructColumnName(expr.getTblNameWithoutAnalyzed(),
+                return desensitizeStructColumnName(TableName.fromQualifiedName(expr.getTblNameWithoutAnalyzed()),
                         expr.getColumnName(), expr.getColumnName());
             } else {
-                return desensitizeColumnName(expr.getTblNameWithoutAnalyzed(),
+                return desensitizeColumnName(TableName.fromQualifiedName(expr.getTblNameWithoutAnalyzed()),
                         expr.getColumnName(), expr.getColumnName());
             }
         }

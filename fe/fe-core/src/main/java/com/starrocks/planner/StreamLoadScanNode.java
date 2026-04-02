@@ -307,7 +307,7 @@ public class StreamLoadScanNode extends LoadScanNode {
                     if (dstSlotDesc.getColumn().isAllowNull()) {
                         srcSlotDesc.setIsNullable(true);
                     }
-                    SlotRef slotRef = new SlotRef(srcSlotDesc);
+                    SlotRef slotRef = SlotRefBuilder.fromDescriptor(srcSlotDesc);
                     slotRef.setColumnName(dstSlotDesc.getColumn().getName());
                     expr = slotRef;
                 } else {

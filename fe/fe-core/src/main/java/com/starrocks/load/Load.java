@@ -55,6 +55,7 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.load.loadv2.JobState;
 import com.starrocks.planner.DescriptorTable;
 import com.starrocks.planner.SlotDescriptor;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
@@ -747,7 +748,7 @@ public class Load {
                 }
 
                 // set src slot desc with cast return type
-                int slotId = slotRef.getSlotId().asInt();
+                int slotId = slotRef.getSlotId();
                 SlotDescriptor srcSlotDesc = srcTupleDesc.getSlot(slotId);
                 if (srcSlotDesc == null) {
                     throw new StarRocksException("Unknown source slot descriptor. id: " + slotId);
@@ -788,7 +789,7 @@ public class Load {
                 if (useVectorizedLoad) {
                     slotDesc.setIsMaterialized(true);
                 }
-                SlotRef slotRef = new SlotRef(slotDesc);
+                SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
                 slotRef.setColumnName(slot.getColumnName());
                 smap.put(slot, slotRef);
             }
@@ -840,7 +841,7 @@ public class Load {
                     }
                     smap.put(slot, replaceExpr);
                 } else {
-                    SlotRef slotRef = new SlotRef(slotDesc);
+                    SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
                     slotRef.setColumnName(slot.getColumnName());
                     Expr replaceExpr = slotRef;
                     if (replaceExpr.getType().matchesType(VarcharType.VARCHAR) &&
@@ -875,7 +876,7 @@ public class Load {
                     if (useVectorizedLoad) {
                         slotDesc.setIsMaterialized(true);
                     }
-                    SlotRef slotRef = new SlotRef(slotDesc);
+                    SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
                     slotRef.setColumnName(slot.getColumnName());
                     smap.put(slot, new CastExpr(tbl.getColumn(slot.getColumnName()).getType(), slotRef));
                 } else if (exprsByName.get(slot.getColumnName()) != null) {
@@ -923,7 +924,7 @@ public class Load {
                     node.getType(), node.getColumnName(), node.isNullable());
         } else {
             String columnName = node.getColumnName() == null ? node.getLabel() : node.getColumnName();
-            return new ColumnRefOperator(node.getSlotId().asInt(),
+            return new ColumnRefOperator(node.getSlotId(),
                     node.getType(), columnName, node.isNullable());
         }
     }

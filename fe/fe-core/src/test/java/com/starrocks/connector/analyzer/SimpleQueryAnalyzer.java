@@ -185,7 +185,8 @@ public class SimpleQueryAnalyzer {
 
                 // create predicate "<left>.colName = <right>.colName"
                 BinaryPredicate resolvedUsing = new BinaryPredicate(BinaryType.EQ,
-                        new SlotRef(leftTableName, colName), new SlotRef(rightTableName, colName));
+                        new SlotRef(leftTableName.toQualifiedName(), colName),
+                        new SlotRef(rightTableName.toQualifiedName(), colName));
 
                 if (joinEqual == null) {
                     joinEqual = resolvedUsing;
@@ -367,7 +368,7 @@ public class SimpleQueryAnalyzer {
                 Field field = new Field(colName,
                         tableFunction.getTableFnReturnTypes().get(i),
                         node.getResolveTableName(),
-                        new SlotRef(node.getResolveTableName(), colName, colName));
+                        new SlotRef(node.getResolveTableName().toQualifiedName(), colName, colName));
                 fields.add(field);
             }
 

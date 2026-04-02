@@ -15,13 +15,13 @@
 package com.starrocks.sql.ast.expression;
 
 import com.google.common.base.Preconditions;
-import com.starrocks.sql.ast.AstVisitorExtendInterface;
+import com.starrocks.sql.ast.AstVisitor;
 
 /**
  * Visitor-based implementation of expression substitution. It provides a single
  * entry point to rewrite an expression tree based on {@link ExprSubstitutionMap}.
  */
-public final class ExprSubstitutionVisitor implements AstVisitorExtendInterface<Expr, ExprSubstitutionMap> {
+public final class ExprSubstitutionVisitor implements AstVisitor<Expr, ExprSubstitutionMap> {
     private static final ExprSubstitutionVisitor INSTANCE = new ExprSubstitutionVisitor();
 
     private ExprSubstitutionVisitor() {

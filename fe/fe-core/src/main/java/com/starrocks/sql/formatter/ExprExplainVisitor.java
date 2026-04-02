@@ -16,7 +16,6 @@ package com.starrocks.sql.formatter;
 
 import com.google.common.base.Joiner;
 import com.starrocks.catalog.FunctionSet;
-import com.starrocks.catalog.TableName;
 import com.starrocks.sql.analyzer.AstToStringBuilder;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.OrderByElement;
@@ -192,10 +191,15 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
     @Override
     public String visitSlot(SlotRef node, Void context) {
         StringBuilder sb = new StringBuilder();
-        TableName tblName = node.getTblName();
+        com.starrocks.sql.ast.QualifiedName tblName = node.getTblName();
 
         if (tblName != null && !node.isFromLambda()) {
-            return tblName.toSql() + "." + "`" + node.getColName() + "`";
+            // Format table name with backticks, skipping internal catalog to match old TableName.toSql()
+            String tblStr = tblName.getParts().stream()
+                    .filter(p -> !com.starrocks.server.CatalogMgr.isInternalCatalog(p))
+                    .map(p -> "`" + p + "`")
+                    .collect(java.util.stream.Collectors.joining("."));
+            return tblStr + "." + "`" + node.getColName() + "`";
         } else if (node.getLabel() != null) {
             if (node.isBackQuoted() && !(node.getLabel().startsWith("`") && node.getLabel().endsWith("`"))) {
                 sb.append("`").append(node.getLabel()).append("`");
@@ -203,15 +207,15 @@ public class ExprExplainVisitor implements AstVisitorExtendInterface<String, Voi
             } else {
                 return node.getLabel();
             }
-        } else if (node.getDesc().getSourceExprs() != null) {
-            sb.append("<slot ").append(node.getDesc().getId().asInt()).append(">");
-            for (Expr expr : node.getDesc().getSourceExprs()) {
+        } else if (node.getSourceExprs() != null && !node.getSourceExprs().isEmpty()) {
+            sb.append("<slot ").append(node.getSlotId()).append(">");
+            for (com.starrocks.sql.ast.expression.Expr expr : node.getSourceExprs()) {
                 sb.append(" ");
                 sb.append(visit(expr));
             }
             return sb.toString();
         } else {
-            return "<slot " + node.getDesc().getId().asInt() + ">";
+            return "<slot " + node.getSlotId() + ">";
         }
     }
 

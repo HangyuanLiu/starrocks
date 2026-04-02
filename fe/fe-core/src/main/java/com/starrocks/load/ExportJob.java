@@ -80,6 +80,7 @@ import com.starrocks.planner.PlanFragmentId;
 import com.starrocks.planner.PlanNodeId;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.planner.SlotDescriptor;
+import com.starrocks.planner.SlotRefBuilder;
 import com.starrocks.planner.TupleDescriptor;
 import com.starrocks.proto.UnlockTabletMetadataRequest;
 import com.starrocks.qe.DefaultCoordinator;
@@ -491,7 +492,7 @@ public class ExportJob implements Writable, GsonPostProcessable {
         List<Expr> outputExprs = Lists.newArrayList();
         for (int i = 0; i < exportTupleDesc.getSlots().size(); ++i) {
             SlotDescriptor slotDesc = exportTupleDesc.getSlots().get(i);
-            SlotRef slotRef = new SlotRef(slotDesc);
+            SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
             if (slotDesc.getType().getPrimitiveType() == PrimitiveType.CHAR) {
                 slotRef.setType(CharType.CHAR);
             }

@@ -915,7 +915,7 @@ public class MaterializedViewAnalyzer {
         private Table getPartitionByExprRefBaseTable(ConnectContext connectContext,
                                                      Map<TableName, Table> aliasTableMap,
                                                      SlotRef slot) {
-            TableName tableName = slot.getTblNameWithoutAnalyzed();
+            TableName tableName = TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed());
             tableName.normalization(connectContext);
             Table table = aliasTableMap.get(tableName);
             if (table == null) {
@@ -952,7 +952,9 @@ public class MaterializedViewAnalyzer {
                         ExprToSql.toSql(slotRef));
             }
             // TableName's catalog may be null, so normalization it
-            slotRef.getTblNameWithoutAnalyzed().normalization(connectContext);
+            TableName tn = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
+            tn.normalization(connectContext);
+            slotRef.setTblName(tn.toQualifiedName());
             slotRef.setType(table.getColumn(slotRef.getColumnName()).getType());
             return expr;
         }
@@ -1006,7 +1008,7 @@ public class MaterializedViewAnalyzer {
             if (!refBaseTable.getPartitionInfo().isListPartition() || !refBaseTable.hasGeneratedColumn()) {
                 return changedPartitionByExprs;
             }
-            TableName tableName = slotRef.getTblNameWithoutAnalyzed();
+            TableName tableName = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
             Scope scope = new Scope(RelationId.anonymous(), new RelationFields(
                     refBaseTable.getBaseSchema().stream()
                             .map(col -> new Field(col.getName(), col.getType(), tableName, null))
@@ -1053,7 +1055,7 @@ public class MaterializedViewAnalyzer {
             for (int i = 0; i < partitionRefTableExprs.size(); i++) {
                 Expr expr = partitionRefTableExprs.get(i);
                 SlotRef slotRef = getSlotRef(expr);
-                TableName tableName = slotRef.getTblNameWithoutAnalyzed();
+                TableName tableName = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
                 Table table = tableNameTableMap.get(tableName);
                 if (table == null) {
                     throw new SemanticException("Materialized view partition expression %s could only ref to base table",
@@ -1308,7 +1310,7 @@ public class MaterializedViewAnalyzer {
         private void replaceTableAlias(SlotRef slotRef,
                                        CreateMaterializedViewStatement statement,
                                        Map<TableName, Table> tableNameTableMap) {
-            TableName tableName = slotRef.getTblNameWithoutAnalyzed();
+            TableName tableName = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
             Table table = tableNameTableMap.get(tableName);
             List<BaseTableInfo> baseTableInfos = statement.getBaseTableInfos();
             for (BaseTableInfo baseTableInfo : baseTableInfos) {
@@ -1319,7 +1321,7 @@ public class MaterializedViewAnalyzer {
                     }
                     if (tableOptional.get().equals(table)) {
                         slotRef.setTblName(new TableName(baseTableInfo.getCatalogName(),
-                                baseTableInfo.getDbName(), table.getName()));
+                                baseTableInfo.getDbName(), table.getName()).toQualifiedName());
                         break;
                     }
                 } else if (table.isHiveTable() || table.isHudiTable()) {
@@ -1327,7 +1329,7 @@ public class MaterializedViewAnalyzer {
                             table.getCatalogDBName().equals(baseTableInfo.getDbName()) &&
                             table.getTableIdentifier().equals(baseTableInfo.getTableIdentifier())) {
                         slotRef.setTblName(new TableName(baseTableInfo.getCatalogName(),
-                                baseTableInfo.getDbName(), table.getName()));
+                                baseTableInfo.getDbName(), table.getName()).toQualifiedName());
                         break;
                     }
                 } else if (table.isIcebergTable()) {
@@ -1336,7 +1338,7 @@ public class MaterializedViewAnalyzer {
                             icebergTable.getCatalogDBName().equals(baseTableInfo.getDbName()) &&
                             table.getTableIdentifier().equals(baseTableInfo.getTableIdentifier())) {
                         slotRef.setTblName(new TableName(baseTableInfo.getCatalogName(),
-                                baseTableInfo.getDbName(), table.getName()));
+                                baseTableInfo.getDbName(), table.getName()).toQualifiedName());
                         break;
                     }
                 } else if (table.isPaimonTable()) {
@@ -1345,7 +1347,7 @@ public class MaterializedViewAnalyzer {
                             paimonTable.getCatalogDBName().equals(baseTableInfo.getDbName()) &&
                             paimonTable.getTableIdentifier().equals(baseTableInfo.getTableIdentifier())) {
                         slotRef.setTblName(new TableName(baseTableInfo.getCatalogName(),
-                                baseTableInfo.getDbName(), paimonTable.getName()));
+                                baseTableInfo.getDbName(), paimonTable.getName()).toQualifiedName());
                         break;
                     }
                 }
@@ -1708,7 +1710,7 @@ public class MaterializedViewAnalyzer {
                     ExprToSql.toSql(partitionByExpr));
         }
         SlotRef slotRef = slotRefs.get(0);
-        TableName refTableName = slotRef.getTblNameWithoutAnalyzed();
+        TableName refTableName = TableName.fromQualifiedName(slotRef.getTblNameWithoutAnalyzed());
         Table refBaseTable = refTableNameTableMap.get(refTableName);
         if (refBaseTable == null) {
             throw new SemanticException("Materialized view partition expression %s could only ref to base table",

@@ -299,7 +299,7 @@ public class AnalyticEvalNode extends PlanNode {
         for (Expr pExpr : partitionExprs) {
             // push down only when both of them are slot ref and slot id match.
             if ((pExpr instanceof SlotRef) &&
-                    (((SlotRef) pExpr).getSlotId().asInt() == ((SlotRef) expr).getSlotId().asInt())) {
+                    (((SlotRef) pExpr).getSlotId() == ((SlotRef) expr).getSlotId())) {
                 newSlotExprs.add(pExpr);
             }
         }

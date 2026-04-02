@@ -22,6 +22,7 @@ import com.starrocks.sql.ast.CTERelation;
 import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.JoinRelation;
 import com.starrocks.sql.ast.ParseNode;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.Relation;
 import com.starrocks.sql.ast.SelectListItem;
@@ -78,7 +79,8 @@ public class MVPartitionSlotRefResolver {
             if (slotRef.getTblNameWithoutAnalyzed() == null) {
                 return node.accept(slotRefResolver, slotRef);
             }
-            String tableName = slotRef.getTblNameWithoutAnalyzed().getTbl();
+            QualifiedName qn = slotRef.getTblNameWithoutAnalyzed();
+            String tableName = qn.getParts().get(qn.getParts().size() - 1);
             if (node.getAlias() != null && !node.getAlias().getTbl().equalsIgnoreCase(tableName)) {
                 return null;
             }
@@ -89,7 +91,7 @@ public class MVPartitionSlotRefResolver {
         public Expr visitFieldReference(FieldReference fieldReference, Relation node) {
             Field field = node.getScope().getRelationFields()
                     .getFieldByIndex(fieldReference.getFieldIndex());
-            SlotRef slotRef = new SlotRef(field.getRelationAlias(), field.getName(), field.getName());
+            SlotRef slotRef = new SlotRef(field.getRelationAlias().toQualifiedName(), field.getName(), field.getName());
             slotRef.setType(field.getType());
             return node.accept(slotRefResolver, slotRef);
         }
@@ -106,12 +108,13 @@ public class MVPartitionSlotRefResolver {
         @Override
         public Expr visitSelect(SelectRelation node, SlotRef slot) {
             for (SelectListItem selectListItem : node.getSelectList().getItems()) {
-                TableName tableName = slot.getTblNameWithoutAnalyzed();
+                QualifiedName slotQN = slot.getTblNameWithoutAnalyzed();
+                TableName tableName = TableName.fromQualifiedName(slotQN);
                 if (selectListItem.getAlias() == null) {
                     if (selectListItem.getExpr() instanceof SlotRef) {
                         SlotRef result = (SlotRef) selectListItem.getExpr();
                         if (result.getColumnName().equalsIgnoreCase(slot.getColumnName())
-                                && (tableName == null || tableName.equals(result.getTblNameWithoutAnalyzed()))) {
+                                && (slotQN == null || slotQN.equals(result.getTblNameWithoutAnalyzed()))) {
                             return selectListItem.getExpr().accept(EXPR_SHUTTLE, node.getRelation());
                         }
                     }
@@ -130,7 +133,8 @@ public class MVPartitionSlotRefResolver {
         @Override
         public Expr visitSubqueryRelation(SubqueryRelation node, SlotRef slot) {
             if (slot.getTblNameWithoutAnalyzed() != null) {
-                String tableName = slot.getTblNameWithoutAnalyzed().getTbl();
+                QualifiedName qn = slot.getTblNameWithoutAnalyzed();
+                String tableName = qn.getParts().get(qn.getParts().size() - 1);
                 if (!node.getAlias().getTbl().equalsIgnoreCase(tableName)) {
                     return null;
                 }
@@ -142,7 +146,7 @@ public class MVPartitionSlotRefResolver {
 
         @Override
         public Expr visitTable(TableRelation node, SlotRef slot) {
-            TableName tableName = slot.getTblNameWithoutAnalyzed();
+            TableName tableName = TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed());
             if (node.getName().equals(tableName)) {
                 return slot;
             }
@@ -150,13 +154,13 @@ public class MVPartitionSlotRefResolver {
                 return null;
             }
             slot = (SlotRef) slot.clone();
-            slot.setTblName(node.getName());
+            slot.setTblName(node.getName().toQualifiedName());
             return slot;
         }
 
         @Override
         public Expr visitView(ViewRelation node, SlotRef slot) {
-            TableName tableName = slot.getTblNameWithoutAnalyzed();
+            TableName tableName = TableName.fromQualifiedName(slot.getTblNameWithoutAnalyzed());
             if (tableName != null && !node.getResolveTableName().equals(tableName)) {
                 return null;
             }
@@ -197,7 +201,8 @@ public class MVPartitionSlotRefResolver {
         @Override
         public Expr visitCTE(CTERelation node, SlotRef slot) {
             if (slot.getTblNameWithoutAnalyzed() != null) {
-                String tableName = slot.getTblNameWithoutAnalyzed().getTbl();
+                QualifiedName qn = slot.getTblNameWithoutAnalyzed();
+                String tableName = qn.getParts().get(qn.getParts().size() - 1);
                 String cteName = node.getAlias() != null ? node.getAlias().getTbl() : node.getName();
                 if (!cteName.equalsIgnoreCase(tableName)) {
                     return null;
@@ -260,12 +265,13 @@ public class MVPartitionSlotRefResolver {
             //      FROM t1
             // )r;
             for (SelectListItem selectListItem : node.getSelectList().getItems()) {
-                TableName tableName = slot.getTblNameWithoutAnalyzed();
+                QualifiedName slotQN = slot.getTblNameWithoutAnalyzed();
+                TableName tableName = TableName.fromQualifiedName(slotQN);
                 if (selectListItem.getAlias() == null) {
                     if (selectListItem.getExpr() instanceof SlotRef) {
                         SlotRef result = (SlotRef) selectListItem.getExpr();
                         if (result.getColumnName().equalsIgnoreCase(slot.getColumnName())
-                                && (tableName == null || tableName.equals(result.getTblNameWithoutAnalyzed()))) {
+                                && (slotQN == null || slotQN.equals(result.getTblNameWithoutAnalyzed()))) {
                             checkWindowFunction(node);
                         }
                     }
@@ -297,5 +303,13 @@ public class MVPartitionSlotRefResolver {
 
     public static Expr resolveExpr(Expr expr, Relation relation) {
         return expr.accept(EXPR_SHUTTLE, relation);
+    }
+
+    private static boolean tableNameEqualsIgnoringCatalog(TableName a, TableName b) {
+        if (a == null || b == null) {
+            return a == b;
+        }
+        return java.util.Objects.equals(a.getDb(), b.getDb())
+                && java.util.Objects.equals(a.getTbl(), b.getTbl());
     }
 }

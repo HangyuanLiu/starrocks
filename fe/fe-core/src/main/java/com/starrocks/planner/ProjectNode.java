@@ -186,7 +186,7 @@ public class ProjectNode extends PlanNode {
     // OlapScanNode, so we can ignore the trivial project when we compute digest of the fragment.
     public boolean isTrivial() {
         return slotMap.entrySet().stream().allMatch(
-                e -> e.getValue() instanceof SlotRef && ((SlotRef) e.getValue()).getSlotId().equals(e.getKey())) &&
+                e -> e.getValue() instanceof SlotRef && new SlotId(((SlotRef) e.getValue()).getSlotId()).equals(e.getKey())) &&
                 commonSlotMap.isEmpty() &&
                 (!(getChild(0) instanceof ScanNode) || ((ScanNode) getChild(0)).getHeavyExprs().isEmpty());
     }
@@ -227,7 +227,7 @@ public class ProjectNode extends PlanNode {
     public void collectEquivRelation(FragmentNormalizer normalizer) {
         slotMap.forEach((k, v) -> {
             if (v instanceof SlotRef) {
-                normalizer.getEquivRelation().union(k, ((SlotRef) v).getSlotId());
+                normalizer.getEquivRelation().union(k, new SlotId(((SlotRef) v).getSlotId()));
             }
         });
     }

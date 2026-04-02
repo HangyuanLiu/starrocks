@@ -116,7 +116,7 @@ public class MVPartitionExprResolverTest extends MVTestBase {
     @Test
     public void testGetSupportMvPartitionExpr() {
         // Set up test data for SlotRef
-        SlotRef slotRef = new SlotRef(new TableName("db", "table"), "column");
+        SlotRef slotRef = new SlotRef(new TableName("db", "table").toQualifiedName(), "column");
 
         // Execute the method under test
         MVPartitionExpr result = MVPartitionExpr.getSupportMvPartitionExpr(slotRef);
@@ -127,7 +127,7 @@ public class MVPartitionExprResolverTest extends MVTestBase {
         Assertions.assertEquals(slotRef, result.getSlotRef());
 
         // Set up test data for FunctionCallExpr
-        slotRef = new SlotRef(new TableName("db", "table"), "column");
+        slotRef = new SlotRef(new TableName("db", "table").toQualifiedName(), "column");
         StringLiteral day = new StringLiteral("day");
         FunctionCallExpr functionCallExpr = new FunctionCallExpr("date_trunc", Lists.newArrayList(day, slotRef));
 
@@ -141,8 +141,9 @@ public class MVPartitionExprResolverTest extends MVTestBase {
     }
 
     private SlotRef makeMvSlotRef(String tableName, String columnName) {
-        SlotRef slotRef = new SlotRef(new TableName("test", tableName), columnName, columnName);
-        slotRef.getTblNameWithoutAnalyzed().normalization(connectContext);
+        TableName tn = new TableName("test", tableName);
+        tn.normalization(connectContext);
+        SlotRef slotRef = new SlotRef(tn.toQualifiedName(), columnName, columnName);
         slotRef.setType(DateType.DATE);
         return slotRef;
     }

@@ -81,7 +81,7 @@ public abstract class LoadScanNode extends ScanNode {
                 throw new StarRocksException("unknown column in where statement. "
                         + "the column '" + slot.getColumnName() + "' in where clause must be in the target table.");
             }
-            SlotRef slotRef = new SlotRef(slotDesc);
+            SlotRef slotRef = SlotRefBuilder.fromDescriptor(slotDesc);
             slotRef.setColumnName(slot.getColumnName());
             smap.put(slot, slotRef);
         }

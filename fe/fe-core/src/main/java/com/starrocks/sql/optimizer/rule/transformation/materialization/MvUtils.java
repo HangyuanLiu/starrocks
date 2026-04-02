@@ -34,6 +34,7 @@ import com.starrocks.catalog.PartitionKey;
 import com.starrocks.catalog.RandomDistributionInfo;
 import com.starrocks.catalog.RangeDistributionInfo;
 import com.starrocks.catalog.Table;
+import com.starrocks.catalog.TableName;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.DateUtils;
@@ -1610,7 +1611,7 @@ public class MvUtils {
         }
         return partitionExprMaps.entrySet().stream()
                 .filter(entry -> SRStringUtils.areTableNamesEqual(table,
-                        entry.getValue().getTblNameWithoutAnalyzed().getTbl()))
+                        TableName.fromQualifiedName(entry.getValue().getTblNameWithoutAnalyzed()).getTbl()))
                 .map(entry -> new MVPartitionExpr(entry.getKey(), entry.getValue()))
                 .collect(Collectors.toList());
     }

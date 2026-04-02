@@ -127,7 +127,7 @@ public final class ShowStmtToSelectStmtConverter {
 
         SelectList selectList = new SelectList();
         ExprSubstitutionMap aliasMap = new ExprSubstitutionMap();
-        SelectListItem item = new SelectListItem(new SlotRef(SHOW_DB_TABLE_NAME, "SCHEMA_NAME"), DB_COL);
+        SelectListItem item = new SelectListItem(new SlotRef(SHOW_DB_TABLE_NAME.toQualifiedName(), "SCHEMA_NAME"), DB_COL);
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, DB_COL), item.getExpr().clone());
         Expr rewrittenWhere = ExprSubstitutionVisitor.rewrite(where, aliasMap);
@@ -144,20 +144,20 @@ public final class ShowStmtToSelectStmtConverter {
 
         SelectList selectList = new SelectList();
         ExprSubstitutionMap aliasMap = new ExprSubstitutionMap();
-        SelectListItem item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "TABLE_NAME"),
+        SelectListItem item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "TABLE_NAME"),
                 NAME_COL_PREFIX + stmt.getDb());
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, NAME_COL_PREFIX + stmt.getDb()),
                 item.getExpr().clone());
         if (stmt.isVerbose()) {
-            item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "TABLE_TYPE"), TYPE_COL);
+            item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "TABLE_TYPE"), TYPE_COL);
             selectList.addItem(item);
             aliasMap.put(new SlotRef(null, TYPE_COL), item.getExpr().clone());
         }
         Expr rewrittenWhere = ExprSubstitutionVisitor.rewrite(where, aliasMap);
         Expr whereDbEQ = new BinaryPredicate(
                 BinaryType.EQ,
-                new SlotRef(SHOW_TABLES_TABLE_NAME, "TABLE_SCHEMA"),
+                new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "TABLE_SCHEMA"),
                 new StringLiteral(stmt.getDb()));
         Expr finalWhere = new CompoundPredicate(
                 CompoundPredicate.Operator.AND,
@@ -175,42 +175,42 @@ public final class ShowStmtToSelectStmtConverter {
 
         SelectList selectList = new SelectList();
         ExprSubstitutionMap aliasMap = new ExprSubstitutionMap();
-        SelectListItem item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "COLUMN_NAME"), "Field");
+        SelectListItem item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "COLUMN_NAME"), "Field");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Field"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "DATA_TYPE"), "Type");
+        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "DATA_TYPE"), "Type");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Type"), item.getExpr().clone());
 
         if (stmt.isVerbose()) {
-            item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "COLLATION_NAME"), "Collation");
+            item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "COLLATION_NAME"), "Collation");
             selectList.addItem(item);
             aliasMap.put(new SlotRef(null, "Collation"), item.getExpr().clone());
         }
 
-        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "IS_NULLABLE"), "Null");
+        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "IS_NULLABLE"), "Null");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Null"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "COLUMN_KEY"), "Key");
+        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "COLUMN_KEY"), "Key");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Key"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "COLUMN_DEFAULT"), "Default");
+        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "COLUMN_DEFAULT"), "Default");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Default"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "EXTRA"), "Extra");
+        item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "EXTRA"), "Extra");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Extra"), item.getExpr().clone());
 
         if (stmt.isVerbose()) {
-            item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "PRIVILEGES"), "Privileges");
+            item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "PRIVILEGES"), "Privileges");
             selectList.addItem(item);
             aliasMap.put(new SlotRef(null, "Privileges"), item.getExpr().clone());
 
-            item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME, "COLUMN_COMMENT"), "Comment");
+            item = new SelectListItem(new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "COLUMN_COMMENT"), "Comment");
             selectList.addItem(item);
             aliasMap.put(new SlotRef(null, "Comment"), item.getExpr().clone());
         }
@@ -219,9 +219,9 @@ public final class ShowStmtToSelectStmtConverter {
         TableRef tableRef = stmt.getTableRef();
         Expr finalWhere = new CompoundPredicate(CompoundPredicate.Operator.AND, rewrittenWhere,
                 new CompoundPredicate(CompoundPredicate.Operator.AND,
-                        new BinaryPredicate(BinaryType.EQ, new SlotRef(SHOW_COLUMNS_TABLE_NAME, "TABLE_NAME"),
+                        new BinaryPredicate(BinaryType.EQ, new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "TABLE_NAME"),
                                 new StringLiteral(tableRef.getTableName())),
-                        new BinaryPredicate(BinaryType.EQ, new SlotRef(SHOW_COLUMNS_TABLE_NAME, "TABLE_SCHEMA"),
+                        new BinaryPredicate(BinaryType.EQ, new SlotRef(SHOW_COLUMNS_TABLE_NAME.toQualifiedName(), "TABLE_SCHEMA"),
                                 new StringLiteral(tableRef.getDbName()))));
         return new QueryStatement(new SelectRelation(selectList, new TableRelation(SHOW_COLUMNS_TABLE_NAME),
                 finalWhere, null, null), stmt.getOrigStmt());
@@ -235,73 +235,73 @@ public final class ShowStmtToSelectStmtConverter {
 
         SelectList selectList = new SelectList();
         ExprSubstitutionMap aliasMap = new ExprSubstitutionMap();
-        SelectListItem item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "TABLE_NAME"), "Name");
+        SelectListItem item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "TABLE_NAME"), "Name");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Name"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "ENGINE"), "Engine");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "ENGINE"), "Engine");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Engine"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "VERSION"), "Version");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "VERSION"), "Version");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Version"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "ROW_FORMAT"), "Row_format");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "ROW_FORMAT"), "Row_format");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Row_format"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "TABLE_ROWS"), "Rows");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "TABLE_ROWS"), "Rows");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Rows"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "AVG_ROW_LENGTH"), "Avg_row_length");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "AVG_ROW_LENGTH"), "Avg_row_length");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Avg_row_length"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "DATA_LENGTH"), "Data_length");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "DATA_LENGTH"), "Data_length");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Data_length"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "MAX_DATA_LENGTH"), "Max_data_length");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "MAX_DATA_LENGTH"), "Max_data_length");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Max_data_length"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "INDEX_LENGTH"), "Index_length");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "INDEX_LENGTH"), "Index_length");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Index_length"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "DATA_FREE"), "Data_free");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "DATA_FREE"), "Data_free");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Data_free"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "AUTO_INCREMENT"), "Auto_increment");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "AUTO_INCREMENT"), "Auto_increment");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Auto_increment"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "CREATE_TIME"), "Create_time");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "CREATE_TIME"), "Create_time");
         selectList.addItem(item);
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "UPDATE_TIME"), "Update_time");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "UPDATE_TIME"), "Update_time");
         selectList.addItem(item);
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "CHECK_TIME"), "Check_time");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "CHECK_TIME"), "Check_time");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Check_time"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "TABLE_COLLATION"), "Collation");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "TABLE_COLLATION"), "Collation");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Collation"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "CHECKSUM"), "Checksum");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "CHECKSUM"), "Checksum");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Checksum"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "CREATE_OPTIONS"), "Create_options");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "CREATE_OPTIONS"), "Create_options");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Create_options"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME, "TABLE_COMMENT"), "Comment");
+        item = new SelectListItem(new SlotRef(SHOW_TABLES_TABLE_NAME.toQualifiedName(), "TABLE_COMMENT"), "Comment");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Comment"), item.getExpr().clone());
 
@@ -322,12 +322,14 @@ public final class ShowStmtToSelectStmtConverter {
         for (String column : MATERIALIZED_VIEW_META_COLUMNS) {
             if (MATERIALIZED_VIEW_ALIAS_MAP.containsKey(column)) {
                 SelectListItem item = new SelectListItem(
-                        new SlotRef(SHOW_MATERIALIZED_VIEWS_TABLE_NAME, MATERIALIZED_VIEW_ALIAS_MAP.get(column)),
+                        new SlotRef(SHOW_MATERIALIZED_VIEWS_TABLE_NAME.toQualifiedName(),
+                                MATERIALIZED_VIEW_ALIAS_MAP.get(column)),
                         column);
                 selectList.addItem(item);
                 aliasMap.put(new SlotRef(null, column), item.getExpr().clone());
             } else {
-                SelectListItem item = new SelectListItem(new SlotRef(SHOW_MATERIALIZED_VIEWS_TABLE_NAME, column), column);
+                SelectListItem item = new SelectListItem(
+                        new SlotRef(SHOW_MATERIALIZED_VIEWS_TABLE_NAME.toQualifiedName(), column), column);
                 selectList.addItem(item);
                 aliasMap.put(new SlotRef(null, column), item.getExpr().clone());
             }
@@ -336,7 +338,7 @@ public final class ShowStmtToSelectStmtConverter {
 
         Expr whereDbEQ = new BinaryPredicate(
                 BinaryType.EQ,
-                new SlotRef(SHOW_MATERIALIZED_VIEWS_TABLE_NAME, "TABLE_SCHEMA"),
+                new SlotRef(SHOW_MATERIALIZED_VIEWS_TABLE_NAME.toQualifiedName(), "TABLE_SCHEMA"),
                 new StringLiteral(stmt.getDb()));
         Expr finalWhere = new CompoundPredicate(
                 CompoundPredicate.Operator.AND,
@@ -367,20 +369,20 @@ public final class ShowStmtToSelectStmtConverter {
             tableName = new TableName(InfoSchemaDb.DATABASE_NAME, "SESSION_VARIABLES");
         }
 
-        SelectListItem item = new SelectListItem(new SlotRef(tableName, "VARIABLE_NAME"), "Variable_name");
+        SelectListItem item = new SelectListItem(new SlotRef(tableName.toQualifiedName(), "VARIABLE_NAME"), "Variable_name");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Variable_name"), item.getExpr().clone());
 
-        item = new SelectListItem(new SlotRef(tableName, "VARIABLE_VALUE"), "Value");
+        item = new SelectListItem(new SlotRef(tableName.toQualifiedName(), "VARIABLE_VALUE"), "Value");
         selectList.addItem(item);
         aliasMap.put(new SlotRef(null, "Value"), item.getExpr().clone());
 
         if (type == SetType.VERBOSE) {
-            item = new SelectListItem(new SlotRef(tableName, "Default_value"), "Default_value");
+            item = new SelectListItem(new SlotRef(tableName.toQualifiedName(), "Default_value"), "Default_value");
             selectList.addItem(item);
             aliasMap.put(new SlotRef(null, "Default_value"), item.getExpr().clone());
 
-            item = new SelectListItem(new SlotRef(tableName, "Is_changed"), "Is_changed");
+            item = new SelectListItem(new SlotRef(tableName.toQualifiedName(), "Is_changed"), "Is_changed");
             selectList.addItem(item);
             aliasMap.put(new SlotRef(null, "Is_changed"), item.getExpr().clone());
         }

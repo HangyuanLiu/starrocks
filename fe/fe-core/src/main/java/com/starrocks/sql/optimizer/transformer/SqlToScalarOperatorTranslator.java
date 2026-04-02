@@ -20,9 +20,9 @@ import com.google.common.collect.Maps;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.SqlFunction;
-import com.starrocks.catalog.TableName;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.sql.analyzer.ExpressionAnalyzer;
 import com.starrocks.sql.analyzer.RelationFields;
 import com.starrocks.sql.analyzer.RelationId;
@@ -31,6 +31,7 @@ import com.starrocks.sql.analyzer.Scope;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.ParseNode;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectRelation;
@@ -112,6 +113,7 @@ import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriter;
 import com.starrocks.type.FunctionType;
 import com.starrocks.type.InvalidType;
 import com.starrocks.type.JsonType;
+import com.starrocks.type.Type;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -308,6 +310,36 @@ public final class SqlToScalarOperatorTranslator {
             this.cteContext = cteContext;
             this.builder = builder;
             this.subqueryPlaceholders = subqueryPlaceholders;
+        }
+
+        /**
+         * Re-resolve the Function object for a FunctionCallExpr using its cached arg types.
+         * This is needed because FunctionCallExpr no longer stores the Function object directly;
+         * it only caches typed fields (fnArgTypes, isAggregateFn, etc.) set during analysis.
+         * For translation paths that need the full Function (e.g., to pass to CallOperator),
+         * we re-resolve from GlobalStateMgr's function registry.
+         */
+        private Function getResolvedFunction(FunctionCallExpr node) {
+            Function fn = AnalysisContext.getFunctionByExpr(node);
+            if (fn != null) {
+                return fn;
+            }
+            // Fallback: re-resolve from function registry
+            String fnName = node.getFunctionName();
+            String dbName = node.getDbName();
+            Type[] argTypes = node.getFnArgTypes();
+            if (argTypes == null) {
+                return null;
+            }
+            if (dbName != null) {
+                fn = GlobalStateMgr.getCurrentState().getFunction(
+                        new Function(new com.starrocks.catalog.FunctionName(dbName, fnName),
+                                argTypes, InvalidType.INVALID, node.isFnHasVarArgs()),
+                        Function.CompareMode.IS_IDENTICAL);
+            } else {
+                fn = ExprUtils.getBuiltinFunction(fnName, argTypes, Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
+            }
+            return fn;
         }
 
         @Override
@@ -740,22 +772,23 @@ public final class SqlToScalarOperatorTranslator {
                 arguments.add(ConstantOperator.createInt(columnRefFactory.getNextUniqueId()));
             }
 
-            if (node.getFn() instanceof SqlFunction) {
-                return visitSqlFunctionCall(node, arguments);
+            Function fn = getResolvedFunction(node);
+
+            if (fn instanceof SqlFunction) {
+                return visitSqlFunctionCall((SqlFunction) fn, arguments);
             }
 
             CallOperator callOperator = new CallOperator(
                     node.getFunctionName(),
                     node.getType(),
                     arguments,
-                    node.getFn(),
+                    fn,
                     node.getParams().isDistinct());
             callOperator.setHints(node.getHints());
             return callOperator;
         }
 
-        public ScalarOperator visitSqlFunctionCall(FunctionCallExpr node, List<ScalarOperator> arguments) {
-            SqlFunction sqlFunction = (SqlFunction) node.getFn();
+        public ScalarOperator visitSqlFunctionCall(SqlFunction sqlFunction, List<ScalarOperator> arguments) {
             Expr expr = sqlFunction.getAnalyzeExpr();
             if (expr == null) {
                 throw new StarRocksPlannerException("view function analyze expr is null",
@@ -786,7 +819,7 @@ public final class SqlToScalarOperatorTranslator {
                     .collect(Collectors.toList());
             CallOperator callOperator =
                     new CallOperator(functionCallExpr.getFunctionName(), functionCallExpr.getType(), arguments,
-                            functionCallExpr.getFn(), functionCallExpr.getParams().isDistinct());
+                            getResolvedFunction(functionCallExpr), functionCallExpr.getParams().isDistinct());
             callOperator.setIgnoreNulls(functionCallExpr.getIgnoreNulls());
             return callOperator;
         }
@@ -976,7 +1009,7 @@ public final class SqlToScalarOperatorTranslator {
                 throw unsupportedException("Can't use IgnoreSlotVisitor with not analyzed slot ref");
             }
             String columnName = node.getColumnName() == null ? node.getLabel() : node.getColumnName();
-            return new ColumnRefOperator(node.getSlotId().asInt(),
+            return new ColumnRefOperator(node.getSlotId(),
                     node.getType(), columnName, node.isNullable());
         }
     }
@@ -1002,7 +1035,7 @@ public final class SqlToScalarOperatorTranslator {
             // To avoid the ids of lambda arguments are different after each visit()
             if (node.getTransformed() == null) {
                 SlotRef slotRef = new SlotRef(
-                        new TableName(TableName.LAMBDA_FUNC_TABLE, TableName.LAMBDA_FUNC_TABLE), node.getName());
+                        QualifiedName.of(SlotRef.LAMBDA_FUNC_TABLE, SlotRef.LAMBDA_FUNC_TABLE), node.getName());
                 slotRef.setType(node.getType());
                 slotRef.setNullable(node.isNullable());
                 node.setTransformed(slotResolver.apply(slotRef));

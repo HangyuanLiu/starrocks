@@ -100,7 +100,8 @@ public class DataCacheStmtAnalyzer {
                 TableName tableName = new TableName(catalogName, dbName, tblName);
                 for (Column column : optionalTable.get().getColumns()) {
                     Field field = new Field(column.getName(), column.getType(), tableName,
-                            new SlotRef(tableName, column.getName(), column.getName()), true, column.isAllowNull());
+                            new SlotRef(tableName.toQualifiedName(), column.getName(), column.getName()),
+                            true, column.isAllowNull());
                     fields.add(field);
                 }
                 Scope scope = new Scope(RelationId.anonymous(), new RelationFields(fields.build()));

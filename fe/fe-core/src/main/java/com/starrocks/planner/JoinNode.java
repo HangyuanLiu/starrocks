@@ -273,8 +273,8 @@ public abstract class JoinNode extends PlanNode implements RuntimeFilterBuildNod
             Expr lhs = eqConjunct.getChild(0);
             Expr rhs = eqConjunct.getChild(1);
             // distinguish lhs/rhs belongs to left child or right child to decrease iterative times.
-            if ((lhs instanceof SlotRef) && ExprUtils.isBound(expr, ((SlotRef) lhs).getSlotId()) ||
-                    (rhs instanceof SlotRef) && ExprUtils.isBound(expr, ((SlotRef) rhs).getSlotId())) {
+            if ((lhs instanceof SlotRef) && ExprUtils.isBound(expr, new SlotId(((SlotRef) lhs).getSlotId())) ||
+                    (rhs instanceof SlotRef) && ExprUtils.isBound(expr, new SlotId(((SlotRef) rhs).getSlotId()))) {
                 if (ExprUtils.isBoundByTupleIds(lhs, getChild(childIdx).getTupleIds())) {
                     newSlotExprs.add(lhs);
                 }
@@ -315,7 +315,7 @@ public abstract class JoinNode extends PlanNode implements RuntimeFilterBuildNod
             return Optional.empty();
         }
         SlotRef probeSlotRefExpr = probeExpr.cast();
-        int slotId = probeSlotRefExpr.getSlotId().asInt();
+        int slotId = probeSlotRefExpr.getSlotId();
         boolean probeExprIsNotJoinColumn = eqJoinConjuncts.stream()
                 .filter(conj -> conj.getOp().equals(BinaryType.EQ))
                 .noneMatch(conj -> ExprUtils.getUsedSlotIds(conj).contains(slotId));
@@ -613,7 +613,7 @@ public abstract class JoinNode extends PlanNode implements RuntimeFilterBuildNod
             SlotRef slotRef = (SlotRef) probeExpr;
             if (slotRef.isNullable()) {
                 slotRefWithNullValue = true;
-                slotId = slotRef.getSlotId();
+                slotId = new SlotId(slotRef.getSlotId());
             }
         }
 

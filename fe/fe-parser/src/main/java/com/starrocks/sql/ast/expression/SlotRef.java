@@ -36,38 +36,28 @@ package com.starrocks.sql.ast.expression;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.starrocks.catalog.Column;
-import com.starrocks.catalog.ColumnId;
-import com.starrocks.catalog.TableName;
-import com.starrocks.planner.SlotDescriptor;
-import com.starrocks.planner.SlotId;
 import com.starrocks.sql.ast.AstVisitor;
-import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.QualifiedName;
-import com.starrocks.type.InvalidType;
 import com.starrocks.type.StructField;
 import com.starrocks.type.StructType;
 import com.starrocks.type.Type;
-import com.starrocks.type.VarcharType;
 
 import java.util.List;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
 public class SlotRef extends Expr {
-    private TableName tblName;
+    public static final String LAMBDA_FUNC_TABLE = "__LAMBDA_TABLE";
+
+    private QualifiedName tblName;
     private String colName;
-    private ColumnId columnId;
+    private String columnId;
     //label/isBackQuoted used in toSql
     private String label;
     private boolean isBackQuoted = false;
 
     private QualifiedName qualifiedName;
-
-    // results of analysis
-    protected SlotDescriptor desc;
 
     // Only Struct Type need this field
     // Record access struct subfield path position
@@ -81,19 +71,40 @@ public class SlotRef extends Expr {
     // can not use desc because the slotId is unknown in Analyzer phase
     private boolean nullable = true;
 
+    // Optional lazy nullable supplier. When set (by SlotRefBuilder), isNullable() delegates to this
+    // supplier instead of the cached nullable field. This preserves the old behavior where
+    // isNullable() read from SlotDescriptor (which could be modified after SlotRef creation).
+    private transient java.util.function.BooleanSupplier nullableSupplier;
+
+    // Lazy supplier for source expressions (for explain formatting).
+    // Populated by SlotRefBuilder from SlotDescriptor.getSourceExprs().
+    private transient java.util.function.Supplier<java.util.List<Expr>> sourceExprsSupplier;
+
+    // Optional opaque reference to the SlotDescriptor (stored as Object to avoid fe-parser → fe-core dependency).
+    // fe-core code can cast this to SlotDescriptor when needed.
+    private transient Object descriptorRef;
+
+    // Planner-assigned slot id (-1 means not set).
+    // Replaces the old AnalyzedSlotRef.desc.getId().asInt() pattern.
+    private int slotId = -1;
+
+    // Planner-assigned tuple id (-1 means not set).
+    // Replaces the old AnalyzedSlotRef.desc.getParent().getId().asInt() pattern.
+    private int tupleId = -1;
+
     // Only used write
     private SlotRef() {
         super();
     }
 
-    public SlotRef(TableName tblName, String col) {
+    public SlotRef(QualifiedName tblName, String col) {
         super();
         this.tblName = tblName;
         this.colName = col;
         this.label = "`" + col + "`";
     }
 
-    public SlotRef(TableName tblName, String col, String label) {
+    public SlotRef(QualifiedName tblName, String col, String label) {
         super();
         this.tblName = tblName;
         this.colName = col;
@@ -111,19 +122,20 @@ public class SlotRef extends Expr {
             this.colName = parts.get(0);
             this.label = parts.get(0);
         } else if (parts.size() == 2) {
-            this.tblName = new TableName(null, null, parts.get(0), qualifiedName.getPos());
+            this.tblName = QualifiedName.of(List.of(parts.get(0)), qualifiedName.getPos());
             this.colName = parts.get(1);
             this.label = parts.get(1);
         } else if (parts.size() == 3) {
-            this.tblName = new TableName(null, parts.get(0), parts.get(1), qualifiedName.getPos());
+            this.tblName = QualifiedName.of(List.of(parts.get(0), parts.get(1)), qualifiedName.getPos());
             this.colName = parts.get(2);
             this.label = parts.get(2);
         } else if (parts.size() == 4) {
-            this.tblName = new TableName(parts.get(0), parts.get(1), parts.get(2), qualifiedName.getPos());
+            this.tblName = QualifiedName.of(List.of(parts.get(0), parts.get(1), parts.get(2)),
+                    qualifiedName.getPos());
             this.colName = parts.get(3);
             this.label = parts.get(3);
         } else {
-            // If parts.size() > 4, it must refer to a struct subfield name, so we set SlotRef's TableName null value,
+            // If parts.size() > 4, it must refer to a struct subfield name, so we set SlotRef's tblName to null,
             // set col, label a qualified name here[Of course it's a wrong value].
             // Correct value will be parsed in Analyzer according context.
             this.tblName = null;
@@ -132,50 +144,19 @@ public class SlotRef extends Expr {
         }
     }
 
-    // C'tor for a "pre-analyzed" ref to slot that doesn't correspond to
-    // a table's column.
-    public SlotRef(SlotDescriptor desc) {
-        super();
-        this.tblName = null;
-        this.colName = desc.getLabel();
-        this.desc = desc;
-        this.type = desc.getType();
-        this.originType = desc.getOriginType();
-        this.label = null;
-        if (this.type.isChar()) {
-            this.type = VarcharType.VARCHAR;
-        }
-        analysisDone();
-    }
-
     protected SlotRef(SlotRef other) {
         super(other);
         tblName = other.tblName;
         colName = other.colName;
         columnId = other.columnId;
         label = other.label;
-        desc = other.desc;
         qualifiedName = other.qualifiedName;
         usedStructFieldPos = other.usedStructFieldPos;
-    }
-
-    public SlotRef(String label, SlotDescriptor desc) {
-        this(desc);
-        this.label = label;
-    }
-
-    public SlotRef(SlotId slotId) {
-        this(new SlotDescriptor(slotId, "", InvalidType.INVALID, false));
-    }
-
-    /**
-     * Create an analyzed SlotRef with the given column metadata.
-     * Use this when a pre-analyzed SlotRef is needed but no DescriptorTable is required
-     * (e.g., DDL generated-column analysis, partition expression recovery).
-     */
-    public static SlotRef createAnalyzed(int slotId, String columnName, Type type, boolean nullable) {
-        SlotDescriptor slotDesc = new SlotDescriptor(new SlotId(slotId), columnName, type, nullable);
-        return new SlotRef(slotDesc);
+        slotId = other.slotId;
+        tupleId = other.tupleId;
+        nullableSupplier = other.nullableSupplier;
+        sourceExprsSupplier = other.sourceExprsSupplier;
+        descriptorRef = other.descriptorRef;
     }
 
     public void setBackQuoted(boolean isBackQuoted) {
@@ -230,52 +211,47 @@ public class SlotRef extends Expr {
         return new SlotRef(this);
     }
 
-    public SlotDescriptor getDesc() {
-        return desc;
-    }
-
-    public SlotId getSlotId() {
-        Preconditions.checkState(isAnalyzed);
-        Preconditions.checkNotNull(desc);
-        return desc.getId();
-    }
-
-    public Column getColumn() {
-        if (desc == null) {
-            return null;
-        } else {
-            return desc.getColumn();
-        }
-    }
-
     public boolean isFromLambda() {
-        return tblName != null && tblName.getTbl().equalsIgnoreCase(TableName.LAMBDA_FUNC_TABLE);
-    }
-
-    public void setTblName(TableName name) {
-        this.tblName = name;
-    }
-
-    public void setDesc(SlotDescriptor desc) {
-        this.desc = desc;
-    }
-
-    public void setType(Type type) {
-        super.setType(type);
-        if (desc != null) {
-            desc.setType(type);
+        if (tblName == null) {
+            return false;
         }
+        List<String> parts = tblName.getParts();
+        return !parts.isEmpty() && parts.get(parts.size() - 1).equalsIgnoreCase(LAMBDA_FUNC_TABLE);
+    }
+
+    public void setTblName(QualifiedName name) {
+        this.tblName = name;
     }
 
     public void setNullable(boolean nullable) {
         this.nullable = nullable;
     }
 
-    public SlotDescriptor getSlotDescriptorWithoutCheck() {
-        return desc;
+    public int getSlotId() {
+        return slotId;
     }
 
-    public TableName getTblName() {
+    public void setSlotId(int slotId) {
+        this.slotId = slotId;
+    }
+
+    public boolean hasSlotId() {
+        return slotId >= 0;
+    }
+
+    public int getTupleId() {
+        return tupleId;
+    }
+
+    public void setTupleId(int tupleId) {
+        this.tupleId = tupleId;
+    }
+
+    public boolean hasTupleId() {
+        return tupleId >= 0;
+    }
+
+    public QualifiedName getTblName() {
         return tblName;
     }
 
@@ -286,10 +262,9 @@ public class SlotRef extends Expr {
     @Override
     public String debugString() {
         MoreObjects.ToStringHelper helper = MoreObjects.toStringHelper(this);
-        helper.add("slotDesc", desc != null ? desc.debugString() : "null");
         helper.add("col", colName);
         helper.add("label", label);
-        helper.add("tblName", tblName != null ? tblName.toSql() : "null");
+        helper.add("tblName", tblName != null ? tblName.toString() : "null");
         return helper.toString();
     }
 
@@ -297,29 +272,21 @@ public class SlotRef extends Expr {
         return tblName != null && !isFromLambda();
     }
 
-    public TableName getTableName() {
-        Preconditions.checkState(isAnalyzed);
-        Preconditions.checkNotNull(desc);
-        if (tblName == null) {
-            Preconditions.checkNotNull(desc.getParent());
-            if (desc.getParent().getRef() == null) {
-                return null;
-            }
-            return desc.getParent().getRef().getName();
-        }
+    public QualifiedName getTableName() {
         return tblName;
     }
 
     @Override
     public int hashCode() {
-        if (desc != null) {
-            return desc.getId().hashCode();
+        if (slotId >= 0) {
+            return Integer.hashCode(slotId);
         }
         if (usedStructFieldPos != null) {
             // Means this SlotRef is going to access subfield in StructType
-            return Objects.hashCode((tblName == null ? "" : tblName.toSql() + "." + label).toLowerCase(), usedStructFieldPos);
+            return Objects.hashCode((tblName == null ? "" : tblName.toString() + "." + label).toLowerCase(),
+                    usedStructFieldPos);
         } else {
-            return Objects.hashCode((tblName == null ? "" : tblName.toSql() + "." + label).toLowerCase());
+            return Objects.hashCode((tblName == null ? "" : tblName.toString() + "." + label).toLowerCase());
         }
     }
 
@@ -329,10 +296,9 @@ public class SlotRef extends Expr {
             return false;
         }
         SlotRef other = (SlotRef) obj;
-        // check slot ids first; if they're both set we only need to compare those
-        // (regardless of how the ref was constructed)
-        if (desc != null && other.desc != null) {
-            return desc.getId().equals(other.desc.getId());
+        // If both have slotId set, compare by slotId (same semantics as old AnalyzedSlotRef)
+        if (this.slotId >= 0 && other.slotId >= 0) {
+            return this.slotId == other.slotId;
         }
         if ((tblName == null) != (other.tblName == null)) {
             return false;
@@ -359,10 +325,33 @@ public class SlotRef extends Expr {
     }
 
     public boolean isNullable() {
-        if (desc != null) {
-            return desc.getIsNullable();
+        if (nullableSupplier != null) {
+            return nullableSupplier.getAsBoolean();
         }
         return nullable;
+    }
+
+    public void setNullableSupplier(java.util.function.BooleanSupplier supplier) {
+        this.nullableSupplier = supplier;
+    }
+
+    public java.util.List<Expr> getSourceExprs() {
+        if (sourceExprsSupplier != null) {
+            return sourceExprsSupplier.get();
+        }
+        return null;
+    }
+
+    public void setSourceExprsSupplier(java.util.function.Supplier<java.util.List<Expr>> supplier) {
+        this.sourceExprsSupplier = supplier;
+    }
+
+    public Object getDescriptorRef() {
+        return descriptorRef;
+    }
+
+    public void setDescriptorRef(Object desc) {
+        this.descriptorRef = desc;
     }
 
     public String getColumnName() {
@@ -373,11 +362,11 @@ public class SlotRef extends Expr {
         this.colName = columnName;
     }
 
-    public ColumnId getColumnId() {
+    public String getColumnId() {
         return columnId;
     }
 
-    public void setColumnId(ColumnId columnId) {
+    public void setColumnId(String columnId) {
         this.columnId = columnId;
     }
 
@@ -399,10 +388,10 @@ public class SlotRef extends Expr {
      */
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context) {
-        return ((AstVisitorExtendInterface<R, C>) visitor).visitSlot(this, context);
+        return visitor.visitSlot(this, context);
     }
 
-    public TableName getTblNameWithoutAnalyzed() {
+    public QualifiedName getTblNameWithoutAnalyzed() {
         return tblName;
     }
 

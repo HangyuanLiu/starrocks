@@ -275,7 +275,7 @@ public abstract class SetOperationNode extends PlanNode {
         if (!ExprUtils.isBoundByTupleIds(expr, getTupleIds())) {
             return Optional.empty();
         }
-        int slotExprSlotId = ((SlotRef) expr).getSlotId().asInt();
+        int slotExprSlotId = ((SlotRef) expr).getSlotId();
         for (Map<Integer, Integer> map : outputSlotIdToChildSlotIdMaps) {
             if (map.containsKey(slotExprSlotId)) {
                 slotExprOutputSlotIdsMap.putIfAbsent(slotExprSlotId, Sets.newHashSet());
@@ -291,7 +291,7 @@ public abstract class SetOperationNode extends PlanNode {
         // try to push all children if any expr of a child can match `probeExpr`
         for (Expr mexpr : materializedResultExprLists_.get(childIdx)) {
             if ((mexpr instanceof SlotRef) &&
-                    mappedSlotIds.contains(((SlotRef) mexpr).getSlotId().asInt())) {
+                    mappedSlotIds.contains(((SlotRef) mexpr).getSlotId())) {
                 newSlotExprs.add(mexpr);
             }
         }

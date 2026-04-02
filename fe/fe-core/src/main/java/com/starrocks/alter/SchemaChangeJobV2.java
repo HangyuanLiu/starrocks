@@ -678,8 +678,12 @@ public class SchemaChangeJobV2 extends AlterJobV2 {
                                             "the ref column");
                                 }
 
-                                outputExprs.add(SlotRef.createAnalyzed(slotId,
-                                        col.getName(), col.getType(), col.isAllowNull()));
+                                SlotRef slotRef = new SlotRef(null, col.getName());
+                                slotRef.setSlotId(slotId);
+                                slotRef.setType(col.getType());
+                                slotRef.setNullable(col.isAllowNull());
+                                slotRef.analysisDone();
+                                outputExprs.add(slotRef);
                             }
 
                             TableName tableName = new TableName(db.getFullName(), tbl.getName());

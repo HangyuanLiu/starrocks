@@ -37,6 +37,7 @@ import com.starrocks.sql.analyzer.QueryAnalyzer;
 import com.starrocks.sql.analyzer.Scope;
 import com.starrocks.sql.ast.InsertStmt;
 import com.starrocks.sql.ast.PartitionRef;
+import com.starrocks.sql.ast.QualifiedName;
 import com.starrocks.sql.ast.QueryRelation;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.SelectList;
@@ -260,8 +261,9 @@ public class MVPCTRefreshPlanBuilder {
                 // use `getColumnOutputNames` rather than `getOutputExpression` to avoid `getOutputExpression`
                 // referring original queryStatement's
                 // output expressions which may cause column missing if the original queryStatement's output contains alias.
+                QualifiedName qualifiedTableName = tableName.toQualifiedName();
                 List<SelectListItem> items = queryRelation.getColumnOutputNames().stream()
-                        .map(x -> new SlotRef(tableName, x))
+                        .map(x -> new SlotRef(qualifiedTableName, x))
                         .map(x -> new SelectListItem(x, null)).collect(Collectors.toList());
                 SelectList selectList = new SelectList(items, false);
                 SelectRelation selectRelation = new SelectRelation(selectList, queryRelation,
@@ -301,8 +303,9 @@ public class MVPCTRefreshPlanBuilder {
         newRelation.setAlias(tableName);
 
         QueryRelation queryRelation = queryStatement.getQueryRelation();
+        QualifiedName qualifiedTableName = tableName.toQualifiedName();
         List<SelectListItem> items = queryRelation.getColumnOutputNames().stream()
-                .map(x -> new SlotRef(tableName, x))
+                .map(x -> new SlotRef(qualifiedTableName, x))
                 .map(x -> new SelectListItem(x, null)).collect(Collectors.toList());
         SelectList selectList = new SelectList(items, false);
 

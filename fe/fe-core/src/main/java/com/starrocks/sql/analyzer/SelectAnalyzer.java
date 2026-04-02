@@ -305,8 +305,8 @@ public class SelectAnalyzer {
 
                 if (item.getExpr() instanceof SlotRef) {
                     outputFields.add(new Field(name, item.getExpr().getType(),
-                            ((SlotRef) item.getExpr()).getTblNameWithoutAnalyzed(), item.getExpr(),
-                            true, item.getExpr().isNullable()));
+                            TableName.fromQualifiedName(((SlotRef) item.getExpr()).getTblNameWithoutAnalyzed()),
+                            item.getExpr(), true, item.getExpr().isNullable()));
                 } else {
                     outputFields.add(new Field(name, item.getExpr().getType(), null, item.getExpr(),
                             true, item.getExpr().isNullable()));
@@ -734,9 +734,8 @@ public class SelectAnalyzer {
                     // Check if output expression is a FunctionCallExpr that is aggregate or analytic
                     if (outputExpr instanceof FunctionCallExpr) {
                         FunctionCallExpr funcCall = (FunctionCallExpr) outputExpr;
-                        // Check if it's an aggregate or analytic function (fn must be set and analyzed)
-                        if (funcCall.getFn() != null &&
-                                (funcCall.isAggregateFunction() || funcCall.isAnalyticFnCall())) {
+                        // Check if it's an aggregate or analytic function
+                        if (funcCall.isAggregateFunction() || funcCall.isAnalyticFnCall()) {
                             return slotRef;
                         }
                     }

@@ -27,7 +27,8 @@ public class MVPartitionExprEqChecker {
         if (!s1.getColumnName().equalsIgnoreCase(s2.getColumnName())) {
             return false;
         }
-        if (!areEqualTableNames(s1.getTblNameWithoutAnalyzed(), s2.getTblNameWithoutAnalyzed())) {
+        if (!areEqualTableNames(TableName.fromQualifiedName(s1.getTblNameWithoutAnalyzed()),
+                TableName.fromQualifiedName(s2.getTblNameWithoutAnalyzed()))) {
             return false;
         }
         return true;

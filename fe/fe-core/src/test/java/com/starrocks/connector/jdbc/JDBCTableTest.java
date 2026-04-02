@@ -85,7 +85,7 @@ public class JDBCTableTest {
     @Test
     public void testJDBCPredicateRewrite() {
         {
-            Expr left = new SlotRef(new TableName("db", "tbl"), "k1");
+            Expr left = new SlotRef(new TableName("db", "tbl").toQualifiedName(), "k1");
             Expr right = new LargeStringLiteral("main_interface_of_live#all_module#null#write_real_time_start#0",
                     NodePosition.ZERO);
             Expr expr = new BinaryPredicate(BinaryType.EQ, left, right);
@@ -94,7 +94,7 @@ public class JDBCTableTest {
         }
 
         {
-            Expr left = new SlotRef(new TableName("db", "tbl"), "k1");
+            Expr left = new SlotRef(new TableName("db", "tbl").toQualifiedName(), "k1");
             Expr right = new StringLiteral("123", NodePosition.ZERO);
             Expr expr = new BinaryPredicate(BinaryType.LE, left, right);
             String str = AstToStringBuilder.toString(expr);

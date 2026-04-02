@@ -18,8 +18,8 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionName;
+import com.starrocks.sql.analyzer.AnalysisContext;
 import com.starrocks.catalog.FunctionSet;
-import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.ast.AssertNumRowsElement;
 import com.starrocks.sql.ast.AstVisitorExtendInterface;
@@ -425,16 +425,7 @@ public final class ExprToThrift {
         @Override
         public Void visitSlot(SlotRef node, TExprNode msg) {
             msg.node_type = TExprNodeType.SLOT_REF;
-            SlotDescriptor desc = node.getDesc();
-            if (desc != null) {
-                if (desc.getParent() != null) {
-                    msg.slot_ref = new TSlotRef(desc.getId().asInt(), desc.getParent().getId().asInt());
-                } else {
-                    msg.slot_ref = new TSlotRef(desc.getId().asInt(), 0);
-                }
-            } else {
-                msg.slot_ref = new TSlotRef(0, 0);
-            }
+            msg.slot_ref = new TSlotRef(node.getSlotId(), node.getTupleId());
             return null;
         }
 
@@ -484,13 +475,20 @@ public final class ExprToThrift {
             } else {
                 msg.node_type = TExprNodeType.FUNCTION_CALL;
             }
-            Function fn = node.getFn();
-            if (fn != null) {
-                TFunction tfn = fn.toThrift();
-                tfn.setIgnore_nulls(node.getIgnoreNulls());
-                msg.setFn(tfn);
-                if (fn.hasVarArgs()) {
-                    msg.setVararg_start_idx(fn.getNumArgs() - 1);
+            Type[] argTypes = node.getFnArgTypes();
+            if (argTypes != null) {
+                Function fn = AnalysisContext.getFunctionByExpr(node);
+                if (fn == null) {
+                    fn = ExprUtils.getBuiltinFunction(node.getFunctionName(), argTypes,
+                            Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
+                }
+                if (fn != null) {
+                    TFunction tfn = fn.toThrift();
+                    tfn.setIgnore_nulls(node.getIgnoreNulls());
+                    msg.setFn(tfn);
+                    if (fn.hasVarArgs()) {
+                        msg.setVararg_start_idx(fn.getNumArgs() - 1);
+                    }
                 }
             }
             return null;

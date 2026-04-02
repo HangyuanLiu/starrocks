@@ -23,8 +23,8 @@ public class ArithmeticExprTest {
     @Test
     public void testDecimal32Add() throws IOException {
         UtFrameUtils.createDefaultCtx();
-        Expr lhsExpr = new SlotRef(new TableName("foo_db", "bar_table"), "c0");
-        Expr rhsExpr = new SlotRef(new TableName("foo_db", "bar_table"), "c1");
+        Expr lhsExpr = new SlotRef(new TableName("foo_db", "bar_table").toQualifiedName(), "c0");
+        Expr rhsExpr = new SlotRef(new TableName("foo_db", "bar_table").toQualifiedName(), "c1");
         ScalarType decimal32p9s2 = TypeFactory.createDecimalV3Type(PrimitiveType.DECIMAL32, 9, 2);
         lhsExpr.setType(decimal32p9s2);
         rhsExpr.setType(decimal32p9s2);
