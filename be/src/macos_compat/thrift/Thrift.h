@@ -15,17 +15,3 @@
 #pragma once
 
 #include_next <thrift/Thrift.h>
-
-#ifdef __APPLE__
-namespace apache {
-namespace thrift {
-
-// thrift 0.20.0's iterator only defines operator!=, but newer libc++ map
-// constructors compare the range endpoints with operator==.
-inline bool operator==(TEnumIterator lhs, TEnumIterator rhs) {
-    return !(lhs != rhs);
-}
-
-} // namespace thrift
-} // namespace apache
-#endif

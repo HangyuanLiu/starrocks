@@ -44,7 +44,7 @@ set(EXPR_CORE_FILES
   expr_factory.cpp
   expr_executor.cpp
   function_helper.cpp
-  gin_functions.cpp
+  $<$<NOT:$<PLATFORM_ID:Darwin>>:gin_functions.cpp>
   grouping_sets_functions.cpp
   hash_functions.cpp
   hyperloglog_functions.cpp

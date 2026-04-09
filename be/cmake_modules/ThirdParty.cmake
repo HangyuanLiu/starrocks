@@ -57,6 +57,19 @@ function(starrocks_resolve_thirdparty_library out_var file_name)
         endif()
     endforeach()
 
+    # On macOS, try .dylib fallback when .a is not found
+    if (APPLE)
+        string(REGEX REPLACE "\\.a$" ".dylib" dylib_name "${file_name}")
+        if (NOT "${dylib_name}" STREQUAL "${file_name}")
+            foreach(search_dir IN LISTS search_dirs)
+                if (EXISTS "${search_dir}/${dylib_name}")
+                    set(${out_var} "${search_dir}/${dylib_name}" PARENT_SCOPE)
+                    return()
+                endif()
+            endforeach()
+        endif()
+    endif()
+
     list(GET search_dirs 0 default_search_dir)
     set(${out_var} "${default_search_dir}/${file_name}" PARENT_SCOPE)
 endfunction()
@@ -94,17 +107,19 @@ set(JEMALLOC_HOME "${THIRDPARTY_DIR}/jemalloc")
 
 # Set all libraries
 
-starrocks_resolve_thirdparty_library(CLUCENE_CORE_LIBRARY libclucene-core-static.a)
-add_library(clucene-core STATIC IMPORTED)
-set_target_properties(clucene-core PROPERTIES IMPORTED_LOCATION ${CLUCENE_CORE_LIBRARY})
+if (NOT APPLE)
+    starrocks_resolve_thirdparty_library(CLUCENE_CORE_LIBRARY libclucene-core-static.a)
+    add_library(clucene-core STATIC IMPORTED)
+    set_target_properties(clucene-core PROPERTIES IMPORTED_LOCATION ${CLUCENE_CORE_LIBRARY})
 
-starrocks_resolve_thirdparty_library(CLUCENE_SHARED_LIBRARY libclucene-shared-static.a)
-add_library(clucene-shared STATIC IMPORTED)
-set_target_properties(clucene-shared PROPERTIES IMPORTED_LOCATION ${CLUCENE_SHARED_LIBRARY})
+    starrocks_resolve_thirdparty_library(CLUCENE_SHARED_LIBRARY libclucene-shared-static.a)
+    add_library(clucene-shared STATIC IMPORTED)
+    set_target_properties(clucene-shared PROPERTIES IMPORTED_LOCATION ${CLUCENE_SHARED_LIBRARY})
 
-starrocks_resolve_thirdparty_library(CLUCENE_CONTRIBS_LIBRARY libclucene-contribs-lib.a)
-add_library(clucene-contribs-lib STATIC IMPORTED)
-set_target_properties(clucene-contribs-lib PROPERTIES IMPORTED_LOCATION ${CLUCENE_CONTRIBS_LIBRARY})
+    starrocks_resolve_thirdparty_library(CLUCENE_CONTRIBS_LIBRARY libclucene-contribs-lib.a)
+    add_library(clucene-contribs-lib STATIC IMPORTED)
+    set_target_properties(clucene-contribs-lib PROPERTIES IMPORTED_LOCATION ${CLUCENE_CONTRIBS_LIBRARY})
+endif()
 
 add_library(gflags STATIC IMPORTED GLOBAL)
 set_target_properties(gflags PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib/libgflags.a)

@@ -15,16 +15,26 @@
 #include "storage/index/inverted/inverted_plugin_factory.h"
 
 #include "common/statusor.h"
+#ifdef WITH_CLUCENE
 #include "storage/index/inverted/builtin/builtin_plugin.h"
 #include "storage/index/inverted/clucene/clucene_plugin.h"
+#endif
 
 namespace starrocks {
 StatusOr<InvertedPlugin*> InvertedPluginFactory::get_plugin(InvertedImplementType imp_type) {
     switch (imp_type) {
     case InvertedImplementType::CLUCENE:
+#ifdef WITH_CLUCENE
         return &CLucenePlugin::get_instance();
+#else
+        return Status::NotSupported("CLucene inverted index is not supported on this platform");
+#endif
     case InvertedImplementType::BUILTIN:
+#ifdef WITH_CLUCENE
         return &BuiltinPlugin::get_instance();
+#else
+        return Status::NotSupported("Builtin inverted index is not supported on this platform");
+#endif
     default:
         return Status::InternalError("Invalid implement of inverted type");
     }

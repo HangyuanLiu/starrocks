@@ -211,6 +211,10 @@ if (${WITH_TENANN} STREQUAL "ON")
     add_definitions(-DWITH_TENANN)
 endif()
 
+if (NOT APPLE)
+    add_definitions(-DWITH_CLUCENE)
+endif()
+
 # The StarRocks module enables dynamic linking. This is a developer option.
 # If only certain modules are modified without altering the ABI,
 # subsequent linking stages may be skipped.
@@ -597,9 +601,6 @@ set(STARROCKS_DEPENDENCIES
     ${STARROCKS_DEPENDENCIES}
     build_version
     ${WL_START_GROUP}
-    clucene-core
-    clucene-shared
-    clucene-contribs-lib
     rocksdb
     libs2
     snappy
@@ -706,6 +707,15 @@ if ("${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86" OR "${CMAKE_BUILD_TARGET_ARCH}" 
         ${STARROCKS_DEPENDENCIES}
         breakpad
         libdeflate
+    )
+endif()
+
+if (NOT APPLE)
+    set(STARROCKS_DEPENDENCIES
+        ${STARROCKS_DEPENDENCIES}
+        clucene-core
+        clucene-shared
+        clucene-contribs-lib
     )
 endif()
 

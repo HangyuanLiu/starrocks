@@ -285,10 +285,10 @@ set(STORAGE_FILES
     index/inverted/inverted_index_iterator.cpp
     index/inverted/inverted_index_option.cpp
     index/inverted/inverted_plugin_factory.cpp
-    index/inverted/clucene/clucene_plugin.cpp
-    index/inverted/clucene/clucene_inverted_writer.cpp
-    index/inverted/clucene/clucene_inverted_reader.cpp
-    index/inverted/clucene/match_operator.cpp
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/clucene/clucene_plugin.cpp>
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/clucene/clucene_inverted_writer.cpp>
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/clucene/clucene_inverted_reader.cpp>
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/clucene/match_operator.cpp>
     index/vector/empty_index_reader.cpp
     index/vector/vector_index_builder_factory.cpp
     index/vector/vector_index_writer.cpp
@@ -299,11 +299,11 @@ set(STORAGE_FILES
     index/vector/tenann/tenann_index_builder.cpp
     index/vector/tenann/tenann_index_utils.cpp
     lake/table_schema_service.cpp
-    index/inverted/builtin/builtin_plugin.cpp
-    index/inverted/builtin/builtin_inverted_writer.cpp
-    index/inverted/builtin/builtin_inverted_reader.cpp
-    index/inverted/builtin/builtin_inverted_index_iterator.cpp
-    index/inverted/builtin/builtin_simple_analyzer.cpp)
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/builtin/builtin_plugin.cpp>
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/builtin/builtin_inverted_writer.cpp>
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/builtin/builtin_inverted_reader.cpp>
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/builtin/builtin_inverted_index_iterator.cpp>
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:index/inverted/builtin/builtin_simple_analyzer.cpp>)
 
 if (NOT BUILD_FORMAT_LIB)
     list(APPEND STORAGE_FILES  lake/starlet_location_provider.cpp)

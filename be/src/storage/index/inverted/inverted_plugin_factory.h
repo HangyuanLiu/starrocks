@@ -15,7 +15,9 @@
 #pragma once
 
 #include "common/statusor.h"
+#ifdef WITH_CLUCENE
 #include "storage/index/inverted/clucene/clucene_plugin.h"
+#endif
 #include "storage/index/inverted/inverted_plugin.h"
 
 namespace starrocks {
