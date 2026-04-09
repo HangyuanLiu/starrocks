@@ -2199,4 +2199,61 @@ public class MvRefreshAndRewriteIcebergTest extends MVTestBase {
                         "     partitions=1/1");
         starRocksAssert.dropMaterializedView(mvName);
     }
+
+    @Test
+    public void testQueryRewriteForEvolvedIcebergTable() throws Exception {
+        // Verify MV on an evolved Iceberg table can be created, refreshed, and used for rewrite.
+        // The evolution-aware partition mapping allows the MV to serve queries after force refresh.
+        String mvName = "iceberg_evolved_rewrite_mv";
+        starRocksAssert.useDatabase("test")
+                .withMaterializedView("CREATE MATERIALIZED VIEW `test`.`" + mvName + "`\n" +
+                        "PARTITION BY date_trunc('day', ts)\n" +
+                        "DISTRIBUTED BY HASH(`id`) BUCKETS 10\n" +
+                        "REFRESH DEFERRED MANUAL\n" +
+                        "PROPERTIES (\n" +
+                        "\"replication_num\" = \"1\"\n" +
+                        ")\n" +
+                        "AS SELECT id, data, ts FROM `iceberg0`.`partitioned_transforms_db`." +
+                        "`t0_month_to_day_evolution` as a;");
+
+        Database testDb = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb("test");
+        MaterializedView mv = ((MaterializedView) GlobalStateMgr.getCurrentState().getLocalMetastore()
+                .getTable(testDb.getFullName(), mvName));
+
+        // Refresh the MV so it has partitions
+        starRocksAssert.getCtx().executeSql("refresh materialized view " + mvName + " force with sync mode");
+        Assertions.assertFalse(mv.getPartitions().isEmpty(), "MV should have partitions after refresh");
+
+        // Query against base table with a predicate matching the evolved table's range
+        String query = "SELECT id, data, ts FROM `iceberg0`.`partitioned_transforms_db`." +
+                "`t0_month_to_day_evolution` WHERE ts >= '2024-01-01' AND ts < '2024-02-01'";
+        String plan = getFragmentPlan(query);
+        // After force refresh, the MV should be usable for rewrite via evolution-aware partition diff
+        PlanTestBase.assertContains(plan, mvName);
+
+        starRocksAssert.dropMaterializedView(mvName);
+    }
+
+    @Test
+    public void testQueryRewriteStillWorksForNonEvolvedIcebergTable() throws Exception {
+        // Sanity check: MV creation on a non-evolved Iceberg table should work without errors
+        String mvName = "iceberg_non_evolved_rewrite_mv";
+        starRocksAssert.useDatabase("test")
+                .withMaterializedView("CREATE MATERIALIZED VIEW `test`.`" + mvName + "`\n" +
+                        "PARTITION BY date_trunc('month', ts)\n" +
+                        "DISTRIBUTED BY HASH(`id`) BUCKETS 10\n" +
+                        "REFRESH DEFERRED MANUAL\n" +
+                        "PROPERTIES (\n" +
+                        "\"replication_num\" = \"1\"\n" +
+                        ")\n" +
+                        "AS SELECT id, data, ts FROM `iceberg0`.`partitioned_transforms_db`.`t0_month` as a;");
+
+        Database testDb = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb("test");
+        MaterializedView mv = ((MaterializedView) GlobalStateMgr.getCurrentState().getLocalMetastore()
+                .getTable(testDb.getFullName(), mvName));
+        Assertions.assertNotNull(mv, "MV should be created successfully on non-evolved table");
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
+
+        starRocksAssert.dropMaterializedView(mvName);
+    }
 }

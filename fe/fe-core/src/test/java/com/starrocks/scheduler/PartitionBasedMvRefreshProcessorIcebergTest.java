@@ -719,4 +719,72 @@ public class PartitionBasedMvRefreshProcessorIcebergTest extends MVTestBase {
 
         starRocksAssert.dropMaterializedView(mvName);
     }
+
+    @Test
+    public void testRefreshMvWithIcebergMonthToDayEvolution() throws Exception {
+        // Create MV with day granularity on an Iceberg table that evolved from month to day partitioning
+        String mvName = "iceberg_month_to_day_evo_mv";
+        starRocksAssert.useDatabase("test")
+                .withMaterializedView("CREATE MATERIALIZED VIEW `test`.`" + mvName + "`\n" +
+                        "PARTITION BY date_trunc('day', ts)\n" +
+                        "DISTRIBUTED BY HASH(`id`) BUCKETS 10\n" +
+                        "REFRESH DEFERRED MANUAL\n" +
+                        "PROPERTIES (\n" +
+                        "\"replication_num\" = \"1\"\n" +
+                        ")\n" +
+                        "AS SELECT id, data, ts FROM `iceberg0`.`partitioned_transforms_db`." +
+                        "`t0_month_to_day_evolution` as a;");
+
+        Database testDb = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb("test");
+        MaterializedView mv = ((MaterializedView) GlobalStateMgr.getCurrentState().getLocalMetastore()
+                .getTable(testDb.getFullName(), mvName));
+
+        // MV should use RANGE partition
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
+
+        // Trigger refresh - should succeed without exceptions
+        triggerRefreshMv(testDb, mv);
+
+        // MV should have partitions after refresh
+        Collection<Partition> partitions = mv.getPartitions();
+        Assertions.assertFalse(partitions.isEmpty(),
+                "MV should have partitions after refresh on an evolved Iceberg table");
+
+        starRocksAssert.dropMaterializedView(mvName);
+    }
+
+    @Test
+    public void testRefreshMvWithNonEvolvedIcebergTableUnchanged() throws Exception {
+        // Regression test: ensure non-evolved Iceberg tables still work correctly with MV refresh
+        String mvName = "iceberg_non_evolved_regression_mv";
+        starRocksAssert.useDatabase("test")
+                .withMaterializedView("CREATE MATERIALIZED VIEW `test`.`" + mvName + "`\n" +
+                        "PARTITION BY date_trunc('month', ts)\n" +
+                        "DISTRIBUTED BY HASH(`id`) BUCKETS 10\n" +
+                        "REFRESH DEFERRED MANUAL\n" +
+                        "PROPERTIES (\n" +
+                        "\"replication_num\" = \"1\"\n" +
+                        ")\n" +
+                        "AS SELECT id, data, ts FROM `iceberg0`.`partitioned_transforms_db`.`t0_month` as a;");
+
+        Database testDb = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb("test");
+        MaterializedView mv = ((MaterializedView) GlobalStateMgr.getCurrentState().getLocalMetastore()
+                .getTable(testDb.getFullName(), mvName));
+
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
+
+        // Trigger refresh - should succeed
+        triggerRefreshMv(testDb, mv);
+
+        // Non-evolved table should have 5 month partitions
+        Collection<Partition> partitions = mv.getPartitions();
+        Assertions.assertEquals(5, partitions.size());
+
+        Set<String> expectedPartitionNames = ImmutableSet.of("p202203_202204", "p202201_202202", "p202204_202205",
+                "p202202_202203", "p202205_202206");
+        Assertions.assertEquals(expectedPartitionNames,
+                partitions.stream().map(Partition::getName).collect(Collectors.toSet()));
+
+        starRocksAssert.dropMaterializedView(mvName);
+    }
 }
