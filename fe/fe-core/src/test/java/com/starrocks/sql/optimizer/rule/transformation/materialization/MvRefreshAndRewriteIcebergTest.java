@@ -2201,9 +2201,10 @@ public class MvRefreshAndRewriteIcebergTest extends MVTestBase {
     }
 
     @Test
-    public void testQueryRewriteForEvolvedIcebergTable() throws Exception {
-        // Verify MV on an evolved Iceberg table can be created, refreshed, and used for rewrite.
-        // The evolution-aware partition mapping allows the MV to serve queries after force refresh.
+    public void testQueryRewriteBlockedForEvolvedIcebergTable() throws Exception {
+        // Verify MV on evolved Iceberg table is NOT used for query rewrite.
+        // Rewrite isolation: evolved tables return null from computePartitionDiff during rewrite,
+        // so the MV is treated as entirely stale and skipped.
         String mvName = "iceberg_evolved_rewrite_mv";
         starRocksAssert.useDatabase("test")
                 .withMaterializedView("CREATE MATERIALIZED VIEW `test`.`" + mvName + "`\n" +
@@ -2216,20 +2217,13 @@ public class MvRefreshAndRewriteIcebergTest extends MVTestBase {
                         "AS SELECT id, data, ts FROM `iceberg0`.`partitioned_transforms_db`." +
                         "`t0_month_to_day_evolution` as a;");
 
-        Database testDb = GlobalStateMgr.getCurrentState().getLocalMetastore().getDb("test");
-        MaterializedView mv = ((MaterializedView) GlobalStateMgr.getCurrentState().getLocalMetastore()
-                .getTable(testDb.getFullName(), mvName));
-
-        // Refresh the MV so it has partitions
-        starRocksAssert.getCtx().executeSql("refresh materialized view " + mvName + " force with sync mode");
-        Assertions.assertFalse(mv.getPartitions().isEmpty(), "MV should have partitions after refresh");
-
-        // Query against base table with a predicate matching the evolved table's range
+        // Query against base table — MV should NOT be used for rewrite
         String query = "SELECT id, data, ts FROM `iceberg0`.`partitioned_transforms_db`." +
                 "`t0_month_to_day_evolution` WHERE ts >= '2024-01-01' AND ts < '2024-02-01'";
         String plan = getFragmentPlan(query);
-        // After force refresh, the MV should be usable for rewrite via evolution-aware partition diff
-        PlanTestBase.assertContains(plan, mvName);
+        // Plan should NOT contain the MV name — rewrite is blocked for evolved tables
+        Assertions.assertFalse(plan.contains(mvName),
+                "Query should NOT be rewritten using MV on evolved table");
 
         starRocksAssert.dropMaterializedView(mvName);
     }

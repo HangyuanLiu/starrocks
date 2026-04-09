@@ -357,6 +357,11 @@ public final class RangePartitionDiffer extends PartitionDiffer {
         Expr mvPartitionExpr = mvPartitionExprOpt.get();
         boolean useAlreadyMappedRangeDiff =
                 shouldUseAlreadyMappedRangeDiff(refBaseTablePartitionColumns, mvPartitionExpr);
+        // Rewrite isolation: evolved tables are not eligible for query rewrite.
+        // Return null so the MV is treated as entirely stale and skipped.
+        if (useAlreadyMappedRangeDiff && queryRewriteParams.isQueryRewrite()) {
+            return null;
+        }
         PCellSortedSet mergedRBTPartitionKeyMap = mergeRBTPartitionKeyMap(mvPartitionExpr, refBaseTablePartitionMap);
         if (mergedRBTPartitionKeyMap == null) {
             LOG.warn("Merge materialized view {} with base tables failed.", mv.getName());
