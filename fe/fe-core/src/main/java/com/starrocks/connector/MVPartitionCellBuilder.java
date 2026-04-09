@@ -127,6 +127,19 @@ public class MVPartitionCellBuilder {
                                                               List<Column> mvRefBasePartitionColumns,
                                                               List<String> basePartitionNames)
             throws AnalysisException {
+        return buildMVPartitionNameMap(baseTable, mvRefBasePartitionColumns, basePartitionNames, null);
+    }
+
+    /**
+     * Overload accepting MV partition expression for evolved Iceberg tables.
+     * When mvPartitionExpr is non-null and the table has safe partition evolution,
+     * uses range-based partition name mapping instead of key-based.
+     */
+    public static PartitionNameSetMap buildMVPartitionNameMap(Table baseTable,
+                                                              List<Column> mvRefBasePartitionColumns,
+                                                              List<String> basePartitionNames,
+                                                              Expr mvPartitionExpr)
+            throws AnalysisException {
         ExternalPartitionMappingContext mappingContext =
                 ExternalPartitionMappingContext.create(baseTable, mvRefBasePartitionColumns);
         ExternalPartitionKeyResolver partitionKeyResolver = getResolver(baseTable);

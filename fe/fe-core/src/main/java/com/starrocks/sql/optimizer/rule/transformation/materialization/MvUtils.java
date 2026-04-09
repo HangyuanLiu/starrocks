@@ -1093,7 +1093,12 @@ public class MvUtils {
                 Range<PartitionKey> mergedRange = mergedRanges.get(j);
                 if (currentRange.isConnected(mergedRange)) {
                     // for partition range, the intersection must be empty
-                    if (!currentRange.intersection(mergedRange).isEmpty()) {
+                    Range<PartitionKey> intersection = currentRange.intersection(mergedRange);
+                    if (!intersection.isEmpty()) {
+                        if (currentRange.equals(mergedRange)) {
+                            merged = true;
+                            break;
+                        }
                         throw new IllegalStateException("Partition ranges overlap: " +
                                 currentRange + " and " + mergedRange);
                     }
@@ -1122,7 +1127,13 @@ public class MvUtils {
                 Range<PartitionKey> mergedRange = mergedRanges.get(j);
                 if (currentRange.isConnected(mergedRange)) {
                     // for partition range, the intersection must be empty
-                    Preconditions.checkState(currentRange.intersection(mergedRange).isEmpty());
+                    Range<PartitionKey> intersection = currentRange.intersection(mergedRange);
+                    if (!intersection.isEmpty()) {
+                        Preconditions.checkState(currentRange.equals(mergedRange));
+                        queryMergeRangesToPartitionIds.get(Box.of(mergedRange)).add(partitionId);
+                        merged = true;
+                        break;
+                    }
                     Range<PartitionKey> newRange = mergedRange.span(currentRange);
                     mergedRanges.set(j, newRange);
 

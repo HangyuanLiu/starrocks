@@ -20,8 +20,11 @@ import com.starrocks.catalog.Table;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.sql.ast.expression.Expr;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Collects all inputs needed for resolving external base table partitions to MV partition keys.
@@ -41,17 +44,21 @@ public class ExternalPartitionMappingContext {
     // Optional partition expression (e.g., date_trunc('month', col)) used for range partition mapping;
     // null when doing multi-column list partition mapping.
     private final Expr mvPartitionExpr;
+    // Optional per-partition metadata used by resolvers that need spec-aware behavior.
+    private final Map<String, PartitionInfo> partitionInfosByName;
 
     private ExternalPartitionMappingContext(Table baseTable,
                                             List<Column> baseTablePartitionColumns,
                                             List<Column> mvRefBasePartitionColumns,
                                             List<Integer> mvRefBasePartitionColumnIndexes,
-                                            Expr mvPartitionExpr) {
+                                            Expr mvPartitionExpr,
+                                            Map<String, PartitionInfo> partitionInfosByName) {
         this.baseTable = baseTable;
         this.baseTablePartitionColumns = baseTablePartitionColumns;
         this.mvRefBasePartitionColumns = mvRefBasePartitionColumns;
         this.mvRefBasePartitionColumnIndexes = mvRefBasePartitionColumnIndexes;
         this.mvPartitionExpr = mvPartitionExpr;
+        this.partitionInfosByName = partitionInfosByName;
     }
 
     /**
@@ -60,7 +67,7 @@ public class ExternalPartitionMappingContext {
     public static ExternalPartitionMappingContext create(Table baseTable,
                                                          List<Column> mvRefBasePartitionColumns)
             throws AnalysisException {
-        return create(baseTable, mvRefBasePartitionColumns, null);
+        return create(baseTable, mvRefBasePartitionColumns, null, null);
     }
 
     /**
@@ -70,7 +77,22 @@ public class ExternalPartitionMappingContext {
                                                          Column mvRefBasePartitionColumn,
                                                          Expr mvPartitionExpr)
             throws AnalysisException {
-        return create(baseTable, Collections.singletonList(mvRefBasePartitionColumn), mvPartitionExpr);
+        return create(baseTable, Collections.singletonList(mvRefBasePartitionColumn), mvPartitionExpr, null);
+    }
+
+    public static ExternalPartitionMappingContext create(Table baseTable,
+                                                         List<Column> mvRefBasePartitionColumns,
+                                                         Collection<String> basePartitionNames)
+            throws AnalysisException {
+        return create(baseTable, mvRefBasePartitionColumns, null, basePartitionNames);
+    }
+
+    public static ExternalPartitionMappingContext create(Table baseTable,
+                                                         Column mvRefBasePartitionColumn,
+                                                         Expr mvPartitionExpr,
+                                                         Collection<String> basePartitionNames)
+            throws AnalysisException {
+        return create(baseTable, Collections.singletonList(mvRefBasePartitionColumn), mvPartitionExpr, basePartitionNames);
     }
 
     /**
@@ -79,6 +101,14 @@ public class ExternalPartitionMappingContext {
     public static ExternalPartitionMappingContext create(Table baseTable,
                                                          List<Column> mvRefBasePartitionColumns,
                                                          Expr mvPartitionExpr)
+            throws AnalysisException {
+        return create(baseTable, mvRefBasePartitionColumns, mvPartitionExpr, null);
+    }
+
+    public static ExternalPartitionMappingContext create(Table baseTable,
+                                                         List<Column> mvRefBasePartitionColumns,
+                                                         Expr mvPartitionExpr,
+                                                         Collection<String> basePartitionNames)
             throws AnalysisException {
         List<Column> baseTablePartitionColumns = PartitionUtil.getPartitionColumns(baseTable);
         List<Integer> mvRefBasePartitionColumnIndexes =
@@ -93,7 +123,22 @@ public class ExternalPartitionMappingContext {
                 baseTablePartitionColumns,
                 mvRefBasePartitionColumns,
                 mvRefBasePartitionColumnIndexes,
-                mvPartitionExpr);
+                mvPartitionExpr,
+                buildPartitionInfoMap(baseTable, basePartitionNames));
+    }
+
+    private static Map<String, PartitionInfo> buildPartitionInfoMap(Table baseTable,
+                                                                    Collection<String> basePartitionNames) {
+        if (!baseTable.isIcebergTable() || basePartitionNames == null || basePartitionNames.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        // Only build partition info for tables with partition evolution (multiple specs).
+        // For non-evolved tables, the current spec is sufficient for resolution.
+        com.starrocks.catalog.IcebergTable icebergTable = (com.starrocks.catalog.IcebergTable) baseTable;
+        if (icebergTable.getNativeTable().specs().size() <= 1) {
+            return Collections.emptyMap();
+        }
+        return PartitionUtil.getPartitionNameWithPartitionInfo(baseTable, Lists.newArrayList(basePartitionNames));
     }
 
     public Table getBaseTable() {
@@ -114,6 +159,10 @@ public class ExternalPartitionMappingContext {
 
     public Expr getMvPartitionExpr() {
         return mvPartitionExpr;
+    }
+
+    public Optional<PartitionInfo> getPartitionInfo(String partitionName) {
+        return Optional.ofNullable(partitionInfosByName.get(partitionName));
     }
 
     /**

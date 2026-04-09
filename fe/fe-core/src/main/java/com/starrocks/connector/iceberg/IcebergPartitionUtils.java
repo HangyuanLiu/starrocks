@@ -20,8 +20,17 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.starrocks.catalog.Column;
+import com.starrocks.catalog.ExpressionRangePartitionInfo;
+import com.starrocks.catalog.ExpressionRangePartitionInfoV2;
 import com.starrocks.catalog.FunctionSet;
+import com.starrocks.catalog.IcebergPartitionKey;
 import com.starrocks.catalog.IcebergTable;
+import com.starrocks.catalog.ListPartitionInfo;
+import com.starrocks.catalog.MaterializedView;
+import com.starrocks.catalog.NullablePartitionKey;
+import com.starrocks.catalog.PartitionKey;
+import com.starrocks.catalog.PartitionType;
+import com.starrocks.catalog.TableName;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.util.TimeUtils;
@@ -37,6 +46,7 @@ import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.IntLiteral;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.LiteralExprFactory;
+import com.starrocks.sql.ast.expression.NullLiteral;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
@@ -60,11 +70,36 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.starrocks.connector.iceberg.IcebergPartitionTransform.YEAR;
 
 public class IcebergPartitionUtils {
     private static final Logger LOG = LogManager.getLogger(IcebergPartitionUtils.class);
+
+    private static final class PartitionTransformSignature {
+        private final IcebergPartitionTransform transform;
+        private final String sourceColumnName;
+        private final Integer parameter;
+
+        private PartitionTransformSignature(IcebergPartitionTransform transform,
+                                            String sourceColumnName,
+                                            Integer parameter) {
+            this.transform = transform;
+            this.sourceColumnName = sourceColumnName;
+            this.parameter = parameter;
+        }
+
+        public boolean matches(PartitionTransformSignature other) {
+            return transform == other.transform
+                    && Objects.equals(parameter, other.parameter)
+                    && sourceColumnName != null
+                    && other.sourceColumnName != null
+                    && sourceColumnName.equalsIgnoreCase(other.sourceColumnName);
+        }
+    }
 
     // Normalize partition name to yyyy-MM-dd (Type is Date) or yyyy-MM-dd HH:mm:ss (Type is Datetime)
     // Iceberg partition field transform support year, month, day, hour now,
@@ -583,5 +618,253 @@ public class IcebergPartitionUtils {
             default:
                 return PartitionUtil.DateTimeInterval.NONE;
         }
+    }
+
+    /**
+     * Get the DateTimeInterval from a specific PartitionSpec for the given source column.
+     */
+    public static PartitionUtil.DateTimeInterval getIntervalFromSpec(
+            PartitionSpec spec, int sourceId) {
+        for (PartitionField field : spec.fields()) {
+            if (field.sourceId() == sourceId && !field.transform().isVoid()) {
+                IcebergPartitionTransform transform =
+                        IcebergPartitionTransform.fromString(field.transform().toString());
+                switch (transform) {
+                    case YEAR:
+                        return PartitionUtil.DateTimeInterval.YEAR;
+                    case MONTH:
+                        return PartitionUtil.DateTimeInterval.MONTH;
+                    case DAY:
+                    case IDENTITY:
+                        // IDENTITY on DATE column is equivalent to DAY interval
+                        return PartitionUtil.DateTimeInterval.DAY;
+                    case HOUR:
+                        return PartitionUtil.DateTimeInterval.HOUR;
+                    default:
+                        return PartitionUtil.DateTimeInterval.NONE;
+                }
+            }
+        }
+        return PartitionUtil.DateTimeInterval.NONE;
+    }
+
+    public static boolean isMVPartitionAlignedWithCurrentSpec(MaterializedView mv, IcebergTable icebergTable) {
+        org.apache.iceberg.Table nativeTable = icebergTable.getNativeTable();
+        if (nativeTable.spec().isUnpartitioned()) {
+            return mv.getPartitionInfo().isUnPartitioned();
+        }
+        return arePartitionExprsAlignedWithCurrentSpec(icebergTable, getMVPartitionExprs(mv));
+    }
+
+    public static boolean arePartitionExprsAlignedWithCurrentSpec(IcebergTable icebergTable,
+                                                                  List<Expr> partitionExprs) {
+        org.apache.iceberg.Table nativeTable = icebergTable.getNativeTable();
+        PartitionSpec currentSpec = nativeTable.spec();
+        if (currentSpec.isUnpartitioned()) {
+            return partitionExprs == null || partitionExprs.isEmpty();
+        }
+        if (partitionExprs == null || partitionExprs.isEmpty()) {
+            return false;
+        }
+        List<PartitionField> activeFields = currentSpec.fields().stream()
+                .filter(field -> !field.transform().isVoid())
+                .collect(Collectors.toList());
+        if (partitionExprs.size() != activeFields.size()) {
+            return false;
+        }
+        for (int i = 0; i < activeFields.size(); i++) {
+            Optional<PartitionTransformSignature> currentSignature =
+                    buildSignatureFromPartitionField(activeFields.get(i), nativeTable.schema());
+            Optional<PartitionTransformSignature> mvSignature =
+                    buildSignatureFromMvPartitionExpr(partitionExprs.get(i));
+            if (currentSignature.isEmpty() || mvSignature.isEmpty()
+                    || !currentSignature.get().matches(mvSignature.get())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Create a PartitionKey from partition values using a specific PartitionInfo for spec-aware resolution.
+     * This is used when resolving partitions from historical specs (partition evolution).
+     */
+    public static PartitionKey createPartitionKey(IcebergTable icebergTable,
+                                                  List<Column> partitionColumns,
+                                                  List<String> partitionValues,
+                                                  PartitionInfo partitionInfo)
+            throws AnalysisException {
+        Preconditions.checkState(partitionValues.size() == partitionColumns.size(),
+                "columns size is %s, but values size is %s", partitionColumns.size(), partitionValues.size());
+
+        PartitionKey partitionKey = new IcebergPartitionKey();
+        for (int i = 0; i < partitionValues.size(); i++) {
+            String rawValue = partitionValues.get(i);
+            Column column = partitionColumns.get(i);
+            PartitionField field = findPartitionFieldForColumn(icebergTable, column.getName(), rawValue, partitionInfo);
+            LiteralExpr exprValue;
+            if (rawValue == null) {
+                rawValue = "null";
+            }
+            if (((NullablePartitionKey) partitionKey).nullPartitionValueList().contains(rawValue)) {
+                partitionKey.setNullPartitionValue(rawValue);
+                exprValue = NullLiteral.create(column.getType());
+            } else if (field != null && field.transform().dedupName().equalsIgnoreCase("time")) {
+                String normalizedValue = normalizeTimePartitionName(rawValue, field,
+                        icebergTable.getNativeTable().schema(), column.getType());
+                exprValue = LiteralExprFactory.create(normalizedValue, column.getType());
+            } else {
+                exprValue = LiteralExprFactory.create(rawValue, column.getType());
+            }
+            partitionKey.pushColumn(exprValue, column.getType().getPrimitiveType());
+        }
+        return partitionKey;
+    }
+
+    public static PartitionField findPartitionFieldForColumn(IcebergTable icebergTable,
+                                                             String columnName,
+                                                             String partitionValue,
+                                                             PartitionInfo partitionInfo) {
+        org.apache.iceberg.Table nativeTable = icebergTable.getNativeTable();
+        Integer sourceId = getSourceId(icebergTable, columnName);
+        if (sourceId == null) {
+            return null;
+        }
+
+        PartitionSpec spec = getSpecForPartition(icebergTable, partitionInfo);
+        if (spec != null) {
+            PartitionField field = findPartitionFieldInSpec(nativeTable, spec, sourceId);
+            if (field != null) {
+                return field;
+            }
+        }
+
+        if (nativeTable.specs().size() <= 1) {
+            return findPartitionFieldInSpec(nativeTable, nativeTable.spec(), sourceId);
+        }
+
+        for (PartitionSpec historicalSpec : nativeTable.specs().values()) {
+            PartitionField field = findPartitionFieldInSpec(nativeTable, historicalSpec, sourceId);
+            if (field != null && (partitionValue == null || matchesTransformFormat(field, partitionValue))) {
+                return field;
+            }
+        }
+
+        return findPartitionFieldInSpec(nativeTable, nativeTable.spec(), sourceId);
+    }
+
+    private static Integer getSourceId(IcebergTable icebergTable, String columnName) {
+        try {
+            return icebergTable.getNativeTable().schema().findField(columnName).fieldId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static PartitionSpec getSpecForPartition(IcebergTable table, PartitionInfo partitionInfo) {
+        if (!(partitionInfo instanceof com.starrocks.connector.iceberg.Partition icebergPartition)) {
+            return null;
+        }
+        int specId = icebergPartition.getSpecId();
+        if (specId < 0) {
+            return null;
+        }
+        return table.getNativeTable().specs().get(specId);
+    }
+
+    private static PartitionField findPartitionFieldInSpec(org.apache.iceberg.Table nativeTable,
+                                                           PartitionSpec spec,
+                                                           int sourceId) {
+        if (spec == null) {
+            return null;
+        }
+        for (PartitionField field : spec.fields()) {
+            if (field.transform().isVoid()) {
+                continue;
+            }
+            String fieldColumnName = nativeTable.schema().findColumnName(field.sourceId());
+            if (field.sourceId() == sourceId && fieldColumnName != null) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private static boolean matchesTransformFormat(PartitionField field, String value) {
+        if (!field.transform().dedupName().equalsIgnoreCase("time")) {
+            return true;
+        }
+        IcebergPartitionTransform transform = IcebergPartitionTransform.fromString(field.transform().toString());
+        switch (transform) {
+            case YEAR:
+                return value.length() == 4;
+            case MONTH:
+                return value.length() == 7;
+            case DAY:
+                return value.length() == 10;
+            case HOUR:
+                return value.length() == 13;
+            default:
+                return true;
+        }
+    }
+
+    private static List<Expr> getMVPartitionExprs(MaterializedView mv) {
+        if (mv.getPartitionInfo().getType() == PartitionType.EXPR_RANGE) {
+            return ((ExpressionRangePartitionInfo) mv.getPartitionInfo()).getPartitionExprs(mv.getIdToColumn());
+        } else if (mv.getPartitionInfo().getType() == PartitionType.EXPR_RANGE_V2) {
+            return ((ExpressionRangePartitionInfoV2) mv.getPartitionInfo()).getPartitionExprs(mv.getIdToColumn());
+        } else if (mv.getPartitionInfo().isRangePartition()) {
+            return Optional.ofNullable(mv.getPartitionRefTableExprs()).orElse(ImmutableList.of());
+        } else if (mv.getPartitionInfo().isListPartition()) {
+            TableName tableName = new TableName(null, null, mv.getName());
+            return ((ListPartitionInfo) mv.getPartitionInfo()).getPartitionExprs(tableName, mv.getIdToColumn());
+        }
+        return ImmutableList.of();
+    }
+
+    private static Optional<PartitionTransformSignature> buildSignatureFromPartitionField(PartitionField field,
+                                                                                          Schema schema) {
+        String sourceColumnName = schema.findColumnName(field.sourceId());
+        if (Strings.isNullOrEmpty(sourceColumnName)) {
+            return Optional.empty();
+        }
+        IcebergPartitionTransform transform = IcebergPartitionTransform.fromString(field.transform().toString());
+        return Optional.of(new PartitionTransformSignature(transform, sourceColumnName, null));
+    }
+
+    private static Optional<PartitionTransformSignature> buildSignatureFromMvPartitionExpr(Expr expr) {
+        if (expr instanceof SlotRef slotRef) {
+            return Optional.of(new PartitionTransformSignature(
+                    IcebergPartitionTransform.IDENTITY, slotRef.getColumnName(), null));
+        }
+        if (!(expr instanceof FunctionCallExpr functionCallExpr)) {
+            return Optional.empty();
+        }
+        List<SlotRef> slotRefs = Lists.newArrayList();
+        functionCallExpr.collect(SlotRef.class, slotRefs);
+        if (slotRefs.size() != 1) {
+            return Optional.empty();
+        }
+        String functionName = functionCallExpr.getFunctionName();
+        String sourceColumnName = slotRefs.get(0).getColumnName();
+        if (FunctionSet.DATE_TRUNC.equalsIgnoreCase(functionName)) {
+            if (functionCallExpr.getChildren().size() != 2
+                    || !(functionCallExpr.getChild(0) instanceof LiteralExpr literal)) {
+                return Optional.empty();
+            }
+            IcebergPartitionTransform transform = switch (literal.getStringValue().toUpperCase(Locale.ROOT)) {
+                case "YEAR" -> IcebergPartitionTransform.YEAR;
+                case "MONTH" -> IcebergPartitionTransform.MONTH;
+                case "DAY" -> IcebergPartitionTransform.DAY;
+                case "HOUR" -> IcebergPartitionTransform.HOUR;
+                default -> IcebergPartitionTransform.UNKNOWN;
+            };
+            if (transform == IcebergPartitionTransform.UNKNOWN) {
+                return Optional.empty();
+            }
+            return Optional.of(new PartitionTransformSignature(transform, sourceColumnName, null));
+        }
+        return Optional.empty();
     }
 }

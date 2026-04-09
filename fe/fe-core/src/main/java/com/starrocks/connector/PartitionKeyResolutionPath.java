@@ -34,8 +34,12 @@ public enum PartitionKeyResolutionPath {
      */
     ICEBERG_CURRENT_SPEC,
 
+    /**
+     * Iceberg historical partition spec resolution (partition evolution).
+     */
+    ICEBERG_HISTORICAL_SPEC,
+
     // Future phases:
-    // ICEBERG_HISTORICAL_SPEC,
     // ICEBERG_PARTITION_EXPR_FALLBACK,
     // ICEBERG_SYNTHETIC_TRANSFORM,
 }

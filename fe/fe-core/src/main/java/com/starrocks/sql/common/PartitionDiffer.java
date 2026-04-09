@@ -23,6 +23,7 @@ import com.starrocks.catalog.mv.MVTimelinessArbiter;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.connector.MVPartitionCellBuilder;
 import com.starrocks.connector.PartitionUtil;
+import com.starrocks.sql.ast.expression.Expr;
 
 import java.util.List;
 import java.util.Map;
@@ -90,11 +91,12 @@ public abstract class PartitionDiffer {
      * @param result the result map
      */
     public static void collectExternalPartitionNameMapping(Map<Table, List<Column>> partitionTableAndColumns,
+                                                           Expr mvPartitionExpr,
                                                            Map<Table, PartitionNameSetMap> result) throws AnalysisException {
         for (Map.Entry<Table, List<Column>> e : partitionTableAndColumns.entrySet()) {
             Table refBaseTable = e.getKey();
             List<Column> refPartitionColumns = e.getValue();
-            collectExternalBaseTablePartitionMapping(refBaseTable, refPartitionColumns, result);
+            collectExternalBaseTablePartitionMapping(refBaseTable, refPartitionColumns, mvPartitionExpr, result);
         }
     }
 
@@ -102,18 +104,20 @@ public abstract class PartitionDiffer {
      * Collect the external base table's partition name to its intersected materialized view names.
      * @param refBaseTable the base table
      * @param refTablePartitionColumns the partition column of the base table
+     * @param mvPartitionExpr the MV partition expression
      * @param result the result map
      * @throws AnalysisException
      */
     private static void collectExternalBaseTablePartitionMapping(
             Table refBaseTable,
             List<Column> refTablePartitionColumns,
+            Expr mvPartitionExpr,
             Map<Table, PartitionNameSetMap> result) throws AnalysisException {
         if (refBaseTable.isNativeTableOrMaterializedView()) {
             return;
         }
         PartitionNameSetMap mvPartitionNameMap = MVPartitionCellBuilder.buildMVPartitionNameMap(refBaseTable,
-                refTablePartitionColumns, PartitionUtil.getPartitionNames(refBaseTable));
+                refTablePartitionColumns, PartitionUtil.getPartitionNames(refBaseTable), mvPartitionExpr);
         result.put(refBaseTable, mvPartitionNameMap);
     }
 }

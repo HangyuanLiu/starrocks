@@ -101,6 +101,11 @@ public class PCTPredicateBuilder {
             PRangeCell rangeCell = (PRangeCell) refBaseTablePartitionCells.get(table).getPCell(partitionName);
             sourceTablePartitionRange.add(rangeCell.getRange());
         }
+        // Optimization: narrow the base table range using the MV partition ranges.
+        // When the MV is finer-grained than the base table (e.g., MV daily, Iceberg monthly),
+        // the base table range [2024-01-01, 2024-02-01) can be narrowed to the MV range
+        // [2024-01-15, 2024-01-16) by computing the intersection.
+        sourceTablePartitionRange = narrowWithMVPartitionRanges(partitionTopology, table, sourceTablePartitionRange);
         sourceTablePartitionRange = MvUtils.mergeRanges(sourceTablePartitionRange);
         // for nested mv, the base table may be another mv, which is partition by str2date(dt, '%Y%m%d')
         // here we should convert date into '%Y%m%d' format
@@ -264,6 +269,7 @@ public class PCTPredicateBuilder {
                 }
             }
             Expr mvPartitionExpr = mvPartitionExprs.get(0);
+            clearSlotRefTableNames(mvPartitionExpr);
             Expr inPredicate = MvUtils.convertToInPredicate(mvPartitionExpr, selectedPartitionValues);
             if (isContainsNullPartition) {
                 return ExprUtils.compoundOr(Lists.newArrayList(inPredicate, new IsNullPredicate(mvPartitionExpr, false)));
@@ -368,5 +374,76 @@ public class PCTPredicateBuilder {
             }
             return ExprUtils.compoundOr(partitionPredicates);
         }
+    }
+
+    private static void clearSlotRefTableNames(Expr expr) {
+        if (expr instanceof SlotRef slotRef) {
+            slotRef.setTblName(null);
+        }
+        for (Expr child : expr.getChildren()) {
+            clearSlotRefTableNames(child);
+        }
+    }
+
+    /**
+     * Narrow the base table partition ranges by intersecting with MV partition ranges.
+     * When the MV is finer-grained than the base table (e.g., MV daily vs Iceberg monthly),
+     * this narrows [2024-01-01, 2024-02-01) to [2024-01-15, 2024-01-16) for the specific
+     * MV partitions being refreshed. This is safe because the INSERT OVERWRITE targets
+     * only these MV partitions, so we only need data within their ranges.
+     */
+    private static List<Range<PartitionKey>> narrowWithMVPartitionRanges(
+            PCTPartitionTopology partitionTopology,
+            Table table,
+            List<Range<PartitionKey>> baseTableRanges) {
+        if (baseTableRanges.isEmpty()) {
+            return baseTableRanges;
+        }
+        if (partitionTopology == null) {
+            return baseTableRanges;
+        }
+        // Collect MV partition ranges for the current refresh batch
+        Map<String, Map<Table, PCellSortedSet>> mvToBaseNameRefs =
+                partitionTopology.getMvRefBaseTableIntersectedPartitions();
+        if (mvToBaseNameRefs == null || mvToBaseNameRefs.isEmpty()) {
+            return baseTableRanges;
+        }
+        PCellSortedSet mvToCellMap = partitionTopology.getMvToCellMap();
+        if (mvToCellMap == null || mvToCellMap.isEmpty()) {
+            return baseTableRanges;
+        }
+
+        // Gather the MV partition ranges that map to this base table
+        List<Range<PartitionKey>> mvRanges = Lists.newArrayList();
+        for (Map.Entry<String, Map<Table, PCellSortedSet>> entry : mvToBaseNameRefs.entrySet()) {
+            String mvPartitionName = entry.getKey();
+            Map<Table, PCellSortedSet> tablePartitions = entry.getValue();
+            if (tablePartitions.containsKey(table) && mvToCellMap.containsName(mvPartitionName)) {
+                PRangeCell mvRangeCell = (PRangeCell) mvToCellMap.getPCell(mvPartitionName);
+                mvRanges.add(mvRangeCell.getRange());
+            }
+        }
+        if (mvRanges.isEmpty()) {
+            return baseTableRanges;
+        }
+        mvRanges = MvUtils.mergeRanges(mvRanges);
+
+        // Compute intersection: for each base table range, intersect with the merged MV ranges
+        List<Range<PartitionKey>> narrowed = Lists.newArrayList();
+        for (Range<PartitionKey> baseRange : baseTableRanges) {
+            for (Range<PartitionKey> mvRange : mvRanges) {
+                if (baseRange.isConnected(mvRange)) {
+                    Range<PartitionKey> intersection = baseRange.intersection(mvRange);
+                    if (!intersection.isEmpty()) {
+                        narrowed.add(intersection);
+                    }
+                }
+            }
+        }
+        if (narrowed.isEmpty()) {
+            // Fallback: if intersection produces nothing (shouldn't happen), use original ranges
+            return baseTableRanges;
+        }
+        return MvUtils.mergeRanges(narrowed);
     }
 }

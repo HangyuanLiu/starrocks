@@ -22,6 +22,7 @@ import com.google.common.collect.Range;
 import com.google.common.collect.RangeMap;
 import com.google.common.collect.TreeRangeMap;
 import com.starrocks.catalog.Column;
+import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.PartitionInfo;
 import com.starrocks.catalog.PartitionKey;
@@ -33,8 +34,10 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.common.util.RangeUtils;
 import com.starrocks.connector.MVPartitionCellBuilder;
 import com.starrocks.connector.PartitionUtil;
+import com.starrocks.connector.iceberg.IcebergPartitionUtils;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.type.Type;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -352,6 +355,8 @@ public final class RangePartitionDiffer extends PartitionDiffer {
             return null;
         }
         Expr mvPartitionExpr = mvPartitionExprOpt.get();
+        boolean useAlreadyMappedRangeDiff =
+                shouldUseAlreadyMappedRangeDiff(refBaseTablePartitionColumns, mvPartitionExpr);
         PCellSortedSet mergedRBTPartitionKeyMap = mergeRBTPartitionKeyMap(mvPartitionExpr, refBaseTablePartitionMap);
         if (mergedRBTPartitionKeyMap == null) {
             LOG.warn("Merge materialized view {} with base tables failed.", mv.getName());
@@ -365,8 +370,9 @@ public final class RangePartitionDiffer extends PartitionDiffer {
                 Preconditions.checkArgument(refBaseTablePartitionMap.containsKey(refBaseTable));
                 RangePartitionDiffer differ = new RangePartitionDiffer(mv, queryRewriteParams, rangeToInclude);
                 PCellSortedSet basePartitionMap = refBaseTablePartitionMap.get(refBaseTable);
-                PartitionDiff diff = PartitionUtil.getPartitionDiff(mvPartitionExpr, basePartitionMap,
-                        mvPartitionCells, differ);
+                PartitionDiff diff = useAlreadyMappedRangeDiff
+                        ? SyncPartitionUtils.getRangePartitionDiffOfSlotRef(basePartitionMap, mvPartitionCells, differ)
+                        : PartitionUtil.getPartitionDiff(mvPartitionExpr, basePartitionMap, mvPartitionCells, differ);
                 rangePartitionDiffList.add(diff);
             }
             PartitionDiff.checkRangePartitionAligned(rangePartitionDiffList);
@@ -382,8 +388,9 @@ public final class RangePartitionDiffer extends PartitionDiffer {
             //                = \bigcap_{baseTables} P_{MV}\setminus P_{baseTable}
             RangePartitionDiffer differ = queryRewriteParams.isQueryRewrite() ? null
                     : new RangePartitionDiffer(mv, queryRewriteParams, rangeToInclude);
-            PartitionDiff rangePartitionDiff = PartitionUtil.getPartitionDiff(mvPartitionExpr, mergedRBTPartitionKeyMap,
-                    mvPartitionCells, differ);
+            PartitionDiff rangePartitionDiff = useAlreadyMappedRangeDiff
+                    ? SyncPartitionUtils.getRangePartitionDiffOfSlotRef(mergedRBTPartitionKeyMap, mvPartitionCells, differ)
+                    : PartitionUtil.getPartitionDiff(mvPartitionExpr, mergedRBTPartitionKeyMap, mvPartitionCells, differ);
             if (rangePartitionDiff == null) {
                 LOG.warn("Materialized view compute partition difference with base table failed: rangePartitionDiff is null.");
                 return null;
@@ -392,7 +399,7 @@ public final class RangePartitionDiffer extends PartitionDiffer {
             if (!queryRewriteParams.isQueryRewrite()) {
                 // To solve multi partition columns' problem of external table, record the mv partition name to all the same
                 // partition names map here.
-                collectExternalPartitionNameMapping(refBaseTablePartitionColumns, extRBTMVPartitionNameMap);
+                collectExternalPartitionNameMapping(refBaseTablePartitionColumns, mvPartitionExpr, extRBTMVPartitionNameMap);
             }
             return new PartitionDiffResult(extRBTMVPartitionNameMap, refBaseTablePartitionMap,
                     mvPartitionCells, rangePartitionDiff);
@@ -408,6 +415,18 @@ public final class RangePartitionDiffer extends PartitionDiffer {
         result.computeIfAbsent(partitionKey, k -> new HashMap<>())
                 .computeIfAbsent(table, k -> PCellSortedSet.of())
                 .add(partitionValue);
+    }
+
+    private boolean shouldUseAlreadyMappedRangeDiff(Map<Table, List<Column>> refBaseTablePartitionColumns,
+                                                    Expr mvPartitionExpr) {
+        if (mvPartitionExpr == null || mvPartitionExpr instanceof SlotRef) {
+            return false;
+        }
+        return refBaseTablePartitionColumns.entrySet().stream().allMatch(entry ->
+                entry.getKey().isIcebergTable()
+                        && entry.getValue().size() == 1
+                        && IcebergPartitionUtils.isSafePartitionEvolution(
+                        (IcebergTable) entry.getKey(), entry.getValue().get(0)));
     }
 
     /**

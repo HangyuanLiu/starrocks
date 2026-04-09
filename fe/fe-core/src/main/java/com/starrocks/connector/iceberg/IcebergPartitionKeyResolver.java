@@ -14,10 +14,13 @@
 
 package com.starrocks.connector.iceberg;
 
+import com.starrocks.catalog.Column;
+import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.PartitionKey;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.connector.ExternalPartitionKeyResolver;
 import com.starrocks.connector.ExternalPartitionMappingContext;
+import com.starrocks.connector.PartitionInfo;
 import com.starrocks.connector.PartitionKeyResolutionPath;
 import com.starrocks.connector.PartitionKeyResolutionResult;
 import com.starrocks.connector.PartitionUtil;
@@ -50,6 +53,10 @@ public class IcebergPartitionKeyResolver implements ExternalPartitionKeyResolver
     public PartitionKeyResolutionResult resolve(ExternalPartitionMappingContext mappingContext,
                                                 String basePartitionName)
             throws AnalysisException {
+        PartitionInfo partitionInfo = mappingContext.getPartitionInfo(basePartitionName).orElse(null);
+        if (partitionInfo != null) {
+            return resolveByHistoricalSpec(mappingContext, basePartitionName, partitionInfo);
+        }
         return resolveByCurrentSpec(mappingContext, basePartitionName);
     }
 
@@ -69,7 +76,32 @@ public class IcebergPartitionKeyResolver implements ExternalPartitionKeyResolver
         return PartitionKeyResolutionResult.of(mvPartitionKey, PartitionKeyResolutionPath.ICEBERG_CURRENT_SPEC);
     }
 
-    // Phase 2: resolveByHistoricalSpec
-    // Phase 3: resolveByPartitionExprFallback
-    // Phase 4: resolveBySyntheticTransform
+    /**
+     * Phase 2: Resolve using historical spec metadata.
+     * When partition info is available, create the partition key using the spec that the partition
+     * was actually written with, so time-family transforms (year/month/day/hour) are correctly normalized.
+     */
+    private PartitionKeyResolutionResult resolveByHistoricalSpec(ExternalPartitionMappingContext mappingContext,
+                                                                 String basePartitionName,
+                                                                 PartitionInfo partitionInfo)
+            throws AnalysisException {
+        IcebergTable icebergTable = (IcebergTable) mappingContext.getBaseTable();
+        List<String> basePartitionValues = PartitionUtil.toPartitionValues(basePartitionName);
+        List<Integer> mvRefBasePartitionColumnIndexes = mappingContext.getMvRefBasePartitionColumnIndexes();
+        List<Column> mvPartitionColumns = mvRefBasePartitionColumnIndexes.stream()
+                .map(mappingContext.getBaseTablePartitionColumns()::get)
+                .collect(Collectors.toList());
+        List<String> mvPartitionValues = mvRefBasePartitionColumnIndexes.stream()
+                .map(basePartitionValues::get)
+                .collect(Collectors.toList());
+
+        try {
+            PartitionKey mvPartitionKey = IcebergPartitionUtils.createPartitionKey(
+                    icebergTable, mvPartitionColumns, mvPartitionValues, partitionInfo);
+            return PartitionKeyResolutionResult.of(mvPartitionKey, PartitionKeyResolutionPath.ICEBERG_HISTORICAL_SPEC);
+        } catch (Exception e) {
+            // If historical spec resolution fails, fall back to current spec
+            return resolveByCurrentSpec(mappingContext, basePartitionName);
+        }
+    }
 }
