@@ -211,14 +211,9 @@ public class MaterializedViewAnalyzer {
                 continue;
             }
 
-            // Check if the table is an Iceberg table with partition evolution
-            if (table instanceof IcebergTable) {
-                IcebergTable icebergTable = (IcebergTable) table;
-                if (icebergTable.getNativeTable().specs().size() > 1) {
-                    throw new SemanticException("Do not support create materialized view when base iceberg table " +
-                            table.getName() + " has done partition evolution", tableNameInfo.getPos());
-                }
-            }
+            // Partition evolution check for Iceberg tables is deferred to the partition column
+            // validation where we know whether the MV is partitioned.
+            // Non-partitioned MVs are immune to partition evolution.
 
             if (!FeConstants.isReplayFromQueryDump && !isSupportedExternalTables(table)) {
                 throw new SemanticException(
@@ -1167,10 +1162,19 @@ public class MaterializedViewAnalyzer {
                                                     List<Expr> mvPartitionByExprs,
                                                     Expr partitionRefTableExpr,
                                                     Column refPartitionCol) {
-            // for iceberg table with transform, use list partition since it needs to handle the transform with timezone
-            // original range partition mv cannot handle it correctly.
+            // For iceberg table with BUCKET/TRUNCATE transforms, use list partition since it needs to handle
+            // the transform with timezone; original range partition mv cannot handle it correctly.
+            // Iceberg time transforms (YEAR/MONTH/DAY/HOUR) now use RANGE partition.
             if (statement.isRefBaseTablePartitionWithTransform()) {
-                return true;
+                if (partitionRefTableExpr instanceof FunctionCallExpr) {
+                    String functionName = ((FunctionCallExpr) partitionRefTableExpr).getFunctionName();
+                    if (FunctionSet.ICEBERG_TRANSFORM_BUCKET.equalsIgnoreCase(functionName)
+                            || FunctionSet.ICEBERG_TRANSFORM_TRUNCATE.equalsIgnoreCase(functionName)) {
+                        return true;
+                    }
+                }
+                // Iceberg time transforms (YEAR/MONTH/DAY/HOUR) now use RANGE partition.
+                return false;
             }
             final Type partitionExprType = refPartitionCol.getType();
             if (partitionExprType.isStringType() &&

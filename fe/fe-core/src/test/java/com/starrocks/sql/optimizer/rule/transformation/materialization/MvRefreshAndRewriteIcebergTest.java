@@ -2033,7 +2033,7 @@ public class MvRefreshAndRewriteIcebergTest extends MVTestBase {
                 ")\n" +
                 "AS SELECT id, data, ts  FROM `iceberg0`.`partitioned_transforms_db`.`t0_month` as a;");
         final MaterializedView mv = getMv(mvName);
-        Assertions.assertTrue(mv.getPartitionInfo().isListPartition());
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
     }
 
 
@@ -2050,7 +2050,7 @@ public class MvRefreshAndRewriteIcebergTest extends MVTestBase {
                 "AS SELECT id, data, date_trunc('month', ts) as ds  " +
                 " FROM `iceberg0`.`partitioned_transforms_db`.`t0_month` as a;");
         final MaterializedView mv = getMv(mvName);
-        Assertions.assertTrue(mv.getPartitionInfo().isListPartition());
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
     }
 
     @Test
@@ -2102,6 +2102,22 @@ public class MvRefreshAndRewriteIcebergTest extends MVTestBase {
         MaterializedView mv = getMv("test", "test_mv1");
         String reason = mv.getInactiveReason();
         Assertions.assertNull(reason);
+    }
+
+    @Test
+    public void testCreateMvWithIcebergMonthToDayEvolutionUsesRangePartition() throws Exception {
+        String mvName = "test_mv1";
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW test_mv1\n" +
+                "PARTITION BY date_trunc('day', ts)\n" +
+                "DISTRIBUTED BY HASH(`id`) BUCKETS 10\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\n" +
+                "\"replication_num\" = \"1\"\n" +
+                ")\n" +
+                "AS SELECT id, data, ts  FROM `iceberg0`.`partitioned_transforms_db`." +
+                "`t0_month_to_day_evolution` as a;");
+        final MaterializedView mv = getMv(mvName);
+        Assertions.assertTrue(mv.getPartitionInfo().isRangePartition());
     }
 
     @Test
