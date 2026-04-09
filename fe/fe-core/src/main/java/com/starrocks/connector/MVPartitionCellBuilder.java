@@ -15,30 +15,35 @@
 package com.starrocks.connector;
 
 import com.google.common.base.Joiner;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Range;
 import com.starrocks.catalog.Column;
+import com.starrocks.catalog.FunctionSet;
+import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.PartitionKey;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.connector.iceberg.IcebergPartitionKeyResolver;
+import com.starrocks.connector.iceberg.IcebergPartitionUtils;
 import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
+import com.starrocks.sql.ast.expression.MaxLiteral;
+import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.common.PCellSortedSet;
 import com.starrocks.sql.common.PCellWithName;
 import com.starrocks.sql.common.PListCell;
 import com.starrocks.sql.common.PRangeCell;
 import com.starrocks.sql.common.PartitionNameSetMap;
+import com.starrocks.sql.common.SyncPartitionUtils;
+import com.starrocks.sql.common.TimeUnitUtils;
 import com.starrocks.type.PrimitiveType;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -83,17 +88,19 @@ public class MVPartitionCellBuilder {
                                                  PartitionUtil.DateTimeInterval basePartitionInterval)
             throws AnalysisException {
         ExternalPartitionMappingContext mappingContext =
-                ExternalPartitionMappingContext.create(baseTable, baseTablePartitionColumn, mvPartitionExpr);
+                ExternalPartitionMappingContext.create(
+                        baseTable, baseTablePartitionColumn, mvPartitionExpr, basePartitionNames);
         ExternalPartitionKeyResolver partitionKeyResolver = getResolver(baseTable);
-
-        LinkedHashMap<String, PartitionKey> mvPartitionKeysByName =
-                resolveAndSort(mappingContext, partitionKeyResolver, basePartitionNames);
         if (baseTable.isJDBCTable()) {
             return buildOpenClosedRangeCells(
-                    mvPartitionKeysByName, baseTablePartitionColumn, mvPartitionExpr);
+                    resolveAndSort(mappingContext, partitionKeyResolver, basePartitionNames, baseTablePartitionColumn,
+                            basePartitionInterval),
+                    baseTablePartitionColumn, mvPartitionExpr);
         }
         return buildClosedOpenRangeCells(
-                mvPartitionKeysByName, baseTablePartitionColumn, mvPartitionExpr, basePartitionInterval);
+                resolveAndSort(mappingContext, partitionKeyResolver, basePartitionNames, baseTablePartitionColumn,
+                        basePartitionInterval),
+                baseTablePartitionColumn, mvPartitionExpr);
     }
 
     /**
@@ -102,7 +109,7 @@ public class MVPartitionCellBuilder {
     public static PCellSortedSet buildListCells(Table baseTable, List<Column> mvRefBasePartitionColumns,
                                                 Collection<String> basePartitionNames) throws AnalysisException {
         ExternalPartitionMappingContext mappingContext =
-                ExternalPartitionMappingContext.create(baseTable, mvRefBasePartitionColumns);
+                ExternalPartitionMappingContext.create(baseTable, mvRefBasePartitionColumns, basePartitionNames);
         ExternalPartitionKeyResolver partitionKeyResolver = getResolver(baseTable);
 
         PCellSortedSet mvPartitionListMap = PCellSortedSet.of();
@@ -140,8 +147,11 @@ public class MVPartitionCellBuilder {
                                                               List<String> basePartitionNames,
                                                               Expr mvPartitionExpr)
             throws AnalysisException {
+        if (mvPartitionExpr != null && mvRefBasePartitionColumns.size() == 1 && !baseTable.isJDBCTable()) {
+            return buildRangePartitionNameMap(baseTable, mvRefBasePartitionColumns.get(0), basePartitionNames, mvPartitionExpr);
+        }
         ExternalPartitionMappingContext mappingContext =
-                ExternalPartitionMappingContext.create(baseTable, mvRefBasePartitionColumns);
+                ExternalPartitionMappingContext.create(baseTable, mvRefBasePartitionColumns, basePartitionNames);
         ExternalPartitionKeyResolver partitionKeyResolver = getResolver(baseTable);
 
         PartitionNameSetMap mvPartitionKeySetMap = PartitionNameSetMap.of();
@@ -234,27 +244,35 @@ public class MVPartitionCellBuilder {
      * Build [lower, upper) range cells for non-JDBC external tables (Hive, Hudi, Iceberg, Paimon).
      */
     private static PCellSortedSet buildClosedOpenRangeCells(
-            LinkedHashMap<String, PartitionKey> mvPartitionKeysByName,
+            List<ResolvedPartitionKey> resolvedPartitionKeys,
             Column baseTablePartitionColumn,
-            Expr mvPartitionExpr,
-            PartitionUtil.DateTimeInterval basePartitionInterval)
+            Expr mvPartitionExpr)
             throws AnalysisException {
         boolean isConvertToDate = PartitionUtil.isConvertToDate(mvPartitionExpr, baseTablePartitionColumn);
         PrimitiveType basePartitionColumnPrimitiveType =
                 isConvertToDate ? PrimitiveType.DATE : baseTablePartitionColumn.getPrimitiveType();
 
         PCellSortedSet mvPartitionRangeMap = PCellSortedSet.of();
-        for (Map.Entry<String, PartitionKey> entry : mvPartitionKeysByName.entrySet()) {
-            String mvPartitionName = entry.getKey();
+        for (ResolvedPartitionKey resolvedPartitionKey : resolvedPartitionKeys) {
             PartitionKey basePartitionLowerBound =
-                    isConvertToDate ? PartitionUtil.convertToDate(entry.getValue()) : entry.getValue();
+                    isConvertToDate ? PartitionUtil.convertToDate(resolvedPartitionKey.partitionKey)
+                            : resolvedPartitionKey.partitionKey;
             if (basePartitionLowerBound.getKeys().get(0).isNullable()) {
                 basePartitionLowerBound = PartitionKey.createInfinityPartitionKeyWithType(
                         ImmutableList.of(basePartitionColumnPrimitiveType), false);
             }
-            Preconditions.checkState(!mvPartitionRangeMap.containsName(mvPartitionName));
             PartitionKey basePartitionUpperBound = nextPartitionKey(
-                    basePartitionLowerBound, basePartitionInterval, basePartitionColumnPrimitiveType);
+                    basePartitionLowerBound, resolvedPartitionKey.interval, basePartitionColumnPrimitiveType);
+            String mvPartitionName = generateRangePartitionName(
+                    Range.closedOpen(basePartitionLowerBound, basePartitionUpperBound),
+                    mvPartitionExpr,
+                    resolvedPartitionKey.mvPartitionName);
+            // Multiple base partitions may map to the same MV partition name when the MV expression
+            // (e.g., date_trunc('month', ...)) groups finer-grained base partitions (e.g., daily)
+            // into coarser MV partitions (e.g., monthly). Keep the first (lowest bound) entry.
+            if (mvPartitionRangeMap.containsName(mvPartitionName)) {
+                continue;
+            }
             mvPartitionRangeMap.add(
                     mvPartitionName,
                     PRangeCell.of(Range.closedOpen(basePartitionLowerBound, basePartitionUpperBound)));
@@ -267,7 +285,7 @@ public class MVPartitionCellBuilder {
      * JDBC partitions use different boundary semantics than Hive-style tables.
      */
     private static PCellSortedSet buildOpenClosedRangeCells(
-            LinkedHashMap<String, PartitionKey> mvPartitionKeysByName,
+            List<ResolvedPartitionKey> resolvedPartitionKeys,
             Column baseTablePartitionColumn,
             Expr mvPartitionExpr)
             throws AnalysisException {
@@ -279,10 +297,9 @@ public class MVPartitionCellBuilder {
         PartitionKey lastBasePartitionKey = null;
         String mvPartitionName = null;
 
-        for (Map.Entry<String, PartitionKey> entry : mvPartitionKeysByName.entrySet()) {
-            mvPartitionName = entry.getKey();
+        for (ResolvedPartitionKey resolvedPartitionKey : resolvedPartitionKeys) {
             if (lastBasePartitionKey == null) {
-                lastBasePartitionKey = entry.getValue();
+                lastBasePartitionKey = resolvedPartitionKey.partitionKey;
                 if (!lastBasePartitionKey.getKeys().get(0).isMinValue()) {
                     lastBasePartitionKey = PartitionKey.createInfinityPartitionKeyWithType(
                             ImmutableList.of(basePartitionColumnPrimitiveType), false);
@@ -292,14 +309,23 @@ public class MVPartitionCellBuilder {
                                 ImmutableList.of(basePartitionColumnPrimitiveType), false);
                     } else {
                         lastBasePartitionKey = isConvertToDate
-                                ? PartitionUtil.convertToDate(entry.getValue()) : entry.getValue();
+                                ? PartitionUtil.convertToDate(resolvedPartitionKey.partitionKey)
+                                : resolvedPartitionKey.partitionKey;
                     }
                     continue;
                 }
             }
             PartitionKey basePartitionUpperBound = isConvertToDate
-                    ? PartitionUtil.convertToDate(entry.getValue()) : entry.getValue();
-            Preconditions.checkState(!mvPartitionRangeMap.containsName(mvPartitionName));
+                    ? PartitionUtil.convertToDate(resolvedPartitionKey.partitionKey)
+                    : resolvedPartitionKey.partitionKey;
+            mvPartitionName = generateRangePartitionName(
+                    Range.openClosed(lastBasePartitionKey, basePartitionUpperBound),
+                    mvPartitionExpr,
+                    resolvedPartitionKey.mvPartitionName);
+            if (mvPartitionRangeMap.containsName(mvPartitionName)) {
+                lastBasePartitionKey = basePartitionUpperBound;
+                continue;
+            }
             mvPartitionRangeMap.add(
                     mvPartitionName,
                     PRangeCell.of(Range.openClosed(lastBasePartitionKey, basePartitionUpperBound)));
@@ -314,23 +340,26 @@ public class MVPartitionCellBuilder {
     /**
      * Resolve all partition names to PartitionKeys via the resolver, then sort by key value.
      */
-    private static LinkedHashMap<String, PartitionKey> resolveAndSort(
+    private static List<ResolvedPartitionKey> resolveAndSort(
             ExternalPartitionMappingContext mappingContext,
             ExternalPartitionKeyResolver partitionKeyResolver,
-            Collection<String> basePartitionNames)
+            Collection<String> basePartitionNames,
+            Column baseTablePartitionColumn,
+            PartitionUtil.DateTimeInterval defaultInterval)
             throws AnalysisException {
-        Map<String, PartitionKey> mvPartitionKeysByName = Maps.newHashMap();
+        List<ResolvedPartitionKey> resolvedPartitionKeys = Lists.newArrayList();
         for (String basePartitionName : basePartitionNames) {
             PartitionKeyResolutionResult resolutionResult =
                     partitionKeyResolver.resolve(mappingContext, basePartitionName);
-            PartitionKey mvPartitionKey = resolutionResult.getSingleKey();
-            String mvPartitionName = generateMVPartitionName(mvPartitionKey);
-            mvPartitionKeysByName.put(mvPartitionName, mvPartitionKey);
+            PartitionUtil.DateTimeInterval interval =
+                    resolveInterval(mappingContext, basePartitionName, baseTablePartitionColumn, defaultInterval);
+            for (PartitionKey mvPartitionKey : resolutionResult.getKeys()) {
+                resolvedPartitionKeys.add(new ResolvedPartitionKey(
+                        basePartitionName, generateMVPartitionName(mvPartitionKey), mvPartitionKey, interval));
+            }
         }
-        return mvPartitionKeysByName.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue(PartitionKey::compareTo))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
-                        (e1, e2) -> e1, LinkedHashMap::new));
+        resolvedPartitionKeys.sort((left, right) -> left.partitionKey.compareTo(right.partitionKey));
+        return resolvedPartitionKeys;
     }
 
     // ========== Internal: helpers ==========
@@ -353,6 +382,58 @@ public class MVPartitionCellBuilder {
         return DefaultPartitionKeyResolver.INSTANCE;
     }
 
+    private static PartitionUtil.DateTimeInterval resolveInterval(ExternalPartitionMappingContext mappingContext,
+                                                                  String basePartitionName,
+                                                                  Column baseTablePartitionColumn,
+                                                                  PartitionUtil.DateTimeInterval defaultInterval) {
+        if (!mappingContext.getBaseTable().isIcebergTable()) {
+            return defaultInterval;
+        }
+        PartitionUtil.DateTimeInterval resolvedInterval = mappingContext.getPartitionInfo(basePartitionName)
+                .map(partitionInfo -> IcebergPartitionUtils.getDateTimeIntervalFromPartition(
+                        (IcebergTable) mappingContext.getBaseTable(), baseTablePartitionColumn, partitionInfo))
+                .orElse(defaultInterval);
+        if (mappingContext.getMvPartitionExpr() == null) {
+            return resolvedInterval;
+        }
+        PartitionUtil.DateTimeInterval exprInterval = IcebergPartitionUtils.getDateTimeIntervalFromPartitionExpr(
+                mappingContext.getMvPartitionExpr(), baseTablePartitionColumn.getType());
+        if (exprInterval == PartitionUtil.DateTimeInterval.NONE) {
+            return resolvedInterval;
+        }
+        int currentSpecId = ((IcebergTable) mappingContext.getBaseTable()).getNativeTable().spec().specId();
+        if (mappingContext.getPartitionInfo(basePartitionName)
+                .filter(com.starrocks.connector.iceberg.Partition.class::isInstance)
+                .map(com.starrocks.connector.iceberg.Partition.class::cast)
+                .filter(partition -> partition.getSpecId() >= 0
+                        && partition.getSpecId() != currentSpecId
+                        && resolvedInterval != PartitionUtil.DateTimeInterval.NONE)
+                .isPresent()) {
+            return resolvedInterval;
+        }
+        if (exprInterval != resolvedInterval) {
+            return exprInterval;
+        }
+        return resolvedInterval;
+    }
+
+    private static final class ResolvedPartitionKey {
+        private final String basePartitionName;
+        private final String mvPartitionName;
+        private final PartitionKey partitionKey;
+        private final PartitionUtil.DateTimeInterval interval;
+
+        private ResolvedPartitionKey(String basePartitionName,
+                                     String mvPartitionName,
+                                     PartitionKey partitionKey,
+                                     PartitionUtil.DateTimeInterval interval) {
+            this.basePartitionName = basePartitionName;
+            this.mvPartitionName = mvPartitionName;
+            this.partitionKey = partitionKey;
+            this.interval = interval;
+        }
+    }
+
     private static String generateLiteralPartitionName(LiteralExpr literalExpr) {
         return literalExpr.getStringValue().replaceAll("[^a-zA-Z0-9_]*", "");
     }
@@ -365,5 +446,127 @@ public class MVPartitionCellBuilder {
         }
         mvPartitionItems.add(mvPartitionItem);
         return mvPartitionItems;
+    }
+
+    private static String generateRangePartitionName(Range<PartitionKey> range,
+                                                     Expr mvPartitionExpr,
+                                                     String defaultName) {
+        if (mvPartitionExpr == null) {
+            return defaultName;
+        }
+        String granularity = extractTimeGranularity(mvPartitionExpr);
+        if (granularity != null) {
+            return generateTimeRangePartitionName(range, granularity);
+        }
+        return generateGenericRangePartitionName(range);
+    }
+
+    private static String extractTimeGranularity(Expr mvPartitionExpr) {
+        if (!(mvPartitionExpr instanceof FunctionCallExpr)) {
+            return null;
+        }
+        FunctionCallExpr functionCallExpr = (FunctionCallExpr) mvPartitionExpr;
+        String functionName = functionCallExpr.getFunctionName();
+        if (FunctionSet.STR2DATE.equalsIgnoreCase(functionName)) {
+            return TimeUnitUtils.DAY;
+        }
+        int granularityIdx;
+        if (FunctionSet.DATE_TRUNC.equalsIgnoreCase(functionName)) {
+            granularityIdx = 0;
+        } else if (FunctionSet.TIME_SLICE.equalsIgnoreCase(functionName)) {
+            granularityIdx = 2;
+        } else {
+            return null;
+        }
+        if (functionCallExpr.getChildren().size() <= granularityIdx
+                || !(functionCallExpr.getChild(granularityIdx) instanceof StringLiteral)) {
+            return null;
+        }
+        return ((StringLiteral) functionCallExpr.getChild(granularityIdx)).getStringValue().toLowerCase();
+    }
+
+    private static String generateTimeRangePartitionName(Range<PartitionKey> range, String granularity) {
+        LocalDateTime lower = toRangeDateTime(range.lowerEndpoint(), false);
+        LocalDateTime upper = toRangeDateTime(range.upperEndpoint(), true);
+        return SyncPartitionUtils.getMVPartitionName(lower, upper, granularity);
+    }
+
+    private static LocalDateTime toRangeDateTime(PartitionKey partitionKey, boolean isUpperBound) {
+        LiteralExpr literalExpr = partitionKey.getKeys().get(0);
+        if (literalExpr instanceof com.starrocks.sql.ast.expression.DateLiteral) {
+            return ((com.starrocks.sql.ast.expression.DateLiteral) literalExpr).toLocalDateTime();
+        }
+        if (literalExpr == MaxLiteral.MAX_VALUE) {
+            PrimitiveType primitiveType = partitionKey.getTypes().get(0);
+            com.starrocks.sql.ast.expression.DateLiteral maxDate =
+                    com.starrocks.sql.ast.expression.DateLiteral.createMaxValue(
+                            primitiveType == PrimitiveType.DATE ? com.starrocks.type.DateType.DATE
+                                    : com.starrocks.type.DateType.DATETIME);
+            return maxDate.toLocalDateTime();
+        }
+        if (literalExpr.isMinValue()) {
+            PrimitiveType primitiveType = partitionKey.getTypes().get(0);
+            com.starrocks.sql.ast.expression.DateLiteral minDate =
+                    com.starrocks.sql.ast.expression.DateLiteral.createMinValue(
+                            primitiveType == PrimitiveType.DATE ? com.starrocks.type.DateType.DATE
+                                    : com.starrocks.type.DateType.DATETIME);
+            return minDate.toLocalDateTime();
+        }
+        throw new IllegalArgumentException(String.format(
+                "Unsupported %s partition literal for range naming: %s",
+                isUpperBound ? "upper" : "lower",
+                literalExpr));
+    }
+
+    private static String generateGenericRangePartitionName(Range<PartitionKey> range) {
+        return "p"
+                + generatePartitionNameFragments(range.lowerEndpoint())
+                + "_"
+                + generatePartitionNameFragments(range.upperEndpoint());
+    }
+
+    private static String generatePartitionNameFragments(PartitionKey partitionKey) {
+        return Joiner.on("_").join(partitionKey.getKeys().stream()
+                .map(MVPartitionCellBuilder::generateLiteralPartitionName)
+                .collect(Collectors.toList()));
+    }
+
+    private static PartitionNameSetMap buildRangePartitionNameMap(Table baseTable,
+                                                                  Column baseTablePartitionColumn,
+                                                                  List<String> basePartitionNames,
+                                                                  Expr mvPartitionExpr)
+            throws AnalysisException {
+        ExternalPartitionMappingContext mappingContext =
+                ExternalPartitionMappingContext.create(
+                        baseTable, baseTablePartitionColumn, mvPartitionExpr, basePartitionNames);
+        ExternalPartitionKeyResolver partitionKeyResolver = getResolver(baseTable);
+        PartitionNameSetMap mvPartitionKeySetMap = PartitionNameSetMap.of();
+        PartitionUtil.DateTimeInterval defaultInterval =
+                PartitionUtil.getDateTimeInterval(baseTable, baseTablePartitionColumn);
+        boolean isConvertToDate = PartitionUtil.isConvertToDate(mvPartitionExpr, baseTablePartitionColumn);
+        PrimitiveType basePartitionColumnPrimitiveType =
+                isConvertToDate ? PrimitiveType.DATE : baseTablePartitionColumn.getPrimitiveType();
+        for (String basePartitionName : basePartitionNames) {
+            PartitionKeyResolutionResult resolutionResult =
+                    partitionKeyResolver.resolve(mappingContext, basePartitionName);
+            PartitionUtil.DateTimeInterval interval =
+                    resolveInterval(mappingContext, basePartitionName, baseTablePartitionColumn, defaultInterval);
+            for (PartitionKey mvPartitionKey : resolutionResult.getKeys()) {
+                PartitionKey basePartitionLowerBound =
+                        isConvertToDate ? PartitionUtil.convertToDate(mvPartitionKey) : mvPartitionKey;
+                if (basePartitionLowerBound.getKeys().get(0).isNullable()) {
+                    basePartitionLowerBound = PartitionKey.createInfinityPartitionKeyWithType(
+                            ImmutableList.of(basePartitionColumnPrimitiveType), false);
+                }
+                PartitionKey basePartitionUpperBound = nextPartitionKey(
+                        basePartitionLowerBound, interval, basePartitionColumnPrimitiveType);
+                String mvPartitionName = generateRangePartitionName(
+                        Range.closedOpen(basePartitionLowerBound, basePartitionUpperBound),
+                        mvPartitionExpr,
+                        generateMVPartitionName(mvPartitionKey));
+                mvPartitionKeySetMap.put(mvPartitionName, basePartitionName);
+            }
+        }
+        return mvPartitionKeySetMap;
     }
 }

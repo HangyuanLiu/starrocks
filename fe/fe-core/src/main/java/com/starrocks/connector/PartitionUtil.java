@@ -305,7 +305,12 @@ public class PartitionUtil {
             throws AnalysisException {
         int partitionColumnIndex = -1;
         for (int index = 0; index < partitionColumns.size(); ++index) {
-            if (partitionColumns.get(index).equals(partitionColumn)) {
+            Column col = partitionColumns.get(index);
+            // Use name-based matching as a fallback because Column objects from different sources
+            // (e.g., MV partition exprs vs Iceberg table metadata) may differ in metadata fields
+            // even though they refer to the same logical column.
+            if (col.equals(partitionColumn) ||
+                    col.getName().equalsIgnoreCase(partitionColumn.getName())) {
                 partitionColumnIndex = index;
                 break;
             }

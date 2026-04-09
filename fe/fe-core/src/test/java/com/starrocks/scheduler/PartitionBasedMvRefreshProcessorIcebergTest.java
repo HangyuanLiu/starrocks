@@ -253,13 +253,13 @@ public class PartitionBasedMvRefreshProcessorIcebergTest extends MVTestBase {
         MaterializedView partitionedMaterializedView =
                 ((MaterializedView) GlobalStateMgr.getCurrentState().getLocalMetastore()
                         .getTable(testDb.getFullName(), "iceberg_year_mv1"));
-        Assertions.assertTrue(partitionedMaterializedView.getPartitionInfo().isListPartition());
+        Assertions.assertTrue(partitionedMaterializedView.getPartitionInfo().isRangePartition());
         triggerRefreshMv(testDb, partitionedMaterializedView);
 
         Collection<Partition> partitions = partitionedMaterializedView.getPartitions();
         Assertions.assertEquals(5, partitions.size());
-        Set<String> expectedPartitionNames = ImmutableSet.of("p20190101000000", "p20210101000000", "p20220101000000",
-                "p20200101000000", "p20230101000000");
+        Set<String> expectedPartitionNames = ImmutableSet.of("p2019_2020", "p2021_2022", "p2022_2023",
+                "p2020_2021", "p2023_2024");
         Assertions.assertEquals(expectedPartitionNames,
                 partitions.stream().map(Partition::getName).collect(Collectors.toSet()));
 
@@ -303,14 +303,14 @@ public class PartitionBasedMvRefreshProcessorIcebergTest extends MVTestBase {
         MaterializedView partitionedMaterializedView =
                 ((MaterializedView) GlobalStateMgr.getCurrentState().getLocalMetastore()
                         .getTable(testDb.getFullName(), "iceberg_month_mv1"));
-        Assertions.assertTrue(partitionedMaterializedView.getPartitionInfo().isListPartition());
+        Assertions.assertTrue(partitionedMaterializedView.getPartitionInfo().isRangePartition());
         triggerRefreshMv(testDb, partitionedMaterializedView);
 
         Collection<Partition> partitions = partitionedMaterializedView.getPartitions();
         Assertions.assertEquals(5, partitions.size());
 
-        Set<String> expectedPartitionNames = ImmutableSet.of("p20220301000000", "p20220101000000", "p20220401000000",
-                "p20220201000000", "p20220501000000");
+        Set<String> expectedPartitionNames = ImmutableSet.of("p202203_202204", "p202201_202202", "p202204_202205",
+                "p202202_202203", "p202205_202206");
         Assertions.assertEquals(expectedPartitionNames,
                 partitions.stream().map(Partition::getName).collect(Collectors.toSet()));
 
@@ -343,8 +343,8 @@ public class PartitionBasedMvRefreshProcessorIcebergTest extends MVTestBase {
 
         Collection<Partition> partitions = partitionedMaterializedView.getPartitions();
         Assertions.assertEquals(5, partitions.size());
-        Set<String> expectedPartitionNames = ImmutableSet.of("p20220102000000", "p20220103000000", "p20220105000000",
-                "p20220101000000", "p20220104000000");
+        Set<String> expectedPartitionNames = ImmutableSet.of("p20220102_20220103", "p20220103_20220104", "p20220105_20220106",
+                "p20220101_20220102", "p20220104_20220105");
         Assertions.assertEquals(expectedPartitionNames,
                 partitions.stream().map(Partition::getName).collect(Collectors.toSet()));
         // test rewrite
@@ -376,8 +376,9 @@ public class PartitionBasedMvRefreshProcessorIcebergTest extends MVTestBase {
 
         Collection<Partition> partitions = partitionedMaterializedView.getPartitions();
         Assertions.assertEquals(5, partitions.size());
-        Set<String> expectedPartitionNames = ImmutableSet.of("p20220101020000", "p20220101040000", "p20220101030000",
-                "p20220101010000", "p20220101000000");
+        Set<String> expectedPartitionNames = ImmutableSet.of("p2022010102_2022010103",
+                "p2022010104_2022010105", "p2022010103_2022010104",
+                "p2022010101_2022010102", "p2022010100_2022010101");
         Assertions.assertEquals(expectedPartitionNames,
                 partitions.stream().map(Partition::getName).collect(Collectors.toSet()));
         // test rewrite
@@ -713,7 +714,7 @@ public class PartitionBasedMvRefreshProcessorIcebergTest extends MVTestBase {
         } catch (Exception e) {
             Assertions.assertTrue(e.getMessage().contains(
                     "Do not support create materialized view when base iceberg table"));
-            Assertions.assertTrue(e.getMessage().contains("has done partition evolution"));
+            Assertions.assertTrue(e.getMessage().contains("has partition evolution"));
         }
 
         starRocksAssert.dropMaterializedView(mvName);
