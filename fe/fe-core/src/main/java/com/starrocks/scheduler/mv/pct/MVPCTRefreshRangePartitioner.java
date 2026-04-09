@@ -462,4 +462,5 @@ public final class MVPCTRefreshRangePartitioner extends MVPCTRefreshPartitioner 
             Uninterruptibles.sleepUninterruptibly(Config.mv_create_partition_batch_interval_ms, TimeUnit.MILLISECONDS);
         }
     }
+
 }

@@ -330,8 +330,8 @@ public final class ListPartitionDiffer extends PartitionDiffer {
                 refBaseTablePartitionMap.put(refBaseTable, basePartitionCells);
             }
         } catch (Exception e) {
-            LOG.warn("Materialized view compute partition difference with base table failed.",
-                    DebugUtil.getStackTrace(e));
+            LOG.warn("Materialized view compute partition difference with base table failed. " +
+                    "refBaseTablePartitionColumns={}", refBaseTablePartitionColumns, e);
             return null;
         }
         return refBaseTablePartitionMap;
@@ -386,7 +386,7 @@ public final class ListPartitionDiffer extends PartitionDiffer {
         Map<Table, PartitionNameSetMap> externalPartitionMaps = Maps.newHashMap();
         if (!queryRewriteParams.isQueryRewrite()) {
             try {
-                collectExternalPartitionNameMapping(mv.getRefBaseTablePartitionColumns(), externalPartitionMaps);
+                collectExternalPartitionNameMapping(mv.getRefBaseTablePartitionColumns(), null, externalPartitionMaps);
             } catch (Exception e) {
                 LOG.warn("Get external partition column mapping failed.", DebugUtil.getStackTrace(e));
                 return null;

@@ -27,7 +27,10 @@ import com.starrocks.catalog.MvId;
 import com.starrocks.catalog.MvPlanContext;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Partition;
+import com.starrocks.catalog.PartitionInfo;
+import com.starrocks.catalog.PartitionType;
 import com.starrocks.catalog.PhysicalPartition;
+import com.starrocks.catalog.SinglePartitionInfo;
 import com.starrocks.catalog.Table;
 import com.starrocks.catalog.TableName;
 import com.starrocks.catalog.TableProperty;
@@ -60,12 +63,15 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.RunMode;
 import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
+import com.starrocks.sql.analyzer.MVPartitionAnalyzerUtils;
 import com.starrocks.sql.analyzer.MaterializedViewAnalyzer;
+import com.starrocks.sql.analyzer.PartitionExprAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.analyzer.SetStmtAnalyzer;
 import com.starrocks.sql.analyzer.mv.IVMAnalyzer;
 import com.starrocks.sql.ast.AddColumnsClause;
 import com.starrocks.sql.ast.AddMVColumnClause;
+import com.starrocks.sql.ast.AlterMVPartitionByClause;
 import com.starrocks.sql.ast.AlterMaterializedViewStatusClause;
 import com.starrocks.sql.ast.AsyncRefreshSchemeDesc;
 import com.starrocks.sql.ast.DropMVColumnClause;
@@ -75,6 +81,7 @@ import com.starrocks.sql.ast.ModifyTablePropertiesClause;
 import com.starrocks.sql.ast.ParseNode;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.RefreshSchemeClause;
+import com.starrocks.sql.ast.RemoveMVPartitionClause;
 import com.starrocks.sql.ast.SelectList;
 import com.starrocks.sql.ast.SelectListItem;
 import com.starrocks.sql.ast.SelectRelation;
@@ -106,6 +113,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.threeten.extra.PeriodDuration;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -1048,6 +1056,226 @@ public class AlterMVJobExecutor extends AlterJobExecutor {
             throw new AlterJobException("Failed to drop column from materialized view: " + e.getMessage(), e);
         }
         return null;
+    }
+
+    @Override
+    public Void visitAlterMVPartitionByClause(AlterMVPartitionByClause clause, ConnectContext context) {
+        MaterializedView mv = (MaterializedView) table;
+        List<Expr> newPartitionByExprs = clause.getPartitionByExprs();
+        ConnectContext connectContext = context == null ? ConnectContext.buildInner() : context;
+
+        try {
+            // ---- Phase 1: Analyze new partition expressions ----
+            List<Column> mvColumns = mv.getBaseSchema();
+            List<Expr> partitionRefTableExprs = new ArrayList<>();
+            List<Column> mvPartitionColumns = new ArrayList<>();
+
+            // Try to re-parse and analyze the MV's query for base table column mapping.
+            // This may fail for external tables (e.g., lightweight Iceberg tables),
+            // in which case we fall back to using partition expressions directly.
+            Map<String, Expr> columnNameToBaseExpr = Maps.newHashMap();
+            try {
+                ParseNode astParseNode = mv.initDefineQueryParseNode();
+                if (astParseNode instanceof QueryStatement) {
+                    QueryStatement queryStatement = (QueryStatement) astParseNode;
+                    Analyzer.analyze(queryStatement, connectContext);
+                    List<Expr> outputExprs = queryStatement.getQueryRelation().getOutputExpression();
+                    for (int i = 0; i < Math.min(outputExprs.size(), mvColumns.size()); i++) {
+                        columnNameToBaseExpr.put(
+                                mvColumns.get(i).getName().toLowerCase(Locale.ROOT), outputExprs.get(i));
+                    }
+                }
+            } catch (Exception e) {
+                LOG.warn("Failed to re-analyze MV query for partition resolution, " +
+                        "falling back to direct expression mapping: {}", e.getMessage());
+            }
+
+            // Resolve partition expressions
+            for (Expr partitionExpr : newPartitionByExprs) {
+                List<SlotRef> slotRefs = new ArrayList<>();
+                partitionExpr.collect(SlotRef.class, slotRefs);
+                if (slotRefs.isEmpty()) {
+                    throw new SemanticException("Partition expression must reference a column");
+                }
+
+                SlotRef slotRef = slotRefs.get(0);
+                String colName = slotRef.getColumnName();
+
+                Column mvCol = mv.getColumn(colName);
+                if (mvCol == null) {
+                    throw new SemanticException("Column '%s' not found in materialized view", colName);
+                }
+                mvPartitionColumns.add(mvCol);
+
+                // Get the base table expression for this column (if available from analysis)
+                Expr baseExpr = columnNameToBaseExpr.get(colName.toLowerCase(Locale.ROOT));
+
+                // Build the partition ref table expression
+                if (baseExpr != null) {
+                    if (partitionExpr instanceof FunctionCallExpr) {
+                        Expr partitionRefExpr = partitionExpr.clone();
+                        List<Expr> children = partitionRefExpr.getChildren();
+                        for (int k = 0; k < children.size(); k++) {
+                            if (children.get(k) instanceof SlotRef) {
+                                partitionRefExpr.setChild(k, baseExpr.clone());
+                            }
+                        }
+                        partitionRefTableExprs.add(partitionRefExpr);
+                    } else if (partitionExpr instanceof SlotRef) {
+                        partitionRefTableExprs.add(baseExpr.clone());
+                    } else {
+                        partitionRefTableExprs.add(partitionExpr.clone());
+                    }
+                } else {
+                    // Fallback: use the partition expression as-is (for external table MVs)
+                    partitionRefTableExprs.add(partitionExpr.clone());
+                }
+            }
+
+            // Determine partition type
+            PartitionType newPartitionType = MVPartitionAnalyzerUtils.determineMVPartitionType(
+                    mv, newPartitionByExprs, partitionRefTableExprs);
+
+            // Check if generated partition columns are needed (for LIST + function expressions)
+            Map<Integer, Column> newGeneratedCols = Maps.newHashMap();
+            List<Column> mutableBaseSchema = new ArrayList<>(mv.getBaseSchema());
+
+            if (newPartitionType == PartitionType.LIST) {
+                for (int i = 0; i < newPartitionByExprs.size(); i++) {
+                    Expr partitionByExpr = newPartitionByExprs.get(i);
+                    if (partitionByExpr instanceof FunctionCallExpr) {
+                        // Resolve the expression against MV columns for the generated column
+                        Expr adjustedExpr = partitionByExpr.clone();
+                        List<SlotRef> adjustSlotRefs = new ArrayList<>();
+                        adjustedExpr.collect(SlotRef.class, adjustSlotRefs);
+                        for (SlotRef sr : adjustSlotRefs) {
+                            MaterializedViewAnalyzer.tryToResolveRefToMVColumns(
+                                    mvColumns, sr, null);
+                        }
+                        // Analyze the expression to resolve types
+                        PartitionExprAnalyzer.analyzePartitionExpr(adjustedExpr, adjustSlotRefs.get(0));
+
+                        Column generatedCol = MVPartitionAnalyzerUtils.createGeneratedPartitionColumn(
+                                adjustedExpr, i, mv.getKeysType());
+                        newGeneratedCols.put(i, generatedCol);
+                    }
+                }
+            }
+
+            // Build new PartitionInfo
+            PartitionInfo newPartitionInfo = MVPartitionAnalyzerUtils.buildPartitionInfo(
+                    newPartitionByExprs, newPartitionType, mvPartitionColumns,
+                    newGeneratedCols, mutableBaseSchema);
+
+            // Build partitionExprMaps from resolved base table expressions.
+            // If re-analysis failed (external tables), clear the maps to avoid NPE on reload.
+            LinkedHashMap<Expr, SlotRef> newPartitionExprMaps = new LinkedHashMap<>();
+            if (!columnNameToBaseExpr.isEmpty()) {
+                for (int i = 0; i < partitionRefTableExprs.size(); i++) {
+                    Expr refExpr = partitionRefTableExprs.get(i);
+                    List<SlotRef> refSlotRefs = new ArrayList<>();
+                    refExpr.collect(SlotRef.class, refSlotRefs);
+                    if (!refSlotRefs.isEmpty()) {
+                        newPartitionExprMaps.put(refExpr, refSlotRefs.get(0));
+                    }
+                }
+            }
+
+            // ---- Phase 2: Drop all old partitions ----
+            dropAllMVPartitions(mv);
+
+            // ---- Phase 3: Replace metadata ----
+            // Remove old generated partition columns
+            removeGeneratedPartitionColumns(mv);
+
+            // Add new generated partition columns to schema
+            for (Map.Entry<Integer, Column> entry : newGeneratedCols.entrySet()) {
+                Column generatedCol = entry.getValue();
+                mv.getBaseSchema().add(generatedCol);
+            }
+            mv.rebuildFullSchema();
+
+            // Replace PartitionInfo
+            mv.setPartitionInfo(newPartitionInfo);
+
+            // Update partition expression maps
+            mv.setPartitionExprMaps(newPartitionExprMaps);
+            mv.setPartitionRefTableExprs(partitionRefTableExprs);
+
+            // ---- Phase 4: Clear version tracking ----
+            mv.getRefreshScheme().getAsyncRefreshContext().clearVisibleVersionMap();
+
+            // ---- Phase 5: INACTIVE ----
+            mv.setInactiveAndReason(
+                    "Partition scheme changed via ALTER. Run REFRESH MATERIALIZED VIEW to rebuild.");
+
+            // ---- Phase 6: Write EditLog ----
+            AlterMaterializedViewBaseTableInfosLog log = new AlterMaterializedViewBaseTableInfosLog(
+                    null, mv, AlterMaterializedViewBaseTableInfosLog.AlterType.ALTER_PARTITION);
+            GlobalStateMgr.getCurrentState().getEditLog().logAlterMvBaseTableInfos(log);
+
+            LOG.info("Altered partition scheme for materialized view '{}', new partition type: {}",
+                    mv.getName(), newPartitionType);
+        } catch (DdlException e) {
+            throw new AlterJobException("Failed to alter partition for materialized view: " + e.getMessage(), e);
+        }
+        return null;
+    }
+
+    @Override
+    public Void visitRemoveMVPartitionClause(RemoveMVPartitionClause clause, ConnectContext context) {
+        MaterializedView mv = (MaterializedView) table;
+
+        // Drop all old partitions
+        dropAllMVPartitions(mv);
+
+        // Remove generated partition columns
+        removeGeneratedPartitionColumns(mv);
+
+        // Replace with SinglePartitionInfo
+        mv.setPartitionInfo(new SinglePartitionInfo());
+
+        // Clear partition expressions
+        mv.setPartitionExprMaps(new LinkedHashMap<>());
+        mv.setPartitionRefTableExprs(Lists.newArrayList());
+
+        // Clear version tracking
+        mv.getRefreshScheme().getAsyncRefreshContext().clearVisibleVersionMap();
+
+        // INACTIVE
+        mv.setInactiveAndReason(
+                "Partitioning removed via ALTER. Run REFRESH MATERIALIZED VIEW to rebuild.");
+
+        // EditLog
+        AlterMaterializedViewBaseTableInfosLog log = new AlterMaterializedViewBaseTableInfosLog(
+                null, mv, AlterMaterializedViewBaseTableInfosLog.AlterType.ALTER_PARTITION);
+        GlobalStateMgr.getCurrentState().getEditLog().logAlterMvBaseTableInfos(log);
+
+        LOG.info("Removed partitioning from materialized view '{}'", mv.getName());
+        return null;
+    }
+
+    /**
+     * Drop all partitions from a materialized view.
+     * Directly manipulates the OlapTable's internal state since we already hold the WRITE lock.
+     */
+    private void dropAllMVPartitions(MaterializedView mv) {
+        Set<String> partitionNames = new TreeSet<>(mv.getPartitionNames());
+        for (String partitionName : partitionNames) {
+            mv.dropPartitionAndReserveTablet(partitionName);
+        }
+    }
+
+    /**
+     * Remove generated partition columns (columns with GENERATED_PARTITION_COLUMN_PREFIX) from the MV.
+     */
+    private void removeGeneratedPartitionColumns(MaterializedView mv) {
+        List<Column> schema = mv.getBaseSchema();
+        boolean removed = schema.removeIf(col ->
+                col.getName().startsWith(FeConstants.GENERATED_PARTITION_COLUMN_PREFIX));
+        if (removed) {
+            mv.rebuildFullSchema();
+        }
     }
 
     @Override

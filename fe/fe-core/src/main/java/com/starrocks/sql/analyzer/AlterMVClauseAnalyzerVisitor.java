@@ -14,17 +14,22 @@
 package com.starrocks.sql.analyzer;
 
 import com.starrocks.catalog.MaterializedView;
+import com.starrocks.catalog.MaterializedViewRefreshType;
 import com.starrocks.catalog.Table;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.ast.AddMVColumnClause;
+import com.starrocks.sql.ast.AlterMVPartitionByClause;
 import com.starrocks.sql.ast.DropMVColumnClause;
 import com.starrocks.sql.ast.ModifyTablePropertiesClause;
 import com.starrocks.sql.ast.ParseNode;
 import com.starrocks.sql.ast.QueryStatement;
+import com.starrocks.sql.ast.RemoveMVPartitionClause;
 import com.starrocks.sql.ast.SelectRelation;
 import com.starrocks.sql.ast.TableRelation;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
+
+import java.util.List;
 
 public class AlterMVClauseAnalyzerVisitor extends AlterTableClauseAnalyzer {
     public AlterMVClauseAnalyzerVisitor(Table table) {
@@ -100,6 +105,36 @@ public class AlterMVClauseAnalyzerVisitor extends AlterTableClauseAnalyzer {
         }
         if (selectRelation.getOutputAnalytic() != null && !selectRelation.getOutputAnalytic().isEmpty()) {
             throw new SemanticException("Materialized view with analytic functions is not supported");
+        }
+
+        return null;
+    }
+
+    public Void visitAlterMVPartitionByClause(AlterMVPartitionByClause clause, ConnectContext context) {
+        MaterializedView mv = (MaterializedView) table;
+
+        // Only support ASYNC/MANUAL refresh MVs
+        if (mv.getRefreshScheme().getType() == MaterializedViewRefreshType.SYNC) {
+            throw new SemanticException("Cannot alter partition for sync refresh materialized view");
+        }
+
+        // Validate partition expressions are not empty
+        List<Expr> partitionByExprs = clause.getPartitionByExprs();
+        if (partitionByExprs == null || partitionByExprs.isEmpty()) {
+            throw new SemanticException("Partition by expressions cannot be empty");
+        }
+
+        return null;
+    }
+
+    public Void visitRemoveMVPartitionClause(RemoveMVPartitionClause clause, ConnectContext context) {
+        MaterializedView mv = (MaterializedView) table;
+
+        if (mv.getPartitionInfo().isUnPartitioned()) {
+            throw new SemanticException("Materialized view is already unpartitioned");
+        }
+        if (mv.getRefreshScheme().getType() == MaterializedViewRefreshType.SYNC) {
+            throw new SemanticException("Cannot remove partition for sync refresh materialized view");
         }
 
         return null;

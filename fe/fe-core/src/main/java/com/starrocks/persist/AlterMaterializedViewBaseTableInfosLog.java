@@ -18,14 +18,19 @@
 package com.starrocks.persist;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.catalog.BaseTableInfo;
+import com.starrocks.catalog.Column;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.MvId;
+import com.starrocks.catalog.PartitionInfo;
+import com.starrocks.common.FeConstants;
 import com.starrocks.common.io.Writable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class AlterMaterializedViewBaseTableInfosLog implements Writable {
 
@@ -57,10 +62,16 @@ public class AlterMaterializedViewBaseTableInfosLog implements Writable {
     @SerializedName(value = "queryOutputIndices")
     protected List<Integer> queryOutputIndices = Lists.newArrayList();
 
+    @SerializedName("partitionInfo")
+    private PartitionInfo partitionInfo;
+    @SerializedName("generatedPartitionColumns")
+    private List<Column> generatedPartitionColumns = Lists.newArrayList();
+
     public static enum AlterType {
         DEFAULT,
         ADD_COLUMN,
-        DROP_COLUMN;
+        DROP_COLUMN,
+        ALTER_PARTITION;
 
         public static AlterType valueOf(int val) {
             switch (val) {
@@ -68,6 +79,8 @@ public class AlterMaterializedViewBaseTableInfosLog implements Writable {
                     return ADD_COLUMN;
                 case 2:
                     return DROP_COLUMN;
+                case 3:
+                    return ALTER_PARTITION;
                 default:
                     return DEFAULT;
             }
@@ -103,6 +116,19 @@ public class AlterMaterializedViewBaseTableInfosLog implements Writable {
                 this.simpleDefineSql = mv.getSimpleDefineSql();
                 this.originalViewDefineSql = mv.getOriginalViewDefineSql();
                 this.queryOutputIndices = mv.getQueryOutputIndices();
+                break;
+            }
+            case ALTER_PARTITION: {
+                this.partitionInfo = mv.getPartitionInfo();
+                this.viewDefineSql = mv.getViewDefineSql();
+                this.simpleDefineSql = mv.getSimpleDefineSql();
+                this.originalViewDefineSql = mv.getOriginalViewDefineSql();
+                this.generatedPartitionColumns = mv.getBaseSchema().stream()
+                        .filter(column -> column.getName().startsWith(FeConstants.GENERATED_PARTITION_COLUMN_PREFIX))
+                        .collect(Collectors.toList());
+                // Clear version info to force full refresh after replay
+                this.baseTableVisibleVersionMap = Maps.newHashMap();
+                this.baseTableInfoVisibleVersionMap = Maps.newHashMap();
                 break;
             }
             default: {
@@ -168,5 +194,13 @@ public class AlterMaterializedViewBaseTableInfosLog implements Writable {
 
     public List<Integer> getQueryOutputIndices() {
         return queryOutputIndices;
+    }
+
+    public PartitionInfo getPartitionInfoForReplay() {
+        return partitionInfo;
+    }
+
+    public List<Column> getGeneratedPartitionColumnsForReplay() {
+        return generatedPartitionColumns == null ? Lists.newArrayList() : generatedPartitionColumns;
     }
 }

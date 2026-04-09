@@ -997,6 +997,10 @@ public class OlapTable extends Table {
         return partitionInfo;
     }
 
+    public void setPartitionInfo(PartitionInfo partitionInfo) {
+        this.partitionInfo = partitionInfo;
+    }
+
     public boolean sendDropAutoIncrementMapTask() {
         Set<Long> nodeIds = Sets.newHashSet();
         List<Backend> backends = GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getBackends();

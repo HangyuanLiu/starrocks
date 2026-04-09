@@ -335,4 +335,5 @@ public final class MVPCTRefreshListPartitioner extends MVPCTRefreshPartitioner {
             Uninterruptibles.sleepUninterruptibly(Config.mv_create_partition_batch_interval_ms, TimeUnit.MILLISECONDS);
         }
     }
+
 }

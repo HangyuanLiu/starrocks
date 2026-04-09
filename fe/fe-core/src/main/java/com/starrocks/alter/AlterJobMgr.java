@@ -66,6 +66,7 @@ import com.starrocks.common.util.concurrent.lock.AutoCloseableLock;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.lake.DataCacheInfo;
+import com.starrocks.mv.analyzer.MVPartitionExprResolver;
 import com.starrocks.persist.AlterMaterializedViewBaseTableInfosLog;
 import com.starrocks.persist.AlterMaterializedViewStatusLog;
 import com.starrocks.persist.AlterViewInfo;
@@ -95,6 +96,8 @@ import com.starrocks.sql.ast.CreateMaterializedViewStatement;
 import com.starrocks.sql.ast.DropMaterializedViewStmt;
 import com.starrocks.sql.ast.QueryStatement;
 import com.starrocks.sql.ast.StatementBase;
+import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
 import com.starrocks.sql.parser.SqlParser;
 import org.apache.commons.collections4.CollectionUtils;
@@ -104,6 +107,7 @@ import org.apache.logging.log4j.util.Strings;
 
 import java.io.IOException;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -236,9 +240,23 @@ public class AlterJobMgr {
             context.setCurrentRoleIds(Sets.newHashSet(PrivilegeBuiltinConstants.ROOT_ROLE_ID));
 
             String createMvSql = materializedView.getMaterializedViewDdlStmt(false, isReplay);
+            // Set database context for parsing
+            Optional<Database> mayDb = GlobalStateMgr.getCurrentState().getLocalMetastore()
+                    .mayGetDb(materializedView.getDbId());
+            String dbName = mayDb.orElseThrow(() ->
+                    new SemanticException("database " + materializedView.getDbId() + " not exists")).getFullName();
+            context.setDatabase(dbName);
+
+            CreateMaterializedViewStatement createStmt;
             QueryStatement mvQueryStatement = null;
             try {
-                mvQueryStatement = recreateMVQuery(materializedView, context, createMvSql);
+                List<StatementBase> stmts = SqlParser.parse(createMvSql, context.getSessionVariable());
+                createStmt = (CreateMaterializedViewStatement) stmts.get(0);
+                Analyzer.analyze(createStmt, context);
+                mvQueryStatement = createStmt.getQueryStatement();
+                validateMVSchema(materializedView, createStmt);
+            } catch (SemanticException e) {
+                throw e;
             } catch (Exception e) {
                 LOG.warn("alter mv {} to active failed", materializedView.getName(), e);
                 throw new SemanticException("Can not active materialized view [%s]" +
@@ -255,7 +273,10 @@ public class AlterJobMgr {
                 throw new SemanticException("Can not find running task for materialized view [%s]",
                         materializedView.getName());
             }
-            return new AlterMaterializedViewStatusContext(status, reason, baseTableInfos, task);
+            // Extract partition expressions for rebuilding partitionExprMaps after ALTER PARTITION BY
+            List<Expr> mvPartitionByExprs = createStmt.getPartitionByExprs();
+            return new AlterMaterializedViewStatusContext(
+                    status, reason, baseTableInfos, task, mvQueryStatement, mvPartitionByExprs);
         } else if (AlterMaterializedViewStatusClause.INACTIVE.equalsIgnoreCase(status)) {
             TaskManager taskManager = GlobalStateMgr.getCurrentState().getTaskManager();
             Task currentTask = taskManager.getTask(TaskBuilder.getMvTaskName(materializedView.getId()));
@@ -271,7 +292,7 @@ public class AlterJobMgr {
                     taskRunManager.taskRunUnlock();
                 }
             }
-            return new AlterMaterializedViewStatusContext(status, reason, null, currentTask);
+            return new AlterMaterializedViewStatusContext(status, reason, null, currentTask, null, null);
         } else {
             throw new SemanticException("Unsupported modification materialized view status:" + status);
         }
@@ -282,6 +303,31 @@ public class AlterJobMgr {
         if (AlterMaterializedViewStatusClause.ACTIVE.equalsIgnoreCase(context.status())) {
             materializedView.setBaseTableInfos(context.baseTableInfos());
             materializedView.fixRelationship();
+
+            // If partitionExprMaps is empty but the MV is partitioned (e.g., after ALTER PARTITION BY),
+            // rebuild it from the re-analyzed CREATE statement's partition expressions.
+            if (!materializedView.getPartitionInfo().isUnPartitioned()
+                    && (materializedView.getPartitionExprMaps() == null
+                        || materializedView.getPartitionExprMaps().isEmpty())
+                    && context.mvPartitionByExprs() != null
+                    && !context.mvPartitionByExprs().isEmpty()
+                    && context.mvQueryStatement() != null) {
+                try {
+                    LinkedHashMap<Expr, SlotRef> partitionExprMaps =
+                            MVPartitionExprResolver.getMVPartitionExprsChecked(
+                                    context.mvPartitionByExprs(), context.mvQueryStatement(),
+                                    context.baseTableInfos());
+                    materializedView.setPartitionExprMaps(partitionExprMaps);
+                    // Re-run partition expression analysis with the new maps
+                    materializedView.fixRelationship();
+                    LOG.info("Rebuilt partitionExprMaps for MV {} after ALTER PARTITION BY: {}",
+                            materializedView.getName(), partitionExprMaps);
+                } catch (Exception e) {
+                    LOG.warn("Failed to rebuild partitionExprMaps for MV {}: {}",
+                            materializedView.getName(), e.getMessage());
+                }
+            }
+
             // resume the mv scheduler
             TaskManager taskManager = GlobalStateMgr.getCurrentState().getTaskManager();
             taskManager.resumeTask(context.task(), isReplay);
@@ -297,7 +343,8 @@ public class AlterJobMgr {
     }
 
     public record AlterMaterializedViewStatusContext(
-            String status, String reason, List<BaseTableInfo> baseTableInfos, Task task) {
+            String status, String reason, List<BaseTableInfo> baseTableInfos, Task task,
+            QueryStatement mvQueryStatement, List<Expr> mvPartitionByExprs) {
     }
 
     /*
@@ -306,21 +353,20 @@ public class AlterJobMgr {
     public static QueryStatement recreateMVQuery(MaterializedView materializedView,
                                                  ConnectContext context,
                                                  String createMvSql) {
-        // If we could parse the MV sql successfully, and the schema of mv does not change,
-        // we could reuse the existing MV
         Optional<Database> mayDb = GlobalStateMgr.getCurrentState().getLocalMetastore().mayGetDb(materializedView.getDbId());
-
-        // check database existing
         String dbName = mayDb.orElseThrow(() ->
                 new SemanticException("database " + materializedView.getDbId() + " not exists")).getFullName();
         context.setDatabase(dbName);
 
-        // Try to parse and analyze the creation sql
         List<StatementBase> statementBaseList = SqlParser.parse(createMvSql, context.getSessionVariable());
         CreateMaterializedViewStatement createStmt = (CreateMaterializedViewStatement) statementBaseList.get(0);
         Analyzer.analyze(createStmt, context);
+        validateMVSchema(materializedView, createStmt);
+        return createStmt.getQueryStatement();
+    }
 
-        // validate the schema
+    private static void validateMVSchema(MaterializedView materializedView,
+                                         CreateMaterializedViewStatement createStmt) {
         List<Column> newColumns = createStmt.getMvColumnItems().stream()
                 .sorted(Comparator.comparing(Column::getName))
                 .collect(Collectors.toList());
@@ -331,7 +377,6 @@ public class AlterJobMgr {
             throw new SemanticException(String.format("number of columns changed: %d != %d",
                     existedColumns.size(), newColumns.size()));
         }
-
         for (int i = 0; i < existedColumns.size(); i++) {
             Column existed = existedColumns.get(i);
             Column created = newColumns.get(i);
@@ -344,8 +389,6 @@ public class AlterJobMgr {
                 throw new SemanticException(message);
             }
         }
-
-        return createStmt.getQueryStatement();
     }
 
     /**

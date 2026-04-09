@@ -137,6 +137,16 @@ public class PartitionExprAnalyzer {
                     throw new SemanticException(msg, expr.getPos());
                 }
                 targetColType = VarcharType.VARCHAR;
+            } else if (functionName.equalsIgnoreCase(FunctionSet.ICEBERG_TRANSFORM_BUCKET)
+                    || functionName.equalsIgnoreCase(FunctionSet.ICEBERG_TRANSFORM_TRUNCATE)) {
+                Type[] argTypes = functionCallExpr.getParams().exprs().stream()
+                        .map(Expr::getType)
+                        .toArray(Type[]::new);
+                builtinFunction = ExprUtils.getBuiltinFunction(functionCallExpr.getFunctionName(),
+                        argTypes, Function.CompareMode.IS_SUPERTYPE_OF);
+                if (builtinFunction != null) {
+                    targetColType = builtinFunction.getReturnType();
+                }
             }
             if (builtinFunction == null) {
                 String msg = String.format("Unsupported partition type %s for function %s", targetColType,

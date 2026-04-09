@@ -107,6 +107,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -2708,6 +2709,44 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
                 // init unique id
                 initUniqueId();
                 break;
+            case ALTER_PARTITION: {
+                this.viewDefineSql = log.getViewDefineSql();
+                this.simpleDefineSql = log.getSimpleDefineSql();
+                this.originalViewDefineSql = log.getOriginalViewDefineSql();
+
+                List<Column> newGeneratedPartitionColumns = log.getGeneratedPartitionColumnsForReplay();
+                boolean schemaChanged = this.getBaseSchema().removeIf(
+                        column -> column.getName().startsWith(FeConstants.GENERATED_PARTITION_COLUMN_PREFIX));
+                if (CollectionUtils.isNotEmpty(newGeneratedPartitionColumns)) {
+                    this.getBaseSchema().addAll(newGeneratedPartitionColumns);
+                    schemaChanged = true;
+                }
+                if (schemaChanged) {
+                    rebuildFullSchema();
+                }
+
+                // Restore PartitionInfo
+                PartitionInfo newPartitionInfo = log.getPartitionInfoForReplay();
+                if (newPartitionInfo != null) {
+                    this.partitionInfo = newPartitionInfo;
+                } else {
+                    this.partitionInfo = new SinglePartitionInfo();
+                }
+
+                // Clear version tracking
+                this.refreshScheme.asyncRefreshContext.clearVisibleVersionMap();
+
+                // Drop all in-memory old partitions
+                Set<String> oldPartitionNames = new HashSet<>(this.getPartitionNames());
+                for (String partitionName : oldPartitionNames) {
+                    this.dropPartitionAndReserveTablet(partitionName);
+                }
+
+                // Set INACTIVE
+                setInactiveAndReason(
+                        "Partition scheme changed via ALTER. Run REFRESH MATERIALIZED VIEW to rebuild.");
+                break;
+            }
             default: {
                 this.setBaseTableInfos(log.getBaseTableInfos());
                 Map<Long, Map<String, MaterializedView.BasePartitionInfo>> baseTableVisibleVersionMap =

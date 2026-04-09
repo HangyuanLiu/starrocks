@@ -27,11 +27,14 @@ import com.starrocks.catalog.Table;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.connector.ConnectorMetadatRequestContext;
 import com.starrocks.connector.ConnectorPartitionTraits;
+import com.starrocks.connector.MVPartitionCellBuilder;
 import com.starrocks.connector.PartitionInfo;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.NullLiteral;
+import com.starrocks.sql.common.PCellSortedSet;
 import com.starrocks.type.Type;
 import org.apache.commons.lang.NotImplementedException;
 
@@ -96,6 +99,15 @@ public abstract class DefaultTraits extends ConnectorPartitionTraits {
     @Override
     public List<Column> getPartitionColumns() {
         return table.getPartitionColumns();
+    }
+
+    public PCellSortedSet getPartitionKeyRange(Column partitionColumn, Expr partitionExpr)
+            throws AnalysisException {
+        return MVPartitionCellBuilder.buildRangeCells(table, partitionColumn, getPartitionNames(), partitionExpr);
+    }
+
+    public PCellSortedSet getPartitionCells(List<Column> partitionColumns) throws AnalysisException {
+        return MVPartitionCellBuilder.buildListCells(table, partitionColumns, getPartitionNames());
     }
 
     @Override
