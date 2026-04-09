@@ -20,10 +20,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.starrocks.catalog.Column;
+import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.util.TimeUtils;
+import com.starrocks.connector.PartitionInfo;
 import com.starrocks.connector.PartitionUtil;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -33,6 +35,7 @@ import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.ast.expression.FunctionCallExpr;
 import com.starrocks.sql.ast.expression.IntLiteral;
+import com.starrocks.sql.ast.expression.StringLiteral;
 import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.SlotRef;
@@ -40,6 +43,7 @@ import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
 import com.starrocks.statistic.StatisticUtils;
 import com.starrocks.type.Type;
 import org.apache.iceberg.PartitionField;
+import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Term;
@@ -55,6 +59,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import static com.starrocks.connector.iceberg.IcebergPartitionTransform.YEAR;
 
@@ -438,6 +443,145 @@ public class IcebergPartitionUtils {
                 }
             }
             return ExprUtils.compoundOr(result);
+        }
+    }
+
+    /**
+     * Check whether ALL partition transforms for the given source field across ALL specs are
+     * time-family (year, month, day, hour).
+     *
+     * @param icebergTable the native Iceberg table
+     * @param sourceFieldId the schema field id of the partition source column
+     * @return true if every transform that references this source field is a time transform
+     */
+    public static boolean isAllTimeTransforms(org.apache.iceberg.Table icebergTable, int sourceFieldId) {
+        Map<Integer, PartitionSpec> specs = icebergTable.specs();
+        for (PartitionSpec spec : specs.values()) {
+            for (PartitionField field : spec.fields()) {
+                if (field.sourceId() == sourceFieldId) {
+                    String transform = field.transform().toString().toLowerCase(Locale.ROOT);
+                    if (!transform.equals("year") && !transform.equals("month") &&
+                            !transform.equals("day") && !transform.equals("hour")) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Determine whether the given Iceberg table has undergone partition evolution and all transforms
+     * for the specified partition column are time-family (year, month, day, hour).
+     *
+     * @param table the StarRocks IcebergTable wrapper
+     * @param partitionColumn the partition column to check
+     * @return true if the table has multiple specs and all transforms for this column are time-family
+     */
+    public static boolean isSafePartitionEvolution(IcebergTable table, Column partitionColumn) {
+        org.apache.iceberg.Table nativeTable = table.getNativeTable();
+        Map<Integer, PartitionSpec> specs = nativeTable.specs();
+        if (specs.size() <= 1) {
+            return false;
+        }
+
+        Schema schema = nativeTable.schema();
+        Types.NestedField schemaField = schema.findField(partitionColumn.getName());
+        if (schemaField == null) {
+            return false;
+        }
+
+        return isAllTimeTransforms(nativeTable, schemaField.fieldId());
+    }
+
+    /**
+     * Resolve the {@link PartitionUtil.DateTimeInterval} for a specific partition based on its spec id.
+     * Unlike {@link #getDateTimeIntervalFromIceberg} which only checks the current spec, this method
+     * looks up the historical spec that the partition was written with.
+     *
+     * @param table the StarRocks IcebergTable wrapper
+     * @param partitionColumn the partition column
+     * @param partitionInfo the partition info (must be an Iceberg Partition)
+     * @return the DateTimeInterval corresponding to the transform, or NONE if not resolvable
+     */
+    public static PartitionUtil.DateTimeInterval getDateTimeIntervalFromPartition(IcebergTable table,
+                                                                                  Column partitionColumn,
+                                                                                  PartitionInfo partitionInfo) {
+        if (!(partitionInfo instanceof Partition)) {
+            return PartitionUtil.DateTimeInterval.NONE;
+        }
+
+        Partition icebergPartition = (Partition) partitionInfo;
+        int specId = icebergPartition.getSpecId();
+        org.apache.iceberg.Table nativeTable = table.getNativeTable();
+        PartitionSpec spec = nativeTable.specs().get(specId);
+        if (spec == null) {
+            return PartitionUtil.DateTimeInterval.NONE;
+        }
+
+        Schema schema = nativeTable.schema();
+        Types.NestedField schemaField = schema.findField(partitionColumn.getName());
+        if (schemaField == null) {
+            return PartitionUtil.DateTimeInterval.NONE;
+        }
+        int sourceFieldId = schemaField.fieldId();
+
+        for (PartitionField field : spec.fields()) {
+            if (field.sourceId() == sourceFieldId) {
+                String transform = field.transform().toString().toLowerCase(Locale.ROOT);
+                switch (transform) {
+                    case "year":
+                        return PartitionUtil.DateTimeInterval.YEAR;
+                    case "month":
+                        return PartitionUtil.DateTimeInterval.MONTH;
+                    case "day":
+                        return PartitionUtil.DateTimeInterval.DAY;
+                    case "hour":
+                        return PartitionUtil.DateTimeInterval.HOUR;
+                    default:
+                        return PartitionUtil.DateTimeInterval.NONE;
+                }
+            }
+        }
+        return PartitionUtil.DateTimeInterval.NONE;
+    }
+
+    /**
+     * Resolve the {@link PartitionUtil.DateTimeInterval} from an MV partition expression.
+     * Expects a {@code date_trunc('granularity', column)} function call.
+     *
+     * @param mvPartitionExpr the MV partition expression
+     * @param columnType the column type (unused but kept for future validation)
+     * @return the DateTimeInterval corresponding to the date_trunc granularity, or NONE
+     */
+    public static PartitionUtil.DateTimeInterval getDateTimeIntervalFromPartitionExpr(Expr mvPartitionExpr,
+                                                                                      Type columnType) {
+        if (!(mvPartitionExpr instanceof FunctionCallExpr)) {
+            return PartitionUtil.DateTimeInterval.NONE;
+        }
+
+        FunctionCallExpr funcExpr = (FunctionCallExpr) mvPartitionExpr;
+        if (!funcExpr.getFunctionName().equalsIgnoreCase(FunctionSet.DATE_TRUNC)) {
+            return PartitionUtil.DateTimeInterval.NONE;
+        }
+
+        Expr granularityExpr = funcExpr.getChild(0);
+        if (!(granularityExpr instanceof StringLiteral)) {
+            return PartitionUtil.DateTimeInterval.NONE;
+        }
+
+        String granularity = ((StringLiteral) granularityExpr).getStringValue().toLowerCase(Locale.ROOT);
+        switch (granularity) {
+            case "year":
+                return PartitionUtil.DateTimeInterval.YEAR;
+            case "month":
+                return PartitionUtil.DateTimeInterval.MONTH;
+            case "day":
+                return PartitionUtil.DateTimeInterval.DAY;
+            case "hour":
+                return PartitionUtil.DateTimeInterval.HOUR;
+            default:
+                return PartitionUtil.DateTimeInterval.NONE;
         }
     }
 }
