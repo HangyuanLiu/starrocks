@@ -326,7 +326,7 @@ public interface IcebergCatalog extends MemoryTrackable {
 
         // TODO: ideally we should know if table is partitioned under a snapshotId.
         // but currently we just did it in a very wild way.
-        if (nativeTable.spec().isUnpartitioned()) {
+        if (nativeTable.spec().isUnpartitioned() && nativeTable.specs().size() <= 1) {
             Partition partition = null;
             try (CloseableIterable<FileScanTask> tasks = tableScan.planFiles()) {
                 for (FileScanTask task : tasks) {
@@ -536,7 +536,7 @@ public interface IcebergCatalog extends MemoryTrackable {
                                             ExecutorService executorService) {
         Table nativeTable = icebergTable.getNativeTable();
 
-        if (nativeTable.spec().isUnpartitioned()) {
+        if (nativeTable.spec().isUnpartitioned() && nativeTable.specs().size() <= 1) {
             return List.of();
         } else {
             // Call public method so subclasses can override and optimize this method.
@@ -556,7 +556,7 @@ public interface IcebergCatalog extends MemoryTrackable {
 
         // Call public method so subclasses can override and optimize this method.
         Map<String, Partition> partitionMap = getPartitions(icebergTable, snapshotId, executorService);
-        if (nativeTable.spec().isUnpartitioned()) {
+        if (nativeTable.spec().isUnpartitioned() && nativeTable.specs().size() <= 1) {
             return List.of(partitionMap.get(EMPTY_PARTITION_NAME));
         } else {
             ImmutableList.Builder<Partition> partitions = ImmutableList.builder();

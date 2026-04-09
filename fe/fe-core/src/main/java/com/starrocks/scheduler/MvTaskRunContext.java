@@ -22,6 +22,7 @@ import com.starrocks.catalog.TableProperty;
 import com.starrocks.scheduler.mv.BaseTableSnapshotInfo;
 import com.starrocks.scheduler.mv.pct.PCTPartitionTopology;
 import com.starrocks.scheduler.mv.pct.PCTRefreshScope;
+import com.starrocks.sql.common.PartitionNameSetMap;
 import com.starrocks.sql.plan.ExecPlan;
 
 import java.util.Map;
@@ -143,7 +144,9 @@ public class MvTaskRunContext extends TaskRunContext {
         if (!table.isNativeTableOrMaterializedView()) {
             Preconditions.checkState(partitionTopology != null
                     && partitionTopology.getExternalRefBaseTableMVPartitionMap().containsKey(table));
-            return partitionTopology.getExternalRefBaseTableMVPartitionMap().get(table).get(mvPartitionName);
+            PartitionNameSetMap partitionMap = partitionTopology.getExternalRefBaseTableMVPartitionMap().get(table);
+            Set<String> partitionNames = partitionMap == null ? null : partitionMap.get(mvPartitionName);
+            return partitionNames == null ? Sets.newHashSet() : partitionNames;
         } else {
             return Sets.newHashSet(mvPartitionName);
         }

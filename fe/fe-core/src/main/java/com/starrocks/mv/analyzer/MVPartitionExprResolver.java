@@ -24,6 +24,7 @@ import com.starrocks.catalog.Table;
 import com.starrocks.catalog.TableName;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.SRStringUtils;
+import com.starrocks.connector.PartitionUtil;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.analyzer.Field;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -595,8 +596,10 @@ public class MVPartitionExprResolver {
             ConnectContext connectContext = ConnectContext.get() == null ? new ConnectContext() : ConnectContext.get();
             for (BaseTableInfo baseTableInfo : baseTableInfos) {
                 Table table = MvUtils.getTableChecked(baseTableInfo);
-                // Skip VIEW and non-partitioned tables - they should not participate in partition expr calculation
-                if (table.isView() || table.isUnPartitioned()) {
+                // Skip VIEW and tables without usable partition columns.
+                // For Iceberg evolution, the current spec may be unpartitioned while historical specs still drive MV
+                // partition mapping, so rely on partition traits instead of table.isUnPartitioned().
+                if (table.isView() || PartitionUtil.getPartitionColumns(table).isEmpty()) {
                     continue;
                 }
                 List<MVPartitionExpr> refPartitionExprs = MvUtils.getMvPartitionExpr(mvPartitionExprMaps, table);

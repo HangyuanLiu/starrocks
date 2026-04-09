@@ -16,9 +16,11 @@ package com.starrocks.connector.iceberg;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.sql.ast.expression.BinaryType;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CompoundPredicateOperator;
@@ -448,6 +450,97 @@ public class IcebergExprVisitorTest {
         convertedExpr = converter.convert(Lists.newArrayList(
                 new BinaryPredicateOperator(BinaryType.LT, cast, value)), context);
         Assertions.assertEquals(Expression.Operation.TRUE, convertedExpr.op());
+    }
+
+    @Test
+    public void testBucketTransformPredicate() {
+        ScalarOperatorToIcebergExpr.IcebergContext context = new ScalarOperatorToIcebergExpr.IcebergContext(SCHEMA.asStruct());
+        ScalarOperatorToIcebergExpr converter = new ScalarOperatorToIcebergExpr();
+
+        // bucket(k1, 4) = 2  — param and bucket ID are Integer values
+        CallOperator bucketCall = new CallOperator(
+                FunctionSet.ICEBERG_TRANSFORM_BUCKET,
+                IntegerType.INT,
+                Lists.newArrayList(K1, ConstantOperator.createInt(4)));
+        BinaryPredicateOperator eq = new BinaryPredicateOperator(
+                BinaryType.EQ, bucketCall, ConstantOperator.createInt(2));
+
+        Expression convertedExpr = converter.convert(Lists.newArrayList(eq), context);
+        Expression expectedExpr = Expressions.equal(Expressions.bucket("k1", 4), 2);
+        Assertions.assertEquals(expectedExpr.toString(), convertedExpr.toString(),
+                "bucket(k1, 4) = 2 should produce correct Iceberg expression");
+
+        // bucket(k7, 8) = 5  — BIGINT column, Long value for bucket ID
+        CallOperator bucketCallLong = new CallOperator(
+                FunctionSet.ICEBERG_TRANSFORM_BUCKET,
+                IntegerType.INT,
+                Lists.newArrayList(K7, ConstantOperator.createBigint(8)));
+        BinaryPredicateOperator eqLong = new BinaryPredicateOperator(
+                BinaryType.EQ, bucketCallLong, ConstantOperator.createBigint(5));
+
+        convertedExpr = converter.convert(Lists.newArrayList(eqLong), context);
+        expectedExpr = Expressions.equal(Expressions.bucket("k7", 8), 5);
+        Assertions.assertEquals(expectedExpr.toString(), convertedExpr.toString(),
+                "bucket(k7, 8) = 5 with Long values should produce correct Iceberg expression");
+
+        // non-EQ operator should return alwaysTrue (not pushed down)
+        BinaryPredicateOperator lt = new BinaryPredicateOperator(
+                BinaryType.LT, bucketCall, ConstantOperator.createInt(2));
+        convertedExpr = converter.convert(Lists.newArrayList(lt), context);
+        Assertions.assertEquals(Expression.Operation.TRUE, convertedExpr.op(),
+                "Non-EQ bucket predicate should not be pushed down");
+    }
+
+    @Test
+    public void testTruncateTransformPredicate() {
+        ScalarOperatorToIcebergExpr.IcebergContext context = new ScalarOperatorToIcebergExpr.IcebergContext(SCHEMA.asStruct());
+        ScalarOperatorToIcebergExpr converter = new ScalarOperatorToIcebergExpr();
+
+        // truncate(k1, 10) = 0  — Integer column
+        CallOperator truncateCall = new CallOperator(
+                FunctionSet.ICEBERG_TRANSFORM_TRUNCATE,
+                IntegerType.INT,
+                Lists.newArrayList(K1, ConstantOperator.createInt(10)));
+        BinaryPredicateOperator eq = new BinaryPredicateOperator(
+                BinaryType.EQ, truncateCall, ConstantOperator.createInt(0));
+
+        Expression convertedExpr = converter.convert(Lists.newArrayList(eq), context);
+        Expression expectedExpr = Expressions.equal(Expressions.truncate("k1", 10), 0);
+        Assertions.assertEquals(expectedExpr.toString(), convertedExpr.toString(),
+                "truncate(k1, 10) = 0 should produce correct Iceberg expression");
+
+        // truncate(k7, 100) = 500  — BIGINT column with Long value
+        CallOperator truncateCallLong = new CallOperator(
+                FunctionSet.ICEBERG_TRANSFORM_TRUNCATE,
+                IntegerType.BIGINT,
+                Lists.newArrayList(K7, ConstantOperator.createBigint(100)));
+        BinaryPredicateOperator eqLong = new BinaryPredicateOperator(
+                BinaryType.EQ, truncateCallLong, ConstantOperator.createBigint(500));
+
+        convertedExpr = converter.convert(Lists.newArrayList(eqLong), context);
+        expectedExpr = Expressions.equal(Expressions.truncate("k7", 100), 500L);
+        Assertions.assertEquals(expectedExpr.toString(), convertedExpr.toString(),
+                "truncate(k7, 100) = 500 with Long values should produce correct Iceberg expression");
+
+        // truncate(k6, 5) = "abcde"  — String column
+        CallOperator truncateCallStr = new CallOperator(
+                FunctionSet.ICEBERG_TRANSFORM_TRUNCATE,
+                VarcharType.VARCHAR,
+                Lists.newArrayList(K6, ConstantOperator.createInt(5)));
+        BinaryPredicateOperator eqStr = new BinaryPredicateOperator(
+                BinaryType.EQ, truncateCallStr, ConstantOperator.createVarchar("abcde"));
+
+        convertedExpr = converter.convert(Lists.newArrayList(eqStr), context);
+        expectedExpr = Expressions.equal(Expressions.truncate("k6", 5), "abcde");
+        Assertions.assertEquals(expectedExpr.toString(), convertedExpr.toString(),
+                "truncate(k6, 5) = 'abcde' with String should produce correct Iceberg expression");
+
+        // non-EQ operator should not be pushed down
+        BinaryPredicateOperator gt = new BinaryPredicateOperator(
+                BinaryType.GT, truncateCall, ConstantOperator.createInt(0));
+        convertedExpr = converter.convert(Lists.newArrayList(gt), context);
+        Assertions.assertEquals(Expression.Operation.TRUE, convertedExpr.op(),
+                "Non-EQ truncate predicate should not be pushed down");
     }
 
     @Test

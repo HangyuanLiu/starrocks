@@ -28,10 +28,13 @@ import java.util.Set;
  */
 public class MVPartitionExpr {
     public static final Set<String> FN_NAME_TO_PARTITION = Sets.newHashSet(FunctionSet.DATE_TRUNC,
-            FunctionSet.STR2DATE, FunctionSet.TIME_SLICE);
-    // Functions that the first slot is the partition column, eg: str2date(dt, 'yyyy-MM-dd'), time_slice(dt, 'day')
+            FunctionSet.STR2DATE, FunctionSet.TIME_SLICE,
+            FunctionSet.ICEBERG_TRANSFORM_BUCKET, FunctionSet.ICEBERG_TRANSFORM_TRUNCATE);
+    // Functions that the first slot is the partition column, eg: str2date(dt, 'yyyy-MM-dd'), time_slice(dt, 'day'),
+    // __iceberg_transform_bucket(id, 16), __iceberg_transform_truncate(name, 10)
     public static final Set<String> FN_NAMES_WITH_FIRST_SLOT = Sets.newHashSet(FunctionSet.STR2DATE,
-            FunctionSet.TIME_SLICE);
+            FunctionSet.TIME_SLICE,
+            FunctionSet.ICEBERG_TRANSFORM_BUCKET, FunctionSet.ICEBERG_TRANSFORM_TRUNCATE);
 
     private Expr expr;
     private SlotRef slotRef;

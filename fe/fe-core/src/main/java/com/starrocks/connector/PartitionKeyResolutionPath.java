@@ -34,8 +34,18 @@ public enum PartitionKeyResolutionPath {
      */
     ICEBERG_CURRENT_SPEC,
 
-    // Future phases:
-    // ICEBERG_HISTORICAL_SPEC,
-    // ICEBERG_PARTITION_EXPR_FALLBACK,
-    // ICEBERG_SYNTHETIC_TRANSFORM,
+    /**
+     * Iceberg historical partition spec direct mapping.
+     */
+    ICEBERG_HISTORICAL_SPEC,
+
+    /**
+     * Iceberg partition-expression fallback mapping.
+     */
+    ICEBERG_PARTITION_EXPR_FALLBACK,
+
+    /**
+     * Iceberg synthetic fallback mapping for incompatible historical specs.
+     */
+    ICEBERG_SYNTHETIC_TRANSFORM,
 }

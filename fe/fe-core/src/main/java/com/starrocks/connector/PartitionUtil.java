@@ -86,6 +86,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -305,7 +306,12 @@ public class PartitionUtil {
             throws AnalysisException {
         int partitionColumnIndex = -1;
         for (int index = 0; index < partitionColumns.size(); ++index) {
-            if (partitionColumns.get(index).equals(partitionColumn)) {
+            Column col = partitionColumns.get(index);
+            // Use name-based matching as a fallback because Column objects from different sources
+            // (e.g., MV partition exprs vs Iceberg table metadata) may differ in metadata fields
+            // even though they refer to the same logical column.
+            if (col.equals(partitionColumn) ||
+                    col.getName().equalsIgnoreCase(partitionColumn.getName())) {
                 partitionColumnIndex = index;
                 break;
             }
@@ -338,6 +344,41 @@ public class PartitionUtil {
             // add 1 day as default interval
             return DateTimeInterval.DAY;
         }
+    }
+
+    public static PCellSortedSet getRangePartitionMapOfExternalTable(Table table,
+                                                                     Column partitionColumn,
+                                                                     Collection<String> partitionNames,
+                                                                     Expr partitionExpr)
+            throws AnalysisException {
+        return MVPartitionCellBuilder.buildRangeCells(table, partitionColumn, partitionNames, partitionExpr);
+    }
+
+    public static PCellSortedSet getRangePartitionMapOfExternalTable(Table table,
+                                                                     Column partitionColumn,
+                                                                     Collection<String> partitionNames,
+                                                                     Expr partitionExpr,
+                                                                     DateTimeInterval overrideInterval)
+            throws AnalysisException {
+        return MVPartitionCellBuilder.buildRangeCells(
+                table, partitionColumn, partitionNames, partitionExpr, overrideInterval);
+    }
+
+    public static PartitionKey nextPartitionKey(PartitionKey lastPartitionKey,
+                                                DateTimeInterval dateTimeInterval,
+                                                PrimitiveType partitionColPrimType) throws AnalysisException {
+        LiteralExpr literalExpr = addOffsetForLiteral(lastPartitionKey.getKeys().get(0), 1, dateTimeInterval);
+        PartitionKey partitionKey = new PartitionKey();
+        partitionKey.pushColumn(literalExpr, partitionColPrimType);
+        return partitionKey;
+    }
+
+    public static PCellSortedSet getRangePartitionMapOfJDBCTable(Table table,
+                                                                 Column partitionColumn,
+                                                                 Collection<String> partitionNames,
+                                                                 Expr partitionExpr)
+            throws AnalysisException {
+        return MVPartitionCellBuilder.buildRangeCells(table, partitionColumn, partitionNames, partitionExpr);
     }
 
     /**
