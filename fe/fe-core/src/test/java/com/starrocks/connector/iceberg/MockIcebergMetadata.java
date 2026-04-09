@@ -104,6 +104,7 @@ public class MockIcebergMetadata implements ConnectorMetadata {
     public static final String MOCKED_PARTITIONED_HOUR_TZ_TABLE_NAME = "t0_hour_tz";
     // partition table with partition evolutions
     public static final String MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME = "t0_date_month_identity_evolution";
+    public static final String MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME = "t0_month_to_day_evolution";
 
     private static final List<String> PARTITION_TABLE_NAMES = ImmutableList.of(MOCKED_PARTITIONED_TABLE_NAME1,
             MOCKED_PARTITIONED_TABLE_NAME2,
@@ -120,7 +121,8 @@ public class MockIcebergMetadata implements ConnectorMetadata {
                     MOCKED_PARTITIONED_TRUNCATE_TABLE_NAME,
                     MOCKED_PARTITIONED_YEAR_TZ_TABLE_NAME, MOCKED_PARTITIONED_MONTH_TZ_TABLE_NAME,
                     MOCKED_PARTITIONED_DAY_TZ_TABLE_NAME, MOCKED_PARTITIONED_HOUR_TZ_TABLE_NAME,
-                    MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME);
+                    MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME,
+                    MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME);
 
     private static final List<String> PARTITION_NAMES_0 = Lists.newArrayList("date=2020-01-01",
             "date=2020-01-02",
@@ -442,6 +444,25 @@ public class MockIcebergMetadata implements ConnectorMetadata {
                 table.ops().commit(table.ops().current(), evolutionMetaData);
                 return table;
             }
+            case MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME: {
+                PartitionSpec monthSpec =
+                        PartitionSpec.builderFor(schema).month("ts").build();
+                File file = new File(getStarRocksHome() + "/" + MOCKED_PARTITIONED_TRANSFORMS_DB_NAME + "/"
+                        + MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME);
+
+                TestTables.TestTable dayEvolutionTable = TestTables.create(
+                        file,
+                        MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME,
+                        schema, monthSpec, 1);
+                TableMetadata dayEvolutionMetaData = TableMetadata.buildFrom(dayEvolutionTable.ops().current())
+                        .addPartitionSpec(
+                                PartitionSpec.builderFor(dayEvolutionTable.ops().current().schema())
+                                        .day("ts").build())
+                        .build();
+
+                dayEvolutionTable.ops().commit(dayEvolutionTable.ops().current(), dayEvolutionMetaData);
+                return dayEvolutionTable;
+            }
             default: {
                 if (MOCKED_ICEBERG_TABLES.containsKey(tblName)) {
                     MIcebergTable table = MOCKED_ICEBERG_TABLES.get(tblName);
@@ -482,6 +503,10 @@ public class MockIcebergMetadata implements ConnectorMetadata {
             case MOCKED_PARTITIONED_EVOLUTION_DATE_MONTH_IDENTITY_TABLE_NAME:
                 return Lists.newArrayList("ts=2024-01-01", "ts_month=2024-01",
                         "ts=2024-02", "ts=2024-03");
+            case MOCKED_PARTITIONED_EVOLUTION_MONTH_TO_DAY_TABLE_NAME:
+                return Lists.newArrayList(
+                        "ts_month=2024-01", "ts_month=2024-02",
+                        "ts_day=2024-03-01", "ts_day=2024-03-02", "ts_day=2024-03-03");
             default: {
                 if (MOCKED_ICEBERG_TABLES.containsKey(tblName)) {
                     MIcebergTable table = MOCKED_ICEBERG_TABLES.get(tblName);
