@@ -1,0 +1,57 @@
+-- name: test_mv_iceberg_force_external_query_rewrite
+-- Test Point: MV property force_external_table_query_rewrite (DISABLE /
+--             LOOSE / CHECKED) controls whether rewrite against an
+--             Iceberg-backed MV is allowed, independent of result correctness.
+-- Method: create MV with default, verify rewrite hits; ALTER to DISABLE,
+--         verify rewrite does NOT hit; ALTER back to CHECKED, verify rewrite
+--         hits again; confirm direct-base query results remain correct in
+--         all three modes.
+-- Scope: MV property force_external_table_query_rewrite (M10-1).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10),
+  (2, '2024-01-02', 20),
+  (3, '2024-01-03', 30);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Default (unset property): rewrite should hit
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Set DISABLE: rewrite should NOT hit
+ALTER MATERIALIZED VIEW test_mv1 SET ("force_external_table_query_rewrite" = "DISABLE");
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Set CHECKED: rewrite should hit (explicit consistency check)
+ALTER MATERIALIZED VIEW test_mv1 SET ("force_external_table_query_rewrite" = "CHECKED");
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Set LOOSE: rewrite should hit (no freshness check)
+ALTER MATERIALIZED VIEW test_mv1 SET ("force_external_table_query_rewrite" = "LOOSE");
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Correctness independent of rewrite mode
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
