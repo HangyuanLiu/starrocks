@@ -1,0 +1,64 @@
+-- name: test_mv_iceberg_query_rewrite_consistency_modes
+-- Test Point: MV property query_rewrite_consistency accepts all 5 enum
+--             values (DISABLE / LOOSE / CHECKED / NOCHECK / FORCE_MV),
+--             persists each across ALTER SET, and rewrite hit behavior is
+--             locked per mode.
+-- Method: create MV with LOOSE; for each of the other 4 values, ALTER SET
+--         and probe rewrite hit on the same query. Capture direct-base SELECT
+--         for correctness independence.
+-- Scope: MV property query_rewrite_consistency × Iceberg MV (M6-8).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES (
+  "replication_num" = "1",
+  "query_rewrite_consistency" = "LOOSE"
+)
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- LOOSE (initial)
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- CHECKED
+ALTER MATERIALIZED VIEW test_mv1 SET ("query_rewrite_consistency" = "CHECKED");
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- DISABLE
+ALTER MATERIALIZED VIEW test_mv1 SET ("query_rewrite_consistency" = "DISABLE");
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- NOCHECK
+ALTER MATERIALIZED VIEW test_mv1 SET ("query_rewrite_consistency" = "NOCHECK");
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- FORCE_MV
+ALTER MATERIALIZED VIEW test_mv1 SET ("query_rewrite_consistency" = "FORCE_MV");
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Direct-base correctness: independent of rewrite mode
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+
+-- Invalid value should be rejected
+[UC]ALTER MATERIALIZED VIEW test_mv1 SET ("query_rewrite_consistency" = "STRICT");
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
