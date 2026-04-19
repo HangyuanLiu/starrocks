@@ -1,0 +1,57 @@
+-- name: test_mv_iceberg_partition_refresh_number
+-- Test Point: MV property partition_refresh_number caps how many partitions
+--             a single REFRESH task populates; multiple refreshes are
+--             needed to catch up.
+-- Method: build Iceberg base with 5 daily partitions; create MV with
+--         partition_refresh_number=2; run refresh 1 -> 2 rows; refresh 2
+--         -> 4 rows; refresh 3 -> 5 rows.
+-- Scope: MV property partition_refresh_number × Iceberg MV (M6-5).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10),
+  (2, '2024-01-02', 20),
+  (3, '2024-01-03', 30),
+  (4, '2024-01-04', 40),
+  (5, '2024-01-05', 50);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES (
+  "replication_num" = "1",
+  "partition_refresh_number" = "2"
+)
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- Refresh round 1: expect 2 partitions
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+SELECT count(*) FROM test_mv1;
+
+-- Refresh round 2: expect 4 partitions
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+SELECT count(*) FROM test_mv1;
+
+-- Refresh round 3: expect 5 partitions
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+SELECT count(*) FROM test_mv1;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
