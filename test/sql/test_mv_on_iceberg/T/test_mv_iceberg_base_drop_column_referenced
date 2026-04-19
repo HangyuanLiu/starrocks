@@ -1,0 +1,67 @@
+-- name: test_mv_iceberg_base_drop_column_referenced @slow
+-- Test Point: DROP COLUMN on an Iceberg base table, where the dropped column
+--             IS referenced by the MV, inactivates the MV with a clear
+--             INACTIVE_REASON; queries against the MV fail or degrade
+--             gracefully. ALTER MV ACTIVE cannot recover until the base
+--             column is restored or the MV is redefined.
+-- Method: create MV referencing `val`; DROP COLUMN val on base; assert
+--         IS_ACTIVE=false and INACTIVE_REASON mentions the column; try
+--         ALTER MV ACTIVE (expect failure); drop MV cleanly.
+-- Scope: Iceberg base DROP COLUMN × MV (M4-3).
+
+admin set frontend config('enable_mv_automatic_active_check'='false');
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline: active
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- DROP COLUMN `val` which is referenced by MV
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 drop column val;
+
+-- Give FE a moment to register the schema change effect on the MV
+select sleep(2);
+
+-- Expected: MV becomes inactive with INACTIVE_REASON mentioning val
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+SELECT INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- ALTER MV ACTIVE should fail since val is gone
+[UC]ALTER MATERIALIZED VIEW test_mv1 ACTIVE;
+
+-- Post-ALTER status (should remain false)
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- Cleanup
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+
+admin set frontend config('enable_mv_automatic_active_check'='true');
