@@ -1,0 +1,127 @@
+-- name: test_mv_iceberg_rewrite_right_full_outer_join
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE orders (
+  order_id int,
+  customer_id int,
+  dt date,
+  amount bigint
+) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO orders VALUES
+  (1, 100, '2024-01-01', 50),
+  (2, 101, '2024-01-01', 30),
+  (3, 999, '2024-01-02', 80);  -- orphan order (no matching customer)
+
+CREATE TABLE customers (
+  customer_id int,
+  name string,
+  region string
+);
+-- result:
+-- !result
+INSERT INTO customers VALUES
+  (100, 'alice', 'cn'),
+  (101, 'bob', 'us'),
+  (102, 'carol', 'jp');  -- orphan customer (no orders)
+
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW mv_roj
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT o.order_id, o.dt, o.amount, c.customer_id, c.name, c.region
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+   RIGHT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c
+     ON o.customer_id = c.customer_id;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_roj WITH SYNC MODE;
+-- result:
+[REGEX].*
+-- !result
+CREATE MATERIALIZED VIEW mv_foj
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT o.order_id, o.dt, o.amount, c.customer_id, c.name, c.region
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+   FULL OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c
+     ON o.customer_id = c.customer_id;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_foj WITH SYNC MODE;
+-- result:
+[REGEX].*
+-- !result
+SELECT order_id, dt, amount, customer_id, name, region FROM mv_roj ORDER BY customer_id, order_id;
+-- result:
+1	2024-01-01	50	100	alice	cn
+2	2024-01-01	30	101	bob	us
+None	None	None	102	carol	jp
+-- !result
+SELECT order_id, dt, amount, customer_id, name, region FROM mv_foj ORDER BY customer_id, order_id;
+-- result:
+3	2024-01-02	80	None	None	None
+1	2024-01-01	50	100	alice	cn
+2	2024-01-01	30	101	bob	us
+None	None	None	102	carol	jp
+-- !result
+function: print_hit_materialized_view("SELECT o.order_id, o.dt, o.amount, c.customer_id, c.name, c.region FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o RIGHT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c ON o.customer_id = c.customer_id", "mv_roj")
+-- result:
+True
+-- !result
+function: print_hit_materialized_view("SELECT o.order_id, o.dt, o.amount, c.customer_id, c.name, c.region FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o FULL OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c ON o.customer_id = c.customer_id", "mv_foj")
+-- result:
+True
+-- !result
+function: print_hit_materialized_view("SELECT c.customer_id, c.name FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o RIGHT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c ON o.customer_id = c.customer_id WHERE o.order_id IS NULL", "mv_roj")
+-- result:
+True
+-- !result
+function: print_hit_materialized_view("SELECT o.order_id, o.amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o FULL OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c ON o.customer_id = c.customer_id WHERE c.customer_id IS NULL", "mv_foj")
+-- result:
+True
+-- !result
+drop materialized view mv_roj;
+-- result:
+-- !result
+drop materialized view mv_foj;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders force;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
