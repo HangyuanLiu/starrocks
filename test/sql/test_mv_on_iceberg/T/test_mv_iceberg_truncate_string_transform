@@ -1,0 +1,56 @@
+-- name: test_mv_iceberg_truncate_string_transform
+-- Test Point: Iceberg base with truncate(col, W) partition transform on a
+--             string column can be materialized by a non-partitioned
+--             aggregation MV, and incremental insert propagates.
+-- Method: build base with truncate(region, 2); create MV aggregating over
+--         region; refresh, probe rewrite, insert more rows (same prefix,
+--         new prefix), refresh, re-probe.
+-- Scope: Iceberg partition transform = truncate(string_col, W) (M2-2).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (
+  region string,
+  dt date,
+  pv bigint
+) PARTITION BY truncate(region, 2);
+INSERT INTO t1 VALUES
+  ('cn-beijing', '2024-01-01', 10),
+  ('cn-shanghai', '2024-01-02', 20),
+  ('us-east', '2024-01-01', 5),
+  ('us-west', '2024-01-02', 7),
+  ('jp-tokyo', '2024-01-01', 3);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT region, sum(pv) as total_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY region;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+function: print_hit_materialized_view("SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY region", "test_mv1")
+
+-- Insert into existing truncated prefix (cn-*)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('cn-guangzhou', '2024-01-03', 100);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+
+-- Insert into new truncated prefix (de-*)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('de-munich', '2024-01-04', 50);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

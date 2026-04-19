@@ -1,0 +1,113 @@
+-- name: test_mv_iceberg_truncate_string_transform
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (
+  region string,
+  dt date,
+  pv bigint
+) PARTITION BY truncate(region, 2);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  ('cn-beijing', '2024-01-01', 10),
+  ('cn-shanghai', '2024-01-02', 20),
+  ('us-east', '2024-01-01', 5),
+  ('us-west', '2024-01-02', 7),
+  ('jp-tokyo', '2024-01-01', 3);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT region, sum(pv) as total_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY region;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da644-e3fd-7206-81ee-8078b49f98d3
+-- !result
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+-- result:
+cn-beijing	10
+cn-shanghai	20
+jp-tokyo	3
+us-east	5
+us-west	7
+-- !result
+function: print_hit_materialized_view("SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY region", "test_mv1")
+-- result:
+True
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('cn-guangzhou', '2024-01-03', 100);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da644-f22d-765c-bec6-fc0ea8404eaf
+-- !result
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+-- result:
+cn-beijing	10
+cn-guangzhou	100
+cn-shanghai	20
+jp-tokyo	3
+us-east	5
+us-west	7
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('de-munich', '2024-01-04', 50);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da644-f9fb-7724-9a6a-96319bfc8492
+-- !result
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+-- result:
+cn-beijing	10
+cn-guangzhou	100
+cn-shanghai	20
+de-munich	50
+jp-tokyo	3
+us-east	5
+us-west	7
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
