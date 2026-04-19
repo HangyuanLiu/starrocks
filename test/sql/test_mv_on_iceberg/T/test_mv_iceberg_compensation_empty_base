@@ -1,0 +1,44 @@
+-- name: test_mv_iceberg_compensation_empty_base
+-- Test Point: CREATE + REFRESH MV on an empty Iceberg base table; direct
+--             SELECT returns 0 rows; rewrite hit probe; first INSERT +
+--             REFRESH populates MV.
+-- Method: build empty Iceberg base; create aggregation MV; refresh; query
+--         empty; probe rewrite; insert row; refresh; verify.
+-- Scope: MV compensation / refresh on empty base (M7-2).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- CREATE MV on empty base
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+SELECT count(*) FROM test_mv1;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- First INSERT
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (1, '2024-01-01', 10);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
