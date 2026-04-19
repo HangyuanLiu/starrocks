@@ -1,0 +1,55 @@
+-- name: test_mv_iceberg_excluded_trigger_tables
+-- Test Point: MV property excluded_trigger_tables is accepted at CREATE
+--             time (ASYNC mode), persisted, visible via SHOW CREATE, and
+--             ALTER SET flips the list without breaking manual refresh.
+-- Method: create ASYNC MV with excluded_trigger_tables pointing at the
+--         Iceberg base; snapshot SHOW CREATE; flip via ALTER SET; snapshot
+--         again; run a manual sync refresh; INSERT + manual refresh; assert
+--         correctness.
+-- Scope: MV property excluded_trigger_tables persistence (M6-3).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- ASYNC MV with an interval and an initial excluded_trigger_tables
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH ASYNC EVERY(INTERVAL 1 DAY)
+PROPERTIES (
+  "replication_num" = "1",
+  "excluded_trigger_tables" = "mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1"
+)
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- Property snapshot via SHOW CREATE (expect excluded_trigger_tables present)
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+
+-- Manual sync refresh still succeeds regardless of excluded_trigger_tables
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Clear the excluded list and verify SHOW CREATE reflects change
+ALTER MATERIALIZED VIEW test_mv1 SET ("excluded_trigger_tables" = "");
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+
+-- INSERT + manual refresh still works after ALTER
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
