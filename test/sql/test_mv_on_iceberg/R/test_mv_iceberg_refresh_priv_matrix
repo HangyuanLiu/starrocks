@@ -1,0 +1,123 @@
+-- name: test_mv_iceberg_refresh_priv_matrix
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES (1, '2024-01-01', 10);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da69a-cba9-77b3-9b24-c09a3c4d3958
+-- !result
+DROP USER IF EXISTS test_priv_${uuid0};
+-- result:
+-- !result
+CREATE USER test_priv_${uuid0} IDENTIFIED BY 'pass';
+-- result:
+-- !result
+GRANT USAGE ON CATALOG default_catalog TO test_priv_${uuid0};
+-- result:
+-- !result
+GRANT IMPERSONATE ON USER root TO test_priv_${uuid0};
+-- result:
+-- !result
+EXECUTE AS test_priv_${uuid0} WITH NO REVERT;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW default_catalog.db_${uuid0}.test_mv1 WITH SYNC MODE;
+-- result:
+E: (5203, 'Access denied; you need (at least one of) the REFRESH privilege(s) on MATERIALIZED VIEW test_mv1 for this operation. Please ask the admin to grant permission(s) or try activating existing roles using <set [default] role>. Current role(s): NONE. Inactivated role(s): NONE.')
+-- !result
+EXECUTE AS root WITH NO REVERT;
+-- result:
+-- !result
+GRANT SELECT ON MATERIALIZED VIEW db_${uuid0}.test_mv1 TO test_priv_${uuid0};
+-- result:
+-- !result
+EXECUTE AS test_priv_${uuid0} WITH NO REVERT;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW default_catalog.db_${uuid0}.test_mv1 WITH SYNC MODE;
+-- result:
+E: (5203, 'Access denied; you need (at least one of) the REFRESH privilege(s) on MATERIALIZED VIEW test_mv1 for this operation. Please ask the admin to grant permission(s) or try activating existing roles using <set [default] role>. Current role(s): NONE. Inactivated role(s): NONE.')
+-- !result
+EXECUTE AS root WITH NO REVERT;
+-- result:
+-- !result
+GRANT REFRESH ON MATERIALIZED VIEW db_${uuid0}.test_mv1 TO test_priv_${uuid0};
+-- result:
+-- !result
+EXECUTE AS test_priv_${uuid0} WITH NO REVERT;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW default_catalog.db_${uuid0}.test_mv1 WITH SYNC MODE;
+-- result:
+019da69a-dac8-75aa-93c3-b74ff8ab3d42
+-- !result
+EXECUTE AS root WITH NO REVERT;
+-- result:
+-- !result
+REVOKE REFRESH ON MATERIALIZED VIEW db_${uuid0}.test_mv1 FROM test_priv_${uuid0};
+-- result:
+-- !result
+REVOKE SELECT ON MATERIALIZED VIEW db_${uuid0}.test_mv1 FROM test_priv_${uuid0};
+-- result:
+-- !result
+REVOKE IMPERSONATE ON USER root FROM test_priv_${uuid0};
+-- result:
+-- !result
+REVOKE USAGE ON CATALOG default_catalog FROM test_priv_${uuid0};
+-- result:
+-- !result
+DROP USER test_priv_${uuid0};
+-- result:
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

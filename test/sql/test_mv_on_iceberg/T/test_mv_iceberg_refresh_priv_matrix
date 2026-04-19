@@ -1,0 +1,72 @@
+-- name: test_mv_iceberg_refresh_priv_matrix
+-- Test Point: REFRESH MATERIALIZED VIEW privilege requirements — SELECT
+--             alone is insufficient; REFRESH privilege on the MV is
+--             required; admin remains unrestricted.
+-- Method: admin creates MV; create limited user; test (no grants),
+--         (SELECT only), (SELECT+REFRESH) each with EXECUTE AS + attempt
+--         REFRESH.
+-- Scope: REFRESH privilege matrix for Iceberg-backed MV (M11-3).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Create user with zero grants
+DROP USER IF EXISTS test_priv_${uuid0};
+CREATE USER test_priv_${uuid0} IDENTIFIED BY 'pass';
+GRANT USAGE ON CATALOG default_catalog TO test_priv_${uuid0};
+GRANT IMPERSONATE ON USER root TO test_priv_${uuid0};
+
+-- Switch to user
+EXECUTE AS test_priv_${uuid0} WITH NO REVERT;
+
+-- Case 1: no grants -> REFRESH denied
+[UC]REFRESH MATERIALIZED VIEW default_catalog.db_${uuid0}.test_mv1 WITH SYNC MODE;
+
+EXECUTE AS root WITH NO REVERT;
+
+-- Case 2: add SELECT on MV only
+GRANT SELECT ON MATERIALIZED VIEW db_${uuid0}.test_mv1 TO test_priv_${uuid0};
+
+EXECUTE AS test_priv_${uuid0} WITH NO REVERT;
+[UC]REFRESH MATERIALIZED VIEW default_catalog.db_${uuid0}.test_mv1 WITH SYNC MODE;
+
+EXECUTE AS root WITH NO REVERT;
+
+-- Case 3: add REFRESH priv
+GRANT REFRESH ON MATERIALIZED VIEW db_${uuid0}.test_mv1 TO test_priv_${uuid0};
+
+EXECUTE AS test_priv_${uuid0} WITH NO REVERT;
+[UC]REFRESH MATERIALIZED VIEW default_catalog.db_${uuid0}.test_mv1 WITH SYNC MODE;
+
+EXECUTE AS root WITH NO REVERT;
+
+-- Cleanup
+REVOKE REFRESH ON MATERIALIZED VIEW db_${uuid0}.test_mv1 FROM test_priv_${uuid0};
+REVOKE SELECT ON MATERIALIZED VIEW db_${uuid0}.test_mv1 FROM test_priv_${uuid0};
+REVOKE IMPERSONATE ON USER root FROM test_priv_${uuid0};
+REVOKE USAGE ON CATALOG default_catalog FROM test_priv_${uuid0};
+DROP USER test_priv_${uuid0};
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
