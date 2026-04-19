@@ -1,12 +1,19 @@
 -- name: test_mv_iceberg_force_external_query_rewrite
 -- Test Point: MV property force_external_table_query_rewrite (DISABLE /
---             LOOSE / CHECKED) controls whether rewrite against an
---             Iceberg-backed MV is allowed, independent of result correctness.
+--             CHECKED / LOOSE) can be set at CREATE time and flipped via
+--             ALTER, persisted by FE. The property only gates rewrite
+--             freshness for *non-ref* external base tables; when the Iceberg
+--             base IS the partition ref table (as here), all four modes
+--             (unset / DISABLE / CHECKED / LOOSE) allow rewrite to hit.
 -- Method: create MV with default, verify rewrite hits; ALTER to DISABLE,
---         verify rewrite does NOT hit; ALTER back to CHECKED, verify rewrite
---         hits again; confirm direct-base query results remain correct in
---         all three modes.
--- Scope: MV property force_external_table_query_rewrite (M10-1).
+--         CHECKED, LOOSE in sequence; probe rewrite hit after each ALTER;
+--         assert direct-base result correctness is independent of property.
+-- Scope: MV property force_external_table_query_rewrite persistence (M10-1).
+-- NOTE: this case locks current behavior for the ref-base topology. A
+--       follow-up case (in a future batch) should use a 2-table JOIN MV
+--       where the Iceberg table is a non-ref base, which is the real
+--       topology where DISABLE/LOOSE/CHECKED differ — see
+--       MVTimelinessArbiter.needsRefreshOnNonRefBaseTables().
 function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
 
 set catalog mv_iceberg_${uuid0};
@@ -35,15 +42,15 @@ AS SELECT dt, sum(val) as sv
 -- Default (unset property): rewrite should hit
 function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
 
--- Set DISABLE: rewrite should NOT hit
+-- Set DISABLE: property accepted; rewrite still hits for ref-base topology
 ALTER MATERIALIZED VIEW test_mv1 SET ("force_external_table_query_rewrite" = "DISABLE");
 function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
 
--- Set CHECKED: rewrite should hit (explicit consistency check)
+-- Set CHECKED: property accepted; rewrite hits with freshness check
 ALTER MATERIALIZED VIEW test_mv1 SET ("force_external_table_query_rewrite" = "CHECKED");
 function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
 
--- Set LOOSE: rewrite should hit (no freshness check)
+-- Set LOOSE: property accepted; rewrite hits without freshness check
 ALTER MATERIALIZED VIEW test_mv1 SET ("force_external_table_query_rewrite" = "LOOSE");
 function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
 
