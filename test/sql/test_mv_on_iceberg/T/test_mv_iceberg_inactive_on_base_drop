@@ -1,0 +1,79 @@
+-- name: test_mv_iceberg_inactive_on_base_drop @slow
+-- Test Point: DROP TABLE on the Iceberg base inactivates the MV with a
+--             clear INACTIVE_REASON referencing the missing base; ALTER
+--             MV ACTIVE fails while base is missing; after recreating the
+--             base with identical schema, ALTER MV ACTIVE succeeds and
+--             refresh recovers.
+-- Method: create MV; DROP base; assert inactive + reason; try ACTIVE and
+--         assert failure; recreate base; ALTER ACTIVE; refresh; query.
+-- Scope: MV lifecycle after Iceberg base DROP TABLE (M9-1).
+
+admin set frontend config('enable_mv_automatic_active_check'='false');
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline active
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- DROP the base table
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+select sleep(2);
+
+-- Expected: MV inactive
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+SELECT INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- ALTER ACTIVE while base missing should fail
+[UC]ALTER MATERIALIZED VIEW test_mv1 ACTIVE;
+
+-- Still inactive
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- Recreate base with identical schema and data
+use mv_iceberg_${uuid0}.mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+-- ALTER ACTIVE should now succeed
+set catalog default_catalog;
+use db_${uuid0};
+ALTER MATERIALIZED VIEW test_mv1 ACTIVE;
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- Refresh recovers
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Cleanup
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+
+admin set frontend config('enable_mv_automatic_active_check'='true');
