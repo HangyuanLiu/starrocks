@@ -1,0 +1,63 @@
+-- name: test_alter_mv_active_inactive_iceberg
+-- Test Point: ALTER MATERIALIZED VIEW ... INACTIVE / ACTIVE state machine on
+--             an Iceberg-backed MV suspends and resumes query rewrite and
+--             refresh, and INACTIVE_REASON surfaces correctly.
+-- Method: create MV, assert active+rewriting, INACTIVE it, assert rewrite off
+--         and refresh behaviour, ACTIVE it, assert rewrite resumes.
+-- Scope: MV active/inactive lifecycle on Iceberg (M1-3).
+
+admin set frontend config('enable_mv_automatic_active_check'='false');
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Active baseline: rewrite should hit
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Inactive
+ALTER MATERIALIZED VIEW test_mv1 INACTIVE;
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- Rewrite should NOT hit while inactive
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+-- Query result should still be correct via base (direct read)
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+-- Refresh while inactive — capture whether FE accepts or rejects
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Active again
+ALTER MATERIALIZED VIEW test_mv1 ACTIVE;
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+
+admin set frontend config('enable_mv_automatic_active_check'='true');
