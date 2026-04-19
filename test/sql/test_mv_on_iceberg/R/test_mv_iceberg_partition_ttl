@@ -1,0 +1,108 @@
+-- name: test_mv_iceberg_partition_ttl
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10),
+  (2, '2024-01-02', 20),
+  (3, '2024-01-03', 30),
+  (4, '2024-01-04', 40),
+  (5, '2024-01-05', 50);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES (
+  "replication_num" = "1",
+  "partition_ttl_number" = "2"
+)
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da663-b8bd-708b-89e2-67f07db0a68a
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-04	40
+2024-01-05	50
+-- !result
+SELECT count(*) FROM test_mv1;
+-- result:
+2
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (6, '2024-01-06', 60);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da663-c602-7f40-8987-0ebbaeb0c605
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-04	40
+2024-01-05	50
+2024-01-06	60
+-- !result
+ALTER MATERIALIZED VIEW test_mv1 SET ("partition_ttl_number" = "4");
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da663-d4c2-7533-9b45-59abae21b362
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-03	30
+2024-01-04	40
+2024-01-05	50
+2024-01-06	60
+-- !result
+SELECT count(*) FROM test_mv1;
+-- result:
+4
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
