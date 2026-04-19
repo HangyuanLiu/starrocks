@@ -1,0 +1,84 @@
+-- name: test_mv_iceberg_force_partition_type
+-- Test Point: FE config mv_refresh_force_partition_type (bitmask:
+--             1=non-partitioned, 2=range, 4=list) can be set via `admin set
+--             frontend config` and does not break refresh correctness for
+--             Iceberg-backed MVs across three partition topologies.
+-- Method: build Iceberg base with date partitions; create three MVs
+--         (non-partitioned, range via dt, list via date_trunc('month', dt));
+--         flip the config to 7 (all types forced); refresh all three;
+--         assert correctness. Restore config to 0 at end.
+-- Scope: FE config mv_refresh_force_partition_type × Iceberg MV (M6-7).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10),
+  (2, '2024-01-02', 20),
+  (3, '2024-02-01', 30);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- Non-partitioned MV
+CREATE MATERIALIZED VIEW test_mv_nonpart
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- Range-partitioned MV
+CREATE MATERIALIZED VIEW test_mv_range
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- List-partitioned MV (via date_trunc)
+CREATE MATERIALIZED VIEW test_mv_list
+PARTITION BY (date_trunc('month', dt))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- Baseline: config at default (0)
+[UC]REFRESH MATERIALIZED VIEW test_mv_nonpart WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv_range WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv_list WITH SYNC MODE;
+
+SELECT dt, sv FROM test_mv_nonpart ORDER BY dt;
+SELECT dt, sv FROM test_mv_range ORDER BY dt;
+SELECT dt, sv FROM test_mv_list ORDER BY dt;
+
+-- Set config to 7 (force all three types)
+admin set frontend config('mv_refresh_force_partition_type'='7');
+
+-- Re-refresh — should still succeed and produce correct results
+[UC]REFRESH MATERIALIZED VIEW test_mv_nonpart WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv_range WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv_list WITH SYNC MODE;
+
+SELECT dt, sv FROM test_mv_nonpart ORDER BY dt;
+SELECT dt, sv FROM test_mv_range ORDER BY dt;
+SELECT dt, sv FROM test_mv_list ORDER BY dt;
+
+-- Restore config
+admin set frontend config('mv_refresh_force_partition_type'='0');
+
+-- Cleanup
+drop materialized view test_mv_nonpart;
+drop materialized view test_mv_range;
+drop materialized view test_mv_list;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

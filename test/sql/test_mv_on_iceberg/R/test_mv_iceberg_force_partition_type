@@ -1,0 +1,148 @@
+-- name: test_mv_iceberg_force_partition_type
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10),
+  (2, '2024-01-02', 20),
+  (3, '2024-02-01', 30);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv_nonpart
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv_range
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv_list
+PARTITION BY (date_trunc('month', dt))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv_nonpart WITH SYNC MODE;
+-- result:
+019da58f-7a38-7936-a4ca-09af5b6ccfee
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv_range WITH SYNC MODE;
+-- result:
+019da58f-83bf-76a0-a071-e59976e57bb4
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv_list WITH SYNC MODE;
+-- result:
+019da58f-8e43-72cc-8483-f36343fb7164
+-- !result
+SELECT dt, sv FROM test_mv_nonpart ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-02-01	30
+-- !result
+SELECT dt, sv FROM test_mv_range ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-02-01	30
+-- !result
+SELECT dt, sv FROM test_mv_list ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-02-01	30
+-- !result
+admin set frontend config('mv_refresh_force_partition_type'='7');
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv_nonpart WITH SYNC MODE;
+-- result:
+019da58f-998a-7873-9f5f-a357163e9c6b
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv_range WITH SYNC MODE;
+-- result:
+019da58f-a0eb-79b7-9172-1c4736debc67
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv_list WITH SYNC MODE;
+-- result:
+019da58f-a93f-71dc-aa3d-2e8289026965
+-- !result
+SELECT dt, sv FROM test_mv_nonpart ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-02-01	30
+-- !result
+SELECT dt, sv FROM test_mv_range ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-02-01	30
+-- !result
+SELECT dt, sv FROM test_mv_list ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-02-01	30
+-- !result
+admin set frontend config('mv_refresh_force_partition_type'='0');
+-- result:
+-- !result
+drop materialized view test_mv_nonpart;
+-- result:
+-- !result
+drop materialized view test_mv_range;
+-- result:
+-- !result
+drop materialized view test_mv_list;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
