@@ -1,11 +1,11 @@
 -- name: test_mv_iceberg_bucket_transform
--- Test Point: Iceberg base with bucket(N, col) partition transform can be
+-- Test Point: Iceberg base with bucket(col, N) partition transform can be
 --             materialized by a non-partitioned aggregation MV, and partial
 --             base insert reflects after MV refresh.
--- Method: build an Iceberg table partitioned by bucket(4, region), create a
+-- Method: build an Iceberg table partitioned by bucket(region, 4), create a
 --         non-partitioned aggregation MV grouped by region, assert refresh +
 --         rewrite + incremental insert propagation into both new and existing
---         buckets.
+--         bucket targets.
 -- Scope: Iceberg partition transform = bucket (M2-1).
 function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
 
@@ -17,7 +17,7 @@ CREATE TABLE t1 (
   dt date,
   pv bigint
 )
-PARTITION BY bucket(4, region);
+PARTITION BY bucket(region, 4);
 INSERT INTO t1 VALUES
   ('cn', '2024-01-01', 10),
   ('cn', '2024-01-02', 20),

@@ -17,9 +17,8 @@ CREATE TABLE t1 (
   dt date,
   pv bigint
 )
-PARTITION BY bucket(4, region);
+PARTITION BY bucket(region, 4);
 -- result:
-E: (1064, 'Cannot invoke "com.starrocks.catalog.Function.setRetType(com.starrocks.type.Type)" because "fn" is null')
 -- !result
 INSERT INTO t1 VALUES
   ('cn', '2024-01-01', 10),
@@ -29,7 +28,6 @@ INSERT INTO t1 VALUES
   ('jp', '2024-01-01', 3),
   ('de', '2024-01-02', 4);
 -- result:
-E: (1064, 'Getting analyzing error. Detail message: Table t1 is not found.')
 -- !result
 set catalog default_catalog;
 -- result:
@@ -50,51 +48,57 @@ AS SELECT region, sum(pv) as total_pv
    FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
    GROUP BY region;
 -- result:
-[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table 'mv_ice_db_\w+\.t1'\."\)
 -- !result
 [UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
 -- result:
-E: (1064, 'Getting analyzing error at line 1, column 26. Detail message: Can not find materialized view:test_mv1.')
+019da544-3862-76fb-ad68-e8719911f92b
 -- !result
 SELECT region, total_pv FROM test_mv1 ORDER BY region;
 -- result:
-[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table 'db_\w+\.test_mv1'\."\)
+cn	30
+de	4
+jp	3
+us	12
 -- !result
 function: print_hit_materialized_view("SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY region", "test_mv1")
 -- result:
-False
+True
 -- !result
 INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('fr', '2024-01-03', 100);
 -- result:
-E: (1064, 'Getting analyzing error. Detail message: Table t1 is not found.')
 -- !result
 [UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
 -- result:
-E: (1064, 'Getting analyzing error at line 1, column 26. Detail message: Can not find materialized view:test_mv1.')
+019da544-433e-70ca-b15a-91cb86236579
 -- !result
 SELECT region, total_pv FROM test_mv1 ORDER BY region;
 -- result:
-[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table 'db_\w+\.test_mv1'\."\)
+cn	30
+de	4
+fr	100
+jp	3
+us	12
 -- !result
 INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('cn', '2024-01-03', 50);
 -- result:
-E: (1064, 'Getting analyzing error. Detail message: Table t1 is not found.')
 -- !result
 [UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
 -- result:
-E: (1064, 'Getting analyzing error at line 1, column 26. Detail message: Can not find materialized view:test_mv1.')
+019da544-475f-7219-99a6-39eaeceb193e
 -- !result
 SELECT region, total_pv FROM test_mv1 ORDER BY region;
 -- result:
-[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table 'db_\w+\.test_mv1'\."\)
+cn	80
+de	4
+fr	100
+jp	3
+us	12
 -- !result
 drop materialized view test_mv1;
 -- result:
-E: (1064, 'Materialized view test_mv1 is not found')
 -- !result
 drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
 -- result:
-E: (5502, "Getting analyzing error. Detail message: Unknown table 't1'.")
 -- !result
 drop database default_catalog.db_${uuid0} force;
 -- result:
