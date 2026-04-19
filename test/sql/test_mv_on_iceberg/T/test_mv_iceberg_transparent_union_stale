@@ -1,0 +1,74 @@
+-- name: test_mv_iceberg_transparent_union_stale
+-- Test Point: Transparent union rewrite over a partially-refreshed
+--             Iceberg-backed MV: queries that span refreshed + stale
+--             partitions return a correct combined dataset without
+--             requiring a full refresh.
+-- Method: create MV with a dt-partitioned Iceberg base; partial refresh
+--         subset; insert new rows into an unrefreshed partition; query
+--         full range with transparent-union on; assert rows and
+--         rewrite hit.
+-- Scope: transparent union × stale partitions (M7-1).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10),
+  (2, '2024-01-02', 20),
+  (3, '2024-01-03', 30);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- Partial refresh: only the first two partitions (2024-01-01, 2024-01-02)
+[UC]REFRESH MATERIALIZED VIEW test_mv1
+  PARTITION START ("2024-01-01") END ("2024-01-03")
+  WITH SYNC MODE;
+
+set enable_materialized_view_transparent_union_rewrite=true;
+
+-- MV direct select returns only refreshed partitions
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Base query full range: transparent union should cover both refreshed
+-- and unrefreshed partitions
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Insert additional rows into the unrefreshed partition (2024-01-03)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES
+  (4, '2024-01-03', 100),
+  (5, '2024-01-04', 200);
+
+-- Without another refresh, the MV is stale for 2024-01-03 onward; the
+-- union rewrite should still produce correct totals from base for those
+-- partitions.
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Query restricted to refreshed partition: should hit MV
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE dt < '2024-01-03' GROUP BY dt", "test_mv1")
+
+-- Full refresh restores; union no longer needed
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
