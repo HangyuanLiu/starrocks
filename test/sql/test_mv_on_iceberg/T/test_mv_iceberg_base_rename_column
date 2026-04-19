@@ -1,0 +1,64 @@
+-- name: test_mv_iceberg_base_rename_column
+-- Test Point: RENAME COLUMN on an Iceberg base for a column referenced
+--             by the MV — lock whether FE binds by column id (rename
+--             transparent to MV) or by name (MV becomes inactive or
+--             refresh fails).
+-- Method: create MV referencing column `val`; alter base rename val -> val_new;
+--         probe IS_ACTIVE, refresh behavior, direct MV query, and rewrite;
+--         update MV definition if needed.
+-- Scope: Iceberg base RENAME COLUMN × MV (M4-5).
+
+admin set frontend config('enable_mv_automatic_active_check'='false');
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- RENAME the column `val` referenced by the MV
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 rename column val to val_new;
+select sleep(2);
+
+-- Lock IS_ACTIVE + post-rename behavior
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- INSERT + refresh (using new column name on base)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Direct MV query — lock whatever FE returns
+[UC]SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Rewrite probe
+[UC]function: print_hit_materialized_view("SELECT dt, sum(val_new) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+
+admin set frontend config('enable_mv_automatic_active_check'='true');

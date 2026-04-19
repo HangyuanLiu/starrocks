@@ -1,0 +1,104 @@
+-- name: test_mv_iceberg_base_rename_column
+admin set frontend config('enable_mv_automatic_active_check'='false');
+-- result:
+-- !result
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da650-6376-7787-8b31-cc1e65da6e18
+-- !result
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- result:
+true
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+-- !result
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 rename column val to val_new;
+-- result:
+-- !result
+select sleep(2);
+-- result:
+1
+-- !result
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- result:
+true	
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+E: (1064, "execute task mv-52814 failed: Refresh mv test_mv1 failed after 1 times, try lock failed: 0, error-msg : com.starrocks.sql.analyzer.SemanticException: Getting analyzing error. Detail message: Column '`mv_iceberg_54a88b2abf054da394ea9a163060c7d5`.`mv_ice_db_54a88b2abf054da394ea9a163060c7d5`.`t1`.`val`' cannot be resolved.\n\tat com.starrocks.sql.analyzer.Scope.resolveField(Scope.java:97)\n\tat com.starrocks.sql.analyzer.Scope.resolveField(Scope.java:91)\n\tat com.starrocks.sql.analyzer.ExpressionAnalyzer$Visitor.visitSlot(ExpressionAnalyzer.java:495)\n\tat com.starrocks.sql.analyzer.ExpressionAnalyzer$Visitor.visitSlot(ExpressionAnalyzer.java:443)\n\tat com.starrocks.sql.ast.expression.SlotRef.accept(SlotRef.java:402)\n\tat com.starrocks.sql.ast.AstVisitor.visit(AstVisitor.java:94)\n\tat com.starrocks.sql.analyzer.ExpressionAnalyzer.bottomUpAnalyze(ExpressionAnalyzer.java:439)\n\tat com.starrocks.sql.analyzer.ExpressionAnalyzer.bottomUpAnalyze(ExpressionAnalyzer.java:437)\n\tat com.starrocks.sql.analyzer.ExpressionAnalyzer.analyze(ExpressionAnalyzer.java:155)\n\tat com.starrocks.sql.analyzer.ExpressionAnalyzer.analyzeExpression(ExpressionAnalyzer.java:2261)\n\tat com.starrocks.sql.analyzer.SelectAnalyzer.analyzeExpression(SelectAnalyzer.java:910)\n\tat com.starrocks.sql.analyzer.SelectAnalyzer.analyzeSelect(SelectAnalyzer.java:308)\n\tat com.starrocks.sql.analyzer.SelectAnalyzer.analyze(SelectAnalyzer.java:90)\n\tat com.starrocks.sql.analyzer.QueryAnalyzer$Visitor.visitSelect(QueryAnalyzer.java:518)\n\tat com.starrocks.sql.analyzer.QueryAnalyzer$Visitor.visitSelect(QueryAnalyzer.java:326)\n\tat com.starrocks.sql.ast.SelectRelation.accept(SelectRelation.java:234)\n\tat com.starrocks.sql.analyzer.QueryAnalyzer$Visitor.process(QueryAnalyzer.java:334)\n\tat com.starrocks.sql.analyzer.QueryAnalyzer$Visitor.visitQueryRelation(QueryAnalyzer.java:349)\n\tat com.starrocks.sql.analyzer.QueryAnalyzer$Visitor.visitQueryStatement(QueryAnalyzer.java:339)\n\tat com.starrocks.sql.analyzer.QueryAnalyzer$Visitor.visitQueryStatement(QueryAnalyzer.java:326)\n\tat com.starrocks.sql.ast.QueryStatement.accept(QueryStatement.java:71)\n\tat com.starrocks.sql.analyzer.QueryAnalyzer$Visitor.process(QueryAnalyzer.java:334)\n\tat com.starrocks.sql.analyzer.QueryAnalyzer.analyze(QueryAnalyzer.java:146)\n\tat com.starrocks.sql.analyzer.InsertAnalyzer.analyzeWithDeferredLock(InsertAnalyzer.java:112)\n\tat com.starrocks.sql.analyzer.InsertAnalyzer.analyze(InsertAnalyzer.java:96)\n\tat com.starrocks.sql.analyzer.DMLStmtAnalyzer$DMLStmtAnalyzerVisitor.visitInsertStatement(DMLStmtAnalyzer.java:49)\n\tat com.starrocks.sql.analyzer.DMLStmtAnalyzer$DMLStmtAnalyzerVisitor.visitInsertStatement(DMLStmtAnalyzer.java:34)\n\tat com.starrocks.sql.ast.InsertStmt.accept(InsertStmt.java:358)\n\tat com.starrocks.sql.ast.AstVisitor.visit(AstVisitor.java:94)\n\tat com.starrocks.sql.analyzer.DMLStmtAnalyzer$DMLStmtAnalyzerVisitor.analyze(DMLStmtAnalyzer.java:44)\n\tat com.starrocks.sql.analyzer.DMLStmtAnalyzer.analyze(DMLStmtAnalyzer.java:31)\n\tat com.starrocks.sql.analyzer.Analyzer$AnalyzerVisitor.visitInsertStatement(Analyzer.java:705)\n\tat com.starrocks.sql.analyzer.Analyzer$AnalyzerVisitor.visitInsertStatement(Analyzer.java:201)\n\tat com.starrocks.sql.ast.InsertStmt.accept(InsertStmt.java:358)\n\tat com.starrocks.sql.ast.AstVisitor.visit(AstVisitor.java:94)\n\tat com.starrocks.sql.analyzer.Analyzer.analyze(Analyzer.java:198)\n\tat com.starrocks.scheduler.mv.pct.MVPCTRefreshPlanBuilder.analyzeAndBuildInsertPlan(MVPCTRefreshPlanBuilder.java:120)\n\tat com.starrocks.scheduler.mv.pct.MVPCTBasedRefreshProcessor.prepareRefreshPlan(MVPCTBasedRefreshProcessor.java:184)\n\tat com.starrocks.scheduler.mv.pct.MVPCTBasedRefreshProcessor.getProcessExecPlan(MVPCTBasedRefreshProcessor.java:117)\n\tat com.starrocks.scheduler.MVTaskRunProcessor.doProcessTaskRun(MVTaskRunProcessor.java:317)\n\tat com.starrocks.scheduler.MVTaskRunProcessor.retryProcessTaskRun(MVTaskRunProcessor.java:283)\n\tat com.starrocks.scheduler.MVTaskRunProcessor.processTaskRun(MVTaskRunProcessor.java:195)\n\tat com.starrocks.scheduler.TaskRun.doExecuteTaskRun(TaskRun.java:459)\n\tat com.starrocks.scheduler.TaskRun.executeTaskRun(TaskRun.java:419)\n\tat com.starrocks.scheduler.TaskRunExecutor.lambda$executeTaskRun$1(TaskRunExecutor.java:66)\n\tat java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)\n\tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)\n\tat java.base/java.lang.Thread.run(Thread.java:1583)")
+-- !result
+[UC]SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+-- !result
+[UC]function: print_hit_materialized_view("SELECT dt, sum(val_new) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+-- result:
+False
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+admin set frontend config('enable_mv_automatic_active_check'='true');
+-- result:
+-- !result
