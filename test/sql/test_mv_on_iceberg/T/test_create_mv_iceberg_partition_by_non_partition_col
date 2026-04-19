@@ -1,0 +1,55 @@
+-- name: test_create_mv_iceberg_partition_by_non_partition_col
+-- Test Point: CREATE MATERIALIZED VIEW whose PARTITION BY references a
+--             column that is NOT a base partition column is rejected with
+--             a clear error. Related to M12-4 (finer transform alignment)
+--             but different: non-partition column entirely.
+-- Method: build base partitioned by (dt); attempt CREATE MV PARTITION BY
+--         (region) where region is a regular column; lock error. Contrast
+--         with MV PARTITION BY (dt) which should succeed.
+-- Scope: Negative path — MV partition key not a base partition column (M12-3).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, region string, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 'cn', 10),
+  (2, '2024-01-02', 'us', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- Negative: PARTITION BY region (not a base partition column)
+[UC]CREATE MATERIALIZED VIEW test_mv_bad
+PARTITION BY region
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+
+-- Should not exist
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv_bad' AND table_schema = 'db_${uuid0}';
+
+-- Positive contrast: PARTITION BY dt (valid base partition column) should succeed
+CREATE MATERIALIZED VIEW test_mv_good
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+[UC]REFRESH MATERIALIZED VIEW test_mv_good WITH SYNC MODE;
+SELECT dt, region, sv FROM test_mv_good ORDER BY dt, region;
+
+-- Cleanup
+drop materialized view if exists test_mv_bad;
+drop materialized view test_mv_good;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

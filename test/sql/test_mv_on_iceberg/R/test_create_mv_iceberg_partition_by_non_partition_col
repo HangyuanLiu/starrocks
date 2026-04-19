@@ -1,0 +1,85 @@
+-- name: test_create_mv_iceberg_partition_by_non_partition_col
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, region string, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 'cn', 10),
+  (2, '2024-01-02', 'us', 20);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+[UC]CREATE MATERIALIZED VIEW test_mv_bad
+PARTITION BY region
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+-- result:
+E: (1064, 'Getting analyzing error. Detail message: Materialized view partition column in partition exp must be base table partition column.')
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv_bad' AND table_schema = 'db_${uuid0}';
+-- result:
+0
+-- !result
+CREATE MATERIALIZED VIEW test_mv_good
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv_good WITH SYNC MODE;
+-- result:
+019da6a1-2e36-71d0-9d63-a319d310f115
+-- !result
+SELECT dt, region, sv FROM test_mv_good ORDER BY dt, region;
+-- result:
+2024-01-01	cn	10
+2024-01-02	us	20
+-- !result
+drop materialized view if exists test_mv_bad;
+-- result:
+-- !result
+drop materialized view test_mv_good;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
