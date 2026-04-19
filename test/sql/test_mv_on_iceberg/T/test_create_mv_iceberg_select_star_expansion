@@ -1,0 +1,63 @@
+-- name: test_create_mv_iceberg_select_star_expansion
+-- Test Point: MV created via SELECT * freezes its output schema at CREATE
+--             time; subsequent Iceberg base ADD COLUMN (once or multiple
+--             times) does not mutate MV schema; refresh continues to
+--             propagate rows for the projected columns only.
+-- Method: create MV via SELECT *; DESC baseline; ADD extra1 + refresh +
+--         DESC; ADD extra2 + refresh + DESC; lock schema stability.
+-- Scope: SELECT * expansion stability for Iceberg-backed MV (M1-6).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT * FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline: 3 columns (id, dt, val)
+DESC test_mv1;
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+
+-- First ADD COLUMN
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 add column extra1 string;
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30, 'e1');
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Locked: MV still 3 columns
+DESC test_mv1;
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- Base still reachable with extra1
+SELECT id, dt, val, extra1 FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id;
+
+-- Second ADD COLUMN
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 add column extra2 bigint;
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (4, '2024-01-04', 40, 'e1', 999);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Locked: MV still 3 columns after the second ADD as well
+DESC test_mv1;
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- Base now has 5 columns
+SELECT id, dt, val, extra1, extra2 FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id;
+
+-- IS_ACTIVE remains true across both schema changes
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

@@ -1,0 +1,132 @@
+-- name: test_create_mv_iceberg_select_star_expansion
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT * FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da641-fecd-75d7-8833-7319d3fd694d
+-- !result
+DESC test_mv1;
+-- result:
+id	int	YES	true	None	
+dt	date	YES	true	None	
+val	int	YES	true	None	
+-- !result
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- result:
+1	2024-01-01	10
+2	2024-01-02	20
+-- !result
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 add column extra1 string;
+-- result:
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30, 'e1');
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da642-0cf5-7c96-a96b-70722373a58e
+-- !result
+DESC test_mv1;
+-- result:
+id	int	YES	true	None	
+dt	date	YES	true	None	
+val	int	YES	true	None	
+-- !result
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- result:
+1	2024-01-01	10
+2	2024-01-02	20
+3	2024-01-03	30
+-- !result
+SELECT id, dt, val, extra1 FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id;
+-- result:
+1	2024-01-01	10	None
+2	2024-01-02	20	None
+3	2024-01-03	30	e1
+-- !result
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 add column extra2 bigint;
+-- result:
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (4, '2024-01-04', 40, 'e1', 999);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da642-1c51-763f-b4c8-22ef82d29dc5
+-- !result
+DESC test_mv1;
+-- result:
+id	int	YES	true	None	
+dt	date	YES	true	None	
+val	int	YES	true	None	
+-- !result
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- result:
+1	2024-01-01	10
+2	2024-01-02	20
+3	2024-01-03	30
+4	2024-01-04	40
+-- !result
+SELECT id, dt, val, extra1, extra2 FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id;
+-- result:
+1	2024-01-01	10	None	None
+2	2024-01-02	20	None	None
+3	2024-01-03	30	e1	None
+4	2024-01-04	40	e1	999
+-- !result
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- result:
+true
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
