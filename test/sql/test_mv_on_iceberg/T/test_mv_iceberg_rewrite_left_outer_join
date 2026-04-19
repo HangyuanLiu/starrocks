@@ -1,0 +1,93 @@
+-- name: test_mv_iceberg_rewrite_left_outer_join
+-- Test Point: MV pre-computing a LEFT OUTER JOIN of two Iceberg tables
+--             produces correct NULL rows for unmatched left-side rows and
+--             rewrite preserves that behavior under identical queries,
+--             IS-NULL predicates on the right side, and incremental inserts.
+-- Method: build orders + customers where one order has an unknown
+--         customer_id (not in customers); create LEFT OUTER JOIN MV;
+--         probe rewrite + NULL correctness; add another orphan order,
+--         refresh, probe again.
+-- Scope: LEFT OUTER JOIN × Iceberg × MV rewrite NULL correctness (M8-3).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+
+CREATE TABLE orders (
+  order_id int,
+  customer_id int,
+  dt date,
+  amount bigint
+) PARTITION BY (dt);
+INSERT INTO orders VALUES
+  (1, 100, '2024-01-01', 50),
+  (2, 101, '2024-01-01', 30),
+  (3, 999, '2024-01-02', 80),   -- orphan: 999 not in customers
+  (4, 102, '2024-01-02', 20);
+
+CREATE TABLE customers (
+  customer_id int,
+  name string,
+  region string
+);
+INSERT INTO customers VALUES
+  (100, 'alice', 'cn'),
+  (101, 'bob', 'us'),
+  (102, 'carol', 'jp');
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW mv_loj
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT o.order_id, o.dt, o.amount, c.name, c.region
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+   LEFT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c
+     ON o.customer_id = c.customer_id;
+[UC]REFRESH MATERIALIZED VIEW mv_loj WITH SYNC MODE;
+
+-- Baseline MV contents (order 3 has NULL name/region)
+SELECT order_id, dt, amount, name, region FROM mv_loj ORDER BY order_id;
+
+-- Identical query → should hit
+SELECT o.order_id, o.dt, o.amount, c.name, c.region
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+  LEFT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c
+    ON o.customer_id = c.customer_id
+  ORDER BY o.order_id;
+function: print_hit_materialized_view("SELECT o.order_id, o.dt, o.amount, c.name, c.region FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o LEFT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c ON o.customer_id = c.customer_id", "mv_loj")
+
+-- IS NULL predicate on right side → should hit and return only orphan rows
+SELECT o.order_id, o.amount
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+  LEFT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c
+    ON o.customer_id = c.customer_id
+  WHERE c.name IS NULL
+  ORDER BY o.order_id;
+function: print_hit_materialized_view("SELECT o.order_id, o.amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o LEFT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c ON o.customer_id = c.customer_id WHERE c.name IS NULL", "mv_loj")
+
+-- IS NOT NULL on right side → should hit and return only matched rows
+SELECT o.order_id, c.name
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+  LEFT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c
+    ON o.customer_id = c.customer_id
+  WHERE c.name IS NOT NULL
+  ORDER BY o.order_id;
+function: print_hit_materialized_view("SELECT o.order_id, c.name FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o LEFT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c ON o.customer_id = c.customer_id WHERE c.name IS NOT NULL", "mv_loj")
+
+-- Incremental insert of another orphan
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders VALUES (5, 888, '2024-01-03', 999);
+[UC]REFRESH MATERIALIZED VIEW mv_loj WITH SYNC MODE;
+SELECT order_id, dt, amount, name, region FROM mv_loj ORDER BY order_id;
+function: print_hit_materialized_view("SELECT o.order_id, o.dt, o.amount, c.name, c.region FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o LEFT OUTER JOIN mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers c ON o.customer_id = c.customer_id", "mv_loj")
+
+drop materialized view mv_loj;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders force;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.customers force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
