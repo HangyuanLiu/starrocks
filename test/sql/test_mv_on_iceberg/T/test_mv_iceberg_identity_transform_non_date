@@ -1,0 +1,85 @@
+-- name: test_mv_iceberg_identity_transform_non_date
+-- Test Point: Iceberg base with identity partition on a non-date column
+--             (string region; or int id) can be materialized by MV; refresh
+--             and rewrite work correctly and do not mis-infer a date_trunc
+--             alignment requirement.
+-- Method: build two bases — t_region PARTITION BY (region), t_id
+--         PARTITION BY (id); create one MV per base (non-partitioned
+--         aggregation); refresh, probe, incremental insert, probe.
+-- Scope: Iceberg identity partition on non-date column × MV (M2-6).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+
+CREATE TABLE t_region (
+  region string,
+  val bigint
+) PARTITION BY (region);
+INSERT INTO t_region VALUES
+  ('cn', 10),
+  ('cn', 20),
+  ('us', 5),
+  ('us', 7),
+  ('jp', 3);
+
+CREATE TABLE t_id (
+  id int,
+  tag string
+) PARTITION BY (id);
+INSERT INTO t_id VALUES
+  (1, 'a'),
+  (2, 'b'),
+  (1, 'c'),
+  (3, 'd');
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW mv_region
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT region, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_region
+   GROUP BY region;
+[UC]REFRESH MATERIALIZED VIEW mv_region WITH SYNC MODE;
+
+CREATE MATERIALIZED VIEW mv_id
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, count(*) as cnt
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_id
+   GROUP BY id;
+[UC]REFRESH MATERIALIZED VIEW mv_id WITH SYNC MODE;
+
+SELECT region, sv FROM mv_region ORDER BY region;
+SELECT id, cnt FROM mv_id ORDER BY id;
+function: print_hit_materialized_view("SELECT region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_region GROUP BY region", "mv_region")
+function: print_hit_materialized_view("SELECT id, count(*) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_id GROUP BY id", "mv_id")
+
+-- Incremental insert into existing identity partition
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_region VALUES ('cn', 100);
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_id VALUES (1, 'e');
+[UC]REFRESH MATERIALIZED VIEW mv_region WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW mv_id WITH SYNC MODE;
+SELECT region, sv FROM mv_region ORDER BY region;
+SELECT id, cnt FROM mv_id ORDER BY id;
+
+-- Incremental insert into new identity partition
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_region VALUES ('de', 999);
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_id VALUES (9, 'z');
+[UC]REFRESH MATERIALIZED VIEW mv_region WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW mv_id WITH SYNC MODE;
+SELECT region, sv FROM mv_region ORDER BY region;
+SELECT id, cnt FROM mv_id ORDER BY id;
+
+drop materialized view mv_region;
+drop materialized view mv_id;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_region force;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_id force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
