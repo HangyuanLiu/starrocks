@@ -1,0 +1,57 @@
+-- name: test_rename_mv_iceberg
+-- Test Point: ALTER MATERIALIZED VIEW ... RENAME on an Iceberg-backed MV
+--             succeeds, the old name is unresolvable, the new name is
+--             queryable + refreshable, and rewrite follows the new name.
+-- Method: create MV; refresh; RENAME; probe old (expect error) and new
+--         (expect success) name; probe rewrite via print_hit with new name;
+--         INSERT base + refresh via new name.
+-- Scope: ALTER MV RENAME on Iceberg (M1-4).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- RENAME
+ALTER MATERIALIZED VIEW test_mv1 RENAME test_mv1_renamed;
+
+-- Old name should be unresolvable
+[UC]SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- New name should work
+SELECT dt, sv FROM test_mv1_renamed ORDER BY dt;
+
+-- MV exists in information_schema under new name
+SELECT table_name, IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1_renamed' AND table_schema = 'db_${uuid0}';
+
+-- Rewrite probe uses new name
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1_renamed")
+
+-- INSERT + refresh via new name
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30);
+[UC]REFRESH MATERIALIZED VIEW test_mv1_renamed WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1_renamed ORDER BY dt;
+
+drop materialized view test_mv1_renamed;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
