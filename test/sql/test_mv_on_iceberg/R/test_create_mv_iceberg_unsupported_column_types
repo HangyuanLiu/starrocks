@@ -1,0 +1,152 @@
+-- name: test_create_mv_iceberg_unsupported_column_types
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+[UC]CREATE TABLE t1 (
+  id int,
+  dt date,
+  name string,
+  tags array<string>,
+  info map<string, string>,
+  attrs struct<k1 string, k2 int>
+) PARTITION BY (dt);
+-- result:
+-- !result
+[UC]DESC t1;
+-- result:
+id	INT	Yes	false	None		None
+dt	DATE	Yes	false	None	partition key	None
+name	VARCHAR(1073741824)	Yes	false	None		None
+tags	ARRAY<VARCHAR(1073741824)>	Yes	false	None		None
+info	MAP<VARCHAR(1073741824),VARCHAR(1073741824)>	Yes	false	None		None
+attrs	struct<`k1` varchar(1073741824), `k2` int(11)>	Yes	false	None		None
+-- !result
+[UC]INSERT INTO t1 SELECT 1, '2024-01-01', 'a', ['x','y'], map{'k':'v'}, row('s1', 10);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+[UC]CREATE MATERIALIZED VIEW mv_plain
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, name FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'mv_plain' AND table_schema = 'db_${uuid0}';
+-- result:
+1
+-- !result
+[UC]CREATE MATERIALIZED VIEW mv_array
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, tags FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'mv_array' AND table_schema = 'db_${uuid0}';
+-- result:
+1
+-- !result
+[UC]CREATE MATERIALIZED VIEW mv_map
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, info FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'mv_map' AND table_schema = 'db_${uuid0}';
+-- result:
+1
+-- !result
+[UC]CREATE MATERIALIZED VIEW mv_struct
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, attrs FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'mv_struct' AND table_schema = 'db_${uuid0}';
+-- result:
+1
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_plain WITH SYNC MODE;
+-- result:
+019da69e-1a6c-7ec5-8856-53faa135fa0e
+-- !result
+[UC]SELECT id, dt, name FROM mv_plain ORDER BY id;
+-- result:
+1	2024-01-01	a
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_array WITH SYNC MODE;
+-- result:
+019da69e-26aa-7a90-91c2-a6ed1a60e364
+-- !result
+[UC]SELECT id, dt, tags FROM mv_array ORDER BY id;
+-- result:
+1	2024-01-01	["x","y"]
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_map WITH SYNC MODE;
+-- result:
+019da69e-35d9-78cf-b931-773857efbbd9
+-- !result
+[UC]SELECT id, dt, info FROM mv_map ORDER BY id;
+-- result:
+1	2024-01-01	{"k":"v"}
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_struct WITH SYNC MODE;
+-- result:
+019da69e-459b-7fec-af4b-0493634e9383
+-- !result
+[UC]SELECT id, dt, attrs FROM mv_struct ORDER BY id;
+-- result:
+1	2024-01-01	{"k1":"s1","k2":10}
+-- !result
+drop materialized view if exists mv_plain;
+-- result:
+-- !result
+drop materialized view if exists mv_array;
+-- result:
+-- !result
+drop materialized view if exists mv_map;
+-- result:
+-- !result
+drop materialized view if exists mv_struct;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

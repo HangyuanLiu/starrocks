@@ -1,0 +1,93 @@
+-- name: test_create_mv_iceberg_unsupported_column_types
+-- Test Point: Iceberg supports column types (UUID, nested STRUCT, LIST,
+--             MAP) that may not be fully MV-ready. Lock FE accept / reject
+--             behavior for CREATE MV referencing each type.
+-- Method: build an Iceberg base with each special-type column; attempt
+--         CREATE MV projecting each; lock outcome per type; refresh the
+--         accepted MVs.
+-- Scope: Iceberg special-type columns in MV (M12-2).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+
+-- Create base with plain columns + struct + array + map; skip UUID (often
+-- not supported on the CREATE TABLE path either)
+[UC]CREATE TABLE t1 (
+  id int,
+  dt date,
+  name string,
+  tags array<string>,
+  info map<string, string>,
+  attrs struct<k1 string, k2 int>
+) PARTITION BY (dt);
+
+-- Probe base-side support
+[UC]DESC t1;
+[UC]INSERT INTO t1 SELECT 1, '2024-01-01', 'a', ['x','y'], map{'k':'v'}, row('s1', 10);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- MV on plain columns — should succeed
+[UC]CREATE MATERIALIZED VIEW mv_plain
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, name FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'mv_plain' AND table_schema = 'db_${uuid0}';
+
+-- MV projecting array
+[UC]CREATE MATERIALIZED VIEW mv_array
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, tags FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'mv_array' AND table_schema = 'db_${uuid0}';
+
+-- MV projecting map
+[UC]CREATE MATERIALIZED VIEW mv_map
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, info FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'mv_map' AND table_schema = 'db_${uuid0}';
+
+-- MV projecting struct
+[UC]CREATE MATERIALIZED VIEW mv_struct
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, attrs FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'mv_struct' AND table_schema = 'db_${uuid0}';
+
+-- Refresh accepted MVs (each may succeed or error)
+[UC]REFRESH MATERIALIZED VIEW mv_plain WITH SYNC MODE;
+[UC]SELECT id, dt, name FROM mv_plain ORDER BY id;
+
+[UC]REFRESH MATERIALIZED VIEW mv_array WITH SYNC MODE;
+[UC]SELECT id, dt, tags FROM mv_array ORDER BY id;
+
+[UC]REFRESH MATERIALIZED VIEW mv_map WITH SYNC MODE;
+[UC]SELECT id, dt, info FROM mv_map ORDER BY id;
+
+[UC]REFRESH MATERIALIZED VIEW mv_struct WITH SYNC MODE;
+[UC]SELECT id, dt, attrs FROM mv_struct ORDER BY id;
+
+-- Cleanup
+drop materialized view if exists mv_plain;
+drop materialized view if exists mv_array;
+drop materialized view if exists mv_map;
+drop materialized view if exists mv_struct;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
