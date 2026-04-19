@@ -1,0 +1,55 @@
+-- name: test_mv_iceberg_base_drop_column_unused
+-- Test Point: DROP COLUMN on an Iceberg base for a column NOT referenced
+--             by the MV leaves the MV fully functional: active, refreshable,
+--             and rewrite hit preserved. Contrasts with M4-3 (dropped
+--             column IS referenced).
+-- Method: create MV projecting subset of columns; DROP a non-referenced
+--         base column; refresh + probe; INSERT + refresh + re-probe.
+-- Scope: Iceberg base DROP COLUMN (unused) × MV (M4-4).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int, note string) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10, 'n1'),
+  (2, '2024-01-02', 20, 'n2');
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- MV references id, dt, val only; NOT note
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- DROP the unused column `note`
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 drop column note;
+
+-- MV should remain active
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- INSERT + refresh (now base has no `note` column)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
