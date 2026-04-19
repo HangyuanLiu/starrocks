@@ -1,0 +1,60 @@
+-- name: test_mv_iceberg_hour_transform
+-- Test Point: Iceberg base with hour(ts) partition transform can be aligned
+--             by an MV partitioned by date_trunc('hour', ts), partial refresh
+--             covers per-hour partitions correctly.
+-- Method: build an Iceberg table partitioned by hour(ts), create a
+--         partitioned MV using date_trunc('hour', ts), run partial refresh on
+--         a single-hour range then full refresh, assert rewrite hits and
+--         row-level correctness.
+-- Scope: Iceberg partition transform = hour (M2-4).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (
+  id int,
+  ts datetime,
+  val int
+)
+PARTITION BY hour(ts);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01 00:00:00', 10),
+  (2, '2024-01-01 00:30:00', 20),
+  (3, '2024-01-01 01:15:00', 30),
+  (4, '2024-01-01 02:45:00', 40),
+  (5, '2024-01-02 00:00:00', 50);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY (date_trunc('hour', ts))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, ts, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+
+-- Partial refresh: only hours 00, 01, 02 on 2024-01-01 (3 partitions)
+[UC]REFRESH MATERIALIZED VIEW test_mv1
+  PARTITION (('2024-01-01 00:00:00'), ('2024-01-01 01:00:00'), ('2024-01-01 02:00:00'))
+  WITH SYNC MODE;
+SELECT count(*) FROM test_mv1;
+SELECT id, ts, val FROM test_mv1 ORDER BY id;
+
+-- Rewrite should still work for the refreshed range; unrefreshed range
+-- relies on transparent union (default enabled)
+function: print_hit_materialized_view("SELECT id, ts, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE ts < '2024-01-02' ORDER BY id", "test_mv1")
+
+-- Full refresh
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT count(*) FROM test_mv1;
+SELECT id, ts, val FROM test_mv1 ORDER BY id;
+function: print_hit_materialized_view("SELECT id, ts, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
