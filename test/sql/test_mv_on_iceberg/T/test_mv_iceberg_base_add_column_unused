@@ -1,0 +1,56 @@
+-- name: test_mv_iceberg_base_add_column_unused
+-- Test Point: ADD COLUMN on an Iceberg base table — where the added column
+--             is NOT referenced by the MV — leaves the MV active and does
+--             not invalidate rewrite or refresh.
+-- Method: create MV that selects only columns (id, dt, val); ADD COLUMN
+--         `extra` on base (not referenced anywhere); verify is_active,
+--         refresh after INSERT that fills `extra`, and rewrite correctness.
+-- Scope: Iceberg base schema evolution × MV (M4-1).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline: active + rewrite hits
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- ADD COLUMN on base (not referenced by MV)
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+  add column extra string;
+
+-- Assert MV remains active after schema change
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- Insert row filling the new column
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30, 'new-ext');
+
+-- Refresh: should pick up the new row for the columns MV cares about
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- Cleanup
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
