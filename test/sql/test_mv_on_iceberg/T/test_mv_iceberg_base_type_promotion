@@ -1,0 +1,80 @@
+-- name: test_mv_iceberg_base_type_promotion
+-- Test Point: Iceberg base MODIFY COLUMN for safe type promotion
+--             (int -> bigint, float -> double) — lock FE behavior on
+--             MV IS_ACTIVE, refresh, and data correctness.
+-- Method: two tables: t_int (val int), t_float (val float); MV aggregates
+--         both; promote int -> bigint, float -> double; probe refresh +
+--         correctness.
+-- Scope: Iceberg safe type promotion × MV (M4-6).
+
+admin set frontend config('enable_mv_automatic_active_check'='false');
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t_int (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t_int VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+CREATE TABLE t_float (id int, dt date, val float) PARTITION BY (dt);
+INSERT INTO t_float VALUES (1, '2024-01-01', 1.5), (2, '2024-01-02', 2.5);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW mv_int
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_int GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW mv_int WITH SYNC MODE;
+
+CREATE MATERIALIZED VIEW mv_float
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_float GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW mv_float WITH SYNC MODE;
+
+-- Baseline
+SELECT dt, sv FROM mv_int ORDER BY dt;
+SELECT dt, sv FROM mv_float ORDER BY dt;
+DESC mv_int;
+DESC mv_float;
+
+-- int -> bigint promotion
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_int modify column val bigint;
+-- float -> double promotion
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_float modify column val double;
+select sleep(2);
+
+-- Lock post-promotion state
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_schema = 'db_${uuid0}' AND table_name IN ('mv_int', 'mv_float') ORDER BY table_name;
+
+-- Refresh
+[UC]REFRESH MATERIALIZED VIEW mv_int WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW mv_float WITH SYNC MODE;
+
+-- INSERT new rows (using promoted types)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_int VALUES (3, '2024-01-03', 30000000000);
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_float VALUES (3, '2024-01-03', 3.14159265358979);
+[UC]REFRESH MATERIALIZED VIEW mv_int WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW mv_float WITH SYNC MODE;
+
+-- Query post-promotion
+[UC]SELECT dt, sv FROM mv_int ORDER BY dt;
+[UC]SELECT dt, sv FROM mv_float ORDER BY dt;
+
+drop materialized view mv_int;
+drop materialized view mv_float;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_int force;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_float force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+
+admin set frontend config('enable_mv_automatic_active_check'='true');

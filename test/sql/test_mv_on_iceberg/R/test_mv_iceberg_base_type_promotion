@@ -1,0 +1,157 @@
+-- name: test_mv_iceberg_base_type_promotion
+admin set frontend config('enable_mv_automatic_active_check'='false');
+-- result:
+-- !result
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t_int (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t_int VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+-- result:
+-- !result
+CREATE TABLE t_float (id int, dt date, val float) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t_float VALUES (1, '2024-01-01', 1.5), (2, '2024-01-02', 2.5);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW mv_int
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_int GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_int WITH SYNC MODE;
+-- result:
+019da654-1497-7ca0-8bdd-03c5183919e5
+-- !result
+CREATE MATERIALIZED VIEW mv_float
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_float GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_float WITH SYNC MODE;
+-- result:
+019da654-213c-7f17-9313-22889a6a9567
+-- !result
+SELECT dt, sv FROM mv_int ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+-- !result
+SELECT dt, sv FROM mv_float ORDER BY dt;
+-- result:
+2024-01-01	1.5
+2024-01-02	2.5
+-- !result
+DESC mv_int;
+-- result:
+dt	date	YES	true	None	
+sv	bigint	YES	true	None	
+-- !result
+DESC mv_float;
+-- result:
+dt	date	YES	true	None	
+sv	double	YES	false	None	NONE
+-- !result
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_int modify column val bigint;
+-- result:
+-- !result
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_float modify column val double;
+-- result:
+-- !result
+select sleep(2);
+-- result:
+1
+-- !result
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_schema = 'db_${uuid0}' AND table_name IN ('mv_int', 'mv_float') ORDER BY table_name;
+-- result:
+true	None
+true	None
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_int WITH SYNC MODE;
+-- result:
+019da654-3a10-723c-b865-c52c59f6a540
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_float WITH SYNC MODE;
+-- result:
+019da654-3c5c-7df3-9ced-1e24e442c2e8
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_int VALUES (3, '2024-01-03', 30000000000);
+-- result:
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_float VALUES (3, '2024-01-03', 3.14159265358979);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_int WITH SYNC MODE;
+-- result:
+019da654-4134-774c-835e-b0cf84432420
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_float WITH SYNC MODE;
+-- result:
+019da654-4fcc-7548-bfb7-3d85564da094
+-- !result
+[UC]SELECT dt, sv FROM mv_int ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-01-03	30000000000
+-- !result
+[UC]SELECT dt, sv FROM mv_float ORDER BY dt;
+-- result:
+2024-01-01	1.5
+2024-01-02	2.5
+2024-01-03	3.14159265358979
+-- !result
+drop materialized view mv_int;
+-- result:
+-- !result
+drop materialized view mv_float;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_int force;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_float force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+admin set frontend config('enable_mv_automatic_active_check'='true');
+-- result:
+-- !result
