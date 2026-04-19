@@ -1,0 +1,138 @@
+-- name: test_mv_iceberg_rewrite_predicate_pushdown_transform
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t_bucket (
+  region string,
+  dt date,
+  pv bigint
+) PARTITION BY bucket(region, 4);
+-- result:
+-- !result
+INSERT INTO t_bucket VALUES
+  ('cn', '2024-01-01', 10),
+  ('cn', '2024-01-02', 20),
+  ('us', '2024-01-01', 5),
+  ('us', '2024-01-02', 7),
+  ('jp', '2024-01-01', 3),
+  ('de', '2024-01-02', 4);
+-- result:
+-- !result
+CREATE TABLE t_month (
+  id int,
+  dt date,
+  val int
+) PARTITION BY month(dt);
+-- result:
+-- !result
+INSERT INTO t_month VALUES
+  (1, '2024-01-15', 100),
+  (2, '2024-02-05', 200),
+  (3, '2024-02-28', 300),
+  (4, '2024-03-10', 400);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW mv_bucket
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT region, sum(pv) as total_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket
+   GROUP BY region;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_bucket WITH SYNC MODE;
+-- result:
+[REGEX].*
+-- !result
+CREATE MATERIALIZED VIEW mv_month
+PARTITION BY (date_trunc('month', dt))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_month WITH SYNC MODE;
+-- result:
+[REGEX].*
+-- !result
+SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket
+  WHERE region = 'cn' GROUP BY region;
+-- result:
+cn	30
+-- !result
+function: print_hit_materialized_view("SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket WHERE region = 'cn' GROUP BY region", "mv_bucket")
+-- result:
+True
+-- !result
+SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket
+  WHERE region in ('cn','us') GROUP BY region ORDER BY region;
+-- result:
+cn	30
+us	12
+-- !result
+function: print_hit_materialized_view("SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket WHERE region in ('cn','us') GROUP BY region", "mv_bucket")
+-- result:
+True
+-- !result
+SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month
+  WHERE dt >= '2024-02-01' AND dt < '2024-03-01' ORDER BY id;
+-- result:
+2	2024-02-05	200
+3	2024-02-28	300
+-- !result
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month WHERE dt >= '2024-02-01' AND dt < '2024-03-01'", "mv_month")
+-- result:
+True
+-- !result
+SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month
+  WHERE dt = '2024-01-15' ORDER BY id;
+-- result:
+1	2024-01-15	100
+-- !result
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month WHERE dt = '2024-01-15'", "mv_month")
+-- result:
+True
+-- !result
+drop materialized view mv_bucket;
+-- result:
+-- !result
+drop materialized view mv_month;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket force;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

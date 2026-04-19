@@ -1,0 +1,90 @@
+-- name: test_mv_iceberg_rewrite_predicate_pushdown_transform
+-- Test Point: MV rewrite still hits when the query predicate is on the
+--             original column while the Iceberg base is partitioned by
+--             a transform of that column (bucket / month).
+-- Method: build two Iceberg bases — one bucket(region, 4), one month(dt);
+--         create a non-partitioned aggregation MV on each; issue queries
+--         with predicates on region and on dt; assert rewrite + row
+--         correctness.
+-- Scope: Predicate pushdown through Iceberg partition transform × MV
+--        rewrite (M8-8).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+
+-- Bucket-transformed base
+CREATE TABLE t_bucket (
+  region string,
+  dt date,
+  pv bigint
+) PARTITION BY bucket(region, 4);
+INSERT INTO t_bucket VALUES
+  ('cn', '2024-01-01', 10),
+  ('cn', '2024-01-02', 20),
+  ('us', '2024-01-01', 5),
+  ('us', '2024-01-02', 7),
+  ('jp', '2024-01-01', 3),
+  ('de', '2024-01-02', 4);
+
+-- Month-transformed base
+CREATE TABLE t_month (
+  id int,
+  dt date,
+  val int
+) PARTITION BY month(dt);
+INSERT INTO t_month VALUES
+  (1, '2024-01-15', 100),
+  (2, '2024-02-05', 200),
+  (3, '2024-02-28', 300),
+  (4, '2024-03-10', 400);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- Bucket MV (non-partitioned aggregation)
+CREATE MATERIALIZED VIEW mv_bucket
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT region, sum(pv) as total_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket
+   GROUP BY region;
+[UC]REFRESH MATERIALIZED VIEW mv_bucket WITH SYNC MODE;
+
+-- Month MV (partitioned by month)
+CREATE MATERIALIZED VIEW mv_month
+PARTITION BY (date_trunc('month', dt))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month;
+[UC]REFRESH MATERIALIZED VIEW mv_month WITH SYNC MODE;
+
+-- === Bucket: predicate on original (bucket-transformed) column region ===
+SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket
+  WHERE region = 'cn' GROUP BY region;
+function: print_hit_materialized_view("SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket WHERE region = 'cn' GROUP BY region", "mv_bucket")
+
+SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket
+  WHERE region in ('cn','us') GROUP BY region ORDER BY region;
+function: print_hit_materialized_view("SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket WHERE region in ('cn','us') GROUP BY region", "mv_bucket")
+
+-- === Month: range predicate on dt (the month-transformed column) ===
+SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month
+  WHERE dt >= '2024-02-01' AND dt < '2024-03-01' ORDER BY id;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month WHERE dt >= '2024-02-01' AND dt < '2024-03-01'", "mv_month")
+
+SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month
+  WHERE dt = '2024-01-15' ORDER BY id;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month WHERE dt = '2024-01-15'", "mv_month")
+
+-- Cleanup
+drop materialized view mv_bucket;
+drop materialized view mv_month;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_bucket force;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t_month force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
