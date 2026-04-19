@@ -1,0 +1,44 @@
+-- name: test_mv_iceberg_refresh_async_interval
+-- Test Point: MV with REFRESH ASYNC EVERY INTERVAL is accepted, schedules
+--             a task in information_schema.tasks, and manual sync refresh
+--             still works on top of the async schedule.
+-- Method: create MV with REFRESH ASYNC EVERY (INTERVAL 1 DAY); verify task
+--         registered; run manual sync refresh; data verify.
+-- Scope: REFRESH ASYNC INTERVAL for Iceberg-backed MV (M6-1).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH ASYNC EVERY(INTERVAL 1 DAY)
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- A task should be registered
+SELECT count(*) FROM information_schema.tasks
+  WHERE `DATABASE` = 'db_${uuid0}' AND DEFINITION LIKE '%test_mv1%';
+
+-- Manual SYNC refresh works even with async schedule
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Property snapshot (confirm REFRESH ASYNC persisted)
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
