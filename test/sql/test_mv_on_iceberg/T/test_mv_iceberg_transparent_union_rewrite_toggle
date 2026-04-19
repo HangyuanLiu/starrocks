@@ -1,0 +1,57 @@
+-- name: test_mv_iceberg_transparent_union_rewrite_toggle
+-- Test Point: Session var enable_materialized_view_transparent_union_rewrite
+--             controls whether queries touching partially-refreshed MV
+--             partitions are served via MV+base union or fall back to base.
+-- Method: create an Iceberg-backed partitioned MV, partially refresh only
+--         some partitions, flip the session var and assert rewrite/hit state
+--         and result correctness in both modes.
+-- Scope: Session var toggle x transparent union over Iceberg MV (M10-2).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10),
+  (2, '2024-01-02', 20),
+  (3, '2024-01-03', 30);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- Partial refresh: only 2024-01-01 and 2024-01-02
+[UC]REFRESH MATERIALIZED VIEW test_mv1
+  PARTITION START ("2024-01-01") END ("2024-01-03")
+  WITH SYNC MODE;
+
+-- enable_union_rewrite = true (default): query over full range should
+-- transparent-union-rewrite and still hit
+set enable_materialized_view_transparent_union_rewrite=true;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+
+-- Turn off: query over the un-refreshed partition should NOT hit
+set enable_materialized_view_transparent_union_rewrite=false;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE dt='2024-01-03' GROUP BY dt", "test_mv1")
+-- Query restricted to refreshed partitions should still hit
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE dt<'2024-01-03' GROUP BY dt", "test_mv1")
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+
+set enable_materialized_view_transparent_union_rewrite=true;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
