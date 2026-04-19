@@ -1,0 +1,92 @@
+-- name: test_mv_iceberg_rewrite_cross_catalog_join
+-- Test Point: MV pre-computing an INNER JOIN between an Iceberg table
+--             and an OLAP table in default_catalog hits the rewrite path
+--             for the same join, a predicate-restricted variant, and an
+--             incremental insert + refresh.
+-- Method: build Iceberg.orders + OLAP.customers; MV joins them; probe
+--         rewrite + correctness; insert into Iceberg side; refresh; repeat.
+-- Scope: Cross-catalog JOIN (Iceberg × OLAP) × MV rewrite (M8-6).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE orders (
+  order_id int,
+  customer_id int,
+  dt date,
+  amount bigint
+) PARTITION BY (dt);
+INSERT INTO orders VALUES
+  (1, 100, '2024-01-01', 50),
+  (2, 101, '2024-01-01', 30),
+  (3, 100, '2024-01-02', 80),
+  (4, 102, '2024-01-02', 20);
+
+-- OLAP customer table in default_catalog
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE TABLE customers (
+  customer_id int,
+  name string,
+  region string
+)
+DISTRIBUTED BY HASH(customer_id) BUCKETS 4
+PROPERTIES ("replication_num" = "1");
+INSERT INTO customers VALUES
+  (100, 'alice', 'cn'),
+  (101, 'bob', 'us'),
+  (102, 'carol', 'jp');
+
+CREATE MATERIALIZED VIEW mv_cross
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT o.order_id, o.dt, o.amount, c.name, c.region
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+   JOIN db_${uuid0}.customers c
+     ON o.customer_id = c.customer_id;
+[UC]REFRESH MATERIALIZED VIEW mv_cross WITH SYNC MODE;
+
+-- Baseline MV
+SELECT order_id, dt, amount, name, region FROM mv_cross ORDER BY order_id;
+
+-- Identical query → should hit
+SELECT o.order_id, o.dt, o.amount, c.name, c.region
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+  JOIN db_${uuid0}.customers c
+    ON o.customer_id = c.customer_id
+  ORDER BY o.order_id;
+function: print_hit_materialized_view("SELECT o.order_id, o.dt, o.amount, c.name, c.region FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o JOIN db_${uuid0}.customers c ON o.customer_id = c.customer_id", "mv_cross")
+
+-- Predicate on Iceberg side (dt) → should hit
+SELECT o.order_id, c.name
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+  JOIN db_${uuid0}.customers c
+    ON o.customer_id = c.customer_id
+  WHERE o.dt = '2024-01-01'
+  ORDER BY o.order_id;
+function: print_hit_materialized_view("SELECT o.order_id, c.name FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o JOIN db_${uuid0}.customers c ON o.customer_id = c.customer_id WHERE o.dt = '2024-01-01'", "mv_cross")
+
+-- Predicate on OLAP side (region) → should hit
+SELECT o.order_id, o.amount
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o
+  JOIN db_${uuid0}.customers c
+    ON o.customer_id = c.customer_id
+  WHERE c.region = 'cn'
+  ORDER BY o.order_id;
+function: print_hit_materialized_view("SELECT o.order_id, o.amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o JOIN db_${uuid0}.customers c ON o.customer_id = c.customer_id WHERE c.region = 'cn'", "mv_cross")
+
+-- Incremental insert on Iceberg side
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders VALUES (5, 100, '2024-01-03', 200);
+[UC]REFRESH MATERIALIZED VIEW mv_cross WITH SYNC MODE;
+SELECT order_id, dt, amount, name, region FROM mv_cross ORDER BY order_id;
+function: print_hit_materialized_view("SELECT o.order_id, o.dt, o.amount, c.name, c.region FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders o JOIN db_${uuid0}.customers c ON o.customer_id = c.customer_id", "mv_cross")
+
+drop materialized view mv_cross;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
