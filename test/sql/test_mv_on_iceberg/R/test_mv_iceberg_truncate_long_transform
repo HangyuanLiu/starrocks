@@ -1,0 +1,105 @@
+-- name: test_mv_iceberg_truncate_long_transform
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (
+  order_id int,
+  amount bigint,
+  dt date
+) PARTITION BY truncate(amount, 1000);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  (1, 100, '2024-01-01'),
+  (2, 500, '2024-01-02'),
+  (3, 1500, '2024-01-01'),
+  (4, 2500, '2024-01-02'),
+  (5, 2800, '2024-01-03');
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, count(*) as cnt, sum(amount) as sa
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da647-60bc-7bfd-9b6f-7341e9749fa4
+-- !result
+SELECT dt, cnt, sa FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	2	1600
+2024-01-02	2	3000
+2024-01-03	1	2800
+-- !result
+function: print_hit_materialized_view("SELECT dt, count(*), sum(amount) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+-- result:
+True
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (6, 200, '2024-01-01');
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da647-6ef8-770e-a382-895135a8b902
+-- !result
+SELECT dt, cnt, sa FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	3	1800
+2024-01-02	2	3000
+2024-01-03	1	2800
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (7, 5000, '2024-01-04');
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da647-7a87-79b4-af1f-aff77d869e0f
+-- !result
+SELECT dt, cnt, sa FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	3	1800
+2024-01-02	2	3000
+2024-01-03	1	2800
+2024-01-04	1	5000
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

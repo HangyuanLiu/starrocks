@@ -1,0 +1,58 @@
+-- name: test_mv_iceberg_truncate_long_transform
+-- Test Point: Iceberg base with truncate(col, W) partition transform on a
+--             numeric (bigint) column can be materialized by a
+--             non-partitioned aggregation MV; incremental insert into
+--             existing and new truncated-numeric buckets propagates.
+-- Method: build base with truncate(amount, 1000); create aggregation MV
+--         over (amount / 1000 bucket); refresh + probe rewrite; INSERT
+--         into existing bucket, refresh, re-probe; INSERT into new bucket,
+--         refresh, re-probe.
+-- Scope: Iceberg partition transform = truncate(long_col, W) (M2-3).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (
+  order_id int,
+  amount bigint,
+  dt date
+) PARTITION BY truncate(amount, 1000);
+INSERT INTO t1 VALUES
+  (1, 100, '2024-01-01'),
+  (2, 500, '2024-01-02'),
+  (3, 1500, '2024-01-01'),
+  (4, 2500, '2024-01-02'),
+  (5, 2800, '2024-01-03');
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, count(*) as cnt, sum(amount) as sa
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+SELECT dt, cnt, sa FROM test_mv1 ORDER BY dt;
+function: print_hit_materialized_view("SELECT dt, count(*), sum(amount) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Insert into existing truncated bucket (amount 200 -> bucket 0, same as 100/500)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (6, 200, '2024-01-01');
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, cnt, sa FROM test_mv1 ORDER BY dt;
+
+-- Insert into new truncated bucket (amount 5000 -> bucket 5)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (7, 5000, '2024-01-04');
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, cnt, sa FROM test_mv1 ORDER BY dt;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
