@@ -1,0 +1,84 @@
+-- name: test_mv_iceberg_cascade_inactive_dependent_mvs @slow
+-- Test Point: MANUAL ALTER MV1 INACTIVE (where MV1 is on an Iceberg base
+--             and MV2 is built on MV1) cascades MV2 to inactive.
+--             Re-activating MV2 while MV1 is still inactive fails; after
+--             MV1 is re-activated, MV2 can be re-activated manually.
+-- Method: build MV1 on Iceberg; build MV2 on MV1; refresh both; INACTIVE
+--         MV1; assert MV2 cascades; try ACTIVE MV2 (expect fail); ACTIVE
+--         MV1; ACTIVE MV2; verify refresh + query.
+-- Scope: Cascade inactive for MV-on-MV over Iceberg (M9-4).
+
+admin set frontend config('enable_mv_automatic_active_check'='false');
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- MV1 on Iceberg
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- MV2 on MV1
+CREATE MATERIALIZED VIEW test_mv2
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(sv) as ssv FROM test_mv1 GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
+
+-- Baseline: both active
+SELECT table_name, IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_schema = 'db_${uuid0}' ORDER BY table_name;
+
+-- INACTIVE MV1 manually
+ALTER MATERIALIZED VIEW test_mv1 INACTIVE;
+select sleep(2);
+
+-- MV2 should cascade to inactive
+SELECT table_name, IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_schema = 'db_${uuid0}' ORDER BY table_name;
+SELECT table_name, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_schema = 'db_${uuid0}' ORDER BY table_name;
+
+-- ACTIVE MV2 while MV1 inactive: should fail
+[UC]ALTER MATERIALIZED VIEW test_mv2 ACTIVE;
+SELECT table_name, IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_schema = 'db_${uuid0}' ORDER BY table_name;
+
+-- ACTIVE MV1, then ACTIVE MV2
+ALTER MATERIALIZED VIEW test_mv1 ACTIVE;
+SELECT table_name, IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_schema = 'db_${uuid0}' ORDER BY table_name;
+
+ALTER MATERIALIZED VIEW test_mv2 ACTIVE;
+SELECT table_name, IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_schema = 'db_${uuid0}' ORDER BY table_name;
+
+-- Refresh + query still work
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
+SELECT dt, ssv FROM test_mv2 ORDER BY dt;
+
+-- Cleanup
+drop materialized view test_mv2;
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+
+admin set frontend config('enable_mv_automatic_active_check'='true');
