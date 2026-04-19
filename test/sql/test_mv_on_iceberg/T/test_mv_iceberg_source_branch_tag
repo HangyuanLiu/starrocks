@@ -1,0 +1,68 @@
+-- name: test_mv_iceberg_source_branch_tag @slow
+-- Test Point: Iceberg base branch operations (create branch, insert to
+--             branch, fast_forward) interact with MV binding to main:
+--             MV refreshes from main only, branch-specific queries may or
+--             may not rewrite, fast_forward makes branch data visible.
+-- Method: create base + MV, refresh baseline; create branch b1; insert
+--         only to b1; query base vs query b1; fast_forward main -> b1;
+--         refresh MV; verify.
+-- Scope: Iceberg branch + MV interaction (M5-4).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Create branch b1 (forks from current main snapshot)
+[UC]alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 create branch b1;
+
+-- Insert data to b1 only
+[UC]insert into mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 version as of b1 select 3, '2024-01-03', 30;
+
+-- Base on main is unchanged
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+
+-- Base on b1 sees the new row
+[UC]SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 version as of 'b1' GROUP BY dt ORDER BY dt;
+
+-- MV still has only main data
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Rewrite probe against branch — lock behavior (hit or miss)
+[UC]function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 version as of 'b1' GROUP BY dt", "test_mv1")
+
+-- fast_forward main to b1
+[UC]alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 execute fast_forward('main', 'b1');
+select sleep(2);
+refresh external table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+
+-- Now main sees the row
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+
+-- Refresh MV
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
