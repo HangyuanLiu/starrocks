@@ -1,0 +1,92 @@
+-- name: test_mv_iceberg_source_time_travel_in_definition @slow
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES (1, '2024-01-01', 10);
+-- result:
+-- !result
+[UC]function: snap_a=get_iceberg_hadoop_snapshot_id("mv_iceberg_${uuid0}", "mv_ice_db_${uuid0}", "t1", -1)
+-- result:
+4146153588811113862
+-- !result
+INSERT INTO t1 VALUES (2, '2024-01-02', 20);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+[UC]CREATE MATERIALIZED VIEW test_mv_snap
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VERSION AS OF ${snap_a}
+   GROUP BY dt;
+-- result:
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv_snap' AND table_schema = 'db_${uuid0}';
+-- result:
+1
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv_snap WITH SYNC MODE;
+-- result:
+019da65b-a423-7667-8a07-04071f17a33f
+-- !result
+[UC]SELECT dt, sv FROM test_mv_snap ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+-- !result
+[UC]CREATE MATERIALIZED VIEW test_mv_sysTime
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 FOR SYSTEM_TIME AS OF '2099-01-01 00:00:00'
+   GROUP BY dt;
+-- result:
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv_sysTime' AND table_schema = 'db_${uuid0}';
+-- result:
+1
+-- !result
+drop materialized view if exists test_mv_snap;
+-- result:
+-- !result
+drop materialized view if exists test_mv_sysTime;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

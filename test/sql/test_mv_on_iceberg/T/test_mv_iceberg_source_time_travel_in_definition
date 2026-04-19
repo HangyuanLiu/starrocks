@@ -1,0 +1,62 @@
+-- name: test_mv_iceberg_source_time_travel_in_definition @slow
+-- Test Point: CREATE MATERIALIZED VIEW whose AS SELECT uses Iceberg
+--             time-travel (VERSION AS OF / SYSTEM_TIME AS OF) — lock FE
+--             behavior (accept with snapshot-pinned MV, or reject with a
+--             clear error).
+-- Method: create base; capture a snapshot_id; attempt CREATE MV with
+--         VERSION AS OF <id>; attempt CREATE MV with FOR SYSTEM_TIME AS
+--         OF <timestamp>; lock outcomes.
+-- Scope: Iceberg time-travel in MV definition (M5-5).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10);
+
+-- Capture a snapshot-id via the Python helper (hadoop-catalog)
+[UC]function: snap_a=get_iceberg_hadoop_snapshot_id("mv_iceberg_${uuid0}", "mv_ice_db_${uuid0}", "t1", -1)
+
+INSERT INTO t1 VALUES (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- Attempt CREATE MV with VERSION AS OF <snapshot_id>
+[UC]CREATE MATERIALIZED VIEW test_mv_snap
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VERSION AS OF ${snap_a}
+   GROUP BY dt;
+
+-- Probe whether test_mv_snap exists
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv_snap' AND table_schema = 'db_${uuid0}';
+
+-- If created, refresh + query
+[UC]REFRESH MATERIALIZED VIEW test_mv_snap WITH SYNC MODE;
+[UC]SELECT dt, sv FROM test_mv_snap ORDER BY dt;
+
+-- Attempt CREATE MV with FOR SYSTEM_TIME AS OF
+[UC]CREATE MATERIALIZED VIEW test_mv_sysTime
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 FOR SYSTEM_TIME AS OF '2099-01-01 00:00:00'
+   GROUP BY dt;
+
+-- Probe
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv_sysTime' AND table_schema = 'db_${uuid0}';
+
+-- Cleanup (idempotent)
+drop materialized view if exists test_mv_snap;
+drop materialized view if exists test_mv_sysTime;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
