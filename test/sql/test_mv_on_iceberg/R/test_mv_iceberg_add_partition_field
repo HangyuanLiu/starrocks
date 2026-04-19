@@ -1,0 +1,107 @@
+-- name: test_mv_iceberg_add_partition_field
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  (1, '2024-01-03', 10),
+  (2, '2024-01-15', 20),
+  (3, '2024-02-05', 30);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY (date_trunc('month', dt))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+E: (1064, 'Getting analyzing error. Detail message: Materialized view partition column in partition exp must be base table partition column.')
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+E: (1064, 'Getting analyzing error at line 1, column 26. Detail message: Can not find materialized view:test_mv1.')
+-- !result
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- result:
+-- !result
+SELECT count(*) FROM test_mv1;
+-- result:
+[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table '.*\.test_mv1'\."\)
+-- !result
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- result:
+[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table '.*\.test_mv1'\."\)
+-- !result
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+-- result:
+False
+-- !result
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 add partition column month(dt);
+-- result:
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES
+  (4, '2024-03-10', 40),
+  (5, '2024-03-25', 50);
+-- result:
+-- !result
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+E: (1064, 'Getting analyzing error at line 1, column 26. Detail message: Can not find materialized view:test_mv1.')
+-- !result
+SELECT count(*) FROM test_mv1;
+-- result:
+[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table '.*\.test_mv1'\."\)
+-- !result
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- result:
+[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table '.*\.test_mv1'\."\)
+-- !result
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+-- result:
+False
+-- !result
+drop materialized view test_mv1;
+-- result:
+E: (1064, 'Materialized view test_mv1 is not found')
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
