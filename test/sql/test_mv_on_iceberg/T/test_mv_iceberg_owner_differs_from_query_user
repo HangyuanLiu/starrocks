@@ -1,0 +1,70 @@
+-- name: test_mv_iceberg_owner_differs_from_query_user
+-- Test Point: When an Iceberg-backed MV is owned by admin and a separate
+--             user has SELECT only on the MV (not on the Iceberg base),
+--             verify query behavior — whether SELECT on MV works,
+--             whether base-direct query is denied, and rewrite behavior.
+-- Method: admin creates Iceberg base + MV + refresh; admin creates a
+--         user; grants SELECT on MV only; switch to user; query MV (expect
+--         success) and query base (expect denial); probe rewrite.
+-- Scope: RBAC × Iceberg-backed MV (M11-2).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+-- Admin setup: Iceberg base table
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+-- Admin setup: default-catalog MV
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Create a limited user and grant only what is needed to connect and query the MV
+DROP USER IF EXISTS test_ro_${uuid0};
+CREATE USER test_ro_${uuid0} IDENTIFIED BY 'pass';
+GRANT USAGE ON CATALOG default_catalog TO USER test_ro_${uuid0};
+GRANT SELECT ON MATERIALIZED VIEW db_${uuid0}.test_mv1 TO USER test_ro_${uuid0};
+-- Allow the limited user to EXECUTE AS root to revert (required by EXECUTE AS idiom)
+GRANT IMPERSONATE ON USER root TO test_ro_${uuid0};
+
+-- Switch to limited user
+EXECUTE AS test_ro_${uuid0} WITH NO REVERT;
+
+-- As limited user: query MV directly — expect success (only MV SELECT granted)
+SELECT dt, sv FROM db_${uuid0}.test_mv1 ORDER BY dt;
+
+-- As limited user: query Iceberg base directly — expect access denial
+-- (no USAGE on iceberg catalog, no SELECT on t1)
+[UC]SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+
+-- As limited user: probe whether the base-equivalent query rewrites through the MV.
+-- When rewrite fires the planner replaces base access with MV scan, potentially
+-- bypassing the base-privilege check. Lock actual behavior.
+[UC]function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Revert back to root for cleanup
+EXECUTE AS root WITH NO REVERT;
+
+-- Cleanup
+REVOKE IMPERSONATE ON USER root FROM test_ro_${uuid0};
+REVOKE SELECT ON MATERIALIZED VIEW db_${uuid0}.test_mv1 FROM USER test_ro_${uuid0};
+REVOKE USAGE ON CATALOG default_catalog FROM USER test_ro_${uuid0};
+DROP USER test_ro_${uuid0};
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

@@ -1,0 +1,106 @@
+-- name: test_mv_iceberg_owner_differs_from_query_user
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da621-b931-772d-832f-1b73a481da92
+-- !result
+DROP USER IF EXISTS test_ro_${uuid0};
+-- result:
+-- !result
+CREATE USER test_ro_${uuid0} IDENTIFIED BY 'pass';
+-- result:
+-- !result
+GRANT USAGE ON CATALOG default_catalog TO USER test_ro_${uuid0};
+-- result:
+-- !result
+GRANT SELECT ON MATERIALIZED VIEW db_${uuid0}.test_mv1 TO USER test_ro_${uuid0};
+-- result:
+-- !result
+GRANT IMPERSONATE ON USER root TO test_ro_${uuid0};
+-- result:
+-- !result
+EXECUTE AS test_ro_${uuid0} WITH NO REVERT;
+-- result:
+-- !result
+SELECT dt, sv FROM db_${uuid0}.test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+-- !result
+[UC]SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt ORDER BY dt;
+-- result:
+E: (5203, 'Access denied; you need (at least one of) the SELECT privilege(s) on TABLE t1 for this operation. Please ask the admin to grant permission(s) or try activating existing roles using <set [default] role>. Current role(s): NONE. Inactivated role(s): NONE.')
+-- !result
+[UC]function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+-- result:
+False
+-- !result
+EXECUTE AS root WITH NO REVERT;
+-- result:
+-- !result
+REVOKE IMPERSONATE ON USER root FROM test_ro_${uuid0};
+-- result:
+-- !result
+REVOKE SELECT ON MATERIALIZED VIEW db_${uuid0}.test_mv1 FROM USER test_ro_${uuid0};
+-- result:
+-- !result
+REVOKE USAGE ON CATALOG default_catalog FROM USER test_ro_${uuid0};
+-- result:
+-- !result
+DROP USER test_ro_${uuid0};
+-- result:
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
