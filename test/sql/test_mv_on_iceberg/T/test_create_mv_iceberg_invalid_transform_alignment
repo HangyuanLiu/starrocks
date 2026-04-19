@@ -1,0 +1,49 @@
+-- name: test_create_mv_iceberg_invalid_transform_alignment
+-- Test Point: When the MV PARTITION BY is finer (date_trunc('day', dt)) than
+--             the Iceberg base transform (month(dt)), FE either rejects
+--             with a clear error or accepts with documented
+--             one-partition-per-day semantics. Lock current behavior.
+-- Method: build an Iceberg table partitioned by month(dt), attempt to CREATE
+--         a day-aligned MV, record the FE decision (accept or reject) as
+--         the stable expected behavior.
+-- Scope: Negative / semantics-lock — MV partition finer than base transform
+--        (M12-4).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (
+  id int,
+  dt date,
+  val int
+)
+PARTITION BY month(dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-03', 10),
+  (2, '2024-01-20', 20),
+  (3, '2024-02-10', 30);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- Finer alignment than base; FE may reject or accept
+[UC]CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY (date_trunc('day', dt))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+
+-- If the CREATE above succeeded, probe. [UC] on each so the case passes
+-- regardless of whether the objects exist.
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+[UC]SELECT count(*) FROM test_mv1;
+
+-- Cleanup (idempotent)
+drop materialized view if exists test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
