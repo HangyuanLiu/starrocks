@@ -1,0 +1,123 @@
+-- name: test_mv_iceberg_rewrite_union_all
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE orders_a (order_id int, dt date, amount bigint) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO orders_a VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+-- result:
+-- !result
+CREATE TABLE orders_b (order_id int, dt date, amount bigint) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO orders_b VALUES (3, '2024-01-01', 5), (4, '2024-01-02', 7);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW mv_union
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS
+  SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_a
+  UNION ALL
+  SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_b;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_union WITH SYNC MODE;
+-- result:
+019da67a-9a8b-7bd6-baab-9102ff4db094
+-- !result
+SELECT order_id, dt, amount FROM mv_union ORDER BY order_id;
+-- result:
+1	2024-01-01	10
+2	2024-01-02	20
+3	2024-01-01	5
+4	2024-01-02	7
+-- !result
+function: print_hit_materialized_view("SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_a UNION ALL SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_b", "mv_union")
+-- result:
+True
+-- !result
+function: print_hit_materialized_view("SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_b UNION ALL SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_a", "mv_union")
+-- result:
+False
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_a VALUES (5, '2024-01-03', 30);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_union WITH SYNC MODE;
+-- result:
+019da67a-acf8-7e29-9cac-8d2e1cb4546c
+-- !result
+SELECT order_id, dt, amount FROM mv_union ORDER BY order_id;
+-- result:
+1	2024-01-01	10
+2	2024-01-02	20
+3	2024-01-01	5
+4	2024-01-02	7
+5	2024-01-03	30
+-- !result
+function: print_hit_materialized_view("SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_a UNION ALL SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_b", "mv_union")
+-- result:
+True
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_b VALUES (6, '2024-01-03', 100);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW mv_union WITH SYNC MODE;
+-- result:
+019da67a-bc89-7bfc-b4e7-d8d2c9db4b84
+-- !result
+SELECT order_id, dt, amount FROM mv_union ORDER BY order_id;
+-- result:
+1	2024-01-01	10
+2	2024-01-02	20
+3	2024-01-01	5
+4	2024-01-02	7
+5	2024-01-03	30
+6	2024-01-03	100
+-- !result
+function: print_hit_materialized_view("SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_a UNION ALL SELECT order_id, dt, amount FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_b", "mv_union")
+-- result:
+True
+-- !result
+drop materialized view mv_union;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_a force;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.orders_b force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
