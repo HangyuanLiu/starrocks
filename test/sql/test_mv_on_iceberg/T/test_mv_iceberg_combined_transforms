@@ -1,0 +1,59 @@
+-- name: test_mv_iceberg_combined_transforms
+-- Test Point: Iceberg base partitioned by two transforms (month(dt) +
+--             bucket(id, 16)) can be materialized by an MV aligned on only
+--             one dimension (date_trunc('month', dt)) without loss of
+--             correctness.
+-- Method: build an Iceberg table with two partition fields, create a
+--         month-aligned MV, assert refresh + rewrite + incremental propagation
+--         when inserting rows hitting different (month, bucket) combinations.
+-- Scope: Iceberg partition transform = month + bucket combined (M2-7).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (
+  id int,
+  dt date,
+  val int
+)
+PARTITION BY month(dt), bucket(id, 16);
+INSERT INTO t1 VALUES
+  (1, '2024-01-03', 10),
+  (2, '2024-01-15', 20),
+  (3, '2024-02-05', 30),
+  (4, '2024-02-28', 40),
+  (5, '2024-03-10', 50);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY (date_trunc('month', dt))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+SELECT count(*) FROM test_mv1;
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- Partial refresh restricted to one month (LIST syntax required for LIST-partitioned MV)
+[UC]REFRESH MATERIALIZED VIEW test_mv1
+  PARTITION (('2024-02-01'))
+  WITH SYNC MODE;
+SELECT id, dt, val FROM test_mv1 WHERE dt >= '2024-02-01' AND dt < '2024-03-01' ORDER BY id;
+
+-- Insert hitting a new (month, bucket) combination
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (6, '2024-03-25', 60);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

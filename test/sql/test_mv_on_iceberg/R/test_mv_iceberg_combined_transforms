@@ -1,0 +1,111 @@
+-- name: test_mv_iceberg_combined_transforms
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (
+  id int,
+  dt date,
+  val int
+)
+PARTITION BY month(dt), bucket(id, 16);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  (1, '2024-01-03', 10),
+  (2, '2024-01-15', 20),
+  (3, '2024-02-05', 30),
+  (4, '2024-02-28', 40),
+  (5, '2024-03-10', 50);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY (date_trunc('month', dt))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da54b-5c1a-7b80-acd1-0d5143204315
+-- !result
+SELECT count(*) FROM test_mv1;
+-- result:
+5
+-- !result
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- result:
+1	2024-01-03	10
+2	2024-01-15	20
+3	2024-02-05	30
+4	2024-02-28	40
+5	2024-03-10	50
+-- !result
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+-- result:
+True
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1
+  PARTITION (('2024-02-01'))
+  WITH SYNC MODE;
+-- result:
+019da54b-683c-74c3-ace0-be416fa5ba42
+-- !result
+SELECT id, dt, val FROM test_mv1 WHERE dt >= '2024-02-01' AND dt < '2024-03-01' ORDER BY id;
+-- result:
+3	2024-02-05	30
+4	2024-02-28	40
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (6, '2024-03-25', 60);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da54b-6c60-773d-8332-cbbae000827b
+-- !result
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- result:
+1	2024-01-03	10
+2	2024-01-15	20
+3	2024-02-05	30
+4	2024-02-28	40
+5	2024-03-10	50
+6	2024-03-25	60
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
