@@ -1,0 +1,60 @@
+-- name: test_mv_iceberg_bucket_transform
+-- Test Point: Iceberg base with bucket(N, col) partition transform can be
+--             materialized by a non-partitioned aggregation MV, and partial
+--             base insert reflects after MV refresh.
+-- Method: build an Iceberg table partitioned by bucket(4, region), create a
+--         non-partitioned aggregation MV grouped by region, assert refresh +
+--         rewrite + incremental insert propagation into both new and existing
+--         buckets.
+-- Scope: Iceberg partition transform = bucket (M2-1).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (
+  region string,
+  dt date,
+  pv bigint
+)
+PARTITION BY bucket(4, region);
+INSERT INTO t1 VALUES
+  ('cn', '2024-01-01', 10),
+  ('cn', '2024-01-02', 20),
+  ('us', '2024-01-01', 5),
+  ('us', '2024-01-02', 7),
+  ('jp', '2024-01-01', 3),
+  ('de', '2024-01-02', 4);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT region, sum(pv) as total_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY region;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+function: print_hit_materialized_view("SELECT region, sum(pv) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY region", "test_mv1")
+
+-- Incremental insert into a new bucket target (new region)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('fr', '2024-01-03', 100);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+
+-- Update into existing region (same bucket)
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('cn', '2024-01-03', 50);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT region, total_pv FROM test_mv1 ORDER BY region;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
