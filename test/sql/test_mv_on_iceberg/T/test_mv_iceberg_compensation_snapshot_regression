@@ -1,0 +1,75 @@
+-- name: test_mv_iceberg_compensation_snapshot_regression @slow
+-- Test Point: When the Iceberg base is rolled back to an EARLIER snapshot
+--             AFTER the MV has been refreshed from a later snapshot, the
+--             MV is "ahead" of the base. Lock FE behavior around rewrite,
+--             transparent union, and refresh recovery.
+-- Method: create base; insert initial data; capture snapshot_id_A via
+--         filesystem; refresh MV; insert more data; refresh MV again (now
+--         at snapshot B); rollback base to A; probe MV direct SELECT, base
+--         SELECT (with union rewrite), and a fresh refresh.
+-- Scope: Iceberg snapshot regression × MV compensation (M7-3).
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+-- Capture snapshot_id at state A from filesystem metadata (hadoop catalog
+-- does not expose $snapshots; read via helper that parses v1.metadata.json).
+[UC]function: snap_a=get_iceberg_hadoop_snapshot_id("mv_iceberg_${uuid0}", "mv_ice_db_${uuid0}", "t1", 0)
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Base moves forward to snapshot B
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Rollback base to A (MV now ahead of base)
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 execute rollback_to_snapshot(snapshot_id=${snap_a});
+select sleep(2);
+
+-- Refresh external meta so FE sees the rolled-back state
+refresh external table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+
+-- State probes
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- Direct MV select: still shows 3 dates (MV is ahead of base)
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Base direct select: now only 2 dates (rolled back)
+SELECT dt, sum(val) as sv
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+  GROUP BY dt ORDER BY dt;
+
+-- Rewrite probe: query going through base — what does FE serve?
+set enable_materialized_view_transparent_union_rewrite=true;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- Refresh recovery: does FE converge MV to current base snapshot?
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

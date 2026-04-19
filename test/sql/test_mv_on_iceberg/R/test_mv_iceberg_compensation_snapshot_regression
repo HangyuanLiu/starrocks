@@ -1,0 +1,126 @@
+-- name: test_mv_iceberg_compensation_snapshot_regression @slow
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+-- result:
+-- !result
+[UC]function: snap_a=get_iceberg_hadoop_snapshot_id("mv_iceberg_${uuid0}", "mv_ice_db_${uuid0}", "t1", 0)
+-- result:
+8364988134573768600
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da601-f809-72bc-a32b-1061aa66f022
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da602-044f-785a-a893-eb8e83d9508e
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-01-03	30
+-- !result
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 execute rollback_to_snapshot(snapshot_id=${snap_a});
+-- result:
+-- !result
+select sleep(2);
+-- result:
+1
+-- !result
+refresh external table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+-- !result
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- result:
+true
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+2024-01-03	30
+-- !result
+SELECT dt, sum(val) as sv
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+  GROUP BY dt ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+-- !result
+set enable_materialized_view_transparent_union_rewrite=true;
+-- result:
+-- !result
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+-- result:
+True
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da602-1c57-7ec1-a72a-765d43f4798e
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+2024-01-02	20
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

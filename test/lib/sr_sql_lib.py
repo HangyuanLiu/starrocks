@@ -705,6 +705,48 @@ class StarrocksSQLApiLib(object):
         res = self.execute_sql(sql)
         tools.assert_true(res["status"], "create hadoop iceberg catalog failed: %s" % res.get("msg"))
 
+    def get_iceberg_hadoop_snapshot_id(self, catalog_name, db_name, table_name, snapshot_ordinal=-1):
+        """
+        Read a snapshot-id from an Iceberg hadoop-catalog table's filesystem metadata.
+        Useful when the BE does not expose the $snapshots metadata table.
+
+        Collects all snapshot-ids that appear across every v*.metadata.json
+        file in the table's metadata directory, de-duplicates them, and
+        returns the one at position ``snapshot_ordinal`` in chronological
+        (first-seen) order.
+
+        Args:
+            catalog_name:      fully-resolved catalog name (uuid already expanded).
+            db_name:           fully-resolved database name inside the catalog.
+            table_name:        table name.
+            snapshot_ordinal:  position in the ordered list of all distinct
+                               snapshot-ids seen across metadata files.
+                               0 = oldest, -1 = newest (default).
+
+        Returns the snapshot-id as a plain integer string suitable for direct
+        SQL embedding (e.g. '5630276321789949263'), or '' if none found.
+        """
+        import glob as _glob
+        warehouse = "%s/sql_test/%s" % (self.iceberg_local_warehouse_root, catalog_name)
+        meta_dir = os.path.join(warehouse, db_name, table_name, "metadata")
+        files = sorted(_glob.glob(os.path.join(meta_dir, "v*.metadata.json")))
+        seen = []
+        seen_set = set()
+        for fpath in files:
+            try:
+                with open(fpath) as fh:
+                    data = json.load(fh)
+            except Exception:
+                continue
+            for snap in data.get("snapshots", []):
+                sid = snap["snapshot-id"]
+                if sid not in seen_set:
+                    seen_set.add(sid)
+                    seen.append(sid)
+        if not seen:
+            return ""
+        return str(seen[snapshot_ordinal])
+
     def create_database_and_table(self, catalog_name, database_name, table_name, table_sql_path=None,
                                   tolerate_exist=False):
         """
