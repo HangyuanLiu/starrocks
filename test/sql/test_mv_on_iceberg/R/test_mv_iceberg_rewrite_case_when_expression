@@ -1,0 +1,113 @@
+-- name: test_mv_iceberg_rewrite_case_when_expression
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, amount int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 5),
+  (2, '2024-01-01', 50),
+  (3, '2024-01-01', 500),
+  (4, '2024-01-02', 15),
+  (5, '2024-01-02', 150);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt,
+          CASE WHEN amount < 10 THEN 'small'
+               WHEN amount < 100 THEN 'medium'
+               ELSE 'large' END as bucket,
+          sum(amount) as s_amount,
+          count(*) as cnt
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt,
+            CASE WHEN amount < 10 THEN 'small'
+                 WHEN amount < 100 THEN 'medium'
+                 ELSE 'large' END;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da67d-8c78-7e27-96a2-09f02f851246
+-- !result
+SELECT dt, bucket, s_amount, cnt FROM test_mv1 ORDER BY dt, bucket;
+-- result:
+2024-01-01	large	500	1
+2024-01-01	medium	50	1
+2024-01-01	small	5	1
+2024-01-02	large	150	1
+2024-01-02	medium	15	1
+-- !result
+function: print_hit_materialized_view("SELECT dt, CASE WHEN amount < 10 THEN 'small' WHEN amount < 100 THEN 'medium' ELSE 'large' END, sum(amount), count(*) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, CASE WHEN amount < 10 THEN 'small' WHEN amount < 100 THEN 'medium' ELSE 'large' END", "test_mv1")
+-- result:
+True
+-- !result
+function: print_hit_materialized_view("SELECT dt, IF(amount < 10, 'small', IF(amount < 100, 'medium', 'large')), sum(amount), count(*) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, IF(amount < 10, 'small', IF(amount < 100, 'medium', 'large'))", "test_mv1")
+-- result:
+False
+-- !result
+function: print_hit_materialized_view("SELECT dt, CASE WHEN amount < 10 THEN 'small' WHEN amount < 100 THEN 'medium' ELSE 'large' END as b, sum(amount) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, CASE WHEN amount < 10 THEN 'small' WHEN amount < 100 THEN 'medium' ELSE 'large' END HAVING b = 'medium'", "test_mv1")
+-- result:
+False
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (6, '2024-01-03', 9999);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da67d-a830-7a3c-abb4-b0f659998d4a
+-- !result
+SELECT dt, bucket, s_amount, cnt FROM test_mv1 ORDER BY dt, bucket;
+-- result:
+2024-01-01	large	500	1
+2024-01-01	medium	50	1
+2024-01-01	small	5	1
+2024-01-02	large	150	1
+2024-01-02	medium	15	1
+2024-01-03	large	9999	1
+-- !result
+function: print_hit_materialized_view("SELECT dt, CASE WHEN amount < 10 THEN 'small' WHEN amount < 100 THEN 'medium' ELSE 'large' END, sum(amount), count(*) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, CASE WHEN amount < 10 THEN 'small' WHEN amount < 100 THEN 'medium' ELSE 'large' END", "test_mv1")
+-- result:
+True
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
