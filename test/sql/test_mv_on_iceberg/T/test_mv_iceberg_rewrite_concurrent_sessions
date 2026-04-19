@@ -1,0 +1,73 @@
+-- name: test_mv_iceberg_rewrite_concurrent_sessions
+-- Test Point: Repeated rewrite of the same Iceberg-backed MV query, and
+--             interleaved rewrite of variant queries in one session, must
+--             produce stable hit/miss results and identical data — guarding
+--             against rewrite context state-corruption (class of #69063).
+-- Method: create MV; issue the same aggregate query 5x; interleave 3
+--         variant queries (different predicates / projections); re-issue
+--         original; assert print_hit is True on every iteration and data
+--         results are stable across repeats.
+-- Scope: Rewrite repeatability / context stability (M8-10, scope-reduced).
+-- Note: True concurrent-session coverage is deferred (framework gap, PF-5).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, region string, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 'cn', 10),
+  (2, '2024-01-02', 'cn', 20),
+  (3, '2024-01-01', 'us', 5),
+  (4, '2024-01-02', 'us', 7);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline
+SELECT dt, region, sv FROM test_mv1 ORDER BY dt, region;
+
+-- Repeat the same query 5 times — rewrite must hit every time with
+-- identical output, regardless of order
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region", "test_mv1")
+SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region ORDER BY dt, region;
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region", "test_mv1")
+SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region ORDER BY dt, region;
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region", "test_mv1")
+SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region ORDER BY dt, region;
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region", "test_mv1")
+SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region ORDER BY dt, region;
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region", "test_mv1")
+
+-- Variant 1: restrict region
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE region='cn' GROUP BY dt", "test_mv1")
+SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE region='cn' GROUP BY dt ORDER BY dt;
+
+-- Variant 2: restrict dt
+function: print_hit_materialized_view("SELECT region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE dt='2024-01-01' GROUP BY region", "test_mv1")
+SELECT region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE dt='2024-01-01' GROUP BY region ORDER BY region;
+
+-- Variant 3: aggregation change (count)
+function: print_hit_materialized_view("SELECT dt, region, count(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region", "test_mv1")
+SELECT dt, region, count(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region ORDER BY dt, region;
+
+-- Re-issue original after variants — must still hit
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region", "test_mv1")
+SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt, region ORDER BY dt, region;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
