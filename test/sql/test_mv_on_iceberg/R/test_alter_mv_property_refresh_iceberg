@@ -1,0 +1,101 @@
+-- name: test_alter_mv_property_refresh_iceberg
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH ASYNC EVERY(INTERVAL 1 DAY)
+PROPERTIES (
+  "replication_num" = "1",
+  "query_rewrite_consistency" = "loose"
+)
+AS SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da52e-cb83-7390-b9e1-0a394f0abdb9
+-- !result
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+-- result:
+[REGEX][\s\S]*REFRESH ASYNC EVERY\(INTERVAL 1 DAY\)[\s\S]*"query_rewrite_consistency" = "LOOSE"[\s\S]*
+-- !result
+ALTER MATERIALIZED VIEW test_mv1 SET (
+  "excluded_trigger_tables" = "mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1"
+);
+-- result:
+-- !result
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+-- result:
+[REGEX][\s\S]*"query_rewrite_consistency" = "LOOSE"[\s\S]*"excluded_trigger_tables" = "mv_iceberg_[\w]+\.mv_ice_db_[\w]+\.t1"[\s\S]*
+-- !result
+ALTER MATERIALIZED VIEW test_mv1 SET ("query_rewrite_consistency" = "checked");
+-- result:
+-- !result
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+-- result:
+[REGEX][\s\S]*"query_rewrite_consistency" = "CHECKED"[\s\S]*"excluded_trigger_tables" = "mv_iceberg_[\w]+\.mv_ice_db_[\w]+\.t1"[\s\S]*
+-- !result
+ALTER MATERIALIZED VIEW test_mv1 SET ("auto_refresh_partitions_limit" = "3");
+-- result:
+-- !result
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+-- result:
+[REGEX][\s\S]*"auto_refresh_partitions_limit" = "3"[\s\S]*"query_rewrite_consistency" = "CHECKED"[\s\S]*"excluded_trigger_tables" = "mv_iceberg_[\w]+\.mv_ice_db_[\w]+\.t1"[\s\S]*
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da52e-d38f-7d69-bc03-256c0eedc094
+-- !result
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+-- result:
+1	2024-01-01	10
+2	2024-01-02	20
+3	2024-01-03	30
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
