@@ -1,0 +1,80 @@
+-- name: test_mv_iceberg_inactive_on_catalog_drop @slow
+-- Test Point: DROP CATALOG on the Iceberg catalog backing an MV — lock
+--             IS_ACTIVE / INACTIVE_REASON propagation, refresh failure
+--             path, and recreate-catalog recovery.
+-- Method: create MV over Iceberg base; DROP CATALOG; probe IS_ACTIVE;
+--         attempt refresh; recreate catalog+db+table; ALTER ACTIVE.
+-- Scope: Iceberg catalog DROP under MV (M9-3).
+
+admin set frontend config('enable_mv_automatic_active_check'='false');
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- DROP the catalog (must drop table+db first, then catalog)
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+select sleep(2);
+
+-- Lock IS_ACTIVE + INACTIVE_REASON post-drop
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+SELECT INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- Query MV with catalog gone (likely stale or error)
+[UC]SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Refresh while catalog gone
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Recreate catalog + db + table with same schema
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+use db_${uuid0};
+
+-- Re-activate
+[UC]ALTER MATERIALIZED VIEW test_mv1 ACTIVE;
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Cleanup
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+
+admin set frontend config('enable_mv_automatic_active_check'='true');
