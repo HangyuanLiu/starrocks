@@ -1,0 +1,56 @@
+-- name: test_mv_iceberg_refresh_async_manual_trigger
+-- Test Point: Manual REFRESH ... WITH SYNC MODE against an MV with
+--             REFRESH ASYNC EVERY INTERVAL schedule properly triggers a
+--             task run, picks up new data, and does not disable the
+--             underlying async schedule.
+-- Method: create ASYNC-scheduled MV; run manual sync; verify row count;
+--         observe task_runs entry; INSERT more; manual sync again; verify
+--         updated rows; confirm task remains registered.
+-- Scope: Manual trigger interplay with ASYNC schedule on Iceberg (M6-2).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH ASYNC EVERY(INTERVAL 1 DAY)
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+
+-- Task registered
+SELECT count(*) FROM information_schema.tasks
+  WHERE `DATABASE` = 'db_${uuid0}' AND DEFINITION LIKE '%test_mv1%';
+
+-- Manual sync round 1
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Task runs history has an entry
+SELECT count(*) > 0 FROM information_schema.task_runs
+  WHERE `DATABASE` = 'db_${uuid0}' AND DEFINITION LIKE '%test_mv1%';
+
+-- INSERT + manual sync round 2
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (2, '2024-01-02', 20);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+
+-- Task still registered (manual refresh does not disable schedule)
+SELECT count(*) FROM information_schema.tasks
+  WHERE `DATABASE` = 'db_${uuid0}' AND DEFINITION LIKE '%test_mv1%';
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
