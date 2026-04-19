@@ -1,0 +1,74 @@
+-- name: test_mv_iceberg_property_transparent_rewrite
+-- Test Point: MV property transparent_mv_rewrite_mode (FALSE / TRUE /
+--             TRANSPARENT_OR_ERROR / TRANSPARENT_OR_DEFAULT) can be set at
+--             CREATE time and flipped via ALTER on an Iceberg-backed MV;
+--             each value persists in SHOW CREATE MV and the MV still hits
+--             for the base-table query after each flip.
+-- Method: create MV with explicit FALSE (default), verify rewrite hits;
+--         ALTER to each of the three enabled values in sequence; SHOW CREATE
+--         MV after each ALTER to confirm persistence; probe print_hit after
+--         each; test an invalid value to confirm error; restore to FALSE.
+-- Scope: MV property transparent_mv_rewrite_mode enum lock (M10-5).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 10),
+  (2, '2024-01-02', 20),
+  (3, '2024-01-03', 30);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- Create MV with explicit transparent_mv_rewrite_mode = false (default)
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES (
+  "replication_num" = "1",
+  "transparent_mv_rewrite_mode" = "false"
+)
+AS SELECT id, dt, val
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline: property shows FALSE in DDL; rewrite hits
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- Set TRUE: transparent union rewrite enabled
+ALTER MATERIALIZED VIEW test_mv1 SET ("transparent_mv_rewrite_mode" = "true");
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- Set TRANSPARENT_OR_ERROR: transparent rewrite; error on failure
+ALTER MATERIALIZED VIEW test_mv1 SET ("transparent_mv_rewrite_mode" = "transparent_or_error");
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- Set TRANSPARENT_OR_DEFAULT: transparent rewrite; fall back to MV on failure
+ALTER MATERIALIZED VIEW test_mv1 SET ("transparent_mv_rewrite_mode" = "transparent_or_default");
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- Restore to FALSE
+ALTER MATERIALIZED VIEW test_mv1 SET ("transparent_mv_rewrite_mode" = "false");
+SHOW CREATE MATERIALIZED VIEW test_mv1;
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- Invalid value must be rejected with a SemanticException
+ALTER MATERIALIZED VIEW test_mv1 SET ("transparent_mv_rewrite_mode" = "invalid_value");
+
+-- Data correctness is independent of the mode setting
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
