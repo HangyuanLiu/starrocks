@@ -1,0 +1,66 @@
+-- name: test_mv_iceberg_query_rewrite_level_matrix
+-- Test Point: Matrix of MV property query_rewrite_consistency × session
+--             var enable_materialized_view_rewrite — lock hit/miss for
+--             each combination on an Iceberg-backed MV.
+-- Method: create MV with default consistency=LOOSE; for each (consistency
+--         in {DISABLE, LOOSE, CHECKED}) × (session var in {true, false}),
+--         probe rewrite hit.
+-- Scope: Rewrite-control matrix on Iceberg MV (M10-4).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES (
+  "replication_num" = "1",
+  "query_rewrite_consistency" = "LOOSE"
+)
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- LOOSE × enable_mv_rewrite=true
+set enable_materialized_view_rewrite=true;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- LOOSE × enable_mv_rewrite=false
+set enable_materialized_view_rewrite=false;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- CHECKED × enable_mv_rewrite=true
+ALTER MATERIALIZED VIEW test_mv1 SET ("query_rewrite_consistency" = "CHECKED");
+set enable_materialized_view_rewrite=true;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- CHECKED × enable_mv_rewrite=false
+set enable_materialized_view_rewrite=false;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- DISABLE × enable_mv_rewrite=true
+ALTER MATERIALIZED VIEW test_mv1 SET ("query_rewrite_consistency" = "DISABLE");
+set enable_materialized_view_rewrite=true;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+-- DISABLE × enable_mv_rewrite=false
+set enable_materialized_view_rewrite=false;
+function: print_hit_materialized_view("SELECT dt, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 GROUP BY dt", "test_mv1")
+
+set enable_materialized_view_rewrite=true;
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
