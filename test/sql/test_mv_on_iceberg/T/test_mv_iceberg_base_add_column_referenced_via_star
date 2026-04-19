@@ -1,0 +1,61 @@
+-- name: test_mv_iceberg_base_add_column_referenced_via_star
+-- Test Point: MV defined via SELECT * freezes its schema at CREATE time;
+--             a subsequent ADD COLUMN on the Iceberg base does not add a
+--             column to the MV. Lock current FE behavior around IS_ACTIVE
+--             and rewrite after this kind of schema change.
+-- Method: create MV via SELECT *; DESC baseline; ALTER base ADD COLUMN;
+--         DESC MV again; verify MV schema unchanged; refresh; query MV
+--         and base; probe IS_ACTIVE and rewrite hit.
+-- Scope: Iceberg base ADD COLUMN × SELECT * MV (M4-2).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES (1, '2024-01-01', 10), (2, '2024-01-02', 20);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT * FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline: MV schema = (id, dt, val)
+DESC test_mv1;
+SELECT id, dt, val FROM test_mv1 ORDER BY id;
+function: print_hit_materialized_view("SELECT * FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+-- ADD COLUMN on base
+alter table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 add column extra string;
+
+-- Lock IS_ACTIVE outcome after ADD COLUMN
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+
+-- MV schema should remain (id, dt, val) — ADD COLUMN does not propagate
+DESC test_mv1;
+
+-- INSERT a new row with the extra column, then try refresh.
+-- [UC] because FE may reject the refresh if MV was inactivated.
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (3, '2024-01-03', 30, 'x');
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Lock query outcomes: MV sees original columns only; base sees all
+[UC]SELECT id, dt, val FROM test_mv1 ORDER BY id;
+SELECT id, dt, val, extra FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id;
+
+-- Lock rewrite behavior after schema change
+function: print_hit_materialized_view("SELECT id, dt, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 ORDER BY id", "test_mv1")
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
