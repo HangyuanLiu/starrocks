@@ -1,0 +1,93 @@
+-- name: test_alter_mv_swap_iceberg
+-- Test Point: ALTER MATERIALIZED VIEW ... SWAP WITH two Iceberg-backed MVs
+--             keeps each MV queryable, flips their definitions, and triggers
+--             inactive-cascade on downstream MV-on-MV.
+-- Method: build one Iceberg base, create two MVs with different aggregations,
+--         SWAP them, verify schema/data swap, then verify a downstream
+--         MV-on-MV goes inactive and can be re-activated.
+-- Scope: ALTER MV SWAP lifecycle for Iceberg-backed MVs (M1-1).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+-- 1. Iceberg base
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (
+  region string,
+  dt date,
+  pv bigint
+)
+PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  ('cn', '2024-01-01', 10),
+  ('cn', '2024-01-02', 20),
+  ('us', '2024-01-01', 5),
+  ('us', '2024-01-02', 7);
+
+-- 2. Two MVs
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, sum(pv) as total_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+CREATE MATERIALIZED VIEW test_mv2
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, count(pv) as cnt_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
+
+-- 3. Baseline: each MV holds its own aggregation
+SELECT dt, region, total_pv FROM test_mv1 ORDER BY dt, region;
+SELECT dt, region, cnt_pv FROM test_mv2 ORDER BY dt, region;
+
+-- 4. SWAP
+ALTER MATERIALIZED VIEW test_mv1 SWAP WITH test_mv2;
+
+-- 5. After SWAP: names kept, definitions flipped
+SELECT dt, region, cnt_pv FROM test_mv1 ORDER BY dt, region;
+SELECT dt, region, total_pv FROM test_mv2 ORDER BY dt, region;
+DESC test_mv1;
+DESC test_mv2;
+
+-- 6. Refresh both still works after SWAP
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('cn', '2024-01-03', 30);
+REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
+SELECT dt, region, cnt_pv FROM test_mv1 ORDER BY dt, region;
+SELECT dt, region, total_pv FROM test_mv2 ORDER BY dt, region;
+
+-- 7. Downstream MV-on-MV should cascade inactive on SWAP
+CREATE MATERIALIZED VIEW test_mv3
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(cnt_pv) as sum_cnt FROM test_mv1 GROUP BY dt;
+REFRESH MATERIALIZED VIEW test_mv3 WITH SYNC MODE;
+
+ALTER MATERIALIZED VIEW test_mv1 SWAP WITH test_mv2;
+select sleep(3);
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv3' AND table_schema = 'db_${uuid0}';
+ALTER MATERIALIZED VIEW test_mv3 ACTIVE;
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv3' AND table_schema = 'db_${uuid0}';
+
+-- cleanup
+drop materialized view test_mv3;
+drop materialized view test_mv1;
+drop materialized view test_mv2;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

@@ -1,0 +1,189 @@
+-- name: test_alter_mv_swap_iceberg
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (
+  region string,
+  dt date,
+  pv bigint
+)
+PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  ('cn', '2024-01-01', 10),
+  ('cn', '2024-01-02', 20),
+  ('us', '2024-01-01', 5),
+  ('us', '2024-01-02', 7);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, sum(pv) as total_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+-- result:
+-- !result
+REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+[REGEX].*-.*-.*
+-- !result
+CREATE MATERIALIZED VIEW test_mv2
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, region, count(pv) as cnt_pv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt, region;
+-- result:
+-- !result
+REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
+-- result:
+[REGEX].*-.*-.*
+-- !result
+SELECT dt, region, total_pv FROM test_mv1 ORDER BY dt, region;
+-- result:
+2024-01-01	cn	10
+2024-01-01	us	5
+2024-01-02	cn	20
+2024-01-02	us	7
+-- !result
+SELECT dt, region, cnt_pv FROM test_mv2 ORDER BY dt, region;
+-- result:
+2024-01-01	cn	1
+2024-01-01	us	1
+2024-01-02	cn	1
+2024-01-02	us	1
+-- !result
+ALTER MATERIALIZED VIEW test_mv1 SWAP WITH test_mv2;
+-- result:
+-- !result
+SELECT dt, region, cnt_pv FROM test_mv1 ORDER BY dt, region;
+-- result:
+2024-01-01	cn	1
+2024-01-01	us	1
+2024-01-02	cn	1
+2024-01-02	us	1
+-- !result
+SELECT dt, region, total_pv FROM test_mv2 ORDER BY dt, region;
+-- result:
+2024-01-01	cn	10
+2024-01-01	us	5
+2024-01-02	cn	20
+2024-01-02	us	7
+-- !result
+DESC test_mv1;
+-- result:
+dt	date	YES	true	None	
+region	varchar(1048576)	YES	true	None	
+cnt_pv	bigint	NO	false	None	NONE
+-- !result
+DESC test_mv2;
+-- result:
+dt	date	YES	true	None	
+region	varchar(1048576)	YES	true	None	
+total_pv	bigint	YES	false	None	NONE
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('cn', '2024-01-03', 30);
+-- result:
+-- !result
+REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+[REGEX].*-.*-.*
+-- !result
+REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
+-- result:
+[REGEX].*-.*-.*
+-- !result
+SELECT dt, region, cnt_pv FROM test_mv1 ORDER BY dt, region;
+-- result:
+2024-01-01	cn	1
+2024-01-01	us	1
+2024-01-02	cn	1
+2024-01-02	us	1
+2024-01-03	cn	1
+-- !result
+SELECT dt, region, total_pv FROM test_mv2 ORDER BY dt, region;
+-- result:
+2024-01-01	cn	10
+2024-01-01	us	5
+2024-01-02	cn	20
+2024-01-02	us	7
+2024-01-03	cn	30
+-- !result
+CREATE MATERIALIZED VIEW test_mv3
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(cnt_pv) as sum_cnt FROM test_mv1 GROUP BY dt;
+-- result:
+-- !result
+REFRESH MATERIALIZED VIEW test_mv3 WITH SYNC MODE;
+-- result:
+[REGEX].*-.*-.*
+-- !result
+ALTER MATERIALIZED VIEW test_mv1 SWAP WITH test_mv2;
+-- result:
+-- !result
+select sleep(3);
+-- result:
+1
+-- !result
+SELECT IS_ACTIVE, INACTIVE_REASON FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv3' AND table_schema = 'db_${uuid0}';
+-- result:
+false	base-table swapped: test_mv1
+-- !result
+ALTER MATERIALIZED VIEW test_mv3 ACTIVE;
+-- result:
+[REGEX]E:.*Can not active materialized view.*cnt_pv.*cannot be resolved.*
+-- !result
+SELECT IS_ACTIVE FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv3' AND table_schema = 'db_${uuid0}';
+-- result:
+false
+-- !result
+drop materialized view test_mv3;
+-- result:
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop materialized view test_mv2;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
