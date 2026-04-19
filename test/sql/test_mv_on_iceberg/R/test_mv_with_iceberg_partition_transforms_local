@@ -1,0 +1,165 @@
+-- name: test_mv_with_iceberg_partition_transform_local
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database sql_test_db_${uuid0};
+-- result:
+-- !result
+use sql_test_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE test_iceberg_with_month (
+  prcdate date,
+  kind string,
+  score double
+)
+PARTITION BY month(prcdate);
+-- result:
+-- !result
+INSERT INTO test_iceberg_with_month VALUES
+  ('2025-01-01', 'b', 1.0),
+  ('2025-01-02', 'b', 2.0),
+  ('2025-02-03', 'b', 3.0),
+  ('2025-03-03', 'b', 4.0),
+  ('2025-04-01', 'b', 5.0);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY (date_trunc('month', prcdate))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS
+  SELECT * FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_month;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 PARTITION (('2025-01-01'), ('2025-01-02'), ('2025-01-03')) WITH SYNC MODE;
+function: print_hit_materialized_view("SELECT prcdate, kind, score FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_month where prcdate < '2025-02-01' order by prcdate;", "test_mv1")
+-- result:
+True
+-- !result
+SELECT count(*) FROM test_mv1;
+-- result:
+2
+-- !result
+SELECT * FROM test_mv1 order by prcdate;
+-- result:
+2025-01-01	b	1.0
+2025-01-02	b	2.0
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+function: print_hit_materialized_view("SELECT prcdate, kind, score FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_month order by prcdate;", "test_mv1")
+-- result:
+True
+-- !result
+SELECT count(*) FROM test_mv1;
+-- result:
+5
+-- !result
+SELECT * FROM test_mv1 order by prcdate;
+-- result:
+2025-01-01	b	1.0
+2025-01-02	b	2.0
+2025-02-03	b	3.0
+2025-03-03	b	4.0
+2025-04-01	b	5.0
+-- !result
+drop database db_${uuid0} force;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_month;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.sql_test_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+
+-- name: test_mv_with_iceberg_transforms_local
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database sql_test_db_${uuid0};
+-- result:
+-- !result
+use sql_test_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE test_iceberg_with_year (
+  id int,
+  shipdate datetime
+)
+PARTITION BY year(shipdate);
+-- result:
+-- !result
+INSERT INTO test_iceberg_with_year VALUES
+  (1, '2024-11-12 00:00:00'),
+  (2, '2024-11-13 00:00:00'),
+  (3, '2025-01-14 00:00:00');
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_years
+PARTITION BY (date_trunc('year', shipdate))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS
+  SELECT * FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_year;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_years WITH SYNC MODE;
+function: print_hit_materialized_view("SELECT id, shipdate FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_year where shipdate >= '2025-01-01 00:00:00' order by id;", "test_years")
+-- result:
+True
+-- !result
+SELECT count(*) FROM test_years;
+-- result:
+3
+-- !result
+SELECT * FROM test_years order by id;
+-- result:
+1	2024-11-12 00:00:00
+2	2024-11-13 00:00:00
+3	2025-01-14 00:00:00
+-- !result
+DROP MATERIALIZED VIEW test_years;
+-- result:
+-- !result
+drop database db_${uuid0} force;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_year;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.sql_test_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

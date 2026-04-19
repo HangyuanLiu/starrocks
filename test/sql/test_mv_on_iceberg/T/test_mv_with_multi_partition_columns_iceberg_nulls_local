@@ -1,0 +1,48 @@
+-- name: test_mv_with_multi_partition_columns_iceberg_nulls_local
+-- Test Point: verify refresh and rewrite still work when a self-built iceberg table has null values in multi-column partitions.
+
+set new_planner_optimize_timeout=10000;
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+set catalog mv_iceberg_${uuid0};
+create database sql_test_db_${uuid0};
+use sql_test_db_${uuid0};
+
+CREATE TABLE test_null_partitions (
+  id bigint,
+  region string,
+  state string,
+  shipdate datetime
+)
+PARTITION BY region, state, day(shipdate);
+INSERT INTO test_null_partitions VALUES
+  (1, 'beijing', 'A', '2024-01-01 00:00:00'),
+  (2, 'guangdong', 'B', '2024-01-02 00:00:00'),
+  (3, NULL, 'B', '2024-01-02 00:00:00'),
+  (4, 'nanjing', NULL, NULL);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+
+CREATE MATERIALIZED VIEW test_mv_null_partitions
+PARTITION BY (region, state, date_trunc('day', shipdate))
+REFRESH DEFERRED MANUAL
+PROPERTIES (
+  "replication_num" = "1"
+)
+AS
+SELECT * FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_null_partitions;
+[UC]REFRESH MATERIALIZED VIEW test_mv_null_partitions WITH SYNC MODE;
+
+function: print_hit_materialized_view("SELECT id, region, state, shipdate FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_null_partitions where region is null order by id;", "test_mv_null_partitions")
+function: print_hit_materialized_view("SELECT id, region, state, shipdate FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_null_partitions where state is null order by id;", "test_mv_null_partitions")
+SELECT count(*) FROM test_mv_null_partitions;
+SELECT id, region, state, shipdate FROM test_mv_null_partitions where region is null order by id;
+SELECT id, region, state, shipdate FROM test_mv_null_partitions where state is null order by id;
+
+DROP MATERIALIZED VIEW test_mv_null_partitions;
+drop database db_${uuid0} force;
+drop table mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_null_partitions;
+drop database mv_iceberg_${uuid0}.sql_test_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

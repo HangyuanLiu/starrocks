@@ -1,0 +1,83 @@
+-- name: test_mv_with_iceberg_transform_force_mv_local
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database sql_test_db_${uuid0};
+-- result:
+-- !result
+use sql_test_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE test_iceberg_with_days (
+  id int,
+  region string,
+  state string,
+  shipdate datetime
+)
+PARTITION BY day(shipdate), region, state;
+-- result:
+-- !result
+INSERT INTO test_iceberg_with_days VALUES
+  (1, 'beijing', 'N', '2024-11-12 00:00:00'),
+  (2, 'guangdong', 'R', '2024-11-13 00:00:00'),
+  (3, 'shanghai', 'A', '2024-11-14 00:00:00');
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_days_force
+PARTITION BY (region, state, date_trunc('day', shipdate))
+REFRESH DEFERRED MANUAL
+PROPERTIES (
+  "replication_num" = "1",
+  "partition_retention_condition" = "date_trunc('day', shipdate) >= '2024-11-13' or date_trunc('day', shipdate) is null",
+  "query_rewrite_consistency" = "force_mv"
+)
+AS
+  SELECT * FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_days;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_days_force WITH SYNC MODE;
+function: print_hit_materialized_view("SELECT id, region, state, shipdate FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_days where shipdate >= '2024-11-13 00:00:00' order by id;", "test_days_force")
+-- result:
+True
+-- !result
+function: print_hit_materialized_view("SELECT id, region, state, shipdate FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_days where shipdate < '2024-11-13 00:00:00' order by id;", "test_days_force")
+-- result:
+True
+-- !result
+SELECT count(*) FROM test_days_force;
+-- result:
+2
+-- !result
+SELECT * FROM test_days_force order by id;
+-- result:
+2	guangdong	R	2024-11-13 00:00:00
+3	shanghai	A	2024-11-14 00:00:00
+-- !result
+DROP MATERIALIZED VIEW test_days_force;
+-- result:
+-- !result
+drop database db_${uuid0} force;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_days;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.sql_test_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

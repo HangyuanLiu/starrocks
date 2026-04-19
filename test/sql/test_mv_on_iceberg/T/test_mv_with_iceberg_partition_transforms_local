@@ -1,0 +1,86 @@
+-- name: test_mv_with_iceberg_partition_transform_local
+-- Test Point: verify partial and full refresh on a self-built month-transform iceberg table.
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+set catalog mv_iceberg_${uuid0};
+create database sql_test_db_${uuid0};
+use sql_test_db_${uuid0};
+
+CREATE TABLE test_iceberg_with_month (
+  prcdate date,
+  kind string,
+  score double
+)
+PARTITION BY month(prcdate);
+INSERT INTO test_iceberg_with_month VALUES
+  ('2025-01-01', 'b', 1.0),
+  ('2025-01-02', 'b', 2.0),
+  ('2025-02-03', 'b', 3.0),
+  ('2025-03-03', 'b', 4.0),
+  ('2025-04-01', 'b', 5.0);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY (date_trunc('month', prcdate))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS
+  SELECT * FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_month;
+
+[UC]REFRESH MATERIALIZED VIEW test_mv1 PARTITION (('2025-01-01'), ('2025-01-02'), ('2025-01-03')) WITH SYNC MODE;
+function: print_hit_materialized_view("SELECT prcdate, kind, score FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_month where prcdate < '2025-02-01' order by prcdate;", "test_mv1")
+SELECT count(*) FROM test_mv1;
+SELECT * FROM test_mv1 order by prcdate;
+
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+function: print_hit_materialized_view("SELECT prcdate, kind, score FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_month order by prcdate;", "test_mv1")
+SELECT count(*) FROM test_mv1;
+SELECT * FROM test_mv1 order by prcdate;
+
+drop database db_${uuid0} force;
+drop table mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_month;
+drop database mv_iceberg_${uuid0}.sql_test_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
+
+-- name: test_mv_with_iceberg_transforms_local
+-- Test Point: verify rewrite on a self-built year-transform iceberg table after mv refresh.
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+set catalog mv_iceberg_${uuid0};
+create database sql_test_db_${uuid0};
+use sql_test_db_${uuid0};
+
+CREATE TABLE test_iceberg_with_year (
+  id int,
+  shipdate datetime
+)
+PARTITION BY year(shipdate);
+INSERT INTO test_iceberg_with_year VALUES
+  (1, '2024-11-12 00:00:00'),
+  (2, '2024-11-13 00:00:00'),
+  (3, '2025-01-14 00:00:00');
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+
+CREATE MATERIALIZED VIEW test_years
+PARTITION BY (date_trunc('year', shipdate))
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS
+  SELECT * FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_year;
+[UC]REFRESH MATERIALIZED VIEW test_years WITH SYNC MODE;
+
+function: print_hit_materialized_view("SELECT id, shipdate FROM mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_year where shipdate >= '2025-01-01 00:00:00' order by id;", "test_years")
+SELECT count(*) FROM test_years;
+SELECT * FROM test_years order by id;
+
+DROP MATERIALIZED VIEW test_years;
+drop database db_${uuid0} force;
+drop table mv_iceberg_${uuid0}.sql_test_db_${uuid0}.test_iceberg_with_year;
+drop database mv_iceberg_${uuid0}.sql_test_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};

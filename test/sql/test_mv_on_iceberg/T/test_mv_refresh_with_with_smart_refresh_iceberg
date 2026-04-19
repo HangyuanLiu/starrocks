@@ -1,0 +1,46 @@
+-- name: test_mv_refresh_with_with_smart_refresh_iceberg
+-- Test Point: adaptive partition refresh should succeed for list-partitioned
+--             Iceberg-backed MVs.
+-- Method: create a partitioned MV with partition_refresh_strategy=adaptive
+--         over an Iceberg list partition table, refresh it with sync mode,
+--         and verify the loaded rows.
+-- Scope: smart refresh policy on Iceberg-backed partitioned MVs.
+
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+-- create iceberg table
+set catalog mv_iceberg_${uuid0};
+create database mv_iceberg_db_${uuid0};
+use mv_iceberg_db_${uuid0};
+
+CREATE TABLE t1 (
+   `id` varchar(36),
+   `location_id` varchar(36),
+   `location_id_hash` int,
+   `source_id` varchar(36),
+   `person_id` varchar(36)
+)
+PARTITION BY (person_id);
+INSERT INTO t1 VALUES (1, 'beijing', 20, 'a', 'a1'), (2, 'guangdong', 30, 'b', 'b1'), (3, 'guangdong', 20, 'c', 'c1');
+
+set catalog default_catalog;
+create database if not exists db_${uuid0};
+use db_${uuid0};
+
+create materialized view test_mv1
+PARTITION BY `person_id`
+DISTRIBUTED BY HASH(`id`) BUCKETS 3
+PROPERTIES (
+    "replication_num" = "1",
+    "partition_refresh_strategy" = "adaptive"
+)
+as select `id`, `location_id`, `person_id` from mv_iceberg_${uuid0}.mv_iceberg_db_${uuid0}.t1;
+
+refresh materialized view test_mv1 with sync mode;
+
+select * from test_mv1 order by 1, 2, 3;
+
+drop materialized view test_mv1;
+drop database default_catalog.db_${uuid0} force;
+drop table mv_iceberg_${uuid0}.mv_iceberg_db_${uuid0}.t1 force;
+drop database mv_iceberg_${uuid0}.mv_iceberg_db_${uuid0} force;
