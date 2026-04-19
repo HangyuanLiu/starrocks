@@ -1,0 +1,98 @@
+-- name: test_drop_mv_iceberg_cascade
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES (1, '2024-01-01', 10);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da63f-4873-72dc-9327-2bb267f06e15
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- result:
+1
+-- !result
+DROP MATERIALIZED VIEW test_mv1;
+-- result:
+-- !result
+SELECT count(*) FROM information_schema.materialized_views
+  WHERE table_name = 'test_mv1' AND table_schema = 'db_${uuid0}';
+-- result:
+0
+-- !result
+[UC]SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+[REGEX]E: \(5502, "Getting analyzing error. Detail message: Unknown table '.*\.test_mv1'\."\)
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS SELECT dt, sum(val) as sv
+   FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+   GROUP BY dt;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da63f-552a-7ff6-a0ea-362646b11681
+-- !result
+SELECT dt, sv FROM test_mv1 ORDER BY dt;
+-- result:
+2024-01-01	10
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
