@@ -1,0 +1,107 @@
+-- name: test_mv_iceberg_compensation_with_cte
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+-- result:
+None
+-- !result
+set catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+create database mv_ice_db_${uuid0};
+-- result:
+-- !result
+use mv_ice_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE t1 (id int, dt date, region string, val int) PARTITION BY (dt);
+-- result:
+-- !result
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 'cn', 10),
+  (2, '2024-01-02', 'cn', 20),
+  (3, '2024-01-01', 'us', 5),
+  (4, '2024-01-02', 'us', 7);
+-- result:
+-- !result
+set catalog default_catalog;
+-- result:
+-- !result
+create database db_${uuid0};
+-- result:
+-- !result
+use db_${uuid0};
+-- result:
+-- !result
+set new_planner_optimize_timeout=10000;
+-- result:
+-- !result
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS
+WITH filtered AS (
+  SELECT dt, region, val
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+  WHERE val > 3
+)
+SELECT dt, region, sum(val) as sv
+FROM filtered
+GROUP BY dt, region;
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da66b-7af4-7671-aabf-f4a7b251863a
+-- !result
+SELECT dt, region, sv FROM test_mv1 ORDER BY dt, region;
+-- result:
+2024-01-01	cn	10
+2024-01-01	us	5
+2024-01-02	cn	20
+2024-01-02	us	7
+-- !result
+function: print_hit_materialized_view("WITH filtered AS (SELECT dt, region, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE val > 3) SELECT dt, region, sum(val) FROM filtered GROUP BY dt, region", "test_mv1")
+-- result:
+True
+-- !result
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM (SELECT dt, region, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE val > 3) sub GROUP BY dt, region", "test_mv1")
+-- result:
+True
+-- !result
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE val > 3 GROUP BY dt, region", "test_mv1")
+-- result:
+True
+-- !result
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (5, '2024-01-02', 'cn', 50);
+-- result:
+-- !result
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+-- result:
+019da66b-96d5-7511-86aa-8568389ed074
+-- !result
+SELECT dt, region, sv FROM test_mv1 ORDER BY dt, region;
+-- result:
+2024-01-01	cn	10
+2024-01-01	us	5
+2024-01-02	cn	70
+2024-01-02	us	7
+-- !result
+function: print_hit_materialized_view("WITH filtered AS (SELECT dt, region, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE val > 3) SELECT dt, region, sum(val) FROM filtered GROUP BY dt, region", "test_mv1")
+-- result:
+True
+-- !result
+drop materialized view test_mv1;
+-- result:
+-- !result
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+-- result:
+-- !result
+drop database default_catalog.db_${uuid0} force;
+-- result:
+-- !result
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+-- result:
+-- !result
+drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result

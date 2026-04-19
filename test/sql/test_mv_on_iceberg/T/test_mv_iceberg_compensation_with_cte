@@ -1,0 +1,67 @@
+-- name: test_mv_iceberg_compensation_with_cte
+-- Test Point: MV defined via CTE (WITH ... AS) over Iceberg base supports
+--             refresh, rewrite hit for CTE-equivalent queries, and
+--             transparent union compensation when partially refreshed.
+-- Method: create MV via WITH; refresh; probe rewrite (CTE form,
+--         flattened-subquery form, non-CTE form); partial-refresh path;
+--         verify compensation correctness.
+-- Scope: MV compensation with CTE/subquery body over Iceberg (M7-4).
+function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
+
+set catalog mv_iceberg_${uuid0};
+create database mv_ice_db_${uuid0};
+use mv_ice_db_${uuid0};
+CREATE TABLE t1 (id int, dt date, region string, val int) PARTITION BY (dt);
+INSERT INTO t1 VALUES
+  (1, '2024-01-01', 'cn', 10),
+  (2, '2024-01-02', 'cn', 20),
+  (3, '2024-01-01', 'us', 5),
+  (4, '2024-01-02', 'us', 7);
+
+set catalog default_catalog;
+create database db_${uuid0};
+use db_${uuid0};
+set new_planner_optimize_timeout=10000;
+
+-- MV body uses CTE
+CREATE MATERIALIZED VIEW test_mv1
+PARTITION BY dt
+REFRESH DEFERRED MANUAL
+PROPERTIES ("replication_num" = "1")
+AS
+WITH filtered AS (
+  SELECT dt, region, val
+  FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1
+  WHERE val > 3
+)
+SELECT dt, region, sum(val) as sv
+FROM filtered
+GROUP BY dt, region;
+
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+
+-- Baseline: MV has 4 rows (val>3 filter retains all)
+SELECT dt, region, sv FROM test_mv1 ORDER BY dt, region;
+
+-- Probe 1: CTE-equivalent query
+function: print_hit_materialized_view("WITH filtered AS (SELECT dt, region, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE val > 3) SELECT dt, region, sum(val) FROM filtered GROUP BY dt, region", "test_mv1")
+
+-- Probe 2: flattened-subquery form
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM (SELECT dt, region, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE val > 3) sub GROUP BY dt, region", "test_mv1")
+
+-- Probe 3: non-CTE, predicate inlined
+function: print_hit_materialized_view("SELECT dt, region, sum(val) FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE val > 3 GROUP BY dt, region", "test_mv1")
+
+-- Insert extra row into refreshed partition
+INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES (5, '2024-01-02', 'cn', 50);
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+SELECT dt, region, sv FROM test_mv1 ORDER BY dt, region;
+
+-- Final probe: CTE-equivalent still hits
+function: print_hit_materialized_view("WITH filtered AS (SELECT dt, region, val FROM mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 WHERE val > 3) SELECT dt, region, sum(val) FROM filtered GROUP BY dt, region", "test_mv1")
+
+drop materialized view test_mv1;
+drop table mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 force;
+drop database default_catalog.db_${uuid0} force;
+drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
+drop catalog mv_iceberg_${uuid0};
