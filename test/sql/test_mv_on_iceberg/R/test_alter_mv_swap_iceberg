@@ -1,4 +1,7 @@
--- name: test_alter_mv_swap_iceberg
+-- name: test_alter_mv_swap_iceberg @slow
+admin set frontend config('enable_mv_automatic_active_check'='false');
+-- result:
+-- !result
 function: create_iceberg_catalog("mv_iceberg_${uuid0}", "${iceberg_sql_test_catalog_type}")
 -- result:
 None
@@ -48,9 +51,9 @@ AS SELECT dt, region, sum(pv) as total_pv
    GROUP BY dt, region;
 -- result:
 -- !result
-REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
 -- result:
-[REGEX].*-.*-.*
+019da527-279f-75d8-bdf0-2e2b4bc6222b
 -- !result
 CREATE MATERIALIZED VIEW test_mv2
 PARTITION BY dt
@@ -61,9 +64,9 @@ AS SELECT dt, region, count(pv) as cnt_pv
    GROUP BY dt, region;
 -- result:
 -- !result
-REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
 -- result:
-[REGEX].*-.*-.*
+019da527-31c4-7313-9ac5-9c5be994a16d
 -- !result
 SELECT dt, region, total_pv FROM test_mv1 ORDER BY dt, region;
 -- result:
@@ -111,13 +114,13 @@ total_pv	bigint	YES	false	None	NONE
 INSERT INTO mv_iceberg_${uuid0}.mv_ice_db_${uuid0}.t1 VALUES ('cn', '2024-01-03', 30);
 -- result:
 -- !result
-REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv1 WITH SYNC MODE;
 -- result:
-[REGEX].*-.*-.*
+019da527-3a0b-7e5a-8a54-42ede0f4a77f
 -- !result
-REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv2 WITH SYNC MODE;
 -- result:
-[REGEX].*-.*-.*
+019da527-40b4-7302-b86b-50425da54c48
 -- !result
 SELECT dt, region, cnt_pv FROM test_mv1 ORDER BY dt, region;
 -- result:
@@ -141,9 +144,9 @@ PROPERTIES ("replication_num" = "1")
 AS SELECT dt, sum(cnt_pv) as sum_cnt FROM test_mv1 GROUP BY dt;
 -- result:
 -- !result
-REFRESH MATERIALIZED VIEW test_mv3 WITH SYNC MODE;
+[UC]REFRESH MATERIALIZED VIEW test_mv3 WITH SYNC MODE;
 -- result:
-[REGEX].*-.*-.*
+019da527-48cf-7bf1-bff8-665b4d7cb366
 -- !result
 ALTER MATERIALIZED VIEW test_mv1 SWAP WITH test_mv2;
 -- result:
@@ -159,7 +162,7 @@ false	base-table swapped: test_mv1
 -- !result
 ALTER MATERIALIZED VIEW test_mv3 ACTIVE;
 -- result:
-[REGEX]E:.*Can not active materialized view.*cnt_pv.*cannot be resolved.*
+[REGEX].*Can not active materialized view.*cnt_pv.*cannot be resolved.*
 -- !result
 SELECT IS_ACTIVE FROM information_schema.materialized_views
   WHERE table_name = 'test_mv3' AND table_schema = 'db_${uuid0}';
@@ -185,5 +188,8 @@ drop database mv_iceberg_${uuid0}.mv_ice_db_${uuid0} force;
 -- result:
 -- !result
 drop catalog mv_iceberg_${uuid0};
+-- result:
+-- !result
+admin set frontend config('enable_mv_automatic_active_check'='true');
 -- result:
 -- !result
