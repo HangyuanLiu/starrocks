@@ -167,6 +167,7 @@ public class MVVersionManager {
             logger.debug("Update materialized view {} meta for base table {} with partitions info: {}, old partition infos:{}",
                     mv.getName(), snapshotTable.getName(), partitionInfoMap, currentTablePartitionInfo);
             currentTablePartitionInfo.putAll(partitionInfoMap);
+            refreshContext.removeInvalidBasePartitionsForFSEColumns(tableId, partitionInfoMap.keySet());
 
             // FIXME: If base table's partition has been dropped, should drop the according version partition too?
             // remove partition info of not-exist partition for snapshot table from version map
@@ -181,6 +182,7 @@ public class MVVersionManager {
                         keyIter.remove();
                     }
                 }
+                refreshContext.retainInvalidBasePartitionsForFSEColumns(tableId, visiblePartitionNames);
             }
             isOlapTableRefreshed = true;
         }

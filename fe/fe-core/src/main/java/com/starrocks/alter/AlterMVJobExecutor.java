@@ -764,6 +764,7 @@ public class AlterMVJobExecutor extends AlterJobExecutor {
         }
         // find the base column from base table
         SlotRef slotRef = slots.get(0);
+        boolean isSimpleBaseColumnRef = isSimpleBaseColumnReference(addColumnExpr);
         String baseColumnName = slotRef.getColumnName();
         if (baseColumnName == null) {
             throw new SemanticException("Materialized view definition is invalid, " +
@@ -805,6 +806,13 @@ public class AlterMVJobExecutor extends AlterJobExecutor {
         } else {
             checkMVVisibleVersionAffectedBySchemaChange(mv, baseTable,
                     mvAsyncRefreshContext, columnName, baseColumnCreatedTime, toRefreshPartitionNames);
+        }
+        if (!isSimpleBaseColumnRef && baseTable.isNativeTable()) {
+            Map<String, MaterializedView.BasePartitionInfo> basePartitionInfoMap =
+                    mvAsyncRefreshContext.getBaseTableVisibleVersionMap().get(baseTable.getId());
+            if (basePartitionInfoMap != null) {
+                toRefreshPartitionNames.addAll(basePartitionInfoMap.keySet());
+            }
         }
 
         // correct new column type
@@ -850,6 +858,24 @@ public class AlterMVJobExecutor extends AlterJobExecutor {
 
             // to be compatible with old MV schema.
             mv.initUniqueId();
+
+            Column mvColumn = mv.getColumn(columnName);
+            int mvColumnUniqueId = mvColumn == null ? Column.COLUMN_UNIQUE_ID_INIT_VALUE : mvColumn.getUniqueId();
+            MaterializedView.FSEColumnFreshnessInfo freshnessInfo =
+                    new MaterializedView.FSEColumnFreshnessInfo(
+                            columnName,
+                            mvColumnUniqueId,
+                            baseTable.getId(),
+                            baseColumnName,
+                            baseColumn.getUniqueId(),
+                            baseColumnCreatedTime,
+                            System.currentTimeMillis(),
+                            isSimpleBaseColumnRef,
+                            toRefreshPartitionNames);
+            mv.getRefreshScheme().getAsyncRefreshContext().putFSEColumnFreshnessInfo(freshnessInfo);
+            LOG.info("Initialize FSE column freshness metadata for materialized view {}, column {}, " +
+                            "base table {}, base column {}, invalid base partitions: {}",
+                    mv.getName(), columnName, baseTable.getName(), baseColumnName, toRefreshPartitionNames);
 
             // write edit log to persist schema change
             AlterMaterializedViewBaseTableInfosLog log = new AlterMaterializedViewBaseTableInfosLog(null, mv,
@@ -901,6 +927,7 @@ public class AlterMVJobExecutor extends AlterJobExecutor {
             }
             // if toRefreshPartitionNames's not empty, throw exception when all partitions are affected
             if (!toRefreshPartitionNames.isEmpty()
+                    && !isCheckedRewriteMode(mv)
                     && !mv.isSupportFastSchemaEvolutionInDanger()
                     && !isMvFastSchemaChangeForceMode()) {
                 LOG.warn("After adding column to materialized view {}, to remove partition infos {} " +
@@ -923,6 +950,16 @@ public class AlterMVJobExecutor extends AlterJobExecutor {
                 throw new SemanticException(MaterializedViewExceptions.unSupportedReasonForMVFSE(reason));
             }
         }
+    }
+
+    private static boolean isCheckedRewriteMode(MaterializedView mv) {
+        return mv.getTableProperty() != null
+                && mv.getTableProperty().getQueryRewriteConsistencyMode()
+                == TableProperty.QueryRewriteConsistencyMode.CHECKED;
+    }
+
+    private static boolean isSimpleBaseColumnReference(Expr addColumnExpr) {
+        return addColumnExpr instanceof SlotRef;
     }
 
     private static boolean isMvFastSchemaChangeForceMode() {

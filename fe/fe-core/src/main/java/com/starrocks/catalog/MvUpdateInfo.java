@@ -85,6 +85,17 @@ public class MvUpdateInfo {
         return new MvUpdateInfo(mv, MvToRefreshType.PARTIAL, queryRewriteConsistencyMode);
     }
 
+    public static MvUpdateInfo partialRefreshFrom(MvUpdateInfo other) {
+        MvUpdateInfo copied = new MvUpdateInfo(other.mv, MvToRefreshType.PARTIAL,
+                other.queryRewriteConsistencyMode);
+        copied.mvToRefreshPCells.addAll(other.mvToRefreshPCells);
+        copied.baseTableUpdateInfos.putAll(other.baseTableUpdateInfos);
+        copied.basePartNameToMVPCells.putAll(other.basePartNameToMVPCells);
+        copied.mvPartNameToBasePCells.putAll(other.mvPartNameToBasePCells);
+        copied.refBaseNestedMVPCells.addAll(other.refBaseNestedMVPCells);
+        return copied;
+    }
+
     public MvToRefreshType getMVToRefreshType() {
         return mvToRefreshType;
     }
@@ -119,6 +130,13 @@ public class MvUpdateInfo {
 
     public Map<String, Map<Table, PCellSortedSet>> getMVPartNameToBasePCells() {
         return mvPartNameToBasePCells;
+    }
+
+    public void addMVToRefreshBaseTablePCells(PCellWithName mvPCell, Table baseTable, PCellWithName basePCell) {
+        addMVToRefreshPartitionNames(mvPCell);
+        mvPartNameToBasePCells.computeIfAbsent(mvPCell.name(), k -> Maps.newHashMap())
+                .computeIfAbsent(baseTable, k -> PCellSortedSet.of())
+                .add(basePCell);
     }
 
     public Map<Table, PCellSetMapping> getBasePartNameToMVPCells() {

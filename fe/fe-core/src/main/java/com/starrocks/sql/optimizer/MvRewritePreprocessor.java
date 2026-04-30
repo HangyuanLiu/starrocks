@@ -33,6 +33,7 @@ import com.starrocks.catalog.MaterializedIndex;
 import com.starrocks.catalog.MaterializedIndexMeta;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.MaterializedViewRefreshType;
+import com.starrocks.catalog.MvBaseTableUpdateInfo;
 import com.starrocks.catalog.MvPlanContext;
 import com.starrocks.catalog.MvUpdateInfo;
 import com.starrocks.catalog.OlapTable;
@@ -43,6 +44,7 @@ import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.RandomDistributionInfo;
 import com.starrocks.catalog.SinglePartitionInfo;
 import com.starrocks.catalog.Table;
+import com.starrocks.catalog.TableProperty;
 import com.starrocks.catalog.mv.MVPlanValidationResult;
 import com.starrocks.catalog.mv.MVTimelinessArbiter;
 import com.starrocks.common.AnalysisException;
@@ -57,11 +59,28 @@ import com.starrocks.common.util.PropertyAnalyzer;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.lake.LakeMaterializedView;
+import com.starrocks.planner.SlotDescriptor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.ast.CTERelation;
+import com.starrocks.sql.ast.JoinRelation;
+import com.starrocks.sql.ast.PivotRelation;
+import com.starrocks.sql.ast.QueryRelation;
+import com.starrocks.sql.ast.QueryStatement;
+import com.starrocks.sql.ast.Relation;
+import com.starrocks.sql.ast.SelectRelation;
+import com.starrocks.sql.ast.SetOperationRelation;
+import com.starrocks.sql.ast.StatementBase;
+import com.starrocks.sql.ast.SubqueryRelation;
+import com.starrocks.sql.ast.ViewRelation;
+import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.common.MetaUtils;
+import com.starrocks.sql.common.PCell;
+import com.starrocks.sql.common.PCellSetMapping;
 import com.starrocks.sql.common.PCellSortedSet;
+import com.starrocks.sql.common.PCellWithName;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.base.DistributionSpec;
@@ -71,8 +90,11 @@ import com.starrocks.sql.optimizer.base.RangeDistributionSpec;
 import com.starrocks.sql.optimizer.operator.Operator;
 import com.starrocks.sql.optimizer.operator.OperatorBuilderFactory;
 import com.starrocks.sql.optimizer.operator.Projection;
+import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalTopNOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalViewScanOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.rule.mv.MVCorrelation;
@@ -175,7 +197,7 @@ public class MvRewritePreprocessor {
 
                 // 4. process related mvs to candidates
                 try (Timer t3 = Tracers.watchScope("MVPrepareRelatedMVs")) {
-                    prepareRelatedMVs(queryTables, mvWithPlanContexts);
+                    prepareRelatedMVs(queryTables, mvWithPlanContexts, queryOptExpression);
                 }
 
                 // To avoid disturbing queries without mv, only initialize materialized view context
@@ -749,7 +771,8 @@ public class MvRewritePreprocessor {
     }
 
     public void prepareRelatedMVs(Set<Table> queryTables,
-                                  List<MaterializedViewWrapper> mvWithPlanContexts) {
+                                  List<MaterializedViewWrapper> mvWithPlanContexts,
+                                  OptExpression queryOptExpression) {
         if (mvWithPlanContexts.isEmpty()) {
             return;
         }
@@ -767,7 +790,14 @@ public class MvRewritePreprocessor {
                     OptimizerTraceUtil.logMVRewriteFailReason(mv.getName(), "stale partitions {}", mvUpdateInfo);
                     continue;
                 }
-                mvInfos.add(Pair.create(wrapper, mvUpdateInfo));
+                MvUpdateInfo guardedMvUpdateInfo =
+                        applyFSEColumnGuard(queryTables, queryOptExpression, context.getStatement(), mv, mvUpdateInfo);
+                if (guardedMvUpdateInfo == null || !guardedMvUpdateInfo.isValidRewrite()) {
+                    OptimizerTraceUtil.logMVRewriteFailReason(mv.getName(), "FSE guarded stale partitions {}",
+                            guardedMvUpdateInfo);
+                    continue;
+                }
+                mvInfos.add(Pair.create(wrapper, guardedMvUpdateInfo));
             } catch (Exception e) {
                 List<String> tableNames = queryTables.stream().map(Table::getName).collect(Collectors.toList());
                 logMVPrepare(connectContext, "Preprocess MV {} failed: {}", mv.getName(), DebugUtil.getStackTrace(e));
@@ -791,6 +821,263 @@ public class MvRewritePreprocessor {
                 .collect(Collectors.toList());
         logMVPrepare(connectContext, "RelatedMVs: {}, CandidateMVs: {}", relatedMvNames,
                 candidateMvNames);
+    }
+
+    private static MvUpdateInfo applyFSEColumnGuard(Set<Table> queryTables,
+                                                    OptExpression queryOptExpression,
+                                                    StatementBase statement,
+                                                    MaterializedView mv,
+                                                    MvUpdateInfo mvUpdateInfo) {
+        if (mv.getTableProperty() == null ||
+                mv.getTableProperty().getQueryRewriteConsistencyMode() !=
+                        TableProperty.QueryRewriteConsistencyMode.CHECKED) {
+            return mvUpdateInfo;
+        }
+        Map<String, MaterializedView.FSEColumnFreshnessInfo> freshnessInfoMap = mv.getRefreshScheme()
+                .getAsyncRefreshContext()
+                .getFSEColumnFreshnessInfoMap();
+        if (freshnessInfoMap.isEmpty()) {
+            return mvUpdateInfo;
+        }
+
+        Map<Long, Set<String>> usedBaseColumns = collectUsedBaseColumnNames(statement, queryOptExpression);
+        MvUpdateInfo guardedInfo = mvUpdateInfo;
+        for (MaterializedView.FSEColumnFreshnessInfo freshnessInfo : freshnessInfoMap.values()) {
+            Set<String> usedColumns = usedBaseColumns.get(freshnessInfo.getBaseTableId());
+            if (usedColumns == null || !usedColumns.contains(freshnessInfo.getBaseColumnName())) {
+                continue;
+            }
+            if (freshnessInfo.getInvalidBasePartitionNames().isEmpty()) {
+                continue;
+            }
+            Table baseTable = queryTables.stream()
+                    .filter(table -> table.getId() == freshnessInfo.getBaseTableId())
+                    .findFirst()
+                    .orElse(null);
+            if (baseTable == null) {
+                logMVPrepare("Skip MV {} for FSE column {} because base table {} is not in query",
+                        mv.getName(), freshnessInfo.getMvColumnName(), freshnessInfo.getBaseTableId());
+                return null;
+            }
+            if (guardedInfo.getMVToRefreshType() == MvUpdateInfo.MvToRefreshType.NO_REFRESH) {
+                guardedInfo = MvUpdateInfo.partialRefreshFrom(guardedInfo);
+            }
+            if (!injectFSEInvalidPartitions(mv, guardedInfo, baseTable, freshnessInfo)) {
+                return null;
+            }
+        }
+        return guardedInfo;
+    }
+
+    private static Map<Long, Set<String>> collectUsedBaseColumnNames(StatementBase statement,
+                                                                     OptExpression queryOptExpression) {
+        Map<Long, Set<String>> result = Maps.newHashMap();
+        List<Table> queryTables = MvUtils.getScanOperator(queryOptExpression).stream()
+                .map(scanOperator -> scanOperator.getTable())
+                .filter(table -> table != null)
+                .collect(Collectors.toList());
+        if (statement instanceof QueryStatement) {
+            collectUsedBaseColumns(((QueryStatement) statement).getQueryRelation(), queryTables, result);
+        }
+        mergeUsedBaseColumns(result, collectUsedBaseColumnNames(queryOptExpression));
+        return result;
+    }
+
+    private static Map<Long, Set<String>> collectUsedBaseColumnNames(OptExpression queryOptExpression) {
+        ColumnRefSet usedColumnRefs = collectUsedColumnRefs(queryOptExpression);
+        Map<Long, Set<String>> result = Maps.newHashMap();
+        for (LogicalOlapScanOperator scanOperator : MvUtils.getScanOperator(queryOptExpression).stream()
+                .filter(LogicalOlapScanOperator.class::isInstance)
+                .map(LogicalOlapScanOperator.class::cast)
+                .collect(Collectors.toList())) {
+            Table table = scanOperator.getTable();
+            if (table == null) {
+                continue;
+            }
+            for (Map.Entry<Column, ColumnRefOperator> entry : scanOperator.getColumnMetaToColRefMap().entrySet()) {
+                if (usedColumnRefs.contains(entry.getValue())) {
+                    result.computeIfAbsent(table.getId(), ignored -> Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER))
+                            .add(entry.getKey().getName());
+                }
+            }
+        }
+        return result;
+    }
+
+    private static void mergeUsedBaseColumns(Map<Long, Set<String>> result, Map<Long, Set<String>> other) {
+        other.forEach((tableId, columnNames) ->
+                result.computeIfAbsent(tableId, ignored -> Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER))
+                        .addAll(columnNames));
+    }
+
+    private static ColumnRefSet collectUsedColumnRefs(OptExpression expression) {
+        ColumnRefSet usedColumnRefs = new ColumnRefSet();
+        collectUsedColumnRefsInto(expression, usedColumnRefs);
+        return usedColumnRefs;
+    }
+
+    private static void collectUsedColumnRefsInto(OptExpression expression, ColumnRefSet usedColumnRefs) {
+        if (expression.getOp().getPredicate() != null) {
+            usedColumnRefs.union(expression.getOp().getPredicate().getUsedColumns());
+        }
+        if (!(expression.getOp() instanceof LogicalOlapScanOperator) && expression.getOp().getProjection() != null) {
+            usedColumnRefs.union(expression.getOp().getProjection().getUsedColumns());
+        }
+        if ((expression.getOp() instanceof LogicalAggregationOperator ||
+                expression.getOp() instanceof LogicalProjectOperator) &&
+                expression.getRowOutputInfo() != null) {
+            usedColumnRefs.union(expression.getRowOutputInfo().getUsedColumnRefSet());
+        }
+        if (expression.getOp() instanceof LogicalTopNOperator) {
+            usedColumnRefs.union(((LogicalTopNOperator) expression.getOp()).getRequiredChildInputColumns());
+        }
+        if (expression.getOp() instanceof LogicalJoinOperator) {
+            LogicalJoinOperator joinOperator = (LogicalJoinOperator) expression.getOp();
+            if (joinOperator.getOnPredicate() != null) {
+                usedColumnRefs.union(joinOperator.getOnPredicate().getUsedColumns());
+            }
+        }
+        for (OptExpression input : expression.getInputs()) {
+            collectUsedColumnRefsInto(input, usedColumnRefs);
+        }
+    }
+
+    private static void collectUsedBaseColumns(QueryRelation relation, Collection<Table> queryTables,
+                                               Map<Long, Set<String>> result) {
+        if (relation == null) {
+            return;
+        }
+        collectUsedBaseColumns(relation.getOutputExpression(), queryTables, result);
+        if (relation.hasOrderByClause()) {
+            collectUsedBaseColumns(relation.getOrderByExpressions(), queryTables, result);
+        }
+
+        if (relation instanceof SelectRelation) {
+            SelectRelation selectRelation = (SelectRelation) relation;
+            collectUsedBaseColumns(selectRelation.getRelation(), queryTables, result);
+            collectUsedBaseColumns(selectRelation.getPredicate(), queryTables, result);
+            collectUsedBaseColumns(selectRelation.getGroupBy(), queryTables, result);
+            collectUsedBaseColumns(selectRelation.getAggregate(), queryTables, result);
+            collectUsedBaseColumns(selectRelation.getHaving(), queryTables, result);
+            collectUsedBaseColumns(selectRelation.getGroupingFunctionCallExprs(), queryTables, result);
+            collectUsedBaseColumns(selectRelation.getOrderSourceExpressions(), queryTables, result);
+            collectUsedBaseColumns(selectRelation.getOutputAnalytic(), queryTables, result);
+            collectUsedBaseColumns(selectRelation.getOrderByAnalytic(), queryTables, result);
+            if (selectRelation.getGroupingSetsList() != null) {
+                for (List<Expr> groupingSet : selectRelation.getGroupingSetsList()) {
+                    collectUsedBaseColumns(groupingSet, queryTables, result);
+                }
+            }
+        } else if (relation instanceof SetOperationRelation) {
+            ((SetOperationRelation) relation).getRelations()
+                    .forEach(child -> collectUsedBaseColumns(child, queryTables, result));
+        } else if (relation instanceof SubqueryRelation) {
+            collectUsedBaseColumns(((SubqueryRelation) relation).getQueryStatement().getQueryRelation(),
+                    queryTables, result);
+        }
+    }
+
+    private static void collectUsedBaseColumns(Relation relation, Collection<Table> queryTables,
+                                               Map<Long, Set<String>> result) {
+        if (relation == null) {
+            return;
+        }
+        if (relation instanceof QueryRelation) {
+            collectUsedBaseColumns((QueryRelation) relation, queryTables, result);
+        } else if (relation instanceof JoinRelation) {
+            JoinRelation joinRelation = (JoinRelation) relation;
+            collectUsedBaseColumns(joinRelation.getLeft(), queryTables, result);
+            collectUsedBaseColumns(joinRelation.getRight(), queryTables, result);
+            collectUsedBaseColumns(joinRelation.getOnPredicate(), queryTables, result);
+            collectUsedBaseColumns(joinRelation.getSkewColumn(), queryTables, result);
+            collectUsedBaseColumns(joinRelation.getSkewValues(), queryTables, result);
+        } else if (relation instanceof ViewRelation) {
+            collectUsedBaseColumns(((ViewRelation) relation).getQueryStatement().getQueryRelation(), queryTables, result);
+        } else if (relation instanceof CTERelation) {
+            collectUsedBaseColumns(((CTERelation) relation).getCteQueryStatement().getQueryRelation(),
+                    queryTables, result);
+        } else if (relation instanceof PivotRelation) {
+            PivotRelation pivotRelation = (PivotRelation) relation;
+            collectUsedBaseColumns(pivotRelation.getQuery(), queryTables, result);
+            collectUsedBaseColumns(pivotRelation.getPivotColumns(), queryTables, result);
+            collectUsedBaseColumns(pivotRelation.getGroupByKeys(), queryTables, result);
+            collectUsedBaseColumns(pivotRelation.getRewrittenAggFunctions(), queryTables, result);
+        }
+    }
+
+    private static void collectUsedBaseColumns(Collection<? extends Expr> expressions, Collection<Table> queryTables,
+                                               Map<Long, Set<String>> result) {
+        if (expressions == null) {
+            return;
+        }
+        expressions.forEach(expression -> collectUsedBaseColumns(expression, queryTables, result));
+    }
+
+    private static void collectUsedBaseColumns(Expr expression, Collection<Table> queryTables,
+                                               Map<Long, Set<String>> result) {
+        if (expression == null) {
+            return;
+        }
+        List<SlotRef> slots = Lists.newArrayList();
+        expression.collect(SlotRef.class, slots);
+        slots.forEach(slot -> addUsedBaseColumn(slot, queryTables, result));
+    }
+
+    private static void addUsedBaseColumn(SlotRef slot, Collection<Table> queryTables, Map<Long, Set<String>> result) {
+        SlotDescriptor slotDescriptor = slot.getSlotDescriptorWithoutCheck();
+        Column column = slot.getColumn();
+        if (slotDescriptor != null && slotDescriptor.getParent() != null &&
+                slotDescriptor.getParent().getTable() != null && column != null) {
+            Table table = slotDescriptor.getParent().getTable();
+            result.computeIfAbsent(table.getId(), ignored -> Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER))
+                    .add(column.getName());
+            return;
+        }
+
+        String columnName = slot.getColumnName();
+        if (Strings.isNullOrEmpty(columnName)) {
+            return;
+        }
+        for (Table table : queryTables) {
+            Column matchedColumn = table.getColumn(columnName);
+            if (matchedColumn != null) {
+                result.computeIfAbsent(table.getId(), ignored -> Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER))
+                        .add(matchedColumn.getName());
+            }
+        }
+    }
+
+    private static boolean injectFSEInvalidPartitions(MaterializedView mv,
+                                                      MvUpdateInfo mvUpdateInfo,
+                                                      Table baseTable,
+                                                      MaterializedView.FSEColumnFreshnessInfo freshnessInfo) {
+        MvBaseTableUpdateInfo baseTableUpdateInfo = mvUpdateInfo.getBaseTableUpdateInfos().get(baseTable);
+        if (baseTableUpdateInfo == null) {
+            logMVPrepare("Skip MV {} for FSE column {} because base table partition cells are unavailable",
+                    mv.getName(), freshnessInfo.getMvColumnName());
+            return false;
+        }
+        PCellSetMapping baseToMvMapping = mvUpdateInfo.getBasePartNameToMVPCells().get(baseTable);
+        if (baseToMvMapping == null || baseToMvMapping.isEmpty()) {
+            logMVPrepare("Skip MV {} for FSE column {} because base-to-mv partition mapping is unavailable",
+                    mv.getName(), freshnessInfo.getMvColumnName());
+            return false;
+        }
+        PCellSortedSet basePartitionCells = baseTableUpdateInfo.getRefBaseTablePCells();
+        for (String basePartitionName : freshnessInfo.getInvalidBasePartitionNames()) {
+            PCell basePCell = basePartitionCells.getPCell(basePartitionName);
+            PCellSortedSet mvPCells = baseToMvMapping.get(basePartitionName);
+            if (basePCell == null || mvPCells == null || mvPCells.isEmpty()) {
+                logMVPrepare("Skip MV {} for FSE column {} because partition mapping is missing for base partition {}",
+                        mv.getName(), freshnessInfo.getMvColumnName(), basePartitionName);
+                return false;
+            }
+            PCellWithName basePCellWithName = PCellWithName.of(basePartitionName, basePCell);
+            for (PCellWithName mvPCell : mvPCells.getPartitions()) {
+                mvUpdateInfo.addMVToRefreshBaseTablePCells(mvPCell, baseTable, basePCellWithName);
+            }
+        }
+        return true;
     }
 
     /**

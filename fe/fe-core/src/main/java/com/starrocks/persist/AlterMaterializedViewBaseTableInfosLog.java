@@ -39,6 +39,8 @@ public class AlterMaterializedViewBaseTableInfosLog implements Writable {
     private MvId remoteMvId;
     @SerializedName("baseTableVisibleVersionMap")
     private Map<Long, Map<String, MaterializedView.BasePartitionInfo>> baseTableVisibleVersionMap;
+    @SerializedName("fseColumnFreshnessInfoMap")
+    private Map<String, MaterializedView.FSEColumnFreshnessInfo> fseColumnFreshnessInfoMap;
 
     // 0: not set, 1: alter MV add column, 2: alter MV drop column
     @SerializedName("alterType")
@@ -95,6 +97,7 @@ public class AlterMaterializedViewBaseTableInfosLog implements Writable {
                 this.originalViewDefineSql = mv.getOriginalViewDefineSql();
                 this.baseTableVisibleVersionMap = mvContext.getBaseTableVisibleVersionMap();
                 this.baseTableInfoVisibleVersionMap = mvContext.getBaseTableInfoVisibleVersionMap();
+                this.fseColumnFreshnessInfoMap = mvContext.getFSEColumnFreshnessInfoMap();
                 this.queryOutputIndices = mv.getQueryOutputIndices();
                 break;
             }
@@ -148,6 +151,10 @@ public class AlterMaterializedViewBaseTableInfosLog implements Writable {
 
     public Map<BaseTableInfo, Map<String, MaterializedView.BasePartitionInfo>> getBaseTableInfoVisibleVersionMap() {
         return baseTableInfoVisibleVersionMap;
+    }
+
+    public Map<String, MaterializedView.FSEColumnFreshnessInfo> getFSEColumnFreshnessInfoMap() {
+        return fseColumnFreshnessInfoMap;
     }
 
     public String getOriginalViewDefineSql() {

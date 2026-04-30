@@ -314,6 +314,118 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
         }
     }
 
+    public static class FSEColumnFreshnessInfo {
+        @SerializedName(value = "mvColumnName")
+        private String mvColumnName;
+        @SerializedName(value = "mvColumnUniqueId")
+        private int mvColumnUniqueId;
+        @SerializedName(value = "baseTableId")
+        private long baseTableId;
+        @SerializedName(value = "baseColumnName")
+        private String baseColumnName;
+        @SerializedName(value = "baseColumnUniqueId")
+        private int baseColumnUniqueId;
+        @SerializedName(value = "baseColumnCreatedTime")
+        private long baseColumnCreatedTime;
+        @SerializedName(value = "mvColumnAddedTime")
+        private long mvColumnAddedTime;
+        @SerializedName(value = "simpleBaseColumnRef")
+        private boolean simpleBaseColumnRef;
+        @SerializedName(value = "invalidBasePartitionNames")
+        private Set<String> invalidBasePartitionNames = Sets.newConcurrentHashSet();
+
+        public FSEColumnFreshnessInfo() {
+        }
+
+        public FSEColumnFreshnessInfo(String mvColumnName, int mvColumnUniqueId, long baseTableId,
+                                      String baseColumnName, int baseColumnUniqueId, long baseColumnCreatedTime,
+                                      long mvColumnAddedTime, boolean simpleBaseColumnRef,
+                                      Set<String> invalidBasePartitionNames) {
+            this.mvColumnName = mvColumnName;
+            this.mvColumnUniqueId = mvColumnUniqueId;
+            this.baseTableId = baseTableId;
+            this.baseColumnName = baseColumnName;
+            this.baseColumnUniqueId = baseColumnUniqueId;
+            this.baseColumnCreatedTime = baseColumnCreatedTime;
+            this.mvColumnAddedTime = mvColumnAddedTime;
+            this.simpleBaseColumnRef = simpleBaseColumnRef;
+            this.invalidBasePartitionNames = Sets.newConcurrentHashSet();
+            if (invalidBasePartitionNames != null) {
+                this.invalidBasePartitionNames.addAll(invalidBasePartitionNames);
+            }
+        }
+
+        public String getMvColumnName() {
+            return mvColumnName;
+        }
+
+        public int getMvColumnUniqueId() {
+            return mvColumnUniqueId;
+        }
+
+        public long getBaseTableId() {
+            return baseTableId;
+        }
+
+        public String getBaseColumnName() {
+            return baseColumnName;
+        }
+
+        public int getBaseColumnUniqueId() {
+            return baseColumnUniqueId;
+        }
+
+        public long getBaseColumnCreatedTime() {
+            return baseColumnCreatedTime;
+        }
+
+        public long getMvColumnAddedTime() {
+            return mvColumnAddedTime;
+        }
+
+        public boolean isSimpleBaseColumnRef() {
+            return simpleBaseColumnRef;
+        }
+
+        public Set<String> getInvalidBasePartitionNames() {
+            if (invalidBasePartitionNames == null) {
+                invalidBasePartitionNames = Sets.newConcurrentHashSet();
+            }
+            return invalidBasePartitionNames;
+        }
+
+        public void removeInvalidBasePartitions(Set<String> partitionNames) {
+            if (CollectionUtils.isEmpty(partitionNames)) {
+                return;
+            }
+            getInvalidBasePartitionNames().removeAll(partitionNames);
+        }
+
+        public void retainInvalidBasePartitions(Set<String> visiblePartitionNames) {
+            if (visiblePartitionNames == null) {
+                return;
+            }
+            if (visiblePartitionNames.isEmpty()) {
+                getInvalidBasePartitionNames().clear();
+                return;
+            }
+            getInvalidBasePartitionNames().removeIf(partitionName -> !visiblePartitionNames.contains(partitionName));
+        }
+
+        public FSEColumnFreshnessInfo copy() {
+            return new FSEColumnFreshnessInfo(
+                    mvColumnName,
+                    mvColumnUniqueId,
+                    baseTableId,
+                    baseColumnName,
+                    baseColumnUniqueId,
+                    baseColumnCreatedTime,
+                    mvColumnAddedTime,
+                    simpleBaseColumnRef,
+                    getInvalidBasePartitionNames());
+        }
+    }
+
     public static class AsyncRefreshContext {
         // Olap base table refreshed meta infos
         // base table id -> (partition name -> partition info (id, version))
@@ -343,6 +455,9 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
         @SerializedName("tempTvrOwnerStartTaskRunId")
         private String tempTvrOwnerStartTaskRunId;
 
+        @SerializedName("fseColumnFreshnessInfoMap")
+        private Map<String, FSEColumnFreshnessInfo> fseColumnFreshnessInfoMap;
+
         @SerializedName(value = "defineStartTime")
         private boolean defineStartTime;
 
@@ -359,6 +474,7 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
             this.baseTableVisibleVersionMap = Maps.newConcurrentMap();
             this.baseTableInfoVisibleVersionMap = Maps.newConcurrentMap();
             this.mvPartitionNameRefBaseTablePartitionMap = Maps.newConcurrentMap();
+            this.fseColumnFreshnessInfoMap = Maps.newConcurrentMap();
             this.defineStartTime = false;
             this.startTime = Utils.getLongFromDateTime(LocalDateTime.now());
             this.step = 0;
@@ -380,6 +496,39 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
 
         public Map<String, Set<String>> getMvPartitionNameRefBaseTablePartitionMap() {
             return mvPartitionNameRefBaseTablePartitionMap;
+        }
+
+        public Map<String, FSEColumnFreshnessInfo> getFSEColumnFreshnessInfoMap() {
+            if (fseColumnFreshnessInfoMap == null) {
+                fseColumnFreshnessInfoMap = Maps.newConcurrentMap();
+            }
+            return fseColumnFreshnessInfoMap;
+        }
+
+        public void putFSEColumnFreshnessInfo(FSEColumnFreshnessInfo info) {
+            if (info == null) {
+                return;
+            }
+            getFSEColumnFreshnessInfoMap().put(info.getMvColumnName(), info);
+        }
+
+        public void removeInvalidBasePartitionsForFSEColumns(long baseTableId, Set<String> partitionNames) {
+            if (CollectionUtils.isEmpty(partitionNames)) {
+                return;
+            }
+            for (FSEColumnFreshnessInfo info : getFSEColumnFreshnessInfoMap().values()) {
+                if (info.getBaseTableId() == baseTableId) {
+                    info.removeInvalidBasePartitions(partitionNames);
+                }
+            }
+        }
+
+        public void retainInvalidBasePartitionsForFSEColumns(long baseTableId, Set<String> visiblePartitionNames) {
+            for (FSEColumnFreshnessInfo info : getFSEColumnFreshnessInfoMap().values()) {
+                if (info.getBaseTableId() == baseTableId) {
+                    info.retainInvalidBasePartitions(visiblePartitionNames);
+                }
+            }
         }
 
         public Map<BaseTableInfo, TvrVersionRange> getBaseTableInfoTvrVersionRangeMap() {
@@ -420,6 +569,7 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
             this.baseTableInfoVisibleVersionMap.clear();
             this.baseTableVisibleVersionMap.clear();
             this.mvPartitionNameRefBaseTablePartitionMap.clear();
+            this.getFSEColumnFreshnessInfoMap().clear();
         }
 
         public void clearVisibleVersionMapByMVPartitions(Set<String> mvPartitionNames) {
@@ -433,6 +583,12 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
                 Set<String> associatedPartitions = this.mvPartitionNameRefBaseTablePartitionMap.remove(mvPartitionName);
                 if (CollectionUtils.isNotEmpty(associatedPartitions)) {
                     associatedBasePartitionNames.addAll(associatedPartitions);
+                }
+            }
+
+            if (CollectionUtils.isNotEmpty(associatedBasePartitionNames)) {
+                for (FSEColumnFreshnessInfo info : getFSEColumnFreshnessInfoMap().values()) {
+                    info.removeInvalidBasePartitions(associatedBasePartitionNames);
                 }
             }
 
@@ -506,6 +662,9 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
             arc.tempBaseTableInfoTvrDeltaMap.putAll(this.tempBaseTableInfoTvrDeltaMap);
             arc.tempTvrOwnerStartTaskRunId = this.tempTvrOwnerStartTaskRunId;
             arc.mvPartitionNameRefBaseTablePartitionMap.putAll(this.mvPartitionNameRefBaseTablePartitionMap);
+            for (Map.Entry<String, FSEColumnFreshnessInfo> entry : getFSEColumnFreshnessInfoMap().entrySet()) {
+                arc.fseColumnFreshnessInfoMap.put(entry.getKey(), entry.getValue().copy());
+            }
             arc.defineStartTime = this.defineStartTime;
             arc.startTime = this.startTime;
             arc.step = this.step;
@@ -2756,6 +2915,10 @@ public class MaterializedView extends OlapTable implements GsonPreProcessable, G
                         log.getBaseTableInfoVisibleVersionMap().entrySet()) {
                     baseTableInfoVisibleVersionMap.computeIfAbsent(e.getKey(), k -> new HashMap<>())
                             .putAll(e.getValue());
+                }
+                if (log.getFSEColumnFreshnessInfoMap() != null) {
+                    this.refreshScheme.asyncRefreshContext.getFSEColumnFreshnessInfoMap()
+                            .putAll(log.getFSEColumnFreshnessInfoMap());
                 }
                 break;
             }
