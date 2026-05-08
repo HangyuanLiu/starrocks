@@ -19,6 +19,7 @@ import com.starrocks.common.Config;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
@@ -72,6 +73,17 @@ public final class MvRewriteOutputValidator {
         if (expr.getOp() instanceof LogicalAggregationOperator) {
             LogicalAggregationOperator agg = (LogicalAggregationOperator) expr.getOp();
             for (Map.Entry<ColumnRefOperator, CallOperator> e : agg.getAggregations().entrySet()) {
+                if (!checkOutputMapping(e.getKey(), e.getValue())) {
+                    return false;
+                }
+                if (!walkScalar(e.getValue())) {
+                    return false;
+                }
+            }
+        }
+        if (expr.getOp() instanceof LogicalProjectOperator) {
+            LogicalProjectOperator proj = (LogicalProjectOperator) expr.getOp();
+            for (Map.Entry<ColumnRefOperator, ScalarOperator> e : proj.getColumnRefMap().entrySet()) {
                 if (!checkOutputMapping(e.getKey(), e.getValue())) {
                     return false;
                 }

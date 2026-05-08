@@ -15,9 +15,13 @@
 package com.starrocks.sql.optimizer.rule.transformation.materialization.common;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
+import com.starrocks.common.Config;
 import com.starrocks.sql.ast.expression.ExprUtils;
+import com.starrocks.sql.optimizer.OptExpression;
+import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
@@ -28,6 +32,8 @@ import com.starrocks.type.IntegerType;
 import com.starrocks.type.Type;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
 
 class MvRewriteOutputValidatorTest {
 
@@ -65,5 +71,57 @@ class MvRewriteOutputValidatorTest {
         CaseWhenOperator bad = new CaseWhenOperator(IntegerType.SMALLINT,
                 null, zero, Lists.newArrayList(cond, mv));
         Assertions.assertFalse(MvRewriteOutputValidator.isCoherent(bad));
+    }
+
+    @Test
+    void strictModeThrowsOnIncoherentOutput() {
+        boolean prev = Config.enable_mv_rewrite_validator_strict;
+        try {
+            Config.enable_mv_rewrite_validator_strict = true;
+
+            // Construct a malformed CallOperator: sum claims SMALLINT arg, but
+            // its only child is BIGINT. Same incoherence shape as
+            // callWithMismatchedArgTypeFails, but wrapped in an OptExpression.
+            ColumnRefOperator k3 = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+            ColumnRefOperator outRef = new ColumnRefOperator(2, IntegerType.BIGINT, "out", true);
+            Function sumFn = ExprUtils.getBuiltinFunction(FunctionSet.SUM,
+                    new Type[] {IntegerType.SMALLINT}, Function.CompareMode.IS_IDENTICAL);
+            CallOperator badSum = new CallOperator(FunctionSet.SUM, IntegerType.BIGINT,
+                    Lists.newArrayList((ScalarOperator) k3), sumFn);
+
+            Map<ColumnRefOperator, ScalarOperator> projMap = Maps.newHashMap();
+            projMap.put(outRef, badSum);
+            LogicalProjectOperator projOp = new LogicalProjectOperator(projMap);
+            OptExpression expr = OptExpression.create(projOp);
+
+            Assertions.assertThrows(IllegalStateException.class,
+                    () -> MvRewriteOutputValidator.validate(expr, "test-mv-id"));
+        } finally {
+            Config.enable_mv_rewrite_validator_strict = prev;
+        }
+    }
+
+    @Test
+    void nonStrictModeReturnsFalseOnIncoherentOutput() {
+        boolean prev = Config.enable_mv_rewrite_validator_strict;
+        try {
+            Config.enable_mv_rewrite_validator_strict = false;
+
+            ColumnRefOperator k3 = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+            ColumnRefOperator outRef = new ColumnRefOperator(2, IntegerType.BIGINT, "out", true);
+            Function sumFn = ExprUtils.getBuiltinFunction(FunctionSet.SUM,
+                    new Type[] {IntegerType.SMALLINT}, Function.CompareMode.IS_IDENTICAL);
+            CallOperator badSum = new CallOperator(FunctionSet.SUM, IntegerType.BIGINT,
+                    Lists.newArrayList((ScalarOperator) k3), sumFn);
+
+            Map<ColumnRefOperator, ScalarOperator> projMap = Maps.newHashMap();
+            projMap.put(outRef, badSum);
+            LogicalProjectOperator projOp = new LogicalProjectOperator(projMap);
+            OptExpression expr = OptExpression.create(projOp);
+
+            Assertions.assertFalse(MvRewriteOutputValidator.validate(expr, "test-mv-id"));
+        } finally {
+            Config.enable_mv_rewrite_validator_strict = prev;
+        }
     }
 }
