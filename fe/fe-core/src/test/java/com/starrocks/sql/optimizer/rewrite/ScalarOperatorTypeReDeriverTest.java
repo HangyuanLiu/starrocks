@@ -14,10 +14,16 @@
 
 package com.starrocks.sql.optimizer.rewrite;
 
+import com.google.common.collect.Lists;
+import com.starrocks.catalog.Function;
+import com.starrocks.catalog.FunctionSet;
+import com.starrocks.sql.ast.expression.ExprUtils;
+import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.type.IntegerType;
+import com.starrocks.type.Type;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -36,5 +42,39 @@ class ScalarOperatorTypeReDeriverTest {
         ConstantOperator c = ConstantOperator.createInt(42);
         ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(c);
         Assertions.assertSame(c, out);
+    }
+
+    @Test
+    void callRebindsFunctionWhenChildTypeWidens() {
+        // add(SMALLINT k3, SMALLINT 1) — but left child is now BIGINT (mv_sum_k3 after substitution).
+        // The original fn is ADD(SMALLINT, SMALLINT) -> SMALLINT.
+        // After re-derive with BIGINT left child: expect ADD(BIGINT, BIGINT) -> BIGINT.
+        ColumnRefOperator left = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        ConstantOperator right = ConstantOperator.createSmallInt((short) 1);
+        Function origFn = ExprUtils.getBuiltinFunction(FunctionSet.ADD,
+                new Type[] {IntegerType.SMALLINT, IntegerType.SMALLINT},
+                Function.CompareMode.IS_IDENTICAL);
+        Assertions.assertNotNull(origFn, "ADD(SMALLINT,SMALLINT) builtin must exist");
+        CallOperator call = new CallOperator(FunctionSet.ADD, IntegerType.SMALLINT,
+                Lists.newArrayList(left, right), origFn);
+
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(call);
+        Assertions.assertTrue(out instanceof CallOperator, "result must be a CallOperator");
+        CallOperator newCall = (CallOperator) out;
+        // The rebound function's return type must equal the call's declared type
+        // and must reflect the widened child (BIGINT, not SMALLINT).
+        Assertions.assertEquals(IntegerType.BIGINT, newCall.getType(),
+                "after re-deriving, ADD(BIGINT, SMALLINT) returns BIGINT");
+        Assertions.assertEquals(IntegerType.BIGINT, newCall.getFunction().getReturnType());
+        Assertions.assertEquals(IntegerType.BIGINT, newCall.getFunction().getArgs()[0]);
+    }
+
+    @Test
+    void callThrowsWhenNoCompatibleFunction() {
+        ColumnRefOperator c = new ColumnRefOperator(1, IntegerType.BIGINT, "x", true);
+        CallOperator call = new CallOperator("not_a_real_function_xyz_123", IntegerType.BIGINT,
+                Lists.newArrayList(c), null);
+        Assertions.assertThrows(TypeReDeriveException.class,
+                () -> ScalarOperatorTypeReDeriver.reDerive(call));
     }
 }

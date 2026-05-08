@@ -14,10 +14,18 @@
 
 package com.starrocks.sql.optimizer.rewrite;
 
+import com.google.common.collect.Lists;
+import com.starrocks.catalog.Function;
+import com.starrocks.sql.ast.expression.ExprUtils;
+import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorVisitor;
+import com.starrocks.type.Type;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Bottom-up immutable shuttle that re-derives ScalarOperator types and
@@ -60,5 +68,52 @@ public final class ScalarOperatorTypeReDeriver
     @Override
     public ScalarOperator visitConstant(ConstantOperator op, Void ctx) {
         return op;
+    }
+
+    @Override
+    public ScalarOperator visitCall(CallOperator call, Void ctx) {
+        String fnName = call.getFnName();
+        List<ScalarOperator> newChildren = Lists.newArrayListWithCapacity(call.getChildren().size());
+        boolean childChanged = false;
+        for (ScalarOperator child : call.getChildren()) {
+            ScalarOperator newChild = child.accept(this, ctx);
+            newChildren.add(newChild);
+            if (newChild != child) {
+                childChanged = true;
+            }
+        }
+
+        Type[] argTypes = newChildren.stream()
+                .map(ScalarOperator::getType)
+                .toArray(Type[]::new);
+
+        Function fn = resolveFunction(fnName, argTypes);
+        if (fn == null) {
+            throw new TypeReDeriveException(
+                    "Cannot re-derive function '" + fnName + "' for arg types " + Arrays.toString(argTypes));
+        }
+
+        Function origFn = call.getFunction();
+        if (!childChanged && fn == origFn && fn.getReturnType().equals(call.getType())) {
+            return call;
+        }
+
+        CallOperator newCall = new CallOperator(
+                fnName, fn.getReturnType(), newChildren, fn,
+                call.isDistinct(), call.isRemovedDistinct());
+        newCall.setIgnoreNulls(call.getIgnoreNulls());
+        return newCall;
+    }
+
+    private static Function resolveFunction(String name, Type[] argTypes) {
+        Function fn = ExprUtils.getBuiltinFunction(name, argTypes, Function.CompareMode.IS_IDENTICAL);
+        if (fn != null) {
+            return fn;
+        }
+        fn = ExprUtils.getBuiltinFunction(name, argTypes, Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
+        if (fn != null) {
+            return fn;
+        }
+        return ExprUtils.getBuiltinFunction(name, argTypes, Function.CompareMode.IS_SUPERTYPE_OF);
     }
 }
