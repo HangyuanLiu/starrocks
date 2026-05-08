@@ -1379,6 +1379,10 @@ public class UtFrameUtils {
         // Surface latent ScalarOperator type incoherence in MV rewrite outputs
         // as IllegalStateException rather than silently dropping the candidate.
         // Production default stays false; strict mode is a CI/test gate.
+        // Note: only the sync MV rewrite path runs the validator (Phase 4.4).
+        // Async MV validator wiring was reverted (Phase 5.2) because the
+        // validator surfaced pre-existing latent incoherence in many async
+        // rewrite outputs that this fix is not in scope to address.
         Config.enable_mv_rewrite_validator_strict = true;
 
         // Default REFRESH DEFERRED
