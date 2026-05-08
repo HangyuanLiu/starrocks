@@ -55,6 +55,7 @@ import com.starrocks.sql.optimizer.rewrite.ScalarOperatorTypeReDeriver;
 import com.starrocks.sql.optimizer.rewrite.TypeReDeriveException;
 import com.starrocks.sql.optimizer.rule.Rule;
 import com.starrocks.sql.optimizer.rule.RuleType;
+import com.starrocks.sql.optimizer.rule.transformation.materialization.common.MvRewriteOutputValidator;
 import com.starrocks.sql.util.Box;
 import org.apache.commons.collections4.map.CaseInsensitiveMap;
 import org.apache.logging.log4j.LogManager;
@@ -262,9 +263,19 @@ public class MaterializedViewRule extends Rule {
                 }
                 rewriteContext.removeAll(percentileContexts);
 
+                // Save the pre-rewrite expression so we can fall back if the rewriter
+                // produces an incoherent plan (substitution failure or validator rejection).
+                OptExpression preRewriteOptExpression = optExpression;
                 MaterializedViewRewriter rewriter = new MaterializedViewRewriter();
                 for (MaterializedViewRule.RewriteContext rc : rewriteContext) {
                     optExpression = rewriter.rewrite(optExpression, rc);
+                }
+                String mvIdent = "indexId=" + bestIndex;
+                if (rewriter.substitutionFailed() || !MvRewriteOutputValidator.validate(optExpression, mvIdent)) {
+                    // The rewriter produced a type-incoherent plan. Drop this MV candidate
+                    // and fall back to the pre-rewrite tree so the optimizer can continue
+                    // without this MV rather than emitting a bad plan.
+                    optExpression = preRewriteOptExpression;
                 }
             }
         }
