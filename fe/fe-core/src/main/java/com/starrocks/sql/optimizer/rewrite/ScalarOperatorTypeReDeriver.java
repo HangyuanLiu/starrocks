@@ -63,10 +63,25 @@ public final class ScalarOperatorTypeReDeriver
 
     @Override
     public ScalarOperator visit(ScalarOperator op, Void ctx) {
-        // Default fallback for non-leaf, non-overridden shapes.
-        // Filled in by Phase 1.8. For now, pass through unchanged so leaves and
-        // simple wrapped shapes can already round-trip.
-        return op;
+        if (op.getChildren().isEmpty()) {
+            return op;
+        }
+        List<ScalarOperator> newChildren = Lists.newArrayListWithCapacity(op.getChildren().size());
+        boolean changed = false;
+        for (ScalarOperator child : op.getChildren()) {
+            ScalarOperator nc = child.accept(this, ctx);
+            if (nc != child) {
+                changed = true;
+            }
+            newChildren.add(nc);
+        }
+        if (!changed) {
+            return op;
+        }
+        throw new TypeReDeriveException(
+                "ScalarOperatorTypeReDeriver default fallback refuses to re-emit "
+                        + op.getClass().getSimpleName()
+                        + " after child types changed (op=" + op.debugString() + ")");
     }
 
     @Override

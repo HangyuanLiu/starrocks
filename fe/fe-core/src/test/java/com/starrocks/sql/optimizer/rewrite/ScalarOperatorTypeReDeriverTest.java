@@ -25,6 +25,7 @@ import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.InPredicateOperator;
+import com.starrocks.sql.optimizer.operator.scalar.IsNullPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.IntegerType;
@@ -206,5 +207,25 @@ class ScalarOperatorTypeReDeriverTest {
         Assertions.assertEquals(IntegerType.BIGINT, newIn.getChild(0).getType());
         Assertions.assertEquals(IntegerType.BIGINT, newIn.getChild(1).getType());
         Assertions.assertEquals(IntegerType.BIGINT, newIn.getChild(2).getType());
+    }
+
+    @Test
+    void unknownShapePassesThroughWhenNoChange() {
+        // IsNullPredicate over a leaf — child unchanged → pass through.
+        ColumnRefOperator c = new ColumnRefOperator(1, IntegerType.BIGINT, "x", true);
+        IsNullPredicateOperator inull = new IsNullPredicateOperator(false, c);
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(inull);
+        Assertions.assertSame(inull, out);
+    }
+
+    @Test
+    void unknownShapeThrowsWhenChildChanged() {
+        // IsNullPredicate around a redundant implicit cast (which gets dropped),
+        // so the child identity changes → default fallback must throw.
+        ColumnRefOperator c = new ColumnRefOperator(1, IntegerType.BIGINT, "x", true);
+        CastOperator implicit = new CastOperator(IntegerType.BIGINT, c, true /* implicit, redundant */);
+        IsNullPredicateOperator inull = new IsNullPredicateOperator(false, implicit);
+        Assertions.assertThrows(TypeReDeriveException.class,
+                () -> ScalarOperatorTypeReDeriver.reDerive(inull));
     }
 }
