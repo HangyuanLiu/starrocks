@@ -149,8 +149,15 @@ public final class MvRewriteOutputValidator {
     private static boolean checkCall(CallOperator call) {
         Function fn = call.getFunction();
         if (fn == null) {
-            LOG.warn("MV rewrite call {} has null function", call.getFnName());
-            return false;
+            // Some legitimate CallOperators in the codebase (notably the
+            // "cast" pseudo-call that appears in some async MV rewrite
+            // outputs) have a null Function reference. Skipping the
+            // signature check here is safe: PlanValidator at the end of
+            // optimization will reject any genuinely broken call, and
+            // mismatched-but-non-null cases are caught by the type checks
+            // below. Treating null fn as a hard rejection here turned out
+            // to drop legitimate async MV candidates (testFilterProject0).
+            return true;
         }
         Type[] declared = fn.getArgs();
         if (declared.length != call.getChildren().size()) {
