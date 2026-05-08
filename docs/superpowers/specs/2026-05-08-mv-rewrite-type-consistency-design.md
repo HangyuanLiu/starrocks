@@ -326,9 +326,21 @@ fe/fe-core/src/test/java/com/starrocks/sql/optimizer/rule/transformation/materia
 fe/fe-core/src/test/java/com/starrocks/sql/optimizer/rule/transformation/materialization/common/MvRewriteOutputValidatorTest.java
 ```
 
+## Status — async path deferred
+
+The original design called for unified sync + async coverage. During implementation:
+
+- **Phase 5.1 (substitutor swaps in async path):** deferred. The 4 MV-internal call sites in `AggregatedMaterializedViewRewriter` and async `MaterializedViewRewriter` were left at their existing `ReplaceColumnRefRewriter` usage. Risk/benefit was unfavorable: no async-path repro of the original bug, and the substitutor introduces type-rejection behavior that breaks several existing async MV tests reliant on previously-tolerated type drift.
+
+- **Phase 5.2 (validator wiring at async output):** initially landed (commit `d2968b98793`), then reverted (commit `a55c29a8f64`) after surfacing 43 pre-existing latent type-incoherence cases in `MaterializedViewTest`. Those incoherences pre-date this fix and addressing them is out of scope. The async path now relies on the global `PlanValidator` as its only safety net.
+
+**Effect for next maintainer:** if a new bug shows up where async MV rewrite produces a type-incoherent OptExpression, the symptom will surface as a `PlanValidator` failure (query-failing) rather than a soft `MvRewriteOutputValidator` candidate-drop. Re-introducing 5.2 will require fixing the 43 pre-existing async incoherences first; track them as a follow-up.
+
 ## Risks and open points
 
 1. **`ColumnRefOperator.setType` mutation propagation.** Design assumes that `ColumnRef` instances are id-keyed and mutating `type` is the correct semantic for downstream consumers. Implementation must audit every ColumnRef holder to confirm none cache type as a derived field. `ColumnRefSet` is id-only (safe). `ColumnRefFactory`'s `colId → Column` reverse map does not store type (safe). Any cache discovered during implementation gets explicit handling in the plan.
+
+   **Audit status (post-implementation):** Phase 7.1 audit of optimizer + planner + statistics subsystems found 0 holders that cache a value derived from `colRef.getType()`. Out-of-scope holders (BE side, catalog metadata layer, old planner) were not audited; the spec contract is that any such holder discovered later will require a targeted fix or treat the post-pass type widening as load-bearing.
 
 2. **`enable_mv_rewrite_validator_strict` default.** Recommended: production `false`, fe-ut `true`. Strict mode in CI surfaces gaps; soft mode in production preserves availability under unknown bug shapes.
 

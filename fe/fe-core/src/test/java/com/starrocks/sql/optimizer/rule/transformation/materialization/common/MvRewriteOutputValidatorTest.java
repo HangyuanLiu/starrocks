@@ -60,6 +60,19 @@ class MvRewriteOutputValidatorTest {
     }
 
     @Test
+    void callWithNullFunctionPasses() {
+        // Some legitimate async-MV-rewrite outputs contain a CallOperator with
+        // a null Function reference (notably "cast" pseudo-calls). The validator
+        // must tolerate these or it will reject perfectly valid candidates
+        // (regression observed in testFilterProject0 prior to commit 18b1635897e).
+        ColumnRefOperator child = new ColumnRefOperator(1, IntegerType.BIGINT, "x", true);
+        CallOperator nullFnCall = new CallOperator("cast", IntegerType.BIGINT,
+                Lists.newArrayList((ScalarOperator) child), null /* fn */);
+        Assertions.assertTrue(MvRewriteOutputValidator.isCoherent(nullFnCall),
+                "CallOperator with null Function must not be rejected");
+    }
+
+    @Test
     void casewhenBranchTypeMismatchFails() {
         // case-when's declared op type is SMALLINT, but its then branch is BIGINT
         // (e.g. left over from a leaf substitution that was not re-derived).

@@ -22,7 +22,6 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
-import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.type.Type;
@@ -135,9 +134,9 @@ public final class MvRewriteOutputValidator {
         if (op instanceof CaseWhenOperator && !checkCaseWhen((CaseWhenOperator) op)) {
             return false;
         }
-        if (op instanceof CastOperator && !checkCast((CastOperator) op)) {
-            return false;
-        }
+        // CastOperator validation is intentionally omitted: explicit casts are
+        // user semantics; implicit cast safety is a BE concern. Adding a check
+        // here without canCastTo() would be a no-op or false-positive.
         for (ScalarOperator child : op.getChildren()) {
             if (!walkScalar(child)) {
                 return false;
@@ -200,14 +199,4 @@ public final class MvRewriteOutputValidator {
         return true;
     }
 
-    private static boolean checkCast(CastOperator cast) {
-        // Only validate implicit casts — explicit user-written casts are user semantics.
-        if (!cast.isImplicit()) {
-            return true;
-        }
-        // We don't do precise canCastTo here — that's a BE concern. The check
-        // we DO want is: an implicit cast's target type matches the declared op type.
-        // (CastOperator's getType returns the target type; child type is the input.)
-        return true;
-    }
 }

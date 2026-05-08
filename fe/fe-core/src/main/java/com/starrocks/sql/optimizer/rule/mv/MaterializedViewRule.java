@@ -235,15 +235,35 @@ public class MaterializedViewRule extends Rule {
             BestIndexRewriter bestIndexRewriter = new BestIndexRewriter(scan);
             optExpression = bestIndexRewriter.rewrite(optExpression, bestIndex);
 
+            // BestIndexRewriter post-pass — type widening propagation.
+            //
             // After BestIndexRewriter picks the MV rollup, the scan is rebuilt with new
-            // ColumnRef objects whose declared types may still be the original narrow types
-            // (e.g. k3 SMALLINT) while the MV column is wider (e.g. BIGINT). The Project/Agg
-            // operators above still hold OLD ColumnRef objects that have not been updated yet.
+            // ColumnRef objects whose declared types may still be the original narrow
+            // types (e.g. k3 SMALLINT) while the MV column is wider (e.g. BIGINT). The
+            // Project/Agg operators above still hold OLD ColumnRef objects that have
+            // not been updated yet.
+            //
             // Two-step fix:
-            // 1. Collect the colRefId→newType changes from the new scan's colRefToColumnMetaMap.
-            // 2. Walk the ENTIRE tree (scan + Project + Agg) and patch every ColumnRef object
-            //    with a matching ID (covering both the new scan colRefs and the old colRefs in
-            //    expressions above). Then re-derive parent ScalarOperator types bottom-up.
+            //   1. Collect the colRefId→newType changes from the new scan's
+            //      colRefToColumnMetaMap.
+            //   2. Walk the ENTIRE tree (scan + Project + Agg) and patch every ColumnRef
+            //      object with a matching ID (covering both the new scan colRefs and the
+            //      old colRefs in expressions above). Then re-derive parent ScalarOperator
+            //      types bottom-up via ScalarOperatorTypeReDeriver.
+            //
+            // This is COMPLEMENTARY to the rewrite-time substitution wired into
+            // MaterializedViewRewriter.visitLogicalProject/Scan/Aggregate, NOT redundant
+            // with it. The rewriter-side substitution handles RewriteContext-driven
+            // query→MV column swaps for percentile/bitmap/hll rollups; the post-pass
+            // here handles the BestIndexRewriter-induced ColumnRef type drift that
+            // exists for ANY rollup with widening (sum SMALLINT→BIGINT being the
+            // canonical case). Removing either mechanism re-introduces real bugs:
+            //   - without this post-pass, sum(if(k2=0,k3,0)) reports type SMALLINT
+            //     while the BE-side expression executes against BIGINT input — see
+            //     issue #72799 / SyncMvRewriteTypeConsistencyTest;
+            //   - without the rewriter-side substitution, percentile/bitmap rollup
+            //     fn-family remapping never happens.
+            // Spec: docs/superpowers/specs/2026-05-08-mv-rewrite-type-consistency-design.md
             Map<Integer, com.starrocks.type.Type> typeChanges = collectScanTypeChanges(optExpression, scan);
             if (!typeChanges.isEmpty()) {
                 Set<ColumnRefOperator> widenedRefs = patchColRefTypesInTree(optExpression, typeChanges);
