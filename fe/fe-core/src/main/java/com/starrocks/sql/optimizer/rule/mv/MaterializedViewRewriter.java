@@ -262,19 +262,37 @@ public class MaterializedViewRewriter extends OptExpressionVisitor<OptExpression
 
         Map<ColumnRefOperator, CallOperator> newAggMap = new HashMap<>(aggregationOperator.getAggregations());
         for (Map.Entry<ColumnRefOperator, CallOperator> kv : aggregationOperator.getAggregations().entrySet()) {
+            ColumnRefOperator outputRef = kv.getKey();
             CallOperator queryAggFunc = kv.getValue();
-            if (queryAggFunc.getUsedColumns().isEmpty()) {
-                break;
+            if (!queryAggFunc.getUsedColumns().contains(context.queryColumnRef)) {
+                // Agg doesn't reference the substituted column — leave it alone.
+                continue;
             }
 
             String functionName = queryAggFunc.getFnName();
-            if (functionName.equals(context.aggCall.getFnName())
-                    && queryAggFunc.getUsedColumns().getFirstId() == context.queryColumnRef.getId()) {
+            // For rollup-family-changing rewrites (BITMAP_UNION_COUNT, HLL_UNION_AGG,
+            // PERCENTILE_APPROX), prefer rewriteAggregateFunc which constructs the
+            // appropriate rollup CallOperator. Match by query function name + the
+            // RewriteContext's expected agg name.
+            if (functionName.equalsIgnoreCase(context.aggCall.getFnName())) {
                 CallOperator newAggFunc = rewriteAggregateFunc(replaceColumnRefRewriter, context.mvColumn, queryAggFunc);
                 if (newAggFunc != null) {
-                    newAggMap.put(kv.getKey(), newAggFunc);
-                    break;
+                    newAggMap.put(outputRef, newAggFunc);
+                    outputRef.setType(newAggFunc.getType());
+                    outputRef.setNullable(newAggFunc.isNullable());
+                    continue;
                 }
+            }
+
+            // Generic path: substitute children + re-derive types.
+            Optional<ScalarOperator> coherent = MvColumnRefSubstitutor.substituteAndSyncOutput(
+                    outputRef, queryAggFunc, replaceMap);
+            if (!coherent.isPresent()) {
+                substitutionFailed = true;
+                return optExpression;
+            }
+            if (coherent.get() instanceof CallOperator) {
+                newAggMap.put(outputRef, (CallOperator) coherent.get());
             }
         }
         return OptExpression.create(new LogicalAggregationOperator(
