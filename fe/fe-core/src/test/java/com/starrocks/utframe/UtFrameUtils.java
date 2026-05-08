@@ -1376,6 +1376,11 @@ public class UtFrameUtils {
         // Use sync analyze
         Config.mv_auto_analyze_async = false;
 
+        // Surface latent ScalarOperator type incoherence in MV rewrite outputs
+        // as IllegalStateException rather than silently dropping the candidate.
+        // Production default stays false; strict mode is a CI/test gate.
+        Config.enable_mv_rewrite_validator_strict = true;
+
         // Default REFRESH DEFERRED
         Config.default_mv_refresh_immediate = false;
         // default replication num: 1
