@@ -142,6 +142,27 @@ public final class ScalarOperatorTypeReDeriver
     }
 
     @Override
+    public ScalarOperator visitCastOperator(CastOperator op, Void ctx) {
+        ScalarOperator newChild = op.getChild(0).accept(this, ctx);
+        if (!op.isImplicit()) {
+            // User-written cast: preserve target unconditionally.
+            if (newChild == op.getChild(0)) {
+                return op;
+            }
+            return new CastOperator(op.getType(), newChild, false);
+        }
+        // Implicit cast.
+        if (op.getType().matchesType(newChild.getType())) {
+            // Cast is now redundant — drop it.
+            return newChild;
+        }
+        if (newChild == op.getChild(0)) {
+            return op;
+        }
+        return new CastOperator(op.getType(), newChild, true);
+    }
+
+    @Override
     public ScalarOperator visitCaseWhenOperator(CaseWhenOperator op, Void ctx) {
         ScalarOperator caseClause = op.hasCase() ? op.getCaseClause().accept(this, ctx) : null;
         List<ScalarOperator> whenThen = Lists.newArrayList();

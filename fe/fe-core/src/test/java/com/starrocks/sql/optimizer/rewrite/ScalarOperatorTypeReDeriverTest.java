@@ -21,6 +21,7 @@ import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
@@ -152,5 +153,23 @@ class ScalarOperatorTypeReDeriverTest {
         Assertions.assertEquals(IntegerType.BIGINT, newCase.getType());
         Assertions.assertEquals(IntegerType.BIGINT, newCase.getThenClause(0).getType());
         Assertions.assertEquals(IntegerType.BIGINT, newCase.getElseClause().getType());
+    }
+
+    @Test
+    void explicitCastTargetPreserved() {
+        ColumnRefOperator mv = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        CastOperator cast = new CastOperator(IntegerType.SMALLINT, mv, false /* explicit */);
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(cast);
+        Assertions.assertTrue(out instanceof CastOperator);
+        Assertions.assertEquals(IntegerType.SMALLINT, out.getType(),
+                "explicit cast target preserved despite child being BIGINT");
+    }
+
+    @Test
+    void implicitCastDroppedWhenRedundant() {
+        ColumnRefOperator mv = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        CastOperator cast = new CastOperator(IntegerType.BIGINT, mv, true /* implicit */);
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(cast);
+        Assertions.assertSame(mv, out, "redundant implicit cast should be unwrapped");
     }
 }
