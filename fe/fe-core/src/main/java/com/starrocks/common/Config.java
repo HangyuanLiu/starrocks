@@ -1708,6 +1708,12 @@ public class Config extends ConfigBase {
             "that are broken due to base table schema changes")
     public static boolean enable_mv_automatic_repairing_for_broken_base_tables = true;
 
+    @ConfField(mutable = true, comment = "When true, an MV rewrite output that fails the " +
+            "MvRewriteOutputValidator throws IllegalStateException instead of being silently " +
+            "dropped from the candidate pool. Intended for fe-ut to catch gaps in " +
+            "ScalarOperatorTypeReDeriver. Production default: false.")
+    public static boolean enable_mv_rewrite_validator_strict = false;
+
     /**
      * The number of query retries.
      * A query may retry if we encounter RPC exception and no result has been sent to user.

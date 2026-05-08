@@ -343,6 +343,15 @@ Starting from version 3.3.0, the system defaults to refreshing one partition at 
 - Description: When this item is set to `true`, StarRocks will attempt to automatically repair materialized view base-table metadata when a base external table is dropped and recreated or its table identifier changes. The repair flow can update the materialized view's base table information, collect partition-level repair information for external table partitions, and drive partition refresh decisions for async auto-refresh materialized views while honoring `autoRefreshPartitionsLimit`. Currently the automated repair supports Hive external tables; unsupported table types will cause the materialized view to be set inactive and a repair exception. Partition information collection is non-blocking and failures are logged.
 - Introduced in: v3.3.19, v3.4.8, v3.5.6
 
+### `enable_mv_rewrite_validator_strict`
+
+- Default: false
+- Type: Boolean
+- Unit: -
+- Is mutable: Yes
+- Description: When `true`, an MV rewrite output that fails the internal `MvRewriteOutputValidator` is escalated to an `IllegalStateException` instead of being silently dropped from the candidate pool. Intended for FE unit tests to surface gaps in the type re-derivation visitor. Leave at the default `false` in production so MV candidates that hit unknown operator shapes degrade gracefully without failing queries.
+- Introduced in: -
+
 ### `enable_predicate_columns_collection`
 
 - Default: true
