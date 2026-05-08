@@ -137,6 +137,34 @@ public final class ScalarOperatorTypeReDeriver
             return out;
         }
 
+        // COALESCE specialization: unify all value branches before generic resolution.
+        if (FunctionSet.COALESCE.equalsIgnoreCase(fnName) && !newChildren.isEmpty()) {
+            Type unified = newChildren.get(0).getType();
+            for (int i = 1; i < newChildren.size(); i++) {
+                unified = TypeManager.getCommonSuperType(unified, newChildren.get(i).getType());
+                if (unified == null || !unified.isValid()) {
+                    throw new TypeReDeriveException(
+                            "coalesce branches have no common super type: "
+                            + newChildren.stream().map(ScalarOperator::getType)
+                                    .collect(java.util.stream.Collectors.toList()));
+                }
+            }
+            List<ScalarOperator> aligned = Lists.newArrayListWithCapacity(newChildren.size());
+            for (ScalarOperator c : newChildren) {
+                aligned.add(unified.matchesType(c.getType()) ? c : new CastOperator(unified, c, true));
+            }
+            Type[] coalesceArgs = new Type[aligned.size()];
+            Arrays.fill(coalesceArgs, unified);
+            Function coalesceFn = resolveFunction(FunctionSet.COALESCE, coalesceArgs);
+            if (coalesceFn == null) {
+                throw new TypeReDeriveException(
+                        "no COALESCE builtin for arg types " + Arrays.toString(coalesceArgs));
+            }
+            CallOperator out = new CallOperator(FunctionSet.COALESCE, unified, aligned, coalesceFn);
+            out.setIgnoreNulls(call.getIgnoreNulls());
+            return out;
+        }
+
         Function fn = resolveSpecializedAggFn(fnName, argTypes);
         if (fn == null) {
             fn = resolveFunction(fnName, argTypes);

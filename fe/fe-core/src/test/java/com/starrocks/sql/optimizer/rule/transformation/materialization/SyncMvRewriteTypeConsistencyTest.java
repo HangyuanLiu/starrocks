@@ -136,10 +136,7 @@ public class SyncMvRewriteTypeConsistencyTest extends MVTestBase {
             {"sum(k3)",                                               Boolean.TRUE,  "Q1 direct"},
             {"sum(k3 * 2)",                                          Boolean.TRUE,  "Q2 arith mul"},
             {"sum(k3 + 1)",                                          Boolean.TRUE,  "Q3 arith add"},
-            // Q4: coalesce() triggers ConditionalTypeChecker before type re-derivation can fix
-            // the SMALLINT->BIGINT widening; the plan falls back to the base table.
-            // Gap tracked: Phase 1-5 type re-deriver does not yet cover COALESCE nodes.
-            {"sum(coalesce(k3, 0))",                                 Boolean.FALSE, "Q4 coalesce"},
+            {"sum(coalesce(k3, 0))",                                 Boolean.TRUE,  "Q4 coalesce"},
             {"sum(nullif(k3, 0))",                                   Boolean.TRUE,  "Q5 nullif"},
             {"sum(if(k2=0, k3, 0))",                                 Boolean.TRUE,  "Q6 if"},
             {"sum(case when k2=0 then k3 else 0 end)",               Boolean.TRUE,  "Q7 case"},

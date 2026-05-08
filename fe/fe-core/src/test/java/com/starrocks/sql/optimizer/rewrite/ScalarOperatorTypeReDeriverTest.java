@@ -210,6 +210,27 @@ class ScalarOperatorTypeReDeriverTest {
     }
 
     @Test
+    void coalesceBranchesUnifyToCommonSuperType() {
+        // coalesce(mv_sum_k3 (BIGINT), 0 (TINYINT))
+        // Expected: coalesce(BIGINT, BIGINT) returning BIGINT
+        ColumnRefOperator mv = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        ConstantOperator zero = ConstantOperator.createTinyInt((byte) 0);
+        Function origCoalesce = ExprUtils.getBuiltinFunction(FunctionSet.COALESCE,
+                new Type[] {IntegerType.SMALLINT, IntegerType.TINYINT},
+                Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
+        Assertions.assertNotNull(origCoalesce, "coalesce(SMALLINT,TINYINT) builtin must exist");
+        CallOperator coalesce = new CallOperator(FunctionSet.COALESCE, IntegerType.SMALLINT,
+                Lists.newArrayList((ScalarOperator) mv, zero), origCoalesce);
+
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(coalesce);
+        Assertions.assertTrue(out instanceof CallOperator);
+        CallOperator newCoalesce = (CallOperator) out;
+        Assertions.assertEquals(IntegerType.BIGINT, newCoalesce.getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newCoalesce.getChild(0).getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newCoalesce.getChild(1).getType());
+    }
+
+    @Test
     void unknownShapePassesThroughWhenNoChange() {
         // IsNullPredicate over a leaf — child unchanged → pass through.
         ColumnRefOperator c = new ColumnRefOperator(1, IntegerType.BIGINT, "x", true);
