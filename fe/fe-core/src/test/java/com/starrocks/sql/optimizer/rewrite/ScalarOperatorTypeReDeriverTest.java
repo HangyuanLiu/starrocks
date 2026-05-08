@@ -24,6 +24,7 @@ import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
+import com.starrocks.sql.optimizer.operator.scalar.InPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.IntegerType;
@@ -171,5 +172,39 @@ class ScalarOperatorTypeReDeriverTest {
         CastOperator cast = new CastOperator(IntegerType.BIGINT, mv, true /* implicit */);
         ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(cast);
         Assertions.assertSame(mv, out, "redundant implicit cast should be unwrapped");
+    }
+
+    @Test
+    void binaryPredicateAlignsChildrenWithCommonSuperType() {
+        // mv_sum_k3 (BIGINT) = 0 (TINYINT)
+        // Expected: both children unified to BIGINT, predicate type stays BOOLEAN.
+        ColumnRefOperator mv = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        ConstantOperator zero = ConstantOperator.createTinyInt((byte) 0);
+        BinaryPredicateOperator pred = BinaryPredicateOperator.eq(mv, zero);
+
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(pred);
+        Assertions.assertTrue(out instanceof BinaryPredicateOperator);
+        BinaryPredicateOperator newPred = (BinaryPredicateOperator) out;
+        Assertions.assertEquals(BooleanType.BOOLEAN, newPred.getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newPred.getChild(0).getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newPred.getChild(1).getType());
+    }
+
+    @Test
+    void inPredicateAlignsChildrenWithCommonSuperType() {
+        // mv_sum_k3 (BIGINT) IN (1 (TINYINT), 2 (INT))
+        // Expected: all children unified to BIGINT, predicate type stays BOOLEAN.
+        ColumnRefOperator mv = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        ConstantOperator one = ConstantOperator.createTinyInt((byte) 1);
+        ConstantOperator two = ConstantOperator.createInt(2);
+        InPredicateOperator inPred = new InPredicateOperator(false, mv, one, two);
+
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(inPred);
+        Assertions.assertTrue(out instanceof InPredicateOperator);
+        InPredicateOperator newIn = (InPredicateOperator) out;
+        Assertions.assertEquals(BooleanType.BOOLEAN, newIn.getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newIn.getChild(0).getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newIn.getChild(1).getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newIn.getChild(2).getType());
     }
 }

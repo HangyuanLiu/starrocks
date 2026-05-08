@@ -20,11 +20,13 @@ import com.starrocks.catalog.FunctionSet;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.common.TypeManager;
+import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
+import com.starrocks.sql.optimizer.operator.scalar.InPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorUtil;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorVisitor;
@@ -200,6 +202,66 @@ public final class ScalarOperatorTypeReDeriver
             elseClause = new CastOperator(unified, elseClause, true);
         }
         return new CaseWhenOperator(unified, caseClause, elseClause, alignedWhenThen);
+    }
+
+    @Override
+    public ScalarOperator visitBinaryPredicate(BinaryPredicateOperator op, Void ctx) {
+        ScalarOperator l = op.getChild(0).accept(this, ctx);
+        ScalarOperator r = op.getChild(1).accept(this, ctx);
+        Type unified = TypeManager.getCommonSuperType(l.getType(), r.getType());
+        if (unified == null || !unified.isValid()) {
+            throw new TypeReDeriveException(
+                    "binary predicate has no common super type: " + l.getType() + " vs " + r.getType());
+        }
+        if (!unified.matchesType(l.getType())) {
+            l = new CastOperator(unified, l, true);
+        }
+        if (!unified.matchesType(r.getType())) {
+            r = new CastOperator(unified, r, true);
+        }
+        if (l == op.getChild(0) && r == op.getChild(1)) {
+            return op;
+        }
+        return new BinaryPredicateOperator(op.getBinaryType(), l, r);
+    }
+
+    @Override
+    public ScalarOperator visitInPredicate(InPredicateOperator op, Void ctx) {
+        List<ScalarOperator> newChildren = Lists.newArrayListWithCapacity(op.getChildren().size());
+        boolean childChanged = false;
+        List<Type> types = Lists.newArrayList();
+        for (ScalarOperator child : op.getChildren()) {
+            ScalarOperator nc = child.accept(this, ctx);
+            if (nc != child) {
+                childChanged = true;
+            }
+            newChildren.add(nc);
+            types.add(nc.getType());
+        }
+        // Compute unified type across all children.
+        Type unified = types.get(0);
+        for (int i = 1; i < types.size(); i++) {
+            unified = TypeManager.getCommonSuperType(unified, types.get(i));
+            if (unified == null || !unified.isValid()) {
+                throw new TypeReDeriveException("IN has no common type: " + types);
+            }
+        }
+        // Determine whether any child needs casting to the unified type.
+        boolean castNeeded = false;
+        for (Type t : types) {
+            if (!unified.matchesType(t)) {
+                castNeeded = true;
+                break;
+            }
+        }
+        if (!childChanged && !castNeeded) {
+            return op;
+        }
+        List<ScalarOperator> aligned = Lists.newArrayListWithCapacity(newChildren.size());
+        for (ScalarOperator c : newChildren) {
+            aligned.add(unified.matchesType(c.getType()) ? c : new CastOperator(unified, c, true));
+        }
+        return new InPredicateOperator(op.isNotIn(), aligned.toArray(new ScalarOperator[0]));
     }
 
     private static Function resolveSpecializedAggFn(String name, Type[] argTypes) {
