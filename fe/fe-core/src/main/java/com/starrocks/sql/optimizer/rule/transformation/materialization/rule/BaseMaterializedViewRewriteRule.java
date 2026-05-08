@@ -40,7 +40,6 @@ import com.starrocks.sql.optimizer.rule.transformation.materialization.IMaterial
 import com.starrocks.sql.optimizer.rule.transformation.materialization.MaterializedViewRewriter;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.PredicateSplit;
-import com.starrocks.sql.optimizer.rule.transformation.materialization.common.MvRewriteOutputValidator;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.compensation.MVCompensation;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
@@ -236,15 +235,6 @@ public abstract class BaseMaterializedViewRewriteRule extends TransformationRule
             candidate = mvRewriter.postRewrite(context, mvRewriteContext, candidate);
             if (candidate == null) {
                 logMVRewrite(mvRewriteContext, "doPostAfterRewrite phase failed");
-                continue;
-            }
-
-            // Phase 5.2: validate async-path output for type/signature coherence.
-            // On failure: logs WARN, increments mv_rewrite_validator_reject_total, drops this candidate.
-            // In strict mode (fe-ut only) throws IllegalStateException instead of dropping.
-            String mvIdent = "mvId=" + mvContext.getMv().getId() + " mvName=" + mvContext.getMv().getName();
-            if (!MvRewriteOutputValidator.validate(candidate, mvIdent)) {
-                logMVRewrite(mvRewriteContext, "MvRewriteOutputValidator rejected candidate for {}", mvIdent);
                 continue;
             }
 
