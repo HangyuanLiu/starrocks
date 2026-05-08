@@ -36,6 +36,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorUtil;
 import com.starrocks.sql.optimizer.rewrite.ReplaceColumnRefRewriter;
+import com.starrocks.sql.optimizer.rule.transformation.materialization.common.MvColumnRefSubstitutor;
 import com.starrocks.type.BitmapType;
 import com.starrocks.type.HLLType;
 import com.starrocks.type.IntegerType;
@@ -45,10 +46,17 @@ import com.starrocks.type.Type;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.starrocks.catalog.Function.CompareMode.IS_IDENTICAL;
 
 public class MaterializedViewRewriter extends OptExpressionVisitor<OptExpression, MaterializedViewRule.RewriteContext> {
+
+    private boolean substitutionFailed = false;
+
+    public boolean substitutionFailed() {
+        return substitutionFailed;
+    }
 
     public MaterializedViewRewriter() {
     }
@@ -91,12 +99,17 @@ public class MaterializedViewRewriter extends OptExpressionVisitor<OptExpression
                 if (queryScalarOperator instanceof ColumnRefOperator) {
                     newProjectMap.put(context.mvColumnRef, context.mvColumnRef);
                 } else if (isCaseWhenScalarOperator(queryScalarOperator)) {
-                    // rewrite query column ref into mv agg column ref,
-                    // eg: sum(case when a > 1 then b else 0 end), rewrite to sum(case when mv_column > 1 then b else 0 end)
+                    // Route through MvColumnRefSubstitutor so the rewritten subtree's
+                    // types are re-derived bottom-up after the leaf substitution.
                     Map<ColumnRefOperator, ScalarOperator> replaceMap = new HashMap<>();
                     replaceMap.put(context.queryColumnRef, context.mvColumnRef);
-                    ReplaceColumnRefRewriter replaceColumnRefRewriter = new ReplaceColumnRefRewriter(replaceMap);
-                    newProjectMap.put(queryColRef, replaceColumnRefRewriter.rewrite(kv.getValue()));
+                    Optional<ScalarOperator> rewritten = MvColumnRefSubstitutor.substituteAndSyncOutput(
+                            queryColRef, queryScalarOperator, replaceMap);
+                    if (!rewritten.isPresent()) {
+                        substitutionFailed = true;
+                        return optExpression;
+                    }
+                    newProjectMap.put(queryColRef, rewritten.get());
                 } else {
                     // eg: bitmap_union(to_bitmap(a)), still rewrite to bitmap_union(to_bitmap(a))
                     newProjectMap.put(queryColRef, context.mvColumnRef);
