@@ -16,11 +16,13 @@ package com.starrocks.sql.optimizer.rewrite;
 
 import com.google.common.collect.Lists;
 import com.starrocks.catalog.Function;
+import com.starrocks.catalog.FunctionSet;
 import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorUtil;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorVisitor;
 import com.starrocks.type.Type;
 
@@ -87,7 +89,10 @@ public final class ScalarOperatorTypeReDeriver
                 .map(ScalarOperator::getType)
                 .toArray(Type[]::new);
 
-        Function fn = resolveFunction(fnName, argTypes);
+        Function fn = resolveSpecializedAggFn(fnName, argTypes);
+        if (fn == null) {
+            fn = resolveFunction(fnName, argTypes);
+        }
         if (fn == null) {
             throw new TypeReDeriveException(
                     "Cannot re-derive function '" + fnName + "' for arg types " + Arrays.toString(argTypes));
@@ -103,6 +108,19 @@ public final class ScalarOperatorTypeReDeriver
                 call.isDistinct(), call.isRemovedDistinct());
         newCall.setIgnoreNulls(call.getIgnoreNulls());
         return newCall;
+    }
+
+    private static Function resolveSpecializedAggFn(String name, Type[] argTypes) {
+        if (FunctionSet.SUM.equalsIgnoreCase(name) && argTypes.length == 1) {
+            return ScalarOperatorUtil.findSumFn(argTypes);
+        }
+        if (FunctionSet.COUNT.equalsIgnoreCase(name) && argTypes.length == 1) {
+            return ExprUtils.getBuiltinFunction(FunctionSet.COUNT, argTypes,
+                    Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
+        }
+        // BITMAP_UNION / HLL_UNION / PERCENTILE_UNION resolve cleanly via the
+        // generic path because their builtin signatures take fixed types.
+        return null;
     }
 
     private static Function resolveFunction(String name, Type[] argTypes) {

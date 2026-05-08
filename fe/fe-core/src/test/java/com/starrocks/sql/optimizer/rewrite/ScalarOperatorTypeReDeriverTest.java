@@ -77,4 +77,30 @@ class ScalarOperatorTypeReDeriverTest {
         Assertions.assertThrows(TypeReDeriveException.class,
                 () -> ScalarOperatorTypeReDeriver.reDerive(call));
     }
+
+    @Test
+    void callSumWidensSmallintToBigint() {
+        // sum(SMALLINT k3) — declared. After substitution child becomes BIGINT (mv_sum_k3).
+        // Expected: rebound sum(BIGINT) → BIGINT, with the function's argType updated
+        // to BIGINT (not SMALLINT).
+        ColumnRefOperator k3 = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        Function origSum = ExprUtils.getBuiltinFunction(FunctionSet.SUM,
+                new Type[] {IntegerType.SMALLINT}, Function.CompareMode.IS_IDENTICAL);
+        Assertions.assertNotNull(origSum, "sum(SMALLINT) builtin must exist");
+
+        // The original CallOperator may already declare BIGINT as its return type
+        // because sum's intermediate type is BIGINT — that's how the bug appears in
+        // the wild. We construct it as the bug would: claimed type BIGINT, but
+        // function still claims SMALLINT input.
+        CallOperator sum = new CallOperator(FunctionSet.SUM, IntegerType.BIGINT,
+                Lists.newArrayList((ScalarOperator) k3), origSum);
+
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(sum);
+        Assertions.assertTrue(out instanceof CallOperator);
+        CallOperator newSum = (CallOperator) out;
+        Assertions.assertEquals(IntegerType.BIGINT, newSum.getFunction().getArgs()[0],
+                "sum's argType must follow child after re-derive");
+        Assertions.assertEquals(IntegerType.BIGINT, newSum.getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newSum.getFunction().getReturnType());
+    }
 }
