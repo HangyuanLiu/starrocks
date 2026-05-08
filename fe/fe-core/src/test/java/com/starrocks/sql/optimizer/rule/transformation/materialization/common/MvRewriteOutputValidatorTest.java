@@ -18,8 +18,11 @@ import com.google.common.collect.Lists;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.sql.ast.expression.ExprUtils;
+import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.Type;
@@ -48,5 +51,19 @@ class MvRewriteOutputValidatorTest {
         CallOperator badSum = new CallOperator(FunctionSet.SUM, IntegerType.BIGINT,
                 Lists.newArrayList((ScalarOperator) k3), sumFn);
         Assertions.assertFalse(MvRewriteOutputValidator.isCoherent(badSum));
+    }
+
+    @Test
+    void casewhenBranchTypeMismatchFails() {
+        // case-when's declared op type is SMALLINT, but its then branch is BIGINT
+        // (e.g. left over from a leaf substitution that was not re-derived).
+        ColumnRefOperator mv = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        ConstantOperator zero = ConstantOperator.createTinyInt((byte) 0);
+        BinaryPredicateOperator cond = BinaryPredicateOperator.eq(
+                new ColumnRefOperator(2, IntegerType.INT, "k2", true),
+                ConstantOperator.createInt(0));
+        CaseWhenOperator bad = new CaseWhenOperator(IntegerType.SMALLINT,
+                null, zero, Lists.newArrayList(cond, mv));
+        Assertions.assertFalse(MvRewriteOutputValidator.isCoherent(bad));
     }
 }
