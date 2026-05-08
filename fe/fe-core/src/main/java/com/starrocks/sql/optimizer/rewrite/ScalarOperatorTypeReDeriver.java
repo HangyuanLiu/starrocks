@@ -17,13 +17,18 @@ package com.starrocks.sql.optimizer.rewrite;
 import com.google.common.collect.Lists;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
+import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.expression.ExprUtils;
+import com.starrocks.sql.common.TypeManager;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorUtil;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperatorVisitor;
+import com.starrocks.type.BooleanType;
 import com.starrocks.type.Type;
 
 import java.util.Arrays;
@@ -89,6 +94,32 @@ public final class ScalarOperatorTypeReDeriver
                 .map(ScalarOperator::getType)
                 .toArray(Type[]::new);
 
+        // IF specialization: unify the two value branches before generic resolution.
+        if (FunctionSet.IF.equalsIgnoreCase(fnName) && newChildren.size() == 3) {
+            Type t1 = newChildren.get(1).getType();
+            Type t2 = newChildren.get(2).getType();
+            Type unified = TypeManager.getCommonSuperType(t1, t2);
+            if (unified == null || !unified.isValid()) {
+                throw new TypeReDeriveException(
+                        "if branches have no common super type: " + t1 + " vs " + t2);
+            }
+            ScalarOperator b1 = unified.matchesType(t1)
+                    ? newChildren.get(1)
+                    : new CastOperator(unified, newChildren.get(1), true);
+            ScalarOperator b2 = unified.matchesType(t2)
+                    ? newChildren.get(2)
+                    : new CastOperator(unified, newChildren.get(2), true);
+            Type[] ifArgs = new Type[] {BooleanType.BOOLEAN, unified, unified};
+            Function ifFn = resolveFunction(FunctionSet.IF, ifArgs);
+            if (ifFn == null) {
+                throw new TypeReDeriveException("no IF builtin for arg types " + Arrays.toString(ifArgs));
+            }
+            CallOperator out = new CallOperator(FunctionSet.IF, unified,
+                    Lists.newArrayList(newChildren.get(0), b1, b2), ifFn);
+            out.setIgnoreNulls(call.getIgnoreNulls());
+            return out;
+        }
+
         Function fn = resolveSpecializedAggFn(fnName, argTypes);
         if (fn == null) {
             fn = resolveFunction(fnName, argTypes);
@@ -108,6 +139,46 @@ public final class ScalarOperatorTypeReDeriver
                 call.isDistinct(), call.isRemovedDistinct());
         newCall.setIgnoreNulls(call.getIgnoreNulls());
         return newCall;
+    }
+
+    @Override
+    public ScalarOperator visitCaseWhenOperator(CaseWhenOperator op, Void ctx) {
+        ScalarOperator caseClause = op.hasCase() ? op.getCaseClause().accept(this, ctx) : null;
+        List<ScalarOperator> whenThen = Lists.newArrayList();
+        List<Type> valueTypes = Lists.newArrayList();
+        for (int i = 0; i < op.getWhenClauseSize(); i++) {
+            ScalarOperator when = op.getWhenClause(i).accept(this, ctx);
+            ScalarOperator then = op.getThenClause(i).accept(this, ctx);
+            whenThen.add(when);
+            whenThen.add(then);
+            valueTypes.add(then.getType());
+        }
+        ScalarOperator elseClause = op.hasElse() ? op.getElseClause().accept(this, ctx) : null;
+        if (elseClause != null) {
+            valueTypes.add(elseClause.getType());
+        }
+        Type unified;
+        try {
+            unified = TypeManager.getCompatibleTypeForCaseWhen(valueTypes);
+        } catch (SemanticException e) {
+            throw new TypeReDeriveException("case-when branches have no compatible type: " + valueTypes);
+        }
+        if (unified == null || !unified.isValid()) {
+            throw new TypeReDeriveException("case-when branches have no compatible type: " + valueTypes);
+        }
+        List<ScalarOperator> alignedWhenThen = Lists.newArrayListWithCapacity(whenThen.size());
+        for (int i = 0; i < whenThen.size(); i += 2) {
+            ScalarOperator then = whenThen.get(i + 1);
+            if (!unified.matchesType(then.getType())) {
+                then = new CastOperator(unified, then, true);
+            }
+            alignedWhenThen.add(whenThen.get(i));
+            alignedWhenThen.add(then);
+        }
+        if (elseClause != null && !unified.matchesType(elseClause.getType())) {
+            elseClause = new CastOperator(unified, elseClause, true);
+        }
+        return new CaseWhenOperator(unified, caseClause, elseClause, alignedWhenThen);
     }
 
     private static Function resolveSpecializedAggFn(String name, Type[] argTypes) {

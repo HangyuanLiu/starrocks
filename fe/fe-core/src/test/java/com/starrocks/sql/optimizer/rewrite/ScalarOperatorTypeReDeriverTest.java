@@ -18,10 +18,13 @@ import com.google.common.collect.Lists;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.sql.ast.expression.ExprUtils;
+import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
+import com.starrocks.type.BooleanType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.Type;
 import org.junit.jupiter.api.Assertions;
@@ -102,5 +105,52 @@ class ScalarOperatorTypeReDeriverTest {
                 "sum's argType must follow child after re-derive");
         Assertions.assertEquals(IntegerType.BIGINT, newSum.getType());
         Assertions.assertEquals(IntegerType.BIGINT, newSum.getFunction().getReturnType());
+    }
+
+    @Test
+    void ifBranchesUnifyToCommonSuperType() {
+        // if(k2 = 0, mv_sum_k3 (BIGINT), 0 (TINYINT))
+        // Expected: if(BOOLEAN, BIGINT, BIGINT) returning BIGINT
+        ColumnRefOperator mv = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        ConstantOperator zero = ConstantOperator.createTinyInt((byte) 0);
+        BinaryPredicateOperator cond = BinaryPredicateOperator.eq(
+                new ColumnRefOperator(2, IntegerType.INT, "k2", true),
+                ConstantOperator.createInt(0));
+        Function origIf = ExprUtils.getBuiltinFunction(FunctionSet.IF,
+                new Type[] {BooleanType.BOOLEAN, IntegerType.SMALLINT, IntegerType.TINYINT},
+                Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
+        Assertions.assertNotNull(origIf, "if(BOOL,SMALLINT,TINYINT) builtin must exist");
+        CallOperator ifOp = new CallOperator(FunctionSet.IF, IntegerType.SMALLINT,
+                Lists.newArrayList(cond, mv, zero), origIf);
+
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(ifOp);
+        Assertions.assertTrue(out instanceof CallOperator);
+        CallOperator newIf = (CallOperator) out;
+        Assertions.assertEquals(IntegerType.BIGINT, newIf.getType(),
+                "if's return type follows unified branch type");
+        Assertions.assertEquals(IntegerType.BIGINT, newIf.getChild(1).getType(),
+                "then branch already BIGINT (mv ref)");
+        Assertions.assertEquals(IntegerType.BIGINT, newIf.getChild(2).getType(),
+                "else branch widened from TINYINT to BIGINT");
+    }
+
+    @Test
+    void casewhenUnifiesValueClauses() {
+        // case when k2 = 0 then mv_sum_k3 (BIGINT) else 0 (TINYINT) end
+        // Expected unified type: BIGINT
+        ColumnRefOperator mv = new ColumnRefOperator(1, IntegerType.BIGINT, "mv_sum_k3", true);
+        ConstantOperator zero = ConstantOperator.createTinyInt((byte) 0);
+        BinaryPredicateOperator cond = BinaryPredicateOperator.eq(
+                new ColumnRefOperator(2, IntegerType.INT, "k2", true),
+                ConstantOperator.createInt(0));
+        CaseWhenOperator caseOp = new CaseWhenOperator(IntegerType.SMALLINT,
+                null, zero, Lists.newArrayList(cond, mv));
+
+        ScalarOperator out = ScalarOperatorTypeReDeriver.reDerive(caseOp);
+        Assertions.assertTrue(out instanceof CaseWhenOperator);
+        CaseWhenOperator newCase = (CaseWhenOperator) out;
+        Assertions.assertEquals(IntegerType.BIGINT, newCase.getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newCase.getThenClause(0).getType());
+        Assertions.assertEquals(IntegerType.BIGINT, newCase.getElseClause().getType());
     }
 }
