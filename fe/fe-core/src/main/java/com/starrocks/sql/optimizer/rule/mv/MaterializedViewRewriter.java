@@ -24,6 +24,7 @@ import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.operator.OperatorType;
+import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
@@ -121,6 +122,37 @@ public class MaterializedViewRewriter extends OptExpressionVisitor<OptExpression
         return OptExpression.create(new LogicalProjectOperator(newProjectMap), optExpression.getInputs());
     }
 
+    private Projection rewriteScanProjection(Projection projection, MaterializedViewRule.RewriteContext context) {
+        if (projection == null) {
+            return null;
+        }
+        Map<ColumnRefOperator, ScalarOperator> replaceMap = new HashMap<>();
+        replaceMap.put(context.queryColumnRef, context.mvColumnRef);
+
+        Map<ColumnRefOperator, ScalarOperator> newColMap = new HashMap<>();
+        boolean changed = false;
+        for (Map.Entry<ColumnRefOperator, ScalarOperator> kv : projection.getColumnRefMap().entrySet()) {
+            ScalarOperator expr = kv.getValue();
+            if (!expr.getUsedColumns().contains(context.queryColumnRef)) {
+                newColMap.put(kv.getKey(), expr);
+                continue;
+            }
+            Optional<ScalarOperator> rewritten = MvColumnRefSubstitutor.substituteAndSyncOutput(
+                    kv.getKey(), expr, replaceMap);
+            if (!rewritten.isPresent()) {
+                substitutionFailed = true;
+                return projection;
+            }
+            newColMap.put(kv.getKey(), rewritten.get());
+            changed = true;
+        }
+        if (!changed) {
+            return projection;
+        }
+        return new Projection(newColMap, projection.getCommonSubOperatorMap(),
+                projection.needReuseLambdaDependentExpr());
+    }
+
     @Override
     public OptExpression visitLogicalTableScan(OptExpression optExpression,
                                                MaterializedViewRule.RewriteContext context) {
@@ -129,19 +161,30 @@ public class MaterializedViewRewriter extends OptExpressionVisitor<OptExpression
         }
 
         LogicalOlapScanOperator olapScanOperator = (LogicalOlapScanOperator) optExpression.getOp();
+        Projection newProjection = rewriteScanProjection(olapScanOperator.getProjection(), context);
+        if (substitutionFailed) {
+            return optExpression;
+        }
 
-        if (olapScanOperator.getColRefToColumnMetaMap().containsKey(context.queryColumnRef)) {
+        boolean colMetaChanged = olapScanOperator.getColRefToColumnMetaMap().containsKey(context.queryColumnRef);
+        boolean projChanged = newProjection != olapScanOperator.getProjection();
+        if (!colMetaChanged && !projChanged) {
+            return optExpression;
+        }
+
+        LogicalOlapScanOperator.Builder builder = new LogicalOlapScanOperator.Builder();
+        builder.withOperator(olapScanOperator);
+        if (colMetaChanged) {
             Map<ColumnRefOperator, Column> columnRefOperatorColumnMap =
                     new HashMap<>(olapScanOperator.getColRefToColumnMetaMap());
             columnRefOperatorColumnMap.remove(context.queryColumnRef);
             columnRefOperatorColumnMap.put(context.mvColumnRef, context.mvColumn);
-
-            LogicalOlapScanOperator.Builder builder = new LogicalOlapScanOperator.Builder();
-            LogicalOlapScanOperator newScanOperator = builder.withOperator(olapScanOperator)
-                    .setColRefToColumnMetaMap(columnRefOperatorColumnMap).build();
-            optExpression = OptExpression.create(newScanOperator, optExpression.getInputs());
+            builder.setColRefToColumnMetaMap(columnRefOperatorColumnMap);
         }
-        return optExpression;
+        if (projChanged) {
+            builder.setProjection(newProjection);
+        }
+        return OptExpression.create(builder.build(), optExpression.getInputs());
     }
 
     private CallOperator rewriteAggregateFunc(ReplaceColumnRefRewriter replaceColumnRefRewriter,
